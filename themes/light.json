@@ -1,0 +1,13 @@
+{
+  "name": "Light",
+  "background": "#f3f4f7",
+  "foreground": "#1d2129",
+  "accent": "#1a73e8",
+  "surface": "#ffffff",
+  "border": "#c9ced8",
+  "muted": "#6b7280",
+  "opacity": 0.94,
+  "radius": 10,
+  "fontSize": 10,
+  "fontFamily": "Cantarell"
+}

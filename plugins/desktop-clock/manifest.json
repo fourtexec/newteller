@@ -1,0 +1,11 @@
+{
+  "id": "desktop-clock",
+  "name": "Desktop Clock",
+  "version": "1.0.0",
+  "type": "desktop",
+  "entry": "Widget.qml",
+  "x": 60,
+  "y": 60,
+  "order": 10,
+  "description": "Large clock widget placed on the desktop."
+}
