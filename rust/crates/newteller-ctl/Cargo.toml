@@ -1,0 +1,20 @@
+[package]
+name = "newteller-ctl"
+description = "Command line front end for the NewTeller Rust core: inspect the application catalogue, test the search ranking, sample system metrics, edit shell.json and validate a configuration."
+keywords = ["desktop", "shell", "cli", "xdg"]
+categories = ["command-line-utilities"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+
+[[bin]]
+name = "newteller-ctl"
+path = "src/main.rs"
+
+[dependencies]
+newteller-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true

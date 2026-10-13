@@ -1,0 +1,35 @@
+[package]
+name = "newteller-core"
+description = "Rust core of the NewTeller desktop shell: XDG application catalogue, fuzzy search index, system metrics, inotify configuration watching."
+keywords = ["desktop", "shell", "xdg", "search", "ffi"]
+categories = ["os::linux-apis", "text-processing"]
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "../../README.md"
+
+[lib]
+name = "newteller_core"
+path = "src/lib.rs"
+# `staticlib` is what the Qt shell links against, `rlib` is what the CLI and the
+# integration tests use.
+crate-type = ["rlib", "staticlib"]
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+rayon.workspace = true
+
+# inotify, statvfs and /proc access. Only used on Linux; the modules that need
+# it compile to "unsupported" stubs elsewhere so `cargo test` still runs.
+[target.'cfg(unix)'.dependencies]
+libc.workspace = true
+
+[features]
+default = []
+# Turns the /proc and /sys readers into stubs that report "unavailable".
+# Handy when running the test-suite inside a restricted container.
+no-procfs = []
