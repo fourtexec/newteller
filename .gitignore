@@ -2,3 +2,7 @@ target/
 build/
 
 dist/
+
+# Rust
+rust/target/
+**/*.rs.bk
