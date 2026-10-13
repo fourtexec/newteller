@@ -1,0 +1,17 @@
+[package]
+name = "newteller"
+version = "0.1.0"
+edition = "2021"
+description = "NewTeller - a Windows-like, highly customizable desktop shell layer for Debian-based systems"
+license = "MIT"
+
+[[bin]]
+name = "newteller"
+path = "src/main.rs"
+
+[dependencies]
+gtk4 = "0.9"
+gtk4-layer-shell = "0.4"
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"
+dirs = "5"
