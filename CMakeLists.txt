@@ -25,6 +25,7 @@ qt_add_executable(newteller
     src/settings.cpp
     src/theme.cpp
     src/appmodel.cpp
+    src/rustbridge.cpp
     src/shellcontroller.cpp
     src/plugins.cpp
 )
