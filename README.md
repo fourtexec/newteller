@@ -65,6 +65,52 @@ cp /usr/share/newteller/newteller-autostart.desktop ~/.config/autostart/newtelle
 > (for example, remove the Plasma panel or disable the GNOME dock extension) so the two
 > don't overlap. On Openbox the panel is a normal window and does not reserve space yet.
 
+## Automated builds and commit releases
+
+`.github/workflows/build-release.yml` builds NewTeller on Debian 13 (trixie),
+x86_64. Pull requests build and upload an artifact without publishing a release.
+Every push to `main` publishes a prerelease titled `commit <full SHA>` with the
+matching tag `commit-<full SHA>`. It can also be run manually on `main` through
+**Actions → Build and release NewTeller → Run workflow**. Rerunning a build replaces
+its release assets. The workflow uses `GITHUB_TOKEN`; no additional secrets are needed.
+
+Each release contains:
+
+- `newteller-commit-<full SHA>-debian13-x86_64.zip`;
+- a `.zip.sha256` checksum file.
+
+The ZIP contains `usr/bin/newteller`, the example plugins, application/autostart
+entries, this README, `BUILDINFO` with the full commit SHA, and installation scripts.
+QML and the default/light themes are embedded in the executable. Qt6 and
+LayerShellQt libraries/modules are **system dependencies**, installed by the included
+installer; this is not a portable archive for Debian 12 or Ubuntu 24.04.
+IconKit is optional (system icons are used if it is absent).
+
+Download both files into the same directory, then on Debian 13 x86_64:
+
+```sh
+sha256sum -c newteller-commit-<full SHA>-debian13-x86_64.zip.sha256
+unzip newteller-commit-<full SHA>-debian13-x86_64.zip
+cd newteller-commit-<full SHA>-debian13-x86_64
+sudo bash install.sh
+newteller # run as your normal user inside a desktop session
+```
+
+The installer needs an internet connection to install dependencies with `apt`.
+Autostart is opt-in: copy `/usr/share/newteller/newteller-autostart.desktop` to
+`~/.config/autostart/newteller.desktop` as described above.
+
+To create the same archive locally on Debian 13, install the development packages
+(`build-essential cmake ninja-build zip qt6-base-dev qt6-declarative-dev qt6-svg-dev
+liblayershellqtinterface-dev`), then run:
+
+```sh
+sudo bash scripts/install-runtime-deps.sh
+bash scripts/build-release.sh
+```
+
+Output is written to `dist/` (ignored by Git).
+
 ## Configuration
 
 `~/.config/newteller/shell.json` is a flat JSON object with dotted keys. The file is
