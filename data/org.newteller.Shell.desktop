@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=NewTeller
+Comment=Customizable desktop shell layer
+Exec=newteller
+Icon=preferences-desktop
+Categories=System;
+NoDisplay=true

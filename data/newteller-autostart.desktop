@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=NewTeller
+Comment=Start the NewTeller shell layer on login
+Exec=newteller
+X-GNOME-Autostart-enabled=true
+NoDisplay=true

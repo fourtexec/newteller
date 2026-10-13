@@ -1,0 +1,13 @@
+{
+  "name": "Default Dark",
+  "background": "#181a20",
+  "foreground": "#f2f4f8",
+  "accent": "#2f80ed",
+  "surface": "#22252d",
+  "border": "#3a3f4b",
+  "muted": "#8b93a7",
+  "opacity": 0.92,
+  "radius": 10,
+  "fontSize": 10,
+  "fontFamily": "Cantarell"
+}

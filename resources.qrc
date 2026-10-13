@@ -1,0 +1,12 @@
+<!DOCTYPE RCC>
+<RCC version="1.0">
+  <qresource prefix="/">
+    <file>qml/Main.qml</file>
+    <file>qml/Panel.qml</file>
+    <file>qml/StartMenu.qml</file>
+    <file>qml/Desktop.qml</file>
+    <file>qml/TaskButton.qml</file>
+    <file>themes/default.json</file>
+    <file>themes/light.json</file>
+  </qresource>
+</RCC>
