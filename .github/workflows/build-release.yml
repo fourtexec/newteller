@@ -1,0 +1,84 @@
+name: Build and release NewTeller
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: newteller-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: Debian 13 / x86_64
+    runs-on: ubuntu-24.04
+    # Debian 12 / Ubuntu 24.04 ship Qt5 LayerShellQt; this project needs Qt6.
+    container: debian:13
+    timeout-minutes: 30
+    steps:
+      - name: Install build tools and runtime dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates git build-essential cmake ninja-build zip \
+            qt6-base-dev qt6-declarative-dev qt6-svg-dev \
+            liblayershellqtinterface-dev
+      - uses: actions/checkout@v4
+      - name: Install QML modules and platform plugins
+        run: bash scripts/install-runtime-deps.sh
+      - name: Build and package
+        run: bash scripts/build-release.sh "$GITHUB_SHA"
+      - name: Preserve release archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: newteller-debian13-x86_64
+          path: |
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish commit release
+    needs: build
+    # Never publish from PRs or manual runs on non-main branches.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: newteller-debian13-x86_64
+          path: release-assets
+      - name: Create release and attach ZIP
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          COMMIT_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="commit-${COMMIT_SHA}"
+          cat > release-notes.md <<EOF_NOTES
+          Automated build of commit ${COMMIT_SHA}.
+
+          Target: Debian 13 (trixie), Linux x86_64.
+          Extract the ZIP and run \`sudo bash install.sh\` from the extracted directory.
+          The installer installs system Qt6 / LayerShellQt runtime dependencies.
+          QML and built-in themes are embedded in the executable; example plugins and desktop entries are included.
+          The archive is not a statically linked or cross-distribution portable build.
+          EOF_NOTES
+          if ! gh release view "$tag" > /dev/null 2>&1; then
+            gh release create "$tag" --target "$COMMIT_SHA" \
+              --title "commit ${COMMIT_SHA}" --notes-file release-notes.md \
+              --prerelease --latest=false
+          fi
+          # A rerun replaces assets instead of failing on an existing release.
+          gh release upload "$tag" release-assets/*.zip release-assets/*.sha256 --clobber

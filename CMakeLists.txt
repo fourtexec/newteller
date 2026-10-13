@@ -17,7 +17,10 @@ if(NOT TARGET LayerShellQt::Interface)
     message(FATAL_ERROR "LayerShellQt (Qt6) not found. Install liblayershellqtinterface-dev or layer-shell-qt-devel.")
 endif()
 
+qt_add_resources(newteller_resources resources.qrc)
+
 qt_add_executable(newteller
+    ${newteller_resources}
     src/main.cpp
     src/settings.cpp
     src/theme.cpp
@@ -25,8 +28,6 @@ qt_add_executable(newteller
     src/shellcontroller.cpp
     src/plugins.cpp
 )
-
-qt_add_resources(newteller newteller_res resources.qrc)
 
 target_compile_definitions(newteller PRIVATE NEWTELLER_VERSION="${PROJECT_VERSION}")
 target_link_libraries(newteller PRIVATE
