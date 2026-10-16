@@ -52,6 +52,12 @@ For a custom Qt SDK (6.4 or newer), export `CMAKE_PREFIX_PATH` pointing to its
 installation prefix, or `Qt6_DIR` pointing to the directory containing
 `Qt6Config.cmake`. LayerShellQt must also be built against that Qt version.
 
+An optional Rust core (`rust/crates/newteller-core`) provides the application
+catalogue, fuzzy search, metrics and desktop-file parsing. It is disabled by
+default and the shell then uses its built-in C++/Qt fallback. To build and
+statically link it, install a Rust toolchain (1.75 or newer) and add
+`-DNEWTELLER_WITH_RUST=ON` to the configure command.
+
 IconKit is optional: clone https://github.com/fourtexec/iconkit to `~/iconkit`
 for additional icons, or use the system icon theme.
 

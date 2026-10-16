@@ -40,8 +40,11 @@ public:
 
 int main(int argc, char *argv[])
 {
-    // Must be called before QGuiApplication is created.
+    // Must be called before QGuiApplication is created. Only needed before Qt 6.5;
+    // newer Qt enables layer-shell integration without it (and warns if called).
+#if QT_VERSION < QT_VERSION_CHECK(6, 5, 0)
     LayerShellQt::Shell::useLayerShell();
+#endif
 
     QGuiApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("NewTeller"));
