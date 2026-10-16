@@ -596,8 +596,13 @@ QVariantList AppModel::launchArgs(const QString &id, const QStringList &files) c
         // terminal wrapping and environment aware program lookup.
         const QStringList argv = Rust::Index::execArgv(app.exec, app.icon, app.name, app.path,
                                                        files, app.terminal, terminalCommand);
-        if (!argv.isEmpty())
-            return argv;
+        if (!argv.isEmpty()) {
+            QVariantList out;
+            out.reserve(argv.size());
+            for (const QString &arg : argv)
+                out.append(arg);
+            return out;
+        }
     }
 
     // Fallback: drop field codes and prepend the terminal emulator.
