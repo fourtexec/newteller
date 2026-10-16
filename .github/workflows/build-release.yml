@@ -15,28 +15,33 @@ concurrency:
 
 jobs:
   build:
-    name: Debian 13 / x86_64
+    name: ${{ matrix.target }}
     runs-on: ubuntu-24.04
     # Debian 12 / Ubuntu 24.04 ship Qt5 LayerShellQt; this project needs Qt6.
-    container: debian:13
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: debian:13
+            target: debian13-x86_64
+          - image: ubuntu:26.04
+            target: ubuntu26.04-x86_64
+    container: ${{ matrix.image }}
     timeout-minutes: 30
     steps:
-      - name: Install build tools and runtime dependencies
+      - name: Install checkout prerequisites
         run: |
           apt-get update
-          apt-get install -y --no-install-recommends \
-            ca-certificates git build-essential cmake ninja-build zip \
-            qt6-base-dev qt6-declarative-dev qt6-svg-dev \
-            liblayershellqtinterface-dev
+          apt-get install -y --no-install-recommends ca-certificates git
       - uses: actions/checkout@v4
-      - name: Install QML modules and platform plugins
-        run: bash scripts/install-runtime-deps.sh
+      - name: Install build and runtime dependencies
+        run: bash scripts/install-build-deps.sh
       - name: Build and package
         run: bash scripts/build-release.sh "$GITHUB_SHA"
       - name: Preserve release archive
         uses: actions/upload-artifact@v4
         with:
-          name: newteller-debian13-x86_64
+          name: newteller-${{ matrix.target }}
           path: |
             dist/*.zip
             dist/*.sha256
@@ -55,7 +60,8 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: newteller-debian13-x86_64
+          pattern: newteller-*-x86_64
+          merge-multiple: true
           path: release-assets
       - name: Create release and attach ZIP
         env:
@@ -69,7 +75,8 @@ jobs:
           cat > release-notes.md <<EOF_NOTES
           Automated build of commit ${COMMIT_SHA}.
 
-          Target: Debian 13 (trixie), Linux x86_64.
+          Targets: Debian 13 (trixie) and Ubuntu 26.04 LTS, Linux x86_64.
+          Download the archive matching your distribution.
           Extract the ZIP and run \`sudo bash install.sh\` from the extracted directory.
           The installer installs system Qt6 / LayerShellQt runtime dependencies.
           QML and built-in themes are embedded in the executable; example plugins and desktop entries are included.

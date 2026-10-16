@@ -1,16 +1,13 @@
 #!/usr/bin/env bash
-# Run as root on Debian 13. Shared by CI and the release installer.
+# Run as root on a supported Debian/Ubuntu system. Shared by CI and releases.
 set -euo pipefail
 
 if [[ $EUID -ne 0 ]]; then
     echo 'Run this script as root (sudo bash install-runtime-deps.sh).' >&2
     exit 1
 fi
-source /etc/os-release
-if [[ ${ID:-} != debian || ${VERSION_ID:-} != 13 ]]; then
-    echo 'This build targets Debian 13 (trixie). Other distributions are not supported by this installer.' >&2
-    exit 1
-fi
+source "$(dirname -- "${BASH_SOURCE[0]}")/platform.sh"
+newteller_detect_platform
 
 apt-get update
 packages=(
