@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build and stage an installable Debian 13 x86_64 release ZIP.
+# Build and stage a native Debian 13 or Ubuntu 26.04 x86_64 release ZIP.
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$root"
@@ -13,10 +13,26 @@ if [[ $(uname -m) != x86_64 ]]; then
     exit 1
 fi
 
-name="newteller-commit-${sha}-debian13-x86_64"
+source "$root/scripts/platform.sh"
+newteller_detect_platform
+name="newteller-commit-${sha}-${NEWTELLER_TARGET}"
 stage="$root/build/release/$name"
-cmake -S "$root" -B "$root/build" -G Ninja \
-    -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+if ! cmake -S "$root" -B "$root/build" -G Ninja \
+    -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr; then
+    cat >&2 <<'HELP'
+
+Release configuration failed. On Debian 13 or Ubuntu 26.04, install the build dependencies first:
+    sudo bash scripts/install-build-deps.sh
+Then rerun scripts/build-release.sh as your normal user.
+
+Qt runtime packages alone do not provide Qt6Config.cmake: qt6-base-dev,
+qt6-declarative-dev and qt6-svg-dev are required, along with Qt6 LayerShellQt.
+For a custom Qt SDK (6.4 or newer), set CMAKE_PREFIX_PATH to its install prefix
+or Qt6_DIR to the directory containing Qt6Config.cmake, and ensure LayerShellQt
+was built against the same Qt version. See the CMake error above for details.
+HELP
+    exit 1
+fi
 cmake --build "$root/build" --parallel "$(nproc)"
 # Do not let a rerun leave stale files in the archive.
 rm -rf -- "$stage"
@@ -24,8 +40,9 @@ mkdir -p "$stage" "$root/dist"
 DESTDIR="$stage" cmake --install "$root/build" --strip
 install -m 644 README.md "$stage/README.md"
 install -m 755 scripts/install-runtime-deps.sh "$stage/install-runtime-deps.sh"
+install -m 644 scripts/platform.sh "$stage/platform.sh"
 install -m 755 scripts/install-release.sh "$stage/install.sh"
-printf 'commit=%s\ntarget=debian13-x86_64\n' "$sha" > "$stage/BUILDINFO"
+printf 'commit=%s\ntarget=%s\n' "$sha" "$NEWTELLER_TARGET" > "$stage/BUILDINFO"
 
 # QML and built-in themes are compiled into newteller via resources.qrc.
 test -x "$stage/usr/bin/newteller"

@@ -30,23 +30,30 @@ Not implemented yet (planned, in this order):
 5. Settings GUI (currently edit `shell.json`)
 6. Desktop right-click menu, drag-and-drop icon layout
 
-## Build (Debian 12 / Ubuntu 24.04)
+## Build (Debian 13 / Ubuntu 26.04 LTS)
+
+Release builds support Debian 13 and Ubuntu 26.04 LTS, with Qt 6 development packages, not just the
+runtime libraries. Debian 12 / Ubuntu 24.04 ship Qt5 LayerShellQt and are not
+supported by the release scripts.
+
+From the repository root:
 
 ```sh
-sudo apt install build-essential cmake git \
-    qt6-base-dev qt6-declarative-dev qt6-svg-dev \
-    qml6-module-qt-labs-folderlistmodel \
-    qt6-image-formats-plugins
-# Layer-shell bindings for Qt6. Find the exact name on your release:
-apt search layershell | grep -i qt6
-# e.g.: sudo apt install liblayershellqtinterface-dev
-
-git clone https://github.com/fourtexec/iconkit ~/iconkit
-
-cmake -S . -B build -DCMAKE_BUILD_TYPE=Release
+sudo bash scripts/install-build-deps.sh
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
 cmake --build build -j"$(nproc)"
 sudo cmake --install build
 ```
+
+If CMake reports `Qt6Config.cmake` is missing, run the dependency installer above.
+It installs `qt6-base-dev`, `qt6-declarative-dev`, `qt6-svg-dev`, the Qt6
+LayerShellQt development package, build tools, and runtime QML modules.
+For a custom Qt SDK (6.4 or newer), export `CMAKE_PREFIX_PATH` pointing to its
+installation prefix, or `Qt6_DIR` pointing to the directory containing
+`Qt6Config.cmake`. LayerShellQt must also be built against that Qt version.
+
+IconKit is optional: clone https://github.com/fourtexec/iconkit to `~/iconkit`
+for additional icons, or use the system icon theme.
 
 Run it from a terminal inside your current session:
 
@@ -67,8 +74,8 @@ cp /usr/share/newteller/newteller-autostart.desktop ~/.config/autostart/newtelle
 
 ## Automated builds and commit releases
 
-`.github/workflows/build-release.yml` builds NewTeller on Debian 13 (trixie),
-x86_64. Pull requests build and upload an artifact without publishing a release.
+`.github/workflows/build-release.yml` builds separate native x86_64 archives on
+Debian 13 (trixie) and Ubuntu 26.04 LTS. Pull requests build and upload an artifact without publishing a release.
 Every push to `main` publishes a prerelease titled `commit <full SHA>` with the
 matching tag `commit-<full SHA>`. It can also be run manually on `main` through
 **Actions → Build and release NewTeller → Run workflow**. Rerunning a build replaces
@@ -77,6 +84,7 @@ its release assets. The workflow uses `GITHUB_TOKEN`; no additional secrets are 
 Each release contains:
 
 - `newteller-commit-<full SHA>-debian13-x86_64.zip`;
+- `newteller-commit-<full SHA>-ubuntu26.04-x86_64.zip`;
 - a `.zip.sha256` checksum file.
 
 The ZIP contains `usr/bin/newteller`, the example plugins, application/autostart
@@ -86,7 +94,9 @@ LayerShellQt libraries/modules are **system dependencies**, installed by the inc
 installer; this is not a portable archive for Debian 12 or Ubuntu 24.04.
 IconKit is optional (system icons are used if it is absent).
 
-Download both files into the same directory, then on Debian 13 x86_64:
+Download the ZIP **matching your distribution** and its checksum into the same
+directory. The installer rejects archives built for a different distribution.
+For example, on Debian 13 x86_64:
 
 ```sh
 sha256sum -c newteller-commit-<full SHA>-debian13-x86_64.zip.sha256
@@ -100,16 +110,18 @@ The installer needs an internet connection to install dependencies with `apt`.
 Autostart is opt-in: copy `/usr/share/newteller/newteller-autostart.desktop` to
 `~/.config/autostart/newteller.desktop` as described above.
 
-To create the same archive locally on Debian 13, install the development packages
-(`build-essential cmake ninja-build zip qt6-base-dev qt6-declarative-dev qt6-svg-dev
-liblayershellqtinterface-dev`), then run:
+On Ubuntu 26.04, use the same commands with `ubuntu26.04` in place of `debian13`
+in the archive and directory names.
+
+To create an archive locally on Debian 13 or Ubuntu 26.04 x86_64, from the repository root run:
 
 ```sh
-sudo bash scripts/install-runtime-deps.sh
+sudo bash scripts/install-build-deps.sh
 bash scripts/build-release.sh
 ```
 
-Output is written to `dist/` (ignored by Git).
+Output is written to `dist/` (ignored by Git), named for the detected distribution.
+Build on the target distribution; Debian and Ubuntu binaries are not interchangeable.
 
 ## Configuration
 
