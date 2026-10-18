@@ -1,8 +1,10 @@
 #pragma once
 
 #include <QColor>
+#include <QHash>
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QVariantMap>
 
 class Settings;
@@ -10,6 +12,9 @@ class Settings;
 // Loads a JSON theme. Built-in themes live in the Qt resource ":/themes/",
 // user themes in ~/.config/newteller/themes/. Missing keys fall back to default.
 // Exposed to QML as the context property `Theme`.
+//
+// Parsed colours are cached; with `theme.autoReload` a change to the theme
+// file applies without a restart.
 class ThemeManager : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString name READ name NOTIFY themeChanged)
@@ -28,18 +33,22 @@ public:
     explicit ThemeManager(Settings *settings, QObject *parent = nullptr);
 
     QString name() const { return m_name; }
-    QColor background() const { return color("background"); }
-    QColor foreground() const { return color("foreground"); }
-    QColor accent() const { return color("accent"); }
-    QColor surface() const { return color("surface"); }
-    QColor border() const { return color("border"); }
-    QColor muted() const { return color("muted"); }
+    QColor background() const { return color(QStringLiteral("background")); }
+    QColor foreground() const { return color(QStringLiteral("foreground")); }
+    QColor accent() const { return color(QStringLiteral("accent")); }
+    QColor surface() const { return color(QStringLiteral("surface")); }
+    QColor border() const { return color(QStringLiteral("border")); }
+    QColor muted() const { return color(QStringLiteral("muted")); }
     qreal opacity() const { return m_t.value(QStringLiteral("opacity"), 0.92).toReal(); }
     int radius() const { return m_t.value(QStringLiteral("radius"), 10).toInt(); }
     int fontSize() const { return m_t.value(QStringLiteral("fontSize"), 10).toInt(); }
     QString fontFamily() const { return m_t.value(QStringLiteral("fontFamily"), QStringLiteral("Sans")).toString(); }
 
     Q_INVOKABLE QStringList availableThemes() const;
+    // theme.background with another alpha (0..1), for QML overlays.
+    Q_INVOKABLE QColor withAlpha(const QColor &color, qreal alpha) const;
+    // Linear blend of two colours, t in 0..1 (0 = a, 1 = b).
+    Q_INVOKABLE QColor mix(const QColor &a, const QColor &b, qreal t) const;
 
 public slots:
     void reload();
@@ -48,9 +57,12 @@ signals:
     void themeChanged();
 
 private:
-    QColor color(const char *key) const;
+    QColor color(const QString &key) const;
+    void invalidateCache();
 
     Settings *m_settings;
     QVariantMap m_t;
+    mutable QHash<QString, QColor> m_cache;
     QString m_name;
+    QString m_filePath; // the file the current theme came from, for watching
 };

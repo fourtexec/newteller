@@ -5,6 +5,8 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
+include(GNUInstallDirs)
+
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Qml Quick Svg)
 
 # wlr-layer-shell support (panel, desktop, menu). Package names differ per distro,
@@ -34,8 +36,40 @@ if(NOT XCB_INCLUDE_DIR OR NOT XCB_LIBRARY)
                         "(sudo bash scripts/install-build-deps.sh) or libxcb-devel.")
 endif()
 
-qt_add_resources(newteller_resources resources.qrc)
+# ---------------------------------------------------------------------------
+# The Rust core (search index, metrics, watcher, config). Built with cargo and
+# linked as a static library. AUTO enables it when cargo is available;
+# -DNEWTELLER_WITH_RUST=OFF builds the pure C++/Qt fallback.
+option(NEWTELLER_WITH_RUST "Build the Rust core (ON/OFF/AUTO)" AUTO)
+find_program(CARGO_EXECUTABLE cargo)
+if(NEWTELLER_WITH_RUST STREQUAL "OFF")
+    set(NEWTELLER_RUST_ENABLED FALSE)
+elseif(CARGO_EXECUTABLE)
+    set(NEWTELLER_RUST_ENABLED TRUE)
+elseif(NEWTELLER_WITH_RUST STREQUAL "ON")
+    message(FATAL_ERROR "NEWTELLER_WITH_RUST=ON but cargo was not found")
+else()
+    message(STATUS "cargo not found: building without the Rust core")
+    set(NEWTELLER_RUST_ENABLED FALSE)
+endif()
 
+if(NEWTELLER_RUST_ENABLED)
+    set(NEWTELLER_RUST_LIB ${CMAKE_BINARY_DIR}/rust-target/release/libnewteller_core.a)
+    file(GLOB_RECURSE NEWTELLER_RUST_SOURCES CONFIGURE_DEPENDS ${CMAKE_SOURCE_DIR}/rust/*)
+    add_custom_command(OUTPUT ${NEWTELLER_RUST_LIB}
+        COMMAND ${CMAKE_COMMAND} -E env CARGO_TARGET_DIR=${CMAKE_BINARY_DIR}/rust-target
+                ${CARGO_EXECUTABLE} build --release
+                --manifest-path ${CMAKE_SOURCE_DIR}/rust/Cargo.toml
+                -p newteller-core -p newteller-ctl
+        DEPENDS ${NEWTELLER_RUST_SOURCES}
+        COMMENT "Building the Rust core (newteller-core, newteller-ctl)")
+    add_custom_target(newteller_rust DEPENDS ${NEWTELLER_RUST_LIB})
+    add_library(newteller_core STATIC IMPORTED GLOBAL)
+    set_target_properties(newteller_core PROPERTIES IMPORTED_LOCATION ${NEWTELLER_RUST_LIB})
+    add_dependencies(newteller_core newteller_rust)
+endif()
+
+qt_add_resources(newteller_resources resources.qrc)
 qt_add_executable(newteller
     ${newteller_resources}
     src/main.cpp
@@ -45,6 +79,7 @@ qt_add_executable(newteller
     src/shellcontroller.cpp
     src/plugins.cpp
     src/rustbridge.cpp
+    src/systemmonitor.cpp
     src/shellwindow.cpp
     src/windowsystem.cpp
 )
@@ -62,7 +97,13 @@ target_link_libraries(newteller PRIVATE
     ${XCB_LIBRARY}
 )
 
-include(GNUInstallDirs)
+if(NEWTELLER_RUST_ENABLED)
+    target_include_directories(newteller PRIVATE ${CMAKE_SOURCE_DIR}/rust/crates/newteller-core/include)
+    target_compile_definitions(newteller PRIVATE NEWTELLER_HAVE_RUST=1)
+    target_link_libraries(newteller PRIVATE newteller_core pthread dl m)
+    install(PROGRAMS ${CMAKE_BINARY_DIR}/rust-target/release/newteller-ctl DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+
 install(TARGETS newteller RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(DIRECTORY plugins/ DESTINATION ${CMAKE_INSTALL_DATADIR}/newteller/plugins)
 install(FILES data/org.newteller.Shell.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)

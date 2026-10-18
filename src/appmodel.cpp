@@ -633,9 +633,9 @@ QVariantList AppModel::launchArgs(const QString &id, const QStringList &files) c
     return toVariantList(args);
 }
 
-bool AppModel::launch(const QString &id)
+bool AppModel::launch(const QString &id, const QStringList &files)
 {
-    const QVariantList args = launchArgs(id);
+    const QVariantList args = launchArgs(id, files);
     if (args.isEmpty()) {
         emit launchFailed(id, QStringLiteral("no such application or empty Exec line"));
         return false;

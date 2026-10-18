@@ -1,0 +1,12 @@
+{
+  "background": "#2e3440",
+  "foreground": "#eceff4",
+  "accent": "#88c0d0",
+  "surface": "#3b4252",
+  "border": "#4c566a",
+  "muted": "#81a1c1",
+  "opacity": 0.95,
+  "radius": 10,
+  "fontSize": 10,
+  "fontFamily": "Sans"
+}

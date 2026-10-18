@@ -27,7 +27,7 @@ jobs:
           - image: ubuntu:26.04
             target: ubuntu26.04-x86_64
     container: ${{ matrix.image }}
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - name: Install checkout prerequisites
         run: |
@@ -36,6 +36,15 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install build and runtime dependencies
         run: bash scripts/install-build-deps.sh
+      - name: Rust tests
+        run: |
+          cd rust
+          cargo test --workspace
+      - name: QML smoke test
+        run: |
+          python3 -m venv /tmp/newteller-venv
+          /tmp/newteller-venv/bin/pip install PySide6-Essentials
+          /tmp/newteller-venv/bin/python tests/qml_smoke.py
       - name: Build and package
         run: bash scripts/build-release.sh "$GITHUB_SHA"
       - name: Preserve release archive

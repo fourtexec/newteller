@@ -41,8 +41,9 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen:configfile=" + _config.name
 os.environ["QT_QUICK_BACKEND"] = "software"
 
 import PySide6  # noqa: E402
-from PySide6.QtCore import (Q_ARG, QEnum, QMargins, QMetaObject, QObject, QPoint, QtMsgType,  # noqa: E402
-                            QUrl, Property, Qt, Signal, Slot, qInstallMessageHandler)
+from PySide6.QtCore import (Q_ARG, QDateTime, QEnum, QMargins, QMetaObject, QObject, QPoint,  # noqa: E402
+                            QtMsgType, QTimer, QUrl, Property, Qt, Signal, Slot,
+                            qInstallMessageHandler)
 from PySide6.QtGui import QColor, QGuiApplication  # noqa: E402
 from PySide6.QtQml import (QmlAnonymous, QmlAttached, QmlNamedElement,  # noqa: E402
                            QmlUncreatable, QQmlApplicationEngine)
@@ -164,9 +165,15 @@ class ShellWindowType(QObject):
 # Stand-ins for the C++ context objects (see src/*.h for the real API).
 
 APPS = [
-    {"id": "firefox", "name": "Firefox", "icon": "firefox"},
-    {"id": "org.gnome.Terminal", "name": "Terminal", "icon": "utilities-terminal"},
-    {"id": "org.gnome.Nautilus", "name": "Files", "icon": "system-file-manager"},
+    {"id": "firefox", "name": "Firefox", "icon": "firefox",
+     "generic": "web browser", "comment": "Browse the web",
+     "categories": ["Network"], "keywords": ["internet", "web"]},
+    {"id": "org.gnome.Terminal", "name": "Terminal", "icon": "utilities-terminal",
+     "generic": "terminal emulator", "comment": "Use the command line",
+     "categories": ["System"], "keywords": ["shell", "console"]},
+    {"id": "org.gnome.Nautilus", "name": "Files", "icon": "system-file-manager",
+     "generic": "file manager", "comment": "Organize your files",
+     "categories": ["System", "Utility"], "keywords": ["folder"]},
 ]
 
 
@@ -193,6 +200,11 @@ class Settings(QObject):
     def value(self, key, fallback=None):
         return self._values.get(key, fallback)
 
+    @Slot(str, "QVariant")
+    def setValue(self, key, value):
+        self._values[key] = value
+        self.valuesChanged.emit()
+
 
 class Theme(QObject):
     themeChanged = Signal()
@@ -214,9 +226,21 @@ class Theme(QObject):
 
 
 class Apps(QObject):
+    runningChanged = Signal()
+
     def __init__(self):
         super().__init__()
         self.launched = []
+        self.running = set()
+
+    def _categories(self):
+        counts = {}
+        for a in APPS:
+            for c in a.get("categories", []):
+                counts[c] = counts.get(c, 0) + 1
+        return [{"name": k, "count": v} for k, v in sorted(counts.items())]
+
+    categories = Property("QVariantList", _categories, notify=runningChanged)
 
     @Slot(str, result="QVariantMap")
     def byId(self, app_id):
@@ -225,24 +249,71 @@ class Apps(QObject):
     @Slot(str, int, result="QVariantList")
     def search(self, query, limit):
         q = query.lower()
-        return [a for a in APPS if q in a["name"].lower()][:limit]
+        return [dict(a) for a in APPS
+                if q in a["name"].lower() or q in a["id"].lower()][:limit]
+
+    @Slot(str, int, result="QVariantList")
+    def searchDetailed(self, query, limit):
+        # Rank first by usage and name, and add the StyledText highlight the
+        # start menu shows; the empty query lists everything.
+        q = query.lower().strip()
+        out = []
+        for a in APPS:
+            if q and q not in a["name"].lower() and q not in a["id"].lower() \
+                    and q not in a.get("comment", "").lower():
+                continue
+            hit = dict(a)
+            name = a["name"]
+            i = name.lower().find(q) if q else -1
+            if i >= 0:
+                hit["highlight"] = (name[:i] + "<font color=\"#ffffff\">"
+                                    + name[i:i + len(q)] + "</font>" + name[i + len(q):])
+            else:
+                hit["highlight"] = name
+            out.append(hit)
+        return out[:limit]
+
+    @Slot(int, result="QVariantList")
+    def recent(self, limit):
+        return [dict(a) for a in APPS[:limit]]
+
+    @Slot(str, result=bool)
+    def isRunning(self, app_id):
+        return app_id in self.running
 
     @Slot(str, result=bool)
     def launch(self, app_id):
         self.launched.append(app_id)
+        self.running.add(app_id)  # a launched application keeps running
+        self.runningChanged.emit()
         return True
 
 
 class Shell(QObject):
-    def __init__(self, desktop_dir):
+    nowChanged = Signal()
+
+    def __init__(self, desktop_dir, home_dir):
         super().__init__()
         self._desktop = QUrl.fromLocalFile(desktop_dir).toString()
+        self._home = home_dir
         self.calls = []
+        self._now = QDateTime.currentDateTime()
+        self._ticker = QTimer(self)
+        self._ticker.timeout.connect(self._tick)
+        self._ticker.start(1000)
 
-    home = Property(str, lambda self: os.path.expanduser("~"), constant=True)
+    def _tick(self):
+        self._now = QDateTime.currentDateTime()
+        self.nowChanged.emit()
+
+    now = Property(QDateTime, lambda self: self._now, notify=nowChanged)
+    home = Property(str, lambda self: self._home, constant=True)
     desktopUrl = Property(str, lambda self: self._desktop, constant=True)
     userName = Property(str, lambda self: "tester", constant=True)
     sessionType = Property(str, lambda self: "wayland", constant=True)
+    hostname = Property(str, lambda self: "testhost", constant=True)
+    distro = Property(str, lambda self: "TestOS 1.0", constant=True)
+    kernelVersion = Property(str, lambda self: "6.1.0-test", constant=True)
 
     @Slot(str, result=QUrl)
     def iconUrl(self, name):
@@ -251,6 +322,23 @@ class Shell(QObject):
     @Slot(str)
     def openUrl(self, url):
         self.calls.append(("openUrl", url))
+
+    @Slot(str)
+    def openPath(self, path):
+        self.calls.append(("openPath", path))
+
+    @Slot(result=str)
+    def clipboardText(self):
+        return "pasted text"
+
+    @Slot(str, str, result=bool)
+    def saveTextFile(self, path, text):
+        self.calls.append(("saveTextFile", path))
+        return True
+
+    @Slot(str)
+    def terminal(self, command=""):
+        self.calls.append(("terminal", command))
 
     @Slot(str)
     def runShell(self, command):
@@ -279,6 +367,28 @@ class Shell(QObject):
     @Slot()
     def powerOff(self):
         self.calls.append(("powerOff",))
+
+
+class System(QObject):
+    """Stand-in for the SystemMonitor context property (src/systemmonitor.h)."""
+
+    cpuPercent = Property(float, lambda self: 12.5, constant=True)
+    cpuCount = Property(int, lambda self: 8, constant=True)
+    load1 = Property(float, lambda self: 0.5, constant=True)
+    load5 = Property(float, lambda self: 0.7, constant=True)
+    load15 = Property(float, lambda self: 0.9, constant=True)
+    memoryPercent = Property(float, lambda self: 40.0, constant=True)
+    memoryText = Property(str, lambda self: "3.2 GiB / 8 GiB", constant=True)
+    memoryUsedText = Property(str, lambda self: "3.2 GiB", constant=True)
+    memoryTotalText = Property(str, lambda self: "8 GiB", constant=True)
+    networkDownText = Property(str, lambda self: "1.2 MiB/s", constant=True)
+    networkUpText = Property(str, lambda self: "240 KiB/s", constant=True)
+    uptimeText = Property(str, lambda self: "1h 2m", constant=True)
+    batteryPresent = Property(bool, lambda self: False, constant=True)
+    batteryPercent = Property(float, lambda self: 0.0, constant=True)
+    batteryStatus = Property(str, lambda self: "", constant=True)
+    # An int: the desktop-sysinfo widget prints "N processes".
+    processes = Property(int, lambda self: 123, constant=True)
 
 
 class Plugins(QObject):
@@ -326,6 +436,7 @@ def main():
     work = tempfile.mkdtemp(prefix="newteller-qml-")
     desktop_dir = os.path.join(work, "Desktop")
     os.makedirs(os.path.join(desktop_dir, "Projects"))
+    os.makedirs(os.path.join(work, "Pictures"))
     for name in ("notes.txt", "photo.png"):
         open(os.path.join(desktop_dir, name), "w").close()
     panel_plugin = os.path.join(work, "PanelWidget.qml")
@@ -336,15 +447,24 @@ def main():
          "entry": QUrl.fromLocalFile(os.path.join(ROOT, "plugins/desktop-clock/Widget.qml")).toString()},
         {"id": "panel-test", "name": "Panel test", "type": "panel", "enabled": True, "x": 0, "y": 0,
          "entry": QUrl.fromLocalFile(panel_plugin).toString()},
+        {"id": "panel-system-monitor", "name": "System Monitor", "type": "panel",
+         "enabled": True, "x": 0, "y": 0,
+         "entry": QUrl.fromLocalFile(
+             os.path.join(ROOT, "plugins/panel-system-monitor/Widget.qml")).toString()},
+        {"id": "desktop-sysinfo", "name": "System Info", "type": "desktop", "enabled": True,
+         "x": 60, "y": 220,
+         "entry": QUrl.fromLocalFile(
+             os.path.join(ROOT, "plugins/desktop-sysinfo/Widget.qml")).toString()},
         {"id": "disabled", "name": "Disabled", "type": "desktop", "enabled": False, "x": 0, "y": 0,
          "entry": QUrl.fromLocalFile(os.path.join(work, "missing.qml")).toString()},
     ]
 
     settings, theme, apps = Settings(), Theme(), Apps()
-    shell, plugin_manager = Shell(desktop_dir), Plugins(plugins)
+    shell, plugin_manager = Shell(desktop_dir, work), Plugins(plugins)
+    system = System()
     engine = QQmlApplicationEngine()
     for name, obj in (("Settings", settings), ("Theme", theme), ("Apps", apps), ("Shell", shell),
-                      ("Plugins", plugin_manager)):
+                      ("Plugins", plugin_manager), ("System", system)):
         engine.rootContext().setContextProperty(name, obj)
 
     failures = []
@@ -426,6 +546,68 @@ def main():
         QMetaObject.invokeMethod(menu, "launch", Q_ARG("QVariant", APPS[1]))
         check(apps.launched == ["org.gnome.Terminal"], f"launching from the menu ({apps.launched})")
         check(not menu.isVisible(), "launching an application closes the menu")
+        check(apps.isRunning("org.gnome.Terminal"), "the launched application is marked running")
+
+        # Highlighted fuzzy search (StartMenu shows StyledText hit highlights).
+        search = menu.findChild(QObject, "startSearch")
+        check(search is not None, "start menu search field")
+        if search is not None:
+            search.setProperty("text", "term")
+            QTest.qWait(20)
+            results = menu.property("results")
+            if hasattr(results, "toVariant"):
+                results = results.toVariant()
+            check(len(results or []) == 1 and results[0]["id"] == "org.gnome.Terminal",
+                  f"search filters the application list ({results})")
+            hl = (results[0].get("highlight", "") if results else "")
+            check("<font" in hl and "Term" in hl, f"search hit is highlighted ({hl})")
+            search.setProperty("text", "nothing-matches-this")
+            QTest.qWait(20)
+            results = menu.property("results")
+            if hasattr(results, "toVariant"):
+                results = results.toVariant()
+            check(len(results or []) == 0, f"no stale results for a bad query ({results})")
+            search.setProperty("text", "")
+            QTest.qWait(20)
+
+    # Run dialog (Alt+F2).
+    dialogs = windows("RunDialog")
+    check(len(dialogs) == 1, f"one run dialog (got {len(dialogs)})")
+    if dialogs:
+        dialog = dialogs[0]
+        check(not dialog.isVisible(), "run dialog starts hidden")
+        QMetaObject.invokeMethod(dialog, "show")
+        QTest.qWait(50)
+        check(dialog.isVisible(), "showing the run dialog")
+        results = dialog.property("results")
+        if hasattr(results, "toVariant"):
+            results = results.toVariant()
+        check(len(results or []) == len(APPS), f"run dialog lists the applications ({results})")
+        rq = dialog.findChild(QObject, "runQuery")
+        check(rq is not None, "run dialog query field")
+        if rq is not None:
+            rq.setProperty("text", "files")
+            QTest.qWait(20)
+            results = dialog.property("results")
+            if hasattr(results, "toVariant"):
+                results = results.toVariant()
+            check(len(results or []) == 1 and results[0]["id"] == "org.gnome.Nautilus",
+                  f"run dialog query filters ({results})")
+        QMetaObject.invokeMethod(dialog, "hide")
+        QTest.qWait(20)
+        check(not dialog.isVisible(), "closing the run dialog")
+
+    # Desktop right-click menu.
+    if desktops:
+        desk = desktops[0]
+        g = desk.screen().geometry()
+        check(not desk.property("contextMenuVisible"), "desktop context menu starts hidden")
+        QTest.mouseClick(desk, Qt.RightButton, Qt.NoModifier,
+                         QPoint(g.width() - 200, g.height() - 200))
+        QTest.qWait(20)
+        check(desk.property("contextMenuVisible") is True,
+              "right-clicking the desktop opens its menu")
+        desk.setProperty("contextMenuVisible", False)
 
     QTest.qWait(100)
     check(not messages, f"no QML warnings ({len(messages)} found)")

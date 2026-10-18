@@ -34,7 +34,8 @@ EOF
     exit 1
 fi
 if ! cmake -S "$root" -B "$build_dir" -G Ninja \
-    -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr; then
+    -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr \
+    -DNEWTELLER_WITH_RUST=ON; then
     cat >&2 <<'HELP'
 
 Release configuration failed. On Debian 13 or Ubuntu 26.04, install the build dependencies first:
@@ -43,7 +44,8 @@ Then rerun scripts/build-release.sh as your normal user.
 
 Qt runtime packages alone do not provide Qt6Config.cmake: qt6-base-dev,
 qt6-declarative-dev and qt6-svg-dev are required, along with Qt6 LayerShellQt,
-libwayland-dev and libxcb1-dev.
+libwayland-dev and libxcb1-dev. Releases also require the Rust toolchain
+(rustc and cargo) for the newteller-core library and newteller-ctl.
 For a custom Qt SDK (6.4 or newer), set CMAKE_PREFIX_PATH to its install prefix
 or Qt6_DIR to the directory containing Qt6Config.cmake, and ensure LayerShellQt
 was built against the same Qt version. See the CMake error above for details.
@@ -63,8 +65,11 @@ printf 'commit=%s\ntarget=%s\n' "$sha" "$NEWTELLER_TARGET" > "$stage/BUILDINFO"
 
 # QML and built-in themes are compiled into newteller via resources.qrc.
 test -x "$stage/usr/bin/newteller"
-test -f "$stage/usr/share/newteller/plugins/desktop-clock/manifest.json"
-test -f "$stage/usr/share/newteller/plugins/desktop-clock/Widget.qml"
+test -x "$stage/usr/bin/newteller-ctl"
+for plugin in desktop-clock desktop-sysinfo panel-system-monitor; do
+    test -f "$stage/usr/share/newteller/plugins/$plugin/manifest.json"
+    test -f "$stage/usr/share/newteller/plugins/$plugin/Widget.qml"
+done
 test -f "$stage/usr/share/applications/org.newteller.Shell.desktop"
 test -f "$stage/usr/share/newteller/newteller-autostart.desktop"
 archive="$root/dist/$name.zip"

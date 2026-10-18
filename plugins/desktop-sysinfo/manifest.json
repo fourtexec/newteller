@@ -1,0 +1,11 @@
+{
+  "id": "desktop-sysinfo",
+  "name": "System Info",
+  "version": "1.0.0",
+  "type": "desktop",
+  "entry": "Widget.qml",
+  "x": 60,
+  "y": 220,
+  "order": 15,
+  "description": "Desktop widget showing host, uptime and system load."
+}

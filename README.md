@@ -14,24 +14,34 @@ customization. All UI text is in English.
 
 ## Status: early alpha
 
-Implemented, but not yet verified on a real desktop (the QML is covered by an offscreen
-smoke test, see [Tests](#tests)):
+Implemented and covered by the tests (see [Tests](#tests)); not yet verified on a
+real desktop:
 
-- Bottom panel: Start button, pinned apps, plugin slots, clock
-- Start menu: search, all desktop applications, Lock / Log out / Sleep / Restart / Shut down, Settings
-- Desktop: wallpaper, icons from `~/Desktop` (double-click to open), desktop plugins
-- Themes (JSON) and a settings file with live reload
-- Plugin system (manifest + QML) with enable/disable
+- Panel: Start button, pinned apps with a running badge, plugin slots, clock with
+  optional date, on any edge (`panel.position`: bottom/top/left/right), optional
+  auto-hide
+- Start menu: highlighted fuzzy search, category chips, recently used row,
+  Lock / Log out / Sleep / Restart / Shut down, Settings
+- Run dialog (`Alt+F2`): run a shell command or search applications
+- Desktop: wallpaper, icons from `~/Desktop` (double-click to open), desktop
+  plugins, right-click menu (change wallpaper, paste to a file, open a terminal,
+  settings)
+- System monitor (`System` object, on a shared ticker) with bundled panel and
+  desktop widgets
+- Themes (JSON, including `nord` and `highcontrast`) and a settings file with
+  live reload
+- Plugin system (manifest + QML) with enable/disable and auto-rescan
 - Multi-monitor: one desktop and one panel per screen
+- Rust core (application search index, metrics sampler, config, watcher) with a
+  C++/Qt fallback, plus the `newteller-ctl` command line tool
 
 Not implemented yet (planned, in this order):
 
 1. Running-window list / taskbar (wlr-foreign-toplevel on Wayland, EWMH on X11)
 2. System tray (StatusNotifierItem over D-Bus)
 3. Notifications (`org.freedesktop.Notifications`)
-4. Panel position options (top/left/right), auto-hide, centered mode
-5. Settings GUI (currently edit `shell.json`)
-6. Desktop right-click menu, drag-and-drop icon layout
+4. Settings GUI (currently edit `shell.json` or use `newteller-ctl`)
+5. Drag-and-drop desktop icon layout
 
 ## Build (Debian 13 / Ubuntu 26.04 LTS)
 
@@ -47,6 +57,13 @@ cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/
 cmake --build build -j"$(nproc)"
 sudo cmake --install build
 ```
+
+The build uses the Rust core when `cargo` is found. Control it with
+`-DNEWTELLER_WITH_RUST=ON|OFF|AUTO` (default `AUTO`: enabled if `cargo` is
+installed). `ON` fails the configuration when `cargo` is missing; `OFF` builds
+the pure C++/Qt fallback with no Rust toolchain. The Rust build produces the
+static library `libnewteller_core.a` and the `newteller-ctl` CLI, both installed
+with the shell. Rust sources live in `rust/` (`cargo test --workspace` there).
 
 If CMake reports `Qt6Config.cmake`, wayland-client or xcb is missing, run the dependency
 installer above. It installs `qt6-base-dev`, `qt6-declarative-dev`, `qt6-svg-dev`, the Qt6
@@ -149,23 +166,94 @@ watched, so edits apply without a restart:
 ```json
 {
   "panel.height": 48,
+  "panel.position": "bottom",
+  "panel.autoHide": false,
   "panel.clockFormat": "HH:mm",
+  "panel.showDate": true,
   "panel.pinned": ["org.gnome.Terminal.desktop", "firefox-esr.desktop"],
   "theme.name": "default",
   "desktop.wallpaper": "/home/you/Pictures/wall.jpg",
   "icons.path": "~/iconkit/icons",
-  "icons.set": "lucide"
+  "icons.set": "lucide",
+  "system.interval": 2000
 }
 ```
+
+All keys, with their defaults:
+
+| Key | Default | Meaning |
+| --- | --- | --- |
+| `panel.height` | `48` | panel thickness in pixels |
+| `panel.position` | `"bottom"` | `bottom`, `top`, `left` or `right` |
+| `panel.margin` | `0` | gap between the panel and the screen edge |
+| `panel.centered` | `false` | reserved |
+| `panel.width` | `0` | reserved (0 = full edge) |
+| `panel.autoHide` | `false` | collapse the panel to a hover strip at the edge |
+| `panel.autoHideDelay` | `400` | delay in ms before auto-hide applies |
+| `panel.clockFormat` | `"HH:mm"` | `Qt.formatDateTime` time format |
+| `panel.dateFormat` | `"ddd d MMM"` | date format, shown before the time |
+| `panel.showDate` | `false` | show the date next to the clock |
+| `panel.showRunning` | `true` | dot badge for running applications |
+| `panel.pinned` | `[]` | desktop file IDs pinned to the panel |
+| `startmenu.width` / `startmenu.height` | `440` / `580` | menu size |
+| `startmenu.limit` | `200` | maximum search hits |
+| `startmenu.fuzzy` | `true` | typo-tolerant search |
+| `startmenu.highlight` | `"#ffffff"` | hit highlight colour |
+| `startmenu.showRecent` | `true` | recently used row |
+| `theme.name` | `"default"` | theme file name |
+| `theme.autoReload` | `true` | re-apply when the theme file changes |
+| `desktop.wallpaper` | `""` | image path (empty = solid colour) |
+| `desktop.showIcons` | `true` | show `~/Desktop` icons |
+| `desktop.iconSize` | `48` | icon size in pixels |
+| `desktop.cellWidth` / `desktop.cellHeight` | `96` / `110` | icon grid cell |
+| `desktop.contextMenu` | `true` | desktop right-click menu |
+| `icons.path` / `icons.set` | `"~/iconkit/icons"` / `"lucide"` | IconKit location |
+| `icons.cache` | `true` | cache resolved icons |
+| `plugins.disabled` | `[]` | plugin IDs to disable |
+| `plugins.autoRescan` | `true` | rescan when the plugin directories change |
+| `apps.recent` / `apps.recentLimit` | `[]` / `8` | usage history and row length |
+| `apps.usage` | `{}` | launch counts (drives the recent row and ranking) |
+| `apps.terminalCommand` | `""` | terminal used by "Open terminal" (auto-detected when empty) |
+| `apps.maxApps` | `0` | cap on the catalogue (0 = unlimited) |
+| `system.interval` | `2000` | metrics sampling interval in ms |
+| `system.perCore` | `false` | per-core CPU metrics |
+| `system.battery` / `system.thermal` / `system.disks` | `true` | metric groups to sample |
+| `watch.debounce` | `250` | file-watch debounce in ms |
+| `run.history` | `[]` | run dialog history |
 
 - `panel.pinned` takes desktop file IDs (see `/usr/share/applications`).
 - `icons.set` is a folder inside IconKit's `icons/` directory, e.g. `lucide`, `tabler/outline`.
   Icon names not found there fall back to the system icon theme.
 
+`newteller-ctl schema` prints the same table in machine-readable form.
+
+## Command line: newteller-ctl
+
+The Rust build installs `newteller-ctl`, a standalone tool for inspecting and
+configuring the shell (it does not need a running session):
+
+```sh
+newteller-ctl list                    # the effective configuration
+newteller-ctl set panel.position top  # write one setting (type-coerced)
+newteller-ctl validate                # problems in shell.json
+newteller-ctl search terminal         # ranked, highlighted application search
+newteller-ctl running                 # applications that are currently running
+newteller-ctl metrics                 # one sample of cpu, memory, network, battery, disks
+newteller-ctl doctor                  # diagnostics for a bug report
+```
+
+Groups: `paths`, `schema`, `list`, `get`, `set`, `unset`, `validate`, `init`,
+`apps`, `search`, `categories`, `running`, `exec`, `bench`, `metrics`, `watch`,
+`doctor`. `--json` gives machine-readable output everywhere; `newteller-ctl
+--help` documents every flag. The `newteller` shell itself also accepts
+`--help`, `--version`, `--print-config`, `--diagnostics`, `--theme <name>` and
+`--reset`.
+
 ## Themes
 
-Built-in themes: `default`, `light`. A custom theme is a JSON file in
-`~/.config/newteller/themes/<name>.json`. Missing keys inherit from `default`:
+Built-in themes: `default`, `light`, `nord`, `highcontrast`. A custom theme is
+a JSON file in `~/.config/newteller/themes/<name>.json`. Missing keys inherit
+from `default`:
 
 ```json
 {
@@ -208,14 +296,23 @@ A plugin is a directory with a `manifest.json` and a QML entry file. It is searc
 - `type`: `desktop` (placed at `x`, `y` on the desktop) or `panel` (added to the panel's right side).
 - Disable a plugin by adding its `id` to `"plugins.disabled"` in `shell.json`.
 
+Bundled plugins:
+
+| Plugin | Type | Shows |
+| --- | --- | --- |
+| `desktop-clock` | desktop | large clock and date |
+| `desktop-sysinfo` | desktop | host, kernel, uptime, load, battery |
+| `panel-system-monitor` | panel | CPU and memory bars, network rates |
+
 Plugins have access to the global objects:
 
 | Object | Purpose |
 |---|---|
 | `Theme` | colors (`background`, `foreground`, `accent`, `surface`, `border`, `muted`), `opacity`, `radius`, `fontSize`, `fontFamily` |
 | `Settings` | `values` (reactive map), `value(key)`, `setValue(key, v)` |
-| `Apps` | `search(text, n)`, `byId(id)`, `recent(n)`, `launch(id)` |
-| `Shell` | `iconUrl(name)`, `openUrl(url)`, `runShell(cmd)`, `lock()`, `logout()`, `suspend()`, `reboot()`, `powerOff()` |
+| `Apps` | `search(text, n)`, `searchDetailed(text, n)` (with `highlight` markup), `byId(id)`, `categories`, `recent(n)`, `isRunning(id)`, `launch(id)` |
+| `Shell` | `now` (shared ticker), `iconUrl(name)`, `openUrl(url)`, `openPath(path)`, `runShell(cmd)`, `terminal(cmd)`, `clipboardText()`, `saveTextFile(path, text)`, `openConfig()`, `lock()`, `logout()`, `suspend()`, `reboot()`, `powerOff()`, `home`, `desktopUrl`, `hostname`, `distro`, `kernelVersion` |
+| `System` | metrics on a shared ticker: `cpuPercent`, `cpuCount`, `load1/5/15`, `memoryPercent`, `memoryText`, `networkDownText`, `networkUpText`, `uptimeText`, `processes`, `battery*`, `temperatureText`, `disks`, `refresh()` |
 | `Plugins` | `plugins` (list of all discovered plugins) |
 
 The bundled `plugins/desktop-clock` is a complete example.
@@ -224,21 +321,26 @@ The bundled `plugins/desktop-clock` is a complete example.
 
 ```sh
 bash tests/platform.sh            # distribution detection used by the scripts
+cd rust && cargo test --workspace # the Rust core and CLI
 pip install PySide6-Essentials
 python3 tests/qml_smoke.py        # loads the QML offscreen, no compositor needed
 ```
 
-`tests/qml_smoke.py` loads `qrc:/qml/Main.qml` from `resources.qrc` on two simulated screens,
-with stand-ins for the C++ objects, and fails on any QML warning. It checks the window
-geometry and that the Start button opens and closes the menu. It does not build or test the
-C++ code.
+`tests/qml_smoke.py` loads `qrc:/qml/Main.qml` from `resources.qrc` on two
+simulated screens, with stand-ins for the C++ objects and the layer-shell and
+ShellWindow attached types, and fails on any QML warning. It checks the window
+geometry and layer-shell settings of every window, the start menu search
+(highlighting, filtering, launching), the running badge, the run dialog and the
+desktop right-click menu, and loads the bundled plugins. It does not build or
+test the C++ code; the C++ and QML together are built by CI on every push.
 
 ## Layout
 
 ```
-src/            C++ core (settings, theme, appmodel, shellcontroller, plugins, windowsystem,
-                shellwindow, main)
-qml/            Main.qml, Panel.qml, StartMenu.qml, Desktop.qml, TaskButton.qml
+src/            C++ core (settings, theme, appmodel, shellcontroller, plugins, systemmonitor,
+                rustbridge, windowsystem, shellwindow, main)
+qml/            Main.qml, Panel.qml, StartMenu.qml, Desktop.qml, TaskButton.qml, RunDialog.qml
+rust/           Rust workspace: newteller-core (static lib + C ABI) and newteller-ctl
 tests/          shell and QML smoke tests
 themes/         built-in theme JSON files (compiled into the binary)
 plugins/        example plugins installed to /usr/share/newteller/plugins

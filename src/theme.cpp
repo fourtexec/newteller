@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QtMath>
 
 namespace {
 
@@ -29,11 +30,28 @@ ThemeManager::ThemeManager(Settings *settings, QObject *parent)
         if (key.isEmpty() || key == QLatin1String("theme.name"))
             reload();
     });
+    // theme.autoReload: editing the theme file in a text editor re-applies it.
+    connect(settings, &Settings::externalChange, this, [this](const QString &path) {
+        if (!m_settings->value(QStringLiteral("theme.autoReload"), true).toBool())
+            return;
+        if (!m_filePath.isEmpty() && path == m_filePath)
+            reload();
+    });
 }
 
-QColor ThemeManager::color(const char *key) const
+QColor ThemeManager::color(const QString &key) const
 {
-    return QColor(m_t.value(QString::fromLatin1(key)).toString());
+    const auto cached = m_cache.constFind(key);
+    if (cached != m_cache.constEnd())
+        return cached.value();
+    const QColor parsed(m_t.value(key).toString());
+    m_cache.insert(key, parsed);
+    return parsed;
+}
+
+void ThemeManager::invalidateCache()
+{
+    m_cache.clear();
 }
 
 void ThemeManager::reload()
@@ -42,9 +60,10 @@ void ThemeManager::reload()
 
     // Base is always the built-in default, so a partial theme still looks complete.
     QVariantMap theme = loadJson(QStringLiteral(":/themes/default.json"));
+    QString file;
     if (name != QLatin1String("default")) {
         const QString userFile = Settings::configDir() + QStringLiteral("/themes/") + name + QStringLiteral(".json");
-        const QString file = QFile::exists(userFile) ? userFile : QStringLiteral(":/themes/") + name + QStringLiteral(".json");
+        file = QFile::exists(userFile) ? userFile : QStringLiteral(":/themes/") + name + QStringLiteral(".json");
         const QVariantMap overrides = loadJson(file);
         for (auto it = overrides.cbegin(); it != overrides.cend(); ++it)
             theme.insert(it.key(), it.value());
@@ -52,6 +71,8 @@ void ThemeManager::reload()
 
     m_t = theme;
     m_name = name;
+    m_filePath = file;
+    invalidateCache();
     emit themeChanged();
 }
 
@@ -67,5 +88,22 @@ QStringList ThemeManager::availableThemes() const
                 names << base;
         }
     }
+    names.sort();
     return names;
+}
+
+QColor ThemeManager::withAlpha(const QColor &color, qreal alpha) const
+{
+    QColor out(color);
+    out.setAlphaF(qBound(0.0, alpha, 1.0));
+    return out;
+}
+
+QColor ThemeManager::mix(const QColor &a, const QColor &b, qreal t) const
+{
+    t = qBound(0.0, t, 1.0);
+    return QColor::fromRgbF(a.redF() + (b.redF() - a.redF()) * t,
+                            a.greenF() + (b.greenF() - a.greenF()) * t,
+                            a.blueF() + (b.blueF() - a.blueF()) * t,
+                            a.alphaF() + (b.alphaF() - a.alphaF()) * t);
 }

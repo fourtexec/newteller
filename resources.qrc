@@ -6,7 +6,10 @@
     <file>qml/StartMenu.qml</file>
     <file>qml/Desktop.qml</file>
     <file>qml/TaskButton.qml</file>
+    <file>qml/RunDialog.qml</file>
     <file>themes/default.json</file>
     <file>themes/light.json</file>
+    <file>themes/nord.json</file>
+    <file>themes/highcontrast.json</file>
   </qresource>
 </RCC>

@@ -6,3 +6,4 @@ dist/
 # Rust
 rust/target/
 **/*.rs.bk
+__pycache__/

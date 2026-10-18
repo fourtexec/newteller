@@ -3,10 +3,12 @@
 
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QSet>
 #include <QUrl>
+#include <QtDebug>
 #include <algorithm>
 
 PluginManager::PluginManager(Settings *settings, QObject *parent)
@@ -16,7 +18,18 @@ PluginManager::PluginManager(Settings *settings, QObject *parent)
     rescan();
     connect(settings, &Settings::changed, this, [this](const QString &key) {
         if (key.isEmpty() || key == QLatin1String("plugins.disabled"))
-            emit pluginsChanged();
+            rebuildCache();
+    });
+    // plugins.autoRescan: a new or edited plugin applies without a restart.
+    connect(settings, &Settings::externalChange, this, [this](const QString &path) {
+        if (!m_settings->value(QStringLiteral("plugins.autoRescan"), true).toBool())
+            return;
+        for (const QString &root : searchPaths()) {
+            if (path.startsWith(root)) {
+                rescan();
+                return;
+            }
+        }
     });
 }
 
@@ -49,12 +62,24 @@ void PluginManager::rescan()
             QFile manifest(pluginDir + QStringLiteral("/manifest.json"));
             if (!manifest.open(QIODevice::ReadOnly))
                 continue;
-            const QJsonDocument doc = QJsonDocument::fromJson(manifest.readAll());
-            if (!doc.isObject())
+            QJsonParseError error;
+            const QJsonDocument doc = QJsonDocument::fromJson(manifest.readAll(), &error);
+            if (!doc.isObject()) {
+                qWarning() << "newteller: invalid plugin manifest" << manifest.fileName()
+                           << (error.error == QJsonParseError::NoError ? "not an object"
+                                                                       : error.errorString());
                 continue;
+            }
 
             const QVariantMap m = doc.object().toVariantMap();
-            const QString id = m.value(QStringLiteral("id"), sub).toString();
+            const QString id = m.value(QStringLiteral("id")).toString();
+            const QString type = m.value(QStringLiteral("type")).toString();
+            const QString entry = m.value(QStringLiteral("entry")).toString();
+            if (id.isEmpty() || type.isEmpty() || entry.isEmpty()) {
+                qWarning() << "newteller: plugin manifest" << manifest.fileName()
+                           << "needs id, type and entry";
+                continue;
+            }
             if (seen.contains(id))
                 continue; // earlier search path wins
             seen.insert(id);
@@ -63,13 +88,14 @@ void PluginManager::rescan()
             p.insert(QStringLiteral("id"), id);
             p.insert(QStringLiteral("name"), m.value(QStringLiteral("name"), sub));
             p.insert(QStringLiteral("version"), m.value(QStringLiteral("version"), QStringLiteral("0.0.0")));
-            p.insert(QStringLiteral("type"), m.value(QStringLiteral("type"), QStringLiteral("desktop")));
+            p.insert(QStringLiteral("type"), type);
             p.insert(QStringLiteral("order"), m.value(QStringLiteral("order"), 0));
             p.insert(QStringLiteral("x"), m.value(QStringLiteral("x"), 40));
             p.insert(QStringLiteral("y"), m.value(QStringLiteral("y"), 40));
             p.insert(QStringLiteral("path"), pluginDir);
-            const QString entry = m.value(QStringLiteral("entry"), QStringLiteral("Main.qml")).toString();
             p.insert(QStringLiteral("entry"), QUrl::fromLocalFile(pluginDir + QLatin1Char('/') + entry).toString());
+            if (!QFile::exists(pluginDir + QLatin1Char('/') + entry))
+                qWarning() << "newteller: plugin" << id << "entry file is missing:" << entry;
             m_plugins.append(p);
         }
     }
@@ -77,29 +103,41 @@ void PluginManager::rescan()
     std::stable_sort(m_plugins.begin(), m_plugins.end(), [](const QVariantMap &a, const QVariantMap &b) {
         return a.value(QStringLiteral("order")).toInt() < b.value(QStringLiteral("order")).toInt();
     });
-    emit pluginsChanged();
+    rebuildCache();
 }
 
-QVariantList PluginManager::plugins() const
+void PluginManager::rebuildCache()
 {
     const QStringList disabled = disabledIds();
     QVariantList out;
+    out.reserve(m_plugins.size());
     for (QVariantMap p : m_plugins) {
         p.insert(QStringLiteral("enabled"), !disabled.contains(p.value(QStringLiteral("id")).toString()));
         out.append(p);
     }
-    return out;
+    m_cached = out;
+    emit pluginsChanged();
 }
 
 QVariantList PluginManager::ofType(const QString &type) const
 {
     QVariantList out;
-    for (const QVariant &v : plugins()) {
+    for (const QVariant &v : m_cached) {
         const QVariantMap p = v.toMap();
         if (p.value(QStringLiteral("type")).toString() == type && p.value(QStringLiteral("enabled")).toBool())
             out.append(p);
     }
     return out;
+}
+
+QVariantMap PluginManager::at(const QString &id) const
+{
+    for (const QVariant &v : m_cached) {
+        const QVariantMap p = v.toMap();
+        if (p.value(QStringLiteral("id")).toString() == id)
+            return p;
+    }
+    return {};
 }
 
 void PluginManager::setEnabled(const QString &id, bool enabled)
