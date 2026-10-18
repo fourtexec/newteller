@@ -193,6 +193,11 @@ void Settings::flush()
         writeBack();
 }
 
+QVariant Settings::value(const QString &key, const QVariant &fallback) const
+{
+    return m_values.value(key, fallback);
+}
+
 void Settings::setValue(const QString &key, const QVariant &value)
 {
     if (m_values.value(key) == value)
