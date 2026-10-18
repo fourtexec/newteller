@@ -138,6 +138,9 @@ public:
     static constexpr quint32 Processes = 8;
     static constexpr quint32 Uname = 16;
     static constexpr quint32 PerCore = 32;
+
+private:
+    NtMetrics *m_handle = nullptr;
 };
 
 /// Debounced inotify watcher driven by a QSocketNotifier on the C++ side.

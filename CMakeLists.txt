@@ -27,6 +27,7 @@ qt_add_executable(newteller
     src/appmodel.cpp
     src/shellcontroller.cpp
     src/plugins.cpp
+    src/rustbridge.cpp
 )
 
 target_compile_definitions(newteller PRIVATE NEWTELLER_VERSION="${PROJECT_VERSION}")
