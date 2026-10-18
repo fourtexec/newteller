@@ -53,6 +53,14 @@ public:
     Q_INVOKABLE void invokeAction(uint id, const QString &actionKey);
     Q_INVOKABLE void clearHistory();
 
+    // Reply of GetServerInformation() as a D-Bus struct (ssss).
+    struct ServerInformation {
+        QString name;
+        QString vendor;
+        QString version;
+        QString specVersion;
+    };
+
     // The socket `newteller-ctl notify` writes into.
     static QString socketPath();
 
@@ -72,13 +80,6 @@ public slots:
                 const QVariantMap &hints, int expireTimeout);
     void CloseNotification(uint id);
     QStringList GetCapabilities() const;
-
-    struct ServerInformation {
-        QString name;
-        QString vendor;
-        QString version;
-        QString specVersion;
-    };
     ServerInformation GetServerInformation() const;
 
 private:
@@ -104,3 +105,11 @@ private:
 };
 
 Q_DECLARE_METATYPE(NotificationDaemon::ServerInformation)
+
+class QDBusArgument;
+
+// Marshalling of the ServerInformation struct. Declared in the global
+// namespace next to the type: argument-dependent lookup in
+// qDBusRegisterMetaType() cannot see operators defined in other scopes.
+QDBusArgument &operator<<(QDBusArgument &argument, const NotificationDaemon::ServerInformation &info);
+const QDBusArgument &operator>>(const QDBusArgument &argument, NotificationDaemon::ServerInformation &info);

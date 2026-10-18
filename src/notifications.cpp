@@ -1,9 +1,10 @@
 #include "notifications.h"
 #include "settings.h"
 
-#include <QDBusArgument>
-#include <QDBusConnection>
-#include <QDBusError>
+#include <QtDBus/QDBusArgument>
+#include <QtDBus/QDBusConnection>
+#include <QtDBus/QDBusError>
+#include <QtDBus/QDBusMetaType>
 #include <QDateTime>
 #include <QDir>
 #include <QFileInfo>
@@ -26,6 +27,8 @@ constexpr int kUrgencyCritical = 2;
 
 constexpr int kMaxActive = 8;
 
+} // namespace
+
 QDBusArgument &operator<<(QDBusArgument &argument, const NotificationDaemon::ServerInformation &info)
 {
     argument.beginStructure();
@@ -41,8 +44,6 @@ const QDBusArgument &operator>>(const QDBusArgument &argument, NotificationDaemo
     argument.endStructure();
     return argument;
 }
-
-} // namespace
 
 NotificationDaemon::NotificationDaemon(Settings *settings, QObject *parent)
     : QObject(parent)
@@ -110,7 +111,7 @@ void NotificationDaemon::setupDBus()
 
     m_registeredObject =
         bus.registerObject(QStringLiteral("/org/freedesktop/Notifications"), this,
-                           QDBusConnection::ExportAllSlots | QDBusConnection::ExportSignals);
+                           QDBusConnection::ExportAllSlots | QDBusConnection::ExportAllSignals);
     m_ownsDBus = m_registeredObject;
     emit dbusChanged();
 }
