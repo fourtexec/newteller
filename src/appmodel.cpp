@@ -38,6 +38,16 @@ QString foldName(const QString &name)
     return name.trimmed().toLower();
 }
 
+// QML sees argv as a list of variants; C++ callers convert it back to strings.
+QVariantList toVariantList(const QStringList &values)
+{
+    QVariantList out;
+    out.reserve(values.size());
+    for (const QString &value : values)
+        out.append(value);
+    return out;
+}
+
 // id -> launch count, stored under apps.usage.
 QHash<QString, int> usageFromSettings(Settings *settings)
 {
@@ -597,11 +607,10 @@ QVariantList AppModel::launchArgs(const QString &id, const QStringList &files) c
         const QStringList argv = Rust::Index::execArgv(app.exec, app.icon, app.name, app.path,
                                                        files, app.terminal, terminalCommand);
         if (!argv.isEmpty())
-            return argv;
+            return toVariantList(argv);
     }
 
     // Fallback: drop field codes and prepend the terminal emulator.
-    QVariantList out;
     QStringList args;
     for (const QString &token : QProcess::splitCommand(app.exec)) {
         if (kFieldCodes.contains(token))
@@ -621,9 +630,7 @@ QVariantList AppModel::launchArgs(const QString &id, const QStringList &files) c
         args = wrapper + args;
     }
 
-    for (const QString &arg : args)
-        out.append(arg);
-    return out;
+    return toVariantList(args);
 }
 
 bool AppModel::launch(const QString &id)
