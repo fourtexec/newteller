@@ -21,12 +21,13 @@ Row {
 
     // The swatch itself opens the palette.
     Rectangle {
+        id: swatch
         width: 30
         height: 30
         radius: Theme.radius
         color: control.colorValue
         border.width: 1
-        border.color: control.swatchHover.hovered ? Theme.accent
+        border.color: swatchHover.hovered ? Theme.accent
                       : Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.9)
 
         HoverHandler { id: swatchHover }

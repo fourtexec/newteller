@@ -6,7 +6,7 @@ import QtQuick.Window
 // saturation/value square, opened from any colour field. It is a plain popup
 // window (not a layer surface) because it belongs to the settings window.
 Window {
-    id: palette
+    id: picker
 
     signal applied(color chosen)
 
@@ -101,13 +101,13 @@ Window {
                     width: 30
                     height: 30
                     radius: Theme.radius
-                    color: palette.current
+                    color: picker.current
                     border.width: 1
                     border.color: Theme.border
                 }
                 Text {
                     Layout.fillWidth: true
-                    text: palette.current.toString().toUpperCase()
+                    text: picker.current.toString().toUpperCase()
                     color: Theme.foreground
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize
@@ -126,7 +126,7 @@ Window {
                 Rectangle {
                     anchors.fill: parent
                     radius: parent.radius
-                    color: Qt.hsla(palette.hue / 360, 1, 0.5, 1)
+                    color: Qt.hsla(picker.hue / 360, 1, 0.5, 1)
                     gradient: Gradient {
                         orientation: Gradient.Horizontal
                         GradientStop { position: 0; color: "#ffffffff" }
@@ -142,8 +142,8 @@ Window {
                     }
                 }
                 Rectangle {
-                    x: parent.width * palette.sat - 6
-                    y: parent.height * (1 - palette.val) - 6
+                    x: parent.width * picker.sat - 6
+                    y: parent.height * (1 - picker.val) - 6
                     width: 12
                     height: 12
                     radius: 6
@@ -154,12 +154,12 @@ Window {
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.CrossCursor
-                    onClicked: (mouse) => palette.pick(palette.hue,
+                    onClicked: (mouse) => picker.pick(picker.hue,
                                                        mouse.x / width,
                                                        1 - mouse.y / height)
                     onPositionChanged: (mouse) => {
                         if (pressed)
-                            palette.pick(palette.hue, mouse.x / width, 1 - mouse.y / height);
+                            picker.pick(picker.hue, mouse.x / width, 1 - mouse.y / height);
                     }
                 }
             }
@@ -181,7 +181,7 @@ Window {
                     GradientStop { position: 1.000; color: "#ff0000" }
                 }
                 Rectangle {
-                    x: parent.width * (palette.hue / 360) - 3
+                    x: parent.width * (picker.hue / 360) - 3
                     width: 6
                     height: parent.height
                     radius: 3
@@ -192,12 +192,12 @@ Window {
                 MouseArea {
                     anchors.fill: parent
                     cursorShape: Qt.PointingHandCursor
-                    onClicked: (mouse) => palette.pick(Math.round(mouse.x / width * 360),
-                                                       palette.sat, palette.val)
+                    onClicked: (mouse) => picker.pick(Math.round(mouse.x / width * 360),
+                                                       picker.sat, picker.val)
                     onPositionChanged: (mouse) => {
                         if (pressed)
-                            palette.pick(Math.round(mouse.x / width * 360),
-                                         palette.sat, palette.val);
+                            picker.pick(Math.round(mouse.x / width * 360),
+                                         picker.sat, picker.val);
                     }
                 }
             }
@@ -223,7 +223,7 @@ Window {
                         height: 22
                         radius: 6
                         color: modelData
-                        border.width: palette.current.toString().toUpperCase()
+                        border.width: picker.current.toString().toUpperCase()
                                       === modelData.toUpperCase() ? 2 : 1
                         border.color: border.width === 2 ? Theme.foreground
                                                          : Qt.rgba(Theme.border.r, Theme.border.g,
@@ -233,9 +233,9 @@ Window {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                const parts = palette.rgbToHsv(parent.color.r, parent.color.g,
+                                const parts = picker.rgbToHsv(parent.color.r, parent.color.g,
                                                                parent.color.b);
-                                palette.pick(parts[0], parts[1], parts[2]);
+                                picker.pick(parts[0], parts[1], parts[2]);
                             }
                         }
                     }
@@ -250,14 +250,14 @@ Window {
                     iconName: "check"
                     label: "Apply"
                     onClicked: {
-                        palette.applied(palette.current);
-                        palette.visible = false;
+                        picker.applied(picker.current);
+                        picker.visible = false;
                     }
                 }
                 TaskButton {
                     iconName: "x"
                     label: "Cancel"
-                    onClicked: palette.visible = false
+                    onClicked: picker.visible = false
                 }
             }
         }

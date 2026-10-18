@@ -45,11 +45,12 @@ QtObject {
 
     // Notification popups, one window per screen; fed by the built-in
     // notification daemon (org.freedesktop.Notifications and the
-    // newteller-ctl socket).
+    // newteller-ctl socket). The component is named NotificationPopups so the
+    // `Notifications` context property (the daemon) stays unambiguous.
     readonly property Instantiator notificationPopups: Instantiator {
         model: Qt.application.screens
 
-        delegate: Notifications {
+        delegate: NotificationPopups {
             required property var modelData
             screen: modelData
         }

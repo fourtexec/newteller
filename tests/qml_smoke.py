@@ -832,7 +832,7 @@ def main():
         check(not clock_popups[0].isVisible(), "the clock popup starts hidden")
 
     # One notification window per screen, hidden until something arrives.
-    notification_windows = windows_of_kind("Notifications")
+    notification_windows = windows_of_kind("NotificationPopups")
     check(len(notification_windows) == len(screens),
           f"one notification window per screen ({len(notification_windows)} vs {len(screens)})")
     if notification_windows:

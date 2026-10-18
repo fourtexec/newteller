@@ -408,13 +408,14 @@ Window {
     }
 
     // Scrollable dock strip: it only becomes interactive when the buttons do
-    // not fit, so nothing steals wheel events on a quiet desktop.
+    // not fit, so nothing steals wheel events on a quiet desktop. The strip
+    // takes all the leftover width of the bar (like a spacer would), so the
+    // start button keeps its place at the very left.
     component DockStrip: Flickable {
         id: dockStrip
         Layout.fillWidth: !panel.vertical
         Layout.fillHeight: panel.vertical
         Layout.alignment: Qt.AlignVCenter
-        Layout.maximumWidth: contentWidth > 0 ? contentWidth + 4 : 8
         clip: true
         contentWidth: stripRow.width
         contentHeight: stripRow.height
@@ -430,7 +431,7 @@ Window {
             id: stripRow
             spacing: 2
             y: (dockStrip.height - height) / 2
-            x: Math.max(0, (dockStrip.width - width) / 2)
+            x: 0
 
             DockApps {}
             BackgroundSeparator {}
