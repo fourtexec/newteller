@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Window
 import Qt.labs.folderlistmodel
 import org.kde.layershell 1.0 as LayerShell
+import NewTeller 1.0
 
 // Desktop background: wallpaper, icons from ~/Desktop, and desktop plugins.
 Window {
@@ -12,16 +13,20 @@ Window {
     visible: true
     color: "#101418"
     flags: Qt.FramelessWindowHint
-    x: screen.geometry.x
-    y: screen.geometry.y
-    width: screen.geometry.width
-    height: screen.geometry.height
+    // Positioning used only without layer-shell (X11, including XWayland on GNOME).
+    x: Screen.virtualX
+    y: Screen.virtualY
+    width: Screen.width
+    height: Screen.height
 
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom
                                | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight
     LayerShell.Window.layer: LayerShell.Window.LayerBottom
     LayerShell.Window.exclusionZone: -1
     LayerShell.Window.scope: "newteller-desktop"
+
+    // X11: a desktop window, kept below all other windows by the window manager.
+    ShellWindow.role: ShellWindow.Desktop
 
     Image {
         anchors.fill: parent

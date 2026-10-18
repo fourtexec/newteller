@@ -14,5 +14,5 @@ apt-get update
 apt-get install -y --no-install-recommends \
     ca-certificates git build-essential cmake ninja-build zip \
     qt6-base-dev qt6-declarative-dev qt6-svg-dev \
-    liblayershellqtinterface-dev
+    liblayershellqtinterface-dev libwayland-dev libxcb1-dev
 bash "$root/scripts/install-runtime-deps.sh"

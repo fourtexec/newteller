@@ -14,8 +14,9 @@ Window {
     visible: false
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.Tool
-    x: screen.geometry.x + 8
-    y: screen.geometry.y + screen.geometry.height - height - panelHeight - 12
+    // Positioning used only without layer-shell (X11, including XWayland on GNOME).
+    x: Screen.virtualX + 8
+    y: Screen.virtualY + Screen.height - height - panelHeight - 12
 
     LayerShell.Window.anchors: LayerShell.Window.AnchorBottom | LayerShell.Window.AnchorLeft
     LayerShell.Window.margins { left: 8; bottom: menu.panelHeight + 12 }
@@ -25,6 +26,9 @@ Window {
 
     function show() {
         visible = true;
+        // Layer-shell's exclusive keyboard mode focuses the menu on Wayland;
+        // on X11 the window manager has to be asked.
+        requestActivate();
         search.text = "";
         results = Apps.search("", 500);
         search.forceActiveFocus();
