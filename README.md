@@ -7,12 +7,15 @@ customization. All UI text is in English.
 
 - **Core:** C++20 + Qt 6 (settings, themes, application catalogue, session actions, plugin loader)
 - **UI:** QML with JavaScript logic (panel, start menu, desktop, widgets, plugins)
-- **Layer:** wlr-layer-shell via LayerShellQt on Wayland (the panel reserves screen space)
+- **Layer:** wlr-layer-shell via LayerShellQt on Wayland compositors that support it; X11 dock and
+  desktop windows elsewhere (X11 sessions, and XWayland on GNOME). The panel reserves screen space
+  either way; see [Display servers](#display-servers)
 - **Icons:** [IconKit](https://github.com/fourtexec/iconkit), with the system icon theme as fallback
 
 ## Status: early alpha
 
-Working in the code, not yet verified on a real system (the first build has not been run):
+Implemented, but not yet verified on a real desktop (the QML is covered by an offscreen
+smoke test, see [Tests](#tests)):
 
 - Bottom panel: Start button, pinned apps, plugin slots, clock
 - Start menu: search, all desktop applications, Lock / Log out / Sleep / Restart / Shut down, Settings
@@ -45,9 +48,10 @@ cmake --build build -j"$(nproc)"
 sudo cmake --install build
 ```
 
-If CMake reports `Qt6Config.cmake` is missing, run the dependency installer above.
-It installs `qt6-base-dev`, `qt6-declarative-dev`, `qt6-svg-dev`, the Qt6
-LayerShellQt development package, build tools, and runtime QML modules.
+If CMake reports `Qt6Config.cmake`, wayland-client or xcb is missing, run the dependency
+installer above. It installs `qt6-base-dev`, `qt6-declarative-dev`, `qt6-svg-dev`, the Qt6
+LayerShellQt development package, `libwayland-dev`, `libxcb1-dev`, build tools, and runtime
+QML modules.
 For a custom Qt SDK (6.4 or newer), export `CMAKE_PREFIX_PATH` pointing to its
 installation prefix, or `Qt6_DIR` pointing to the directory containing
 `Qt6Config.cmake`. LayerShellQt must also be built against that Qt version.
@@ -70,7 +74,21 @@ cp /usr/share/newteller/newteller-autostart.desktop ~/.config/autostart/newtelle
 
 > **Note:** NewTeller draws its own panel. Turn off the panel of your current desktop
 > (for example, remove the Plasma panel or disable the GNOME dock extension) so the two
-> don't overlap. On Openbox the panel is a normal window and does not reserve space yet.
+> don't overlap.
+
+### Display servers
+
+NewTeller picks the windowing system when it starts:
+
+| Session | How NewTeller runs |
+| --- | --- |
+| Wayland with wlr-layer-shell (KDE Plasma, sway, Hyprland, labwc, Wayfire, niri, ...) | Native Wayland. Desktop, panel and start menu are layer surfaces, and the panel reserves its height. |
+| Wayland without wlr-layer-shell (GNOME) | Through XWayland, printing `using XWayland instead`. Applications started from NewTeller still use native Wayland. |
+| X11 (Openbox, Xfce, ...) | X11. The desktop is a desktop-type window below all others; the panel is a dock that reserves the bottom edge of each screen. |
+
+GNOME Shell's top bar keeps running next to NewTeller. Setting `QT_QPA_PLATFORM` (or passing
+`-platform`) overrides the automatic choice; with `QT_QPA_PLATFORM=wayland` on GNOME the shell
+windows are ordinary windows.
 
 ## Automated builds and commit releases
 
@@ -202,11 +220,26 @@ Plugins have access to the global objects:
 
 The bundled `plugins/desktop-clock` is a complete example.
 
+## Tests
+
+```sh
+bash tests/platform.sh            # distribution detection used by the scripts
+pip install PySide6-Essentials
+python3 tests/qml_smoke.py        # loads the QML offscreen, no compositor needed
+```
+
+`tests/qml_smoke.py` loads `qrc:/qml/Main.qml` from `resources.qrc` on two simulated screens,
+with stand-ins for the C++ objects, and fails on any QML warning. It checks the window
+geometry and that the Start button opens and closes the menu. It does not build or test the
+C++ code.
+
 ## Layout
 
 ```
-src/            C++ core (settings, theme, appmodel, shellcontroller, plugins, main)
+src/            C++ core (settings, theme, appmodel, shellcontroller, plugins, windowsystem,
+                shellwindow, main)
 qml/            Main.qml, Panel.qml, StartMenu.qml, Desktop.qml, TaskButton.qml
+tests/          shell and QML smoke tests
 themes/         built-in theme JSON files (compiled into the binary)
 plugins/        example plugins installed to /usr/share/newteller/plugins
 data/           .desktop files (application entry and autostart)

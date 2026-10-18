@@ -42,7 +42,8 @@ Release configuration failed. On Debian 13 or Ubuntu 26.04, install the build de
 Then rerun scripts/build-release.sh as your normal user.
 
 Qt runtime packages alone do not provide Qt6Config.cmake: qt6-base-dev,
-qt6-declarative-dev and qt6-svg-dev are required, along with Qt6 LayerShellQt.
+qt6-declarative-dev and qt6-svg-dev are required, along with Qt6 LayerShellQt,
+libwayland-dev and libxcb1-dev.
 For a custom Qt SDK (6.4 or newer), set CMAKE_PREFIX_PATH to its install prefix
 or Qt6_DIR to the directory containing Qt6Config.cmake, and ensure LayerShellQt
 was built against the same Qt version. See the CMake error above for details.

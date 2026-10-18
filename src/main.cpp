@@ -8,9 +8,9 @@
 #include "plugins.h"
 #include "settings.h"
 #include "shellcontroller.h"
+#include "shellwindow.h"
 #include "theme.h"
-
-#include <LayerShellQt/Shell>
+#include "windowsystem.h"
 
 #include <QGuiApplication>
 #include <QIcon>
@@ -40,10 +40,17 @@ public:
 
 int main(int argc, char *argv[])
 {
-    // Must be called before QGuiApplication is created.
-    LayerShellQt::Shell::useLayerShell();
+    // Must run before QGuiApplication is created: native Wayland when the
+    // compositor supports wlr-layer-shell, XWayland when it does not.
+    //
+    // Layer-shell is enabled per window by the org.kde.layershell attached
+    // properties in the QML files. LayerShellQt::Shell::useLayerShell() is not
+    // used: it makes Qt's whole Wayland platform plugin require the protocol,
+    // so the plugin fails to load on compositors without it (GNOME).
+    WindowSystem::selectPlatform(argc, argv);
 
     QGuiApplication app(argc, argv);
+    WindowSystem::finishSetup();
     app.setApplicationName(QStringLiteral("NewTeller"));
     app.setApplicationVersion(QStringLiteral(NEWTELLER_VERSION));
     app.setDesktopFileName(QStringLiteral("org.newteller.Shell"));
@@ -56,6 +63,10 @@ int main(int argc, char *argv[])
     AppModel apps(&settings);
     ShellController shell(&settings);
     PluginManager plugins(&settings);
+
+    // import NewTeller 1.0 -> ShellWindow.role (X11 window types and struts).
+    qmlRegisterUncreatableType<ShellWindow>("NewTeller", 1, 0, "ShellWindow",
+                                            QStringLiteral("ShellWindow is only available as an attached property"));
 
     QQmlApplicationEngine engine;
     engine.addImageProvider(QStringLiteral("theme"), new ThemeIconProvider);

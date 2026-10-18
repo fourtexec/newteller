@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Window
 import QtQuick.Layouts
 import org.kde.layershell 1.0 as LayerShell
+import NewTeller 1.0
 
 // Bottom panel: start button, pinned apps, plugin slots, clock.
 Window {
@@ -15,16 +16,20 @@ Window {
     visible: true
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.Tool
-    width: screen.geometry.width
+    width: Screen.width
     height: barHeight
-    // Positioning used only when layer-shell is unavailable (e.g. Openbox on X11).
-    x: screen.geometry.x
-    y: screen.geometry.y + screen.geometry.height - barHeight
+    // Positioning used only without layer-shell (X11, including XWayland on GNOME).
+    x: Screen.virtualX
+    y: Screen.virtualY + Screen.height - barHeight
 
+    // Wayland: a layer surface along the bottom edge that reserves its height.
     LayerShell.Window.anchors: LayerShell.Window.AnchorBottom | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight
     LayerShell.Window.layer: LayerShell.Window.LayerTop
     LayerShell.Window.exclusionZone: barHeight
     LayerShell.Window.scope: "newteller-panel"
+
+    // X11: a dock window that reserves the bottom edge.
+    ShellWindow.role: ShellWindow.Dock
 
     Timer {
         interval: 1000

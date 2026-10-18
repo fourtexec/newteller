@@ -1,0 +1,445 @@
+#!/usr/bin/env python3
+"""Smoke test for NewTeller's QML, without building the C++ code.
+
+Loads qrc:/qml/Main.qml (compiled from resources.qrc, exactly as the shell
+does) on Qt's offscreen platform with two simulated screens, using stand-ins
+for the C++ context objects (Settings, Theme, Apps, Shell, Plugins) and for the
+QML modules the shell imports (org.kde.layershell and NewTeller). The test
+fails on any QML warning or error and then checks that:
+
+  * every screen gets a desktop and a panel covering the right area,
+  * the windows carry the expected layer-shell and ShellWindow settings,
+  * clicking Start opens the start menu with the application list, and
+    clicking it again closes the menu.
+
+Usage (no compositor or X server needed):
+
+    pip install PySide6-Essentials
+    python3 tests/qml_smoke.py
+"""
+
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+from enum import IntEnum
+
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SCREENS = [
+    {"name": "Left", "x": 0, "y": 0, "width": 1920, "height": 1080},
+    {"name": "Right", "x": 1920, "y": 0, "width": 1280, "height": 1024},
+]
+
+# The platform must be configured before Qt is loaded.
+_config = tempfile.NamedTemporaryFile("w", suffix=".json", delete=False)
+json.dump({"synchronousWindowSystemEvents": True, "windowFrameMargins": False,
+           "screens": [dict(s, logicalDpi=96, logicalBaseDpi=96, dpr=1.0) for s in SCREENS]}, _config)
+_config.close()
+os.environ["QT_QPA_PLATFORM"] = "offscreen:configfile=" + _config.name
+os.environ["QT_QUICK_BACKEND"] = "software"
+
+import PySide6  # noqa: E402
+from PySide6.QtCore import (Q_ARG, QEnum, QMargins, QMetaObject, QObject, QPoint, QtMsgType,  # noqa: E402
+                            QUrl, Property, Qt, Signal, Slot, qInstallMessageHandler)
+from PySide6.QtGui import QColor, QGuiApplication  # noqa: E402
+from PySide6.QtQml import (QmlAnonymous, QmlAttached, QmlNamedElement,  # noqa: E402
+                           QmlUncreatable, QQmlApplicationEngine)
+from PySide6.QtTest import QTest  # noqa: E402
+
+# ---------------------------------------------------------------------------
+# Stand-ins for the QML modules.
+
+# Records every attached object so the checks can inspect them.
+ATTACHED = {"layershell": [], "shellwindow": []}
+
+QML_IMPORT_NAME = "org.kde.layershell"
+QML_IMPORT_MAJOR_VERSION = 1
+QML_IMPORT_MINOR_VERSION = 0
+
+
+@QmlAnonymous
+class LayerShellAttached(QObject):
+    """The properties of LayerShellQt::Window used by the QML files."""
+
+    changed = Signal()
+
+    def __init__(self, window):
+        super().__init__(window)
+        self.window = window
+        self._values = {"anchors": 0, "layer": 0, "exclusionZone": 0, "keyboardInteractivity": 0,
+                        "scope": "", "margins": QMargins()}
+        ATTACHED["layershell"].append(self)
+
+    def _get(name):
+        return lambda self: self._values[name]
+
+    def _set(name):
+        def setter(self, value):
+            self._values[name] = value
+            self.changed.emit()
+        return setter
+
+    anchors = Property(int, _get("anchors"), _set("anchors"), notify=changed)
+    layer = Property(int, _get("layer"), _set("layer"), notify=changed)
+    exclusionZone = Property(int, _get("exclusionZone"), _set("exclusionZone"), notify=changed)
+    keyboardInteractivity = Property(int, _get("keyboardInteractivity"), _set("keyboardInteractivity"),
+                                     notify=changed)
+    scope = Property(str, _get("scope"), _set("scope"), notify=changed)
+    margins = Property(QMargins, _get("margins"), _set("margins"), notify=changed)
+
+
+@QmlNamedElement("Window")
+@QmlUncreatable("attached properties only")
+@QmlAttached(LayerShellAttached)
+class LayerShellWindow(QObject):
+    @QEnum
+    class Anchor(IntEnum):
+        AnchorNone = 0
+        AnchorTop = 1
+        AnchorBottom = 2
+        AnchorLeft = 4
+        AnchorRight = 8
+
+    @QEnum
+    class Layer(IntEnum):
+        LayerBackground = 0
+        LayerBottom = 1
+        LayerTop = 2
+        LayerOverlay = 3
+
+    @QEnum
+    class KeyboardInteractivity(IntEnum):
+        KeyboardInteractivityNone = 0
+        KeyboardInteractivityExclusive = 1
+        KeyboardInteractivityOnDemand = 2
+
+    @staticmethod
+    def qmlAttachedProperties(self, o):
+        return LayerShellAttached(o)
+
+
+QML_IMPORT_NAME = "NewTeller"
+
+
+@QmlAnonymous
+class ShellWindowAttached(QObject):
+    """Mirrors the ShellWindow attached type from src/shellwindow.h."""
+
+    roleChanged = Signal()
+
+    def __init__(self, window):
+        super().__init__(window)
+        self.window = window
+        self._role = 0
+        ATTACHED["shellwindow"].append(self)
+
+    def _get_role(self):
+        return self._role
+
+    def _set_role(self, role):
+        self._role = role
+        self.roleChanged.emit()
+
+    role = Property(int, _get_role, _set_role, notify=roleChanged)
+
+
+@QmlNamedElement("ShellWindow")
+@QmlUncreatable("ShellWindow is only available as an attached property")
+@QmlAttached(ShellWindowAttached)
+class ShellWindowType(QObject):
+    @QEnum
+    class Role(IntEnum):
+        Normal = 0
+        Desktop = 1
+        Dock = 2
+
+    @staticmethod
+    def qmlAttachedProperties(self, o):
+        return ShellWindowAttached(o)
+
+
+# ---------------------------------------------------------------------------
+# Stand-ins for the C++ context objects (see src/*.h for the real API).
+
+APPS = [
+    {"id": "firefox", "name": "Firefox", "icon": "firefox"},
+    {"id": "org.gnome.Terminal", "name": "Terminal", "icon": "utilities-terminal"},
+    {"id": "org.gnome.Nautilus", "name": "Files", "icon": "system-file-manager"},
+]
+
+
+class Settings(QObject):
+    valuesChanged = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self._values = {
+            "panel.height": 48,
+            "panel.clockFormat": "HH:mm",
+            # An unknown id checks that Apps.byId() returning {} is handled.
+            "panel.pinned": ["firefox", "org.gnome.Terminal", "not-installed"],
+            "startmenu.width": 440,
+            "startmenu.height": 580,
+            "desktop.wallpaper": "",
+        }
+
+    @Property("QVariantMap", notify=valuesChanged)
+    def values(self):
+        return self._values
+
+    @Slot(str, "QVariant", result="QVariant")
+    def value(self, key, fallback=None):
+        return self._values.get(key, fallback)
+
+
+class Theme(QObject):
+    themeChanged = Signal()
+
+    def _const(value, kind, notify=themeChanged):
+        return Property(kind, lambda self: value, notify=notify)
+
+    name = _const("default", str)
+    background = _const(QColor("#1e2127"), QColor)
+    foreground = _const(QColor("#e6e6e6"), QColor)
+    accent = _const(QColor("#4c8bf5"), QColor)
+    surface = _const(QColor("#2a2e36"), QColor)
+    border = _const(QColor("#3a3f4b"), QColor)
+    muted = _const(QColor("#8a8f98"), QColor)
+    opacity = _const(0.92, float)
+    radius = _const(8, int)
+    fontSize = _const(10, int)
+    fontFamily = _const("Sans", str)
+
+
+class Apps(QObject):
+    def __init__(self):
+        super().__init__()
+        self.launched = []
+
+    @Slot(str, result="QVariantMap")
+    def byId(self, app_id):
+        return next((a for a in APPS if a["id"] == app_id), {})
+
+    @Slot(str, int, result="QVariantList")
+    def search(self, query, limit):
+        q = query.lower()
+        return [a for a in APPS if q in a["name"].lower()][:limit]
+
+    @Slot(str, result=bool)
+    def launch(self, app_id):
+        self.launched.append(app_id)
+        return True
+
+
+class Shell(QObject):
+    def __init__(self, desktop_dir):
+        super().__init__()
+        self._desktop = QUrl.fromLocalFile(desktop_dir).toString()
+        self.calls = []
+
+    home = Property(str, lambda self: os.path.expanduser("~"), constant=True)
+    desktopUrl = Property(str, lambda self: self._desktop, constant=True)
+    userName = Property(str, lambda self: "tester", constant=True)
+    sessionType = Property(str, lambda self: "wayland", constant=True)
+
+    @Slot(str, result=QUrl)
+    def iconUrl(self, name):
+        return QUrl()  # The real lookup needs IconKit or the "theme" image provider.
+
+    @Slot(str)
+    def openUrl(self, url):
+        self.calls.append(("openUrl", url))
+
+    @Slot(str)
+    def runShell(self, command):
+        self.calls.append(("runShell", command))
+
+    @Slot()
+    def openConfig(self):
+        self.calls.append(("openConfig",))
+
+    @Slot()
+    def lock(self):
+        self.calls.append(("lock",))
+
+    @Slot()
+    def logout(self):
+        self.calls.append(("logout",))
+
+    @Slot()
+    def suspend(self):
+        self.calls.append(("suspend",))
+
+    @Slot()
+    def reboot(self):
+        self.calls.append(("reboot",))
+
+    @Slot()
+    def powerOff(self):
+        self.calls.append(("powerOff",))
+
+
+class Plugins(QObject):
+    pluginsChanged = Signal()
+
+    def __init__(self, plugins):
+        super().__init__()
+        self._plugins = plugins
+
+    @Property("QVariantList", notify=pluginsChanged)
+    def plugins(self):
+        return self._plugins
+
+
+# ---------------------------------------------------------------------------
+
+def compile_resources():
+    """Registers resources.qrc using the rcc that ships with PySide6."""
+    qt = os.path.join(os.path.dirname(PySide6.__file__), "Qt")
+    rcc = next((p for p in (os.path.join(qt, "libexec", "rcc"), shutil.which("pyside6-rcc")) if p and
+                os.path.exists(p)), None)
+    if rcc is None:
+        sys.exit("rcc not found (it is part of PySide6-Essentials)")
+    code = subprocess.run([rcc, "-g", "python", "resources.qrc"], cwd=ROOT, check=True,
+                          capture_output=True).stdout
+    # Qt keeps pointers into the resource data, so its module namespace must stay alive.
+    exec(compile(code, "resources_rc", "exec"), _RESOURCE_MODULE)
+
+
+_RESOURCE_MODULE = {}
+
+
+def main():
+    messages = []
+
+    def handler(mode, context, message):
+        if mode != QtMsgType.QtDebugMsg:
+            messages.append(message)
+        print(message, file=sys.stderr)
+
+    qInstallMessageHandler(handler)
+    app = QGuiApplication(sys.argv)
+    compile_resources()
+
+    work = tempfile.mkdtemp(prefix="newteller-qml-")
+    desktop_dir = os.path.join(work, "Desktop")
+    os.makedirs(os.path.join(desktop_dir, "Projects"))
+    for name in ("notes.txt", "photo.png"):
+        open(os.path.join(desktop_dir, name), "w").close()
+    panel_plugin = os.path.join(work, "PanelWidget.qml")
+    with open(panel_plugin, "w") as f:
+        f.write("import QtQuick\nRectangle { width: 30; height: 30; color: Theme.accent }\n")
+    plugins = [
+        {"id": "desktop-clock", "name": "Desktop Clock", "type": "desktop", "enabled": True, "x": 60, "y": 60,
+         "entry": QUrl.fromLocalFile(os.path.join(ROOT, "plugins/desktop-clock/Widget.qml")).toString()},
+        {"id": "panel-test", "name": "Panel test", "type": "panel", "enabled": True, "x": 0, "y": 0,
+         "entry": QUrl.fromLocalFile(panel_plugin).toString()},
+        {"id": "disabled", "name": "Disabled", "type": "desktop", "enabled": False, "x": 0, "y": 0,
+         "entry": QUrl.fromLocalFile(os.path.join(work, "missing.qml")).toString()},
+    ]
+
+    settings, theme, apps = Settings(), Theme(), Apps()
+    shell, plugin_manager = Shell(desktop_dir), Plugins(plugins)
+    engine = QQmlApplicationEngine()
+    for name, obj in (("Settings", settings), ("Theme", theme), ("Apps", apps), ("Shell", shell),
+                      ("Plugins", plugin_manager)):
+        engine.rootContext().setContextProperty(name, obj)
+
+    failures = []
+
+    def check(condition, what):
+        if not condition:
+            failures.append(what)
+            print("FAIL:", what, file=sys.stderr)
+
+    engine.load(QUrl("qrc:/qml/Main.qml"))
+    if not engine.rootObjects():
+        print("FAIL: qrc:/qml/Main.qml did not load", file=sys.stderr)
+        return 1
+    QTest.qWait(300)
+
+    check(app.platformName() == "offscreen", f"running on the offscreen platform ({app.platformName()})")
+    screens = QGuiApplication.screens()
+    check([s.name() for s in screens] == [s["name"] for s in SCREENS], "offscreen platform has the test screens")
+
+    def windows(kind):
+        return [w for w in QGuiApplication.topLevelWindows() if w.metaObject().className().startswith(kind)]
+
+    def attached(kind, window):
+        return next((a for a in ATTACHED[kind] if a.window is window), None)
+
+    desktops, panels, menus = windows("Desktop"), windows("Panel"), windows("StartMenu")
+    check(len(desktops) == len(screens), f"one desktop per screen (got {len(desktops)})")
+    check(len(panels) == len(screens), f"one panel per screen (got {len(panels)})")
+    check(len(menus) == 1, f"one start menu (got {len(menus)})")
+
+    for screen in screens:
+        g = screen.geometry()
+        desk = next((w for w in desktops if w.screen() is screen), None)
+        panel = next((w for w in panels if w.screen() is screen), None)
+        check(desk is not None and desk.isVisible(), f"visible desktop on {screen.name()}")
+        check(panel is not None and panel.isVisible(), f"visible panel on {screen.name()}")
+        if desk:
+            check(desk.geometry() == g, f"desktop on {screen.name()} covers the screen ({desk.geometry()} vs {g})")
+            ls, sw = attached("layershell", desk), attached("shellwindow", desk)
+            check(ls is not None and ls.anchors == 15 and ls.layer == 1 and ls.exclusionZone == -1,
+                  "desktop layer-shell settings")
+            check(sw is not None and sw.role == 1, "desktop has ShellWindow.Desktop")
+        if panel:
+            want = (g.x(), g.y() + g.height() - 48, g.width(), 48)
+            got = (panel.x(), panel.y(), panel.width(), panel.height())
+            check(got == want, f"panel on {screen.name()} spans the bottom edge ({got} vs {want})")
+            ls, sw = attached("layershell", panel), attached("shellwindow", panel)
+            check(ls is not None and ls.anchors == 14 and ls.layer == 2 and ls.exclusionZone == 48
+                  and ls.scope == "newteller-panel", "panel layer-shell settings")
+            check(sw is not None and sw.role == 2, "panel has ShellWindow.Dock")
+
+    # Clicking Start below also proves each panel's startMenu points at this window.
+    menu = menus[0] if menus else None
+    if menu is not None and panels:
+        primary = screens[0].geometry()
+        ls = attached("layershell", menu)
+        check(ls is not None and ls.anchors == 6 and ls.keyboardInteractivity == 1
+              and ls.margins == QMargins(8, 0, 0, 60), "start menu layer-shell settings")
+        check(not menu.isVisible(), "start menu starts hidden")
+
+        panel = next(w for w in panels if w.screen() is screens[0])
+        start_button = QPoint(24, panel.height() // 2)  # first item in the panel
+        QTest.mouseClick(panel, Qt.LeftButton, Qt.NoModifier, start_button)
+        QTest.qWait(50)
+        check(menu.isVisible(), "clicking Start opens the start menu")
+        results = menu.property("results")
+        if hasattr(results, "toVariant"):  # QJSValue
+            results = results.toVariant()
+        check(len(results or []) == len(APPS), "start menu lists the applications")
+        want = (primary.x() + 8, primary.y() + primary.height() - 580 - 48 - 12, 440, 580)
+        got = (menu.x(), menu.y(), menu.width(), menu.height())
+        check(got == want, f"start menu sits above the panel ({got} vs {want})")
+
+        QTest.mouseClick(panel, Qt.LeftButton, Qt.NoModifier, start_button)
+        QTest.qWait(50)
+        check(not menu.isVisible(), "clicking Start again closes the start menu")
+
+        QMetaObject.invokeMethod(menu, "show")
+        QMetaObject.invokeMethod(menu, "launch", Q_ARG("QVariant", APPS[1]))
+        check(apps.launched == ["org.gnome.Terminal"], f"launching from the menu ({apps.launched})")
+        check(not menu.isVisible(), "launching an application closes the menu")
+
+    QTest.qWait(100)
+    check(not messages, f"no QML warnings ({len(messages)} found)")
+    for w in QGuiApplication.topLevelWindows():
+        w.close()
+    del engine
+    shutil.rmtree(work, ignore_errors=True)
+    os.unlink(_config.name)
+    if failures:
+        print(f"\n{len(failures)} check(s) failed", file=sys.stderr)
+        return 1
+    print(f"QML smoke test passed (Qt {PySide6.QtCore.qVersion()})")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
