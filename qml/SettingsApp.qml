@@ -1,0 +1,1322 @@
+import QtQuick
+import QtQuick.Window
+import QtQuick.Layouts
+import Qt.labs.folderlistmodel
+
+// The built-in settings application of NewTeller.
+//
+// This file is compiled into the newteller executable (Qt resource system),
+// so the settings are always available — a user cannot delete or damage them
+// without replacing the binary itself. Every key of shell.json, the theme
+// files, the plugins and the diagnostics are managed from here; changes apply
+// live through the Settings/Theme objects.
+Window {
+    id: settingsWindow
+
+    // The page identifiers and their sidebar entries.
+    readonly property var pages: [
+        { id: "appearance", label: "Appearance", icon: "palette" },
+        { id: "panel", label: "Panel & dock", icon: "panel-bottom" },
+        { id: "desktop", label: "Desktop", icon: "monitor" },
+        { id: "startmenu", label: "Start menu", icon: "search" },
+        { id: "apps", label: "Applications", icon: "package" },
+        { id: "system", label: "System", icon: "cpu" },
+        { id: "plugins", label: "Plugins", icon: "puzzle" },
+        { id: "about", label: "About", icon: "info" }
+    ]
+    property string currentPage: "appearance"
+
+    readonly property var wallpaperFolders: [Shell.home + "/Pictures", "/usr/share/backgrounds"]
+    property int wallpaperFolderIndex: 0
+
+    // Theme editor state (values of the selected theme being edited).
+    property var themeEditor: ({})
+    property string themeEditorName: ""
+
+    function pageIndexOf(id) {
+        for (var i = 0; i < pages.length; ++i) {
+            if (pages[i].id === id)
+                return i;
+        }
+        return 0;
+    }
+
+    function showFromShell() {
+        visible = true;
+        requestActivate();
+    }
+
+    function hideWindow() {
+        visible = false;
+    }
+
+    function loadThemeEditor(name) {
+        themeEditorName = name;
+        themeEditor = Theme.themeValues(name);
+        backgroundField.setValue(Qt.color(themeEditor.background || "#000000"));
+        foregroundField.setValue(Qt.color(themeEditor.foreground || "#ffffff"));
+        accentField.setValue(Qt.color(themeEditor.accent || "#888888"));
+        surfaceField.setValue(Qt.color(themeEditor.surface || "#111111"));
+        borderField.setValue(Qt.color(themeEditor.border || "#333333"));
+        mutedField.setValue(Qt.color(themeEditor.muted || "#888888"));
+        opacityBox.value = Number(themeEditor.opacity) || 0.92;
+        radiusBox.value = Number(themeEditor.radius) || 10;
+        fontSizeBox.value = Number(themeEditor.fontSize) || 10;
+        fontFamilyField.text = themeEditor.fontFamily || "Sans";
+    }
+
+    function collectThemeEditor() {
+        return {
+            background: backgroundField.colorValue.toString(),
+            foreground: foregroundField.colorValue.toString(),
+            accent: accentField.colorValue.toString(),
+            surface: surfaceField.colorValue.toString(),
+            border: borderField.colorValue.toString(),
+            muted: mutedField.colorValue.toString(),
+            opacity: opacityBox.value,
+            radius: Math.round(radiusBox.value),
+            fontSize: Math.round(fontSizeBox.value),
+            fontFamily: fontFamilyField.text
+        };
+    }
+
+    function saveTheme() {
+        Theme.saveUserTheme(themeEditorName || Theme.name, collectThemeEditor());
+    }
+
+    function resetTheme() {
+        Theme.deleteUserTheme(themeEditorName || Theme.name);
+        loadThemeEditor(themeEditorName || Theme.name);
+    }
+
+    function resetAllSettings() {
+        const keys = Settings.keys();
+        for (var i = 0; i < keys.length; ++i)
+            Settings.reset(keys[i]);
+        Settings.flush();
+        confirmBox.visible = false;
+        Shell.notify("NewTeller", "All settings were reset to their defaults.");
+    }
+
+    function exportSettings() {
+        const stamp = Qt.formatDateTime(Shell.now, "yyyyMMdd-hhmmss");
+        const path = Shell.home + "/newteller-settings-" + stamp + ".json";
+        const body = JSON.stringify(Settings.values, null, 2);
+        if (Shell.saveTextFile(path, body))
+            Shell.notify("NewTeller", "A copy of the settings was saved to " + path);
+        else
+            Shell.notify("NewTeller", "The settings copy could not be written.");
+    }
+
+    function setPinned(list) {
+        Settings.setValue("panel.pinned", list);
+    }
+
+    title: qsTr("NewTeller Settings")
+    width: 940
+    height: 660
+    minimumWidth: 820
+    minimumHeight: 560
+    visible: false
+    color: Theme.background
+
+    onClosing: (close) => {
+        close.accepted = true;
+        wallpaperOverlay.visible = false;
+        confirmBox.visible = false;
+    }
+
+    onVisibleChanged: {
+        if (visible)
+            loadThemeEditor(Theme.name);
+    }
+
+    // ------------------------------------------------------------------
+    // Sidebar
+    // ------------------------------------------------------------------
+    Rectangle {
+        id: sidebar
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: footer.top
+        width: 216
+        color: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.45)
+
+        Column {
+            anchors.fill: parent
+            anchors.margins: 10
+            spacing: 4
+
+            Item {
+                width: parent.width
+                height: 46
+
+                Rectangle {
+                    width: 30
+                    height: 30
+                    radius: 8
+                    color: Theme.accent
+                    anchors.left: parent.left
+                    anchors.leftMargin: 6
+                    anchors.verticalCenter: parent.verticalCenter
+                    Text {
+                        anchors.centerIn: parent
+                        text: "N"
+                        color: "#ffffff"
+                        font.bold: true
+                        font.pointSize: Theme.fontSize + 4
+                        font.family: Theme.fontFamily
+                    }
+                }
+                Column {
+                    anchors.left: parent.left
+                    anchors.leftMargin: 46
+                    anchors.verticalCenter: parent.verticalCenter
+                    Text {
+                        text: "NewTeller"
+                        color: Theme.foreground
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSize + 2
+                        font.bold: true
+                    }
+                    Text {
+                        text: "version " + Shell.version
+                        color: Theme.muted
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSize - 2
+                    }
+                }
+            }
+
+            Repeater {
+                model: settingsWindow.pages
+
+                delegate: TaskButton {
+                    required property var modelData
+                    width: sidebar.width - 20
+                    height: 36
+                    fillWidth: true
+                    iconName: modelData.icon
+                    label: modelData.label
+                    active: settingsWindow.currentPage === modelData.id
+                    onClicked: settingsWindow.currentPage = modelData.id
+                }
+            }
+
+            Item { height: 4; width: 1 }
+            Text {
+                leftPadding: 10
+                text: "The settings are built into the\nnewteller binary and always\navailable."
+                color: Theme.muted
+                font.family: Theme.fontFamily
+                font.pointSize: Theme.fontSize - 2
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Pages
+    // ------------------------------------------------------------------
+    Rectangle {
+        anchors.left: sidebar.right
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: footer.top
+        color: "transparent"
+
+        StackLayout {
+            id: pageStack
+            anchors.fill: parent
+            currentIndex: settingsWindow.pageIndexOf(settingsWindow.currentPage)
+
+            // ---- Appearance -------------------------------------------------
+            Item {
+                Flickable {
+                    id: appearanceScroll
+                    anchors.fill: parent
+                    contentHeight: appearanceColumn.implicitHeight + 24
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Column {
+                        id: appearanceColumn
+                        x: 16
+                        y: 12
+                        width: appearanceScroll.width - 32
+                        spacing: 16
+
+                        SettingsSection {
+                            title: "Theme"
+                            subtitle: "Pick one of the themes; custom themes live in " + Theme.userThemesPath()
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Preview"
+
+                                Rectangle {
+                                    width: 260
+                                    height: 84
+                                    radius: Theme.radius
+                                    color: Theme.background
+                                    border.width: 1
+                                    border.color: Theme.border
+
+                                    Rectangle {
+                                        x: 8; y: 8
+                                        width: 110; height: 68
+                                        radius: 6
+                                        color: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.9)
+                                        Rectangle {
+                                            x: 8; y: 10
+                                            width: 60; height: 10; radius: 5
+                                            color: Theme.accent
+                                        }
+                                        Rectangle {
+                                            x: 8; y: 28
+                                            width: 90; height: 6; radius: 3
+                                            color: Theme.muted
+                                        }
+                                        Rectangle {
+                                            x: 8; y: 42
+                                            width: 70; height: 6; radius: 3
+                                            color: Theme.muted
+                                        }
+                                    }
+                                    Rectangle {
+                                        anchors.right: parent.right
+                                        anchors.rightMargin: 8
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        width: 70; height: 68
+                                        radius: 6
+                                        color: Theme.background
+                                        border.width: 1
+                                        border.color: Theme.border
+                                        Column {
+                                            anchors.centerIn: parent
+                                            spacing: 6
+                                            Rectangle { width: 44; height: 12; radius: 6; color: Theme.accent; anchors.horizontalCenter: parent.horizontalCenter }
+                                            Rectangle { width: 44; height: 12; radius: 6; color: Theme.surface; border.width: 1; border.color: Theme.border; anchors.horizontalCenter: parent.horizontalCenter }
+                                            Rectangle { width: 44; height: 12; radius: 6; color: Theme.border; anchors.horizontalCenter: parent.horizontalCenter }
+                                        }
+                                    }
+                                }
+                            }
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Selected theme"
+                                settingKey: "theme.name"
+                                subtitle: Theme.hasUserTheme(settingsWindow.themeEditorName)
+                                          ? "This theme has user customisations on disk."
+                                          : ""
+
+                                Flow {
+                                    width: 420
+                                    spacing: 6
+
+                                    Repeater {
+                                        model: Theme.availableThemes()
+
+                                        delegate: TaskButton {
+                                            required property var modelData
+                                            label: modelData + (Theme.hasUserTheme(modelData) ? "  •" : "")
+                                            active: Theme.name === modelData
+                                            onClicked: {
+                                                Settings.setValue("theme.name", modelData);
+                                                settingsWindow.loadThemeEditor(modelData);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Theme editor"
+                            subtitle: "Colours and typography of " + (settingsWindow.themeEditorName || Theme.name)
+                                      + ". Saving writes a user theme file that overrides the built-in one."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Background"
+                                SettingsColorField { id: backgroundField; onEdited: (hex) => settingsWindow.saveTheme() }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Foreground"
+                                SettingsColorField { id: foregroundField; onEdited: (hex) => settingsWindow.saveTheme() }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Accent"
+                                SettingsColorField { id: accentField; onEdited: (hex) => settingsWindow.saveTheme() }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Surface"
+                                SettingsColorField { id: surfaceField; onEdited: (hex) => settingsWindow.saveTheme() }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Border"
+                                SettingsColorField { id: borderField; onEdited: (hex) => settingsWindow.saveTheme() }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Muted text"
+                                SettingsColorField { id: mutedField; onEdited: (hex) => settingsWindow.saveTheme() }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Panel opacity"
+                                SettingsSlider { id: opacityBox; from: 0.3; to: 1.0; step: 0.01; onChanged: (v) => settingsWindow.saveTheme() }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Corner radius"
+                                SettingsStepper { id: radiusBox; from: 0; to: 24; onChanged: (v) => settingsWindow.saveTheme() }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Font size"
+                                SettingsStepper { id: fontSizeBox; from: 6; to: 16; onChanged: (v) => settingsWindow.saveTheme() }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Font family"
+                                SettingsTextField { id: fontFamilyField; onTextEdited: (t) => settingsWindow.saveTheme() }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Save changes"
+                                subtitle: "The file is written to " + Theme.userThemesPath()
+                                          + " and applied immediately."
+                                Row {
+                                    spacing: 6
+                                    TaskButton {
+                                        iconName: "save"
+                                        label: "Save theme"
+                                        onClicked: settingsWindow.saveTheme()
+                                    }
+                                    TaskButton {
+                                        iconName: "eraser"
+                                        label: "Discard custom copy"
+                                        visible: Theme.hasUserTheme(settingsWindow.themeEditorName)
+                                        onClicked: settingsWindow.resetTheme()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---- Panel & dock ----------------------------------------------
+            Item {
+                Flickable {
+                    id: panelScroll
+                    anchors.fill: parent
+                    contentHeight: panelColumn.implicitHeight + 24
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Column {
+                        id: panelColumn
+                        x: 16
+                        y: 12
+                        width: panelScroll.width - 32
+                        spacing: 16
+
+                        SettingsSection {
+                            title: "Panel"
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Position"
+                                settingKey: "panel.position"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "bottom", label: "Bottom" },
+                                        { value: "top", label: "Top" },
+                                        { value: "left", label: "Left" },
+                                        { value: "right", label: "Right" }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Thickness"
+                                settingKey: "panel.height"
+                                SettingsSlider { from: 20; to: 100; step: 2; suffix: " px" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Screen edge gap"
+                                settingKey: "panel.margin"
+                                SettingsSlider { from: 0; to: 24; step: 1; suffix: " px" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Auto-hide"
+                                subtitle: "Slide the panel away until the pointer touches its edge."
+                                settingKey: "panel.autoHide"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Auto-hide delay"
+                                settingKey: "panel.autoHideDelay"
+                                SettingsStepper { from: 0; to: 5000; step: 100; suffix: " ms" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Running badge"
+                                subtitle: "Mark running applications on their dock buttons."
+                                settingKey: "panel.showRunning"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Show date next to the clock"
+                                settingKey: "panel.showDate"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Clock format"
+                                settingKey: "panel.clockFormat"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "HH:mm", label: "24 h" },
+                                        { value: "HH:mm:ss", label: "24 h + s" },
+                                        { value: "h:mm AP", label: "12 h" }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Date format"
+                                settingKey: "panel.dateFormat"
+                                SettingsTextField {}
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Dock"
+                            subtitle: "Every started application appears in the dock: real windows "
+                                      + "are tracked on X11 and Wayland, and the process list fills in the rest."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Show running applications"
+                                settingKey: "dock.showWindows"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Group windows of one application"
+                                settingKey: "dock.group"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Dock icon size"
+                                settingKey: "dock.iconSize"
+                                SettingsSlider { from: 16; to: 48; step: 2; suffix: " px" }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Pinned applications"
+                            subtitle: "Desktop file ids, as in /usr/share/applications. Right-click a dock "
+                                      + "button at runtime for per-window actions."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Pinned list"
+
+                                Column {
+                                    width: 420
+                                    spacing: 6
+
+                                    Repeater {
+                                        model: Settings.value("panel.pinned", []) || []
+
+                                        delegate: Row {
+                                            required property var modelData
+                                            required property int index
+                                            spacing: 6
+
+                                            Text {
+                                                width: 330
+                                                text: modelData
+                                                color: Theme.foreground
+                                                font.family: Theme.fontFamily
+                                                font.pointSize: Theme.fontSize - 1
+                                                elide: Text.ElideMiddle
+                                                anchors.verticalCenter: parent.verticalCenter
+                                            }
+                                            TaskButton {
+                                                width: 28
+                                                height: 28
+                                                iconName: "x"
+                                                onClicked: {
+                                                    const list = (Settings.value("panel.pinned", []) || []).slice();
+                                                    list.splice(index, 1);
+                                                    settingsWindow.setPinned(list);
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Row {
+                                        spacing: 6
+                                        SettingsTextField {
+                                            id: pinField
+                                            width: 300
+                                        }
+                                        TaskButton {
+                                            iconName: "plus"
+                                            label: "Pin"
+                                            onClicked: {
+                                                const id = pinField.text.trim();
+                                                if (id.length === 0)
+                                                    return;
+                                                const list = (Settings.value("panel.pinned", []) || []).slice();
+                                                if (list.indexOf(id) < 0)
+                                                    list.push(id);
+                                                settingsWindow.setPinned(list);
+                                                pinField.text = "";
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---- Desktop ----------------------------------------------------
+            Item {
+                Flickable {
+                    id: desktopScroll
+                    anchors.fill: parent
+                    contentHeight: desktopColumn.implicitHeight + 24
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Column {
+                        id: desktopColumn
+                        x: 16
+                        y: 12
+                        width: desktopScroll.width - 32
+                        spacing: 16
+
+                        SettingsSection {
+                            title: "Wallpaper"
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Current wallpaper"
+                                settingKey: "desktop.wallpaper"
+
+                                Row {
+                                    spacing: 10
+
+                                    Rectangle {
+                                        width: 168
+                                        height: 96
+                                        radius: Theme.radius
+                                        color: Theme.surface
+                                        border.width: 1
+                                        border.color: Theme.border
+                                        clip: true
+
+                                        Image {
+                                            anchors.fill: parent
+                                            fillMode: Image.PreserveAspectCrop
+                                            asynchronous: true
+                                            source: {
+                                                const wp = Settings.value("desktop.wallpaper", "");
+                                                return wp && wp.length > 0
+                                                        ? (wp.indexOf("://") > 0 ? wp : "file://" + wp)
+                                                        : "";
+                                            }
+                                        }
+                                        Text {
+                                            anchors.centerIn: parent
+                                            visible: !Settings.value("desktop.wallpaper", "")
+                                            text: "Solid colour"
+                                            color: Theme.muted
+                                            font.family: Theme.fontFamily
+                                            font.pointSize: Theme.fontSize - 1
+                                        }
+                                    }
+
+                                    Column {
+                                        spacing: 6
+                                        TaskButton {
+                                            iconName: "image"
+                                            label: "Browse images"
+                                            onClicked: {
+                                                wallpaperOverlay.visible = true;
+                                            }
+                                        }
+                                        TaskButton {
+                                            iconName: "shuffle"
+                                            label: "Random picture"
+                                            onClicked: wallpaperOverlay.pickRandom()
+                                        }
+                                        TaskButton {
+                                            iconName: "x"
+                                            label: "No wallpaper"
+                                            onClicked: Settings.setValue("desktop.wallpaper", "")
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Icons"
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Show desktop icons"
+                                settingKey: "desktop.showIcons"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Icon size"
+                                settingKey: "desktop.iconSize"
+                                SettingsSlider { from: 24; to: 96; step: 4; suffix: " px" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Grid width"
+                                settingKey: "desktop.cellWidth"
+                                SettingsSlider { from: 64; to: 160; step: 8; suffix: " px" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Grid height"
+                                settingKey: "desktop.cellHeight"
+                                SettingsSlider { from: 64; to: 180; step: 8; suffix: " px" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Right-click menu"
+                                settingKey: "desktop.contextMenu"
+                                SettingsSwitch {}
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---- Start menu -------------------------------------------------
+            Item {
+                Flickable {
+                    id: menuScroll
+                    anchors.fill: parent
+                    contentHeight: menuColumn.implicitHeight + 24
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Column {
+                        id: menuColumn
+                        x: 16
+                        y: 12
+                        width: menuScroll.width - 32
+                        spacing: 16
+
+                        SettingsSection {
+                            title: "Start menu"
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Width"
+                                settingKey: "startmenu.width"
+                                SettingsSlider { from: 300; to: 700; step: 10; suffix: " px" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Height"
+                                settingKey: "startmenu.height"
+                                SettingsSlider { from: 400; to: 900; step: 10; suffix: " px" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Typo tolerant search"
+                                settingKey: "startmenu.fuzzy"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Recently used row"
+                                settingKey: "startmenu.showRecent"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Recent list length"
+                                settingKey: "apps.recentLimit"
+                                SettingsStepper { from: 0; to: 30 }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Search result limit"
+                                settingKey: "startmenu.limit"
+                                SettingsStepper { from: 10; to: 500; step: 10 }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---- Applications -----------------------------------------------
+            Item {
+                Flickable {
+                    id: appsScroll
+                    anchors.fill: parent
+                    contentHeight: appsColumn.implicitHeight + 24
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Column {
+                        id: appsColumn
+                        x: 16
+                        y: 12
+                        width: appsScroll.width - 32
+                        spacing: 16
+
+                        SettingsSection {
+                            title: "Applications"
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Terminal command"
+                                subtitle: "Used by \"Open terminal\"; empty means auto-detect."
+                                settingKey: "apps.terminalCommand"
+                                SettingsTextField { width: 260 }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Application catalogue cap"
+                                subtitle: "0 keeps every installed application."
+                                settingKey: "apps.maxApps"
+                                SettingsStepper { from: 0; to: 2000; step: 50 }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Usage history"
+                                subtitle: "Clears the recent row and the ranking boost."
+                                TaskButton {
+                                    iconName: "eraser"
+                                    label: "Clear recent list"
+                                    onClicked: {
+                                        Apps.forgetRecent();
+                                        Shell.notify("NewTeller", "The recent applications list was cleared.");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---- System -----------------------------------------------------
+            Item {
+                Flickable {
+                    id: systemScroll
+                    anchors.fill: parent
+                    contentHeight: systemColumn.implicitHeight + 24
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Column {
+                        id: systemColumn
+                        x: 16
+                        y: 12
+                        width: systemScroll.width - 32
+                        spacing: 16
+
+                        SettingsSection {
+                            title: "Metrics"
+                            subtitle: "The shared ticker behind the system monitor widgets."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Sampling interval"
+                                settingKey: "system.interval"
+                                SettingsStepper { from: 250; to: 60000; step: 250; suffix: " ms" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Per-core CPU"
+                                settingKey: "system.perCore"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Battery"
+                                settingKey: "system.battery"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Thermal zones"
+                                settingKey: "system.thermal"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Disks"
+                                subtitle: "The most expensive part of a snapshot."
+                                settingKey: "system.disks"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Config file watching"
+                                settingKey: "watch.debounce"
+                                SettingsStepper { from: 0; to: 10000; step: 50; suffix: " ms" }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---- Plugins ----------------------------------------------------
+            Item {
+                Flickable {
+                    id: pluginsScroll
+                    anchors.fill: parent
+                    contentHeight: pluginsColumn.implicitHeight + 24
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Column {
+                        id: pluginsColumn
+                        x: 16
+                        y: 12
+                        width: pluginsScroll.width - 32
+                        spacing: 16
+
+                        SettingsSection {
+                            title: "Plugins"
+                            subtitle: "QML widgets from ~/.config/newteller/plugins and /usr/share/newteller/plugins."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Rescan on change"
+                                settingKey: "plugins.autoRescan"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Rescan"
+                                TaskButton {
+                                    iconName: "rotate-cw"
+                                    label: "Rescan now"
+                                    onClicked: Plugins.rescan()
+                                }
+                            }
+
+                            Repeater {
+                                model: Plugins.plugins
+
+                                delegate: SettingsRow {
+                                    required property var modelData
+                                    width: parent.width
+                                    title: modelData.name
+                                    subtitle: modelData.id + "  ·  " + modelData.type
+                                              + "  ·  version "
+                                              + (modelData.version || "1.0.0")
+
+                                    SettingsSwitch {
+                                        checked: modelData.enabled
+                                        onChanged: (on) => Plugins.setEnabled(modelData.id, on)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---- About ------------------------------------------------------
+            Item {
+                Flickable {
+                    id: aboutScroll
+                    anchors.fill: parent
+                    contentHeight: aboutColumn.implicitHeight + 24
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Column {
+                        id: aboutColumn
+                        x: 16
+                        y: 12
+                        width: aboutScroll.width - 32
+                        spacing: 16
+
+                        SettingsSection {
+                            title: "This system"
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Version"
+                                Text {
+                                    text: "NewTeller " + Shell.version
+                                    color: Theme.foreground
+                                    font.family: Theme.fontFamily
+                                    font.pointSize: Theme.fontSize
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Computer"
+                                Text {
+                                    text: Shell.hostname + " · " + Shell.distro + " · kernel " + Shell.kernelVersion
+                                    color: Theme.foreground
+                                    font.family: Theme.fontFamily
+                                    font.pointSize: Theme.fontSize
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Session"
+                                Text {
+                                    text: (Shell.isWayland ? "Wayland" : "X11") + " as " + Shell.userName
+                                    color: Theme.foreground
+                                    font.family: Theme.fontFamily
+                                    font.pointSize: Theme.fontSize
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Window tracking"
+                                Text {
+                                    text: Windows.backend === "x11" ? "EWMH (X11)"
+                                          : Windows.backend === "wayland" ? "wlr-foreign-toplevel (Wayland)"
+                                          : "unavailable — the dock uses the process list"
+                                    color: Theme.foreground
+                                    font.family: Theme.fontFamily
+                                    font.pointSize: Theme.fontSize
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Applications"
+                                Text {
+                                    text: Apps.count + " in the catalogue"
+                                    color: Theme.foreground
+                                    font.family: Theme.fontFamily
+                                    font.pointSize: Theme.fontSize
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Memory and uptime"
+                                Text {
+                                    text: System.memoryText + " · up " + System.uptimeText
+                                    color: Theme.foreground
+                                    font.family: Theme.fontFamily
+                                    font.pointSize: Theme.fontSize
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Files"
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Configuration"
+                                subtitle: Settings.configPath()
+
+                                TaskButton {
+                                    iconName: "file-json"
+                                    label: "Open JSON"
+                                    onClicked: Shell.openConfig()
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Export"
+                                subtitle: "Writes a JSON copy of the current settings next to your home folder."
+                                TaskButton {
+                                    iconName: "download"
+                                    label: "Export a copy"
+                                    onClicked: settingsWindow.exportSettings()
+                                }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Configuration problems"
+                            subtitle: "Reported by the same validator as newteller-ctl validate."
+                            visible: Settings.validate().length > 0
+
+                            Repeater {
+                                model: Settings.validate()
+
+                                delegate: SettingsRow {
+                                    required property var modelData
+                                    width: parent.width
+                                    title: modelData.key + "  (" + modelData.level + ")"
+                                    subtitle: modelData.message
+                                }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Danger zone"
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Reset everything"
+                                subtitle: "Every key of " + Settings.configPath()
+                                          + " returns to its default. Themes on disk are kept."
+                                TaskButton {
+                                    iconName: "rotate-ccw"
+                                    label: "Reset all settings"
+                                    onClicked: confirmBox.visible = true
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Footer: save state
+    // ------------------------------------------------------------------
+    Rectangle {
+        id: footer
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: 34
+        color: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.6)
+
+        Row {
+            anchors.left: parent.left
+            anchors.leftMargin: 14
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: 8
+
+            Rectangle {
+                width: 8
+                height: 8
+                radius: 4
+                anchors.verticalCenter: parent.verticalCenter
+                color: Settings.dirty ? Theme.accent : "#6cc070"
+            }
+            Text {
+                anchors.verticalCenter: parent.verticalCenter
+                text: Settings.dirty ? "Saving…" : "All changes saved"
+                color: Theme.muted
+                font.family: Theme.fontFamily
+                font.pointSize: Theme.fontSize - 1
+            }
+        }
+
+        Text {
+            anchors.right: parent.right
+            anchors.rightMargin: 14
+            anchors.verticalCenter: parent.verticalCenter
+            text: "Settings apply live — no restart needed"
+            color: Theme.muted
+            font.family: Theme.fontFamily
+            font.pointSize: Theme.fontSize - 1
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Wallpaper browser overlay
+    // ------------------------------------------------------------------
+    Rectangle {
+        id: wallpaperOverlay
+        anchors.fill: parent
+        visible: false
+        color: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, 0.96)
+        z: 50
+
+        function pickRandom() {
+            const model = wallpaperFolderIndex === 0 ? picturesModel : backgroundsModel;
+            if (model.count > 0) {
+                const next = Math.floor(Math.random() * model.count);
+                Settings.setValue("desktop.wallpaper", model.get(next, "filePath"));
+            } else {
+                Shell.openPath(wallpaperFolders[wallpaperFolderIndex]);
+            }
+            visible = false;
+        }
+
+        Column {
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 10
+
+            Row {
+                spacing: 6
+
+                Repeater {
+                    model: settingsWindow.wallpaperFolders
+
+                    delegate: TaskButton {
+                        required property var modelData
+                        required property int index
+                        label: index === 0 ? "Pictures" : "System backgrounds"
+                        active: settingsWindow.wallpaperFolderIndex === index
+                        onClicked: settingsWindow.wallpaperFolderIndex = index
+                    }
+                }
+                Item { width: 12; height: 1 }
+                TaskButton {
+                    iconName: "shuffle"
+                    label: "Random"
+                    onClicked: wallpaperOverlay.pickRandom()
+                }
+                TaskButton {
+                    iconName: "x"
+                    label: "Close"
+                    onClicked: wallpaperOverlay.visible = false
+                }
+            }
+
+            GridView {
+                id: wallpaperGrid
+                width: parent.width
+                height: parent.height - 46
+                clip: true
+                cellWidth: 200
+                cellHeight: 130
+                model: settingsWindow.wallpaperFolderIndex === 0 ? picturesModel : backgroundsModel
+
+                delegate: Item {
+                    width: wallpaperGrid.cellWidth - 10
+                    height: wallpaperGrid.cellHeight - 10
+
+                    required property string filePath
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: Theme.radius
+                        color: Theme.surface
+                        border.width: 1
+                        border.color: Theme.border
+
+                        Image {
+                            anchors.fill: parent
+                            anchors.margins: 3
+                            fillMode: Image.PreserveAspectCrop
+                            asynchronous: true
+                            source: "file://" + filePath
+                        }
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                Settings.setValue("desktop.wallpaper", filePath);
+                                wallpaperOverlay.visible = false;
+                            }
+                        }
+                    }
+                }
+
+                Text {
+                    anchors.centerIn: parent
+                    visible: wallpaperGrid.count === 0
+                    text: "No pictures in this folder"
+                    color: Theme.muted
+                    font.family: Theme.fontFamily
+                    font.pointSize: Theme.fontSize
+                }
+            }
+        }
+
+        FolderListModel {
+            id: picturesModel
+            folder: settingsWindow.wallpaperFolders[0]
+            nameFilters: ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp"]
+            showDirs: false
+            showDotAndDotDot: false
+        }
+        FolderListModel {
+            id: backgroundsModel
+            folder: settingsWindow.wallpaperFolders[1]
+            nameFilters: ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp"]
+            showDirs: false
+            showDotAndDotDot: false
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Reset confirmation overlay
+    // ------------------------------------------------------------------
+    Rectangle {
+        id: confirmBox
+        anchors.fill: parent
+        visible: false
+        color: Qt.rgba(0, 0, 0, 0.55)
+        z: 60
+
+        Rectangle {
+            width: 380
+            height: 160
+            radius: Theme.radius + 4
+            anchors.centerIn: parent
+            color: Theme.background
+            border.width: 1
+            border.color: Theme.border
+
+            Column {
+                anchors.fill: parent
+                anchors.margins: 16
+                spacing: 12
+
+                Text {
+                    text: "Reset all settings?"
+                    color: Theme.foreground
+                    font.family: Theme.fontFamily
+                    font.pointSize: Theme.fontSize + 3
+                    font.bold: true
+                }
+                Text {
+                    width: parent.width
+                    text: "Every key of shell.json returns to its default. This cannot be undone."
+                    color: Theme.muted
+                    font.family: Theme.fontFamily
+                    font.pointSize: Theme.fontSize
+                    wrapMode: Text.Wrap
+                }
+                Row {
+                    spacing: 8
+                    TaskButton {
+                        iconName: "check"
+                        label: "Reset"
+                        onClicked: settingsWindow.resetAllSettings()
+                    }
+                    TaskButton {
+                        iconName: "x"
+                        label: "Cancel"
+                        onClicked: confirmBox.visible = false
+                    }
+                }
+            }
+        }
+    }
+}

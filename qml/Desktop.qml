@@ -204,6 +204,16 @@ Window {
                 label: "Settings"
                 onClicked: {
                     contextMenu.visible = false;
+                    Shell.openSettings();
+                }
+            }
+            TaskButton {
+                width: parent.width
+                fillWidth: true
+                iconName: "file-json"
+                label: "Config file"
+                onClicked: {
+                    contextMenu.visible = false;
                     Shell.openConfig();
                 }
             }

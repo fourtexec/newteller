@@ -20,16 +20,27 @@ real desktop:
 - Panel: Start button, pinned apps with a running badge, plugin slots, clock with
   optional date, on any edge (`panel.position`: bottom/top/left/right), optional
   auto-hide
+- **Dock: every started application appears in the panel.** Real top-level windows
+  are tracked on X11 (EWMH) and on Wayland compositors with wlr-foreign-toplevel
+  (KDE Plasma, sway, Hyprland, labwc, Wayfire, niri, ...); on other compositors the
+  dock falls back to the /proc based application list. Windows can be activated,
+  minimised and closed from the dock (click, middle click and a right-click menu),
+  and windows of one application can be grouped into a single button.
 - Start menu: highlighted fuzzy search, category chips, recently used row,
   Lock / Log out / Sleep / Restart / Shut down, Settings
+- **Settings application: a full settings GUI built into the shell.** Every key of
+  `shell.json`, a theme editor, plugin management, diagnostics and config export —
+  see [Settings application](#settings-application). The QML is compiled into the
+  `newteller` executable, so it cannot be deleted or damaged without replacing the
+  binary itself.
 - Run dialog (`Alt+F2`): run a shell command or search applications
 - Desktop: wallpaper, icons from `~/Desktop` (double-click to open), desktop
   plugins, right-click menu (change wallpaper, paste to a file, open a terminal,
   settings)
 - System monitor (`System` object, on a shared ticker) with bundled panel and
   desktop widgets
-- Themes (JSON, including `nord` and `highcontrast`) and a settings file with
-  live reload
+- Themes (JSON, including `nord`, `ocean` and `highcontrast`) and a settings file
+  with live reload
 - Plugin system (manifest + QML) with enable/disable and auto-rescan
 - Multi-monitor: one desktop and one panel per screen
 - Rust core (application search index, metrics sampler, config, watcher) with a
@@ -37,11 +48,10 @@ real desktop:
 
 Not implemented yet (planned, in this order):
 
-1. Running-window list / taskbar (wlr-foreign-toplevel on Wayland, EWMH on X11)
-2. System tray (StatusNotifierItem over D-Bus)
-3. Notifications (`org.freedesktop.Notifications`)
-4. Settings GUI (currently edit `shell.json` or use `newteller-ctl`)
-5. Drag-and-drop desktop icon layout
+1. System tray (StatusNotifierItem over D-Bus)
+2. Notifications (`org.freedesktop.Notifications`)
+3. Drag-and-drop desktop icon layout
+4. Per-window thumbnails and drag-to-reorder dock buttons
 
 ## Build (Debian 13 / Ubuntu 26.04 LTS)
 
@@ -195,6 +205,9 @@ All keys, with their defaults:
 | `panel.showDate` | `false` | show the date next to the clock |
 | `panel.showRunning` | `true` | dot badge for running applications |
 | `panel.pinned` | `[]` | desktop file IDs pinned to the panel |
+| `dock.showWindows` | `true` | show running applications/windows in the dock |
+| `dock.group` | `true` | merge all windows of one application into one dock button |
+| `dock.iconSize` | `28` | dock button icon size in pixels |
 | `startmenu.width` / `startmenu.height` | `440` / `580` | menu size |
 | `startmenu.limit` | `200` | maximum search hits |
 | `startmenu.fuzzy` | `true` | typo-tolerant search |
@@ -227,6 +240,43 @@ All keys, with their defaults:
 
 `newteller-ctl schema` prints the same table in machine-readable form.
 
+## Settings application
+
+The start menu, the desktop right-click menu and `newteller --settings` all open
+the same settings window:
+
+```sh
+newteller --settings
+```
+
+It manages the whole configuration of the shell:
+
+- **Appearance** — pick one of the themes (with a live preview) and edit it:
+  the six colours, panel opacity, corner radius, font size and family are saved
+  as a user theme file in `~/.config/newteller/themes/` and applied immediately.
+  A bullet marks themes with a custom copy; “Discard custom copy” removes it.
+- **Panel & dock** — position, thickness, edge gap, auto-hide with delay, running
+  badge, clock/date formats; dock behaviour (show running applications, group
+  windows of one application, icon size) and the pinned applications list.
+- **Desktop** — wallpaper browser over `~/Pictures` and `/usr/share/backgrounds`
+  (with a random pick), icon visibility and grid sizes, right-click menu toggle.
+- **Start menu** — size, typo-tolerant search, recent row and limits.
+- **Applications** — terminal command, catalogue cap, clear the usage history.
+- **System** — metrics sampling interval and the per-core/battery/thermal/disk
+  groups, config-file watching debounce.
+- **Plugins** — enable or disable every discovered plugin, rescan, auto-rescan.
+- **About** — version, machine, session, window-tracking backend, catalogue
+  size, memory/uptime; open/export the config JSON; the same validation report as
+  `newteller-ctl validate`; reset all settings (with confirmation).
+
+Every row has a small reset button that restores the key's default. Changes are
+written to `shell.json` (debounced, atomic) and apply live — no restart needed.
+
+Because the settings QML ships inside the executable through the Qt resource
+system, the settings are always available: they are not plugins, not scripts and
+not separate files a user could delete. Editing the raw JSON ("Open JSON" on the
+About page) still works the same as before.
+
 ## Command line: newteller-ctl
 
 The Rust build installs `newteller-ctl`, a standalone tool for inspecting and
@@ -246,12 +296,14 @@ Groups: `paths`, `schema`, `list`, `get`, `set`, `unset`, `validate`, `init`,
 `apps`, `search`, `categories`, `running`, `exec`, `bench`, `metrics`, `watch`,
 `doctor`. `--json` gives machine-readable output everywhere; `newteller-ctl
 --help` documents every flag. The `newteller` shell itself also accepts
-`--help`, `--version`, `--print-config`, `--diagnostics`, `--theme <name>` and
+`--help`, `--version`, `--print-config`, `--diagnostics`, `--theme <name>`,
+`--settings` (opens the built-in settings window on startup) and
 `--reset`.
 
 ## Themes
 
-Built-in themes: `default`, `light`, `nord`, `highcontrast`. A custom theme is
+Built-in themes: `default`, `light`, `nord`, `ocean`, `sunrise`, `highcontrast`.
+A custom theme is
 a JSON file in `~/.config/newteller/themes/<name>.json`. Missing keys inherit
 from `default`:
 
@@ -311,9 +363,11 @@ Plugins have access to the global objects:
 | `Theme` | colors (`background`, `foreground`, `accent`, `surface`, `border`, `muted`), `opacity`, `radius`, `fontSize`, `fontFamily` |
 | `Settings` | `values` (reactive map), `value(key)`, `setValue(key, v)` |
 | `Apps` | `search(text, n)`, `searchDetailed(text, n)` (with `highlight` markup), `byId(id)`, `categories`, `recent(n)`, `isRunning(id)`, `launch(id)` |
-| `Shell` | `now` (shared ticker), `iconUrl(name)`, `openUrl(url)`, `openPath(path)`, `runShell(cmd)`, `terminal(cmd)`, `clipboardText()`, `saveTextFile(path, text)`, `openConfig()`, `lock()`, `logout()`, `suspend()`, `reboot()`, `powerOff()`, `home`, `desktopUrl`, `hostname`, `distro`, `kernelVersion` |
+| `Shell` | `now` (shared ticker), `iconUrl(name)`, `openUrl(url)`, `openPath(path)`, `runShell(cmd)`, `terminal(cmd)`, `clipboardText()`, `saveTextFile(path, text)`, `openSettings()`, `openConfig()`, `lock()`, `logout()`, `suspend()`, `reboot()`, `powerOff()`, `version`, `home`, `desktopUrl`, `hostname`, `distro`, `kernelVersion` |
 | `System` | metrics on a shared ticker: `cpuPercent`, `cpuCount`, `load1/5/15`, `memoryPercent`, `memoryText`, `networkDownText`, `networkUpText`, `uptimeText`, `processes`, `battery*`, `temperatureText`, `disks`, `refresh()` |
-| `Plugins` | `plugins` (list of all discovered plugins) |
+| `Plugins` | `plugins` (list of all discovered plugins), `ofType(type)`, `at(id)`, `setEnabled(id, bool)`, `rescan()` |
+| `Windows` | running top-level windows on a shared model: `windows` (list of `{id, title, appId, active, minimized, maximized}`), `count`, `backend`, `activate(id)`, `closeWindow(id)`, `minimize(id)`, `toggleMaximized(id)`, `activeWindow()`, `windowsOfApp(appId)` |
+| `Apps` (dock helpers) | `matchWindowApp(appId, title)` maps a window to the catalogue |
 
 The bundled `plugins/desktop-clock` is a complete example.
 
@@ -330,7 +384,10 @@ python3 tests/qml_smoke.py        # loads the QML offscreen, no compositor neede
 simulated screens, with stand-ins for the C++ objects and the layer-shell and
 ShellWindow attached types, and fails on any QML warning. It checks the window
 geometry and layer-shell settings of every window, the start menu search
-(highlighting, filtering, launching), the running badge, the run dialog and the
+(highlighting, filtering, launching), the dock (windows grouped into dock
+entries, activation through the window list, one dock menu per panel), the
+embedded settings window (opening through `Shell.settingsRequested`, page
+switching), the run dialog and the
 desktop right-click menu, and loads the bundled plugins. It does not build or
 test the C++ code; the C++ and QML together are built by CI on every push.
 
@@ -338,8 +395,9 @@ test the C++ code; the C++ and QML together are built by CI on every push.
 
 ```
 src/            C++ core (settings, theme, appmodel, shellcontroller, plugins, systemmonitor,
-                rustbridge, windowsystem, shellwindow, main)
-qml/            Main.qml, Panel.qml, StartMenu.qml, Desktop.qml, TaskButton.qml, RunDialog.qml
+                windowlist, rustbridge, windowsystem, shellwindow, main)
+qml/            Main.qml, Panel.qml, DockMenu.qml, StartMenu.qml, Desktop.qml, TaskButton.qml,
+                RunDialog.qml, SettingsApp.qml and the Settings* row controls
 rust/           Rust workspace: newteller-core (static lib + C ABI) and newteller-ctl
 tests/          shell and QML smoke tests
 themes/         built-in theme JSON files (compiled into the binary)

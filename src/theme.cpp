@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QJsonValue>
 #include <QtMath>
 
 namespace {
@@ -106,4 +107,69 @@ QColor ThemeManager::mix(const QColor &a, const QColor &b, qreal t) const
                             a.greenF() + (b.greenF() - a.greenF()) * t,
                             a.blueF() + (b.blueF() - a.blueF()) * t,
                             a.alphaF() + (b.alphaF() - a.alphaF()) * t);
+}
+
+QVariantMap ThemeManager::themeValues(const QString &name) const
+{
+    const QString wanted = name.isEmpty() ? m_name : name;
+    // Built-in default first, so partial themes report complete values.
+    QVariantMap out = loadJson(QStringLiteral(":/themes/default.json"));
+    if (wanted != QLatin1String("default")) {
+        const QString userFile = Settings::configDir() + QStringLiteral("/themes/")
+                                 + wanted + QStringLiteral(".json");
+        const QString file = QFile::exists(userFile) ? userFile
+                                                     : QStringLiteral(":/themes/") + wanted
+                                                           + QStringLiteral(".json");
+        const QVariantMap overrides = loadJson(file);
+        for (auto it = overrides.cbegin(); it != overrides.cend(); ++it)
+            out.insert(it.key(), it.value());
+    }
+    return out;
+}
+
+bool ThemeManager::hasUserTheme(const QString &name) const
+{
+    const QString wanted = name.isEmpty() ? m_name : name;
+    return QFile::exists(Settings::configDir() + QStringLiteral("/themes/")
+                         + wanted + QStringLiteral(".json"));
+}
+
+bool ThemeManager::saveUserTheme(const QString &name, const QVariantMap &values)
+{
+    const QString safe = name.trimmed();
+    if (safe.isEmpty() || safe.contains(QLatin1Char('/')) || safe.contains(QLatin1Char('\\')))
+        return false;
+    const QString dir = Settings::configDir() + QStringLiteral("/themes");
+    if (!QDir().mkpath(dir))
+        return false;
+
+    QJsonObject object;
+    for (auto it = values.constBegin(); it != values.constEnd(); ++it)
+        object.insert(it.key(), QJsonValue::fromVariant(it.value()));
+    QFile file(dir + QLatin1Char('/') + safe + QStringLiteral(".json"));
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        return false;
+    file.write(QJsonDocument(object).toJson(QJsonDocument::Indented));
+    file.close();
+
+    if (m_name == safe)
+        reload();
+    return true;
+}
+
+bool ThemeManager::deleteUserTheme(const QString &name)
+{
+    const QString file = Settings::configDir() + QStringLiteral("/themes/")
+                         + name + QStringLiteral(".json");
+    if (!QFile::exists(file))
+        return false;
+    const bool removed = QFile::remove(file);
+    if (removed && m_name == name)
+        reload();
+    return removed;
+}
+
+QString ThemeManager::userThemesPath() const
+{
+    return Settings::configDir() + QStringLiteral("/themes");
 }

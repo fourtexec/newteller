@@ -351,6 +351,9 @@ pub const SCHEMA: &[KeySchema] = &[
     KeySchema { key: "panel.showDate", kind: "bool", default_json: "false", doc: "Show the date next to the clock." },
     KeySchema { key: "panel.showRunning", kind: "bool", default_json: "true", doc: "Mark running applications on their panel buttons." },
     KeySchema { key: "panel.pinned", kind: "stringlist", default_json: "[\"org.gnome.Terminal.desktop\",\"firefox-esr.desktop\",\"org.gnome.Nautilus.desktop\"]", doc: "Desktop file ids pinned to the panel, in order." },
+    KeySchema { key: "dock.showWindows", kind: "bool", default_json: "true", doc: "Show the running windows and applications in the dock." },
+    KeySchema { key: "dock.group", kind: "bool", default_json: "true", doc: "Merge every window of one application into a single dock button." },
+    KeySchema { key: "dock.iconSize", kind: "int", default_json: "28", doc: "Dock button icon size in pixels." },
     KeySchema { key: "startmenu.width", kind: "int", default_json: "440", doc: "Start menu width." },
     KeySchema { key: "startmenu.height", kind: "int", default_json: "580", doc: "Start menu height." },
     KeySchema { key: "startmenu.limit", kind: "int", default_json: "200", doc: "Maximum number of search results." },
@@ -601,6 +604,7 @@ fn range_problem(key: &str, value: &Value) -> Option<String> {
     let number = value.as_i64()?;
     let range: (i64, i64) = match key {
         "panel.height" => (20, 200),
+        "dock.iconSize" => (12, 64),
         "panel.margin" => (0, 64),
         "panel.width" => (0, 8192),
         "panel.autoHideDelay" => (0, 10_000),

@@ -118,6 +118,11 @@ void ShellController::openUrl(const QString &url) const
     QDesktopServices::openUrl(QUrl(url));
 }
 
+void ShellController::openSettings()
+{
+    emit settingsRequested();
+}
+
 void ShellController::openConfig() const
 {
     QDesktopServices::openUrl(QUrl::fromLocalFile(Settings::configFile()));

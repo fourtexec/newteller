@@ -12,6 +12,7 @@
 #include "shellwindow.h"
 #include "systemmonitor.h"
 #include "theme.h"
+#include "windowlist.h"
 #include "windowsystem.h"
 
 #include <QDesktopServices>
@@ -60,6 +61,7 @@ struct CliOptions {
     bool printConfig = false;
     bool diagnostics = false;
     bool reset = false;
+    bool settings = false;
     bool ok = true;
     QString theme;
     QStringList files;
@@ -77,6 +79,7 @@ void printUsage()
         "  --diagnostics        Print diagnostics as JSON and exit\n"
         "  --theme <name>       Select the theme (for example: default, light, nord)\n"
         "  --reset              Reset the configuration to defaults before starting\n"
+        "  --settings           Open the built-in settings window after starting\n"
         "\n"
         "Files and URLs are opened with their default applications.\n");
 }
@@ -98,6 +101,8 @@ CliOptions scanArguments(int argc, char **argv)
             options.diagnostics = true;
         } else if (arg == "--reset") {
             options.reset = true;
+        } else if (arg == "--settings") {
+            options.settings = true;
         } else if (arg == "--theme") {
             if (i + 1 < argc)
                 options.theme = QString::fromLocal8Bit(argv[++i]);
@@ -177,6 +182,7 @@ int main(int argc, char *argv[])
     ShellController shell(&settings);
     PluginManager plugins(&settings);
     SystemMonitor system(&settings);
+    WindowList windows;
 
     if (cli.printConfig) {
         std::printf("%s", qUtf8Printable(printJson(settings.values())));
@@ -204,10 +210,16 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("Shell"), &shell);
     engine.rootContext()->setContextProperty(QStringLiteral("Plugins"), &plugins);
     engine.rootContext()->setContextProperty(QStringLiteral("System"), &system);
+    engine.rootContext()->setContextProperty(QStringLiteral("Windows"), &windows);
 
     engine.load(QUrl(QStringLiteral("qrc:/qml/Main.qml")));
     if (engine.rootObjects().isEmpty())
         return 1;
+
+    // `newteller --settings` opens the embedded settings window on top of the
+    // just-started shell (the same one the start menu and the desktop menu open).
+    if (cli.settings)
+        QMetaObject::invokeMethod(&shell, "openSettings", Qt::QueuedConnection);
 
     // `newteller file.txt` opens the files with their default applications,
     // the same as double-clicking them on the desktop.

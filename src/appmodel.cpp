@@ -399,6 +399,43 @@ QVariantMap AppModel::byId(const QString &id) const
     return toMap(m_apps.at(row));
 }
 
+QVariantMap AppModel::matchWindowApp(const QString &appId, const QString &title) const
+{
+    Q_UNUSED(title); // reserved: future window-title based matching
+
+    // Candidates in order of trust: the wayland app_id, the X11 WM_CLASS,
+    // each with and without a .desktop suffix.
+    QStringList candidates;
+    if (!appId.isEmpty()) {
+        candidates << appId;
+        if (appId.endsWith(QLatin1String(".desktop")))
+            candidates << appId.chopped(8);
+    }
+
+    // 1. Exact catalogue ids.
+    for (const QString &candidate : candidates) {
+        const int row = m_indexById.value(candidate, -1);
+        if (row >= 0)
+            return toMap(m_apps.at(row));
+    }
+
+    // 2. startupWMClass and program name, compared case-insensitively.
+    for (const QString &candidate : candidates) {
+        const QString needle = candidate.toLower();
+        for (const AppEntry &app : m_apps) {
+            if (app.startupWmClass.compare(needle, Qt::CaseInsensitive) == 0)
+                return toMap(app);
+            if (app.program().compare(needle, Qt::CaseInsensitive) == 0)
+                return toMap(app);
+            const QString program = app.program();
+            const int slash = program.lastIndexOf(QLatin1Char('/'));
+            if (slash >= 0 && program.mid(slash + 1).compare(needle, Qt::CaseInsensitive) == 0)
+                return toMap(app);
+        }
+    }
+    return {};
+}
+
 int AppModel::indexOf(const QString &id) const
 {
     return m_indexById.value(id, -1);

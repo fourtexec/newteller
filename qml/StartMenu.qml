@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Window
+import QtQuick.Layouts
 import org.kde.layershell 1.0 as LayerShell
 
 // Start menu: searchable application list plus category chips, recently used
@@ -36,6 +37,11 @@ Window {
         refresh();
         updateRecent();
         search.forceActiveFocus();
+        // Subtle open animation: the card grows out of the panel.
+        menuCard.scale = 0.98;
+        menuCard.opacity = 0.6;
+        menuCard.scale = 1.0;
+        menuCard.opacity = 1.0;
     }
 
     function hide() {
@@ -86,6 +92,7 @@ Window {
     }
 
     Rectangle {
+        id: menuCard
         anchors.fill: parent
         anchors.margins: 4
         radius: Theme.radius + 4
@@ -93,42 +100,68 @@ Window {
         border.width: 1
         border.color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.6)
 
-        Column {
+        Behavior on scale {
+            NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+        }
+        Behavior on opacity {
+            NumberAnimation { duration: 140 }
+        }
+
+        ColumnLayout {
             anchors.fill: parent
             anchors.margins: 12
             spacing: 10
 
             Rectangle {
                 id: searchBox
-                width: parent.width
-                height: 38
+                Layout.fillWidth: true
+                Layout.preferredHeight: 38
                 radius: Theme.radius
                 color: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.95)
+                border.width: search.activeFocus ? 1 : 0
+                border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.7)
 
-                TextInput {
-                    id: search
-                    objectName: "startSearch"
+                Row {
                     anchors.fill: parent
-                    anchors.margins: 10
-                    focus: true
-                    color: Theme.foreground
-                    font.family: Theme.fontFamily
-                    font.pointSize: Theme.fontSize + 1
-                    verticalAlignment: TextInput.AlignVCenter
-                    onTextChanged: menu.refresh()
-                    Keys.onEscapePressed: menu.hide()
-                    Keys.onReturnPressed: {
-                        if (menu.results.length > 0)
-                            menu.launch(menu.results[0]);
+                    anchors.margins: 8
+                    spacing: 8
+
+                    Image {
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 18
+                        height: 18
+                        sourceSize.width: 18
+                        sourceSize.height: 18
+                        fillMode: Image.PreserveAspectFit
+                        source: Shell.iconUrl("search")
+                        visible: Shell.iconUrl("search").toString().length > 0
                     }
 
-                    Text {
-                        anchors.fill: parent
-                        verticalAlignment: Text.AlignVCenter
-                        visible: search.text.length === 0
-                        text: "Type to search apps..."
-                        color: Theme.muted
-                        font: search.font
+                    TextInput {
+                        id: search
+                        objectName: "startSearch"
+                        width: parent.width - 26
+                        anchors.verticalCenter: parent.verticalCenter
+                        focus: true
+                        color: Theme.foreground
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSize + 1
+                        verticalAlignment: TextInput.AlignVCenter
+                        onTextChanged: menu.refresh()
+                        Keys.onEscapePressed: menu.hide()
+                        Keys.onReturnPressed: {
+                            if (menu.results.length > 0)
+                                menu.launch(menu.results[0]);
+                        }
+
+                        Text {
+                            anchors.fill: parent
+                            verticalAlignment: Text.AlignVCenter
+                            visible: search.text.length === 0
+                            text: "Type to search apps..."
+                            color: Theme.muted
+                            font: search.font
+                        }
                     }
                 }
             }
@@ -136,7 +169,7 @@ Window {
             // Category chips, filtered by the full application list.
             Flow {
                 id: chips
-                width: parent.width
+                Layout.fillWidth: true
                 spacing: 6
                 visible: Apps.categories.length > 0
 
@@ -158,8 +191,8 @@ Window {
 
             ListView {
                 id: list
-                width: parent.width
-                height: parent.height - searchBox.height - footer.height - chips.height - 30
+                Layout.fillWidth: true
+                Layout.fillHeight: true
                 clip: true
                 spacing: 2
                 model: menu.results
@@ -170,6 +203,7 @@ Window {
                     required property var modelData
                     width: ListView.view.width
                     fillWidth: true
+                    iconSize: 24
                     iconName: modelData.icon || ""
                     richLabel: true
                     label: {
@@ -193,67 +227,81 @@ Window {
             }
 
             // Recently launched applications, only with an empty search.
-            Flow {
-                id: recentRow
-                width: parent.width
+            Column {
+                id: recentSection
+                Layout.fillWidth: true
                 spacing: 6
                 visible: Settings.values["startmenu.showRecent"] !== false
                          && search.text.length === 0 && recentModel.length > 0
 
                 property var recentModel: []
 
-                Repeater {
-                    model: recentRow.recentModel
+                Text {
+                    text: "Recently used"
+                    color: Theme.muted
+                    font.family: Theme.fontFamily
+                    font.pointSize: Theme.fontSize - 1
+                }
 
-                    delegate: TaskButton {
-                        required property var modelData
-                        iconName: modelData.icon || ""
-                        onClicked: menu.launch(modelData)
+                Flow {
+                    width: recentSection.width
+                    spacing: 6
+
+                    Repeater {
+                        model: recentSection.recentModel
+
+                        delegate: TaskButton {
+                            required property var modelData
+                            iconName: modelData.icon || ""
+                            onClicked: menu.launch(modelData)
+                        }
                     }
                 }
             }
 
-            Flow {
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.6)
+            }
+
+            RowLayout {
                 id: footer
-                width: parent.width
-                spacing: 6
+                Layout.fillWidth: true
+                spacing: 4
 
                 TaskButton {
                     iconName: "lock"
-                    label: "Lock"
                     onClicked: { Shell.lock(); menu.hide(); }
                 }
                 TaskButton {
                     iconName: "log-out"
-                    label: "Log out"
                     onClicked: { Shell.logout(); menu.hide(); }
                 }
                 TaskButton {
                     iconName: "moon"
-                    label: "Sleep"
                     onClicked: { Shell.suspend(); menu.hide(); }
                 }
                 TaskButton {
                     iconName: "rotate-cw"
-                    label: "Restart"
                     onClicked: { Shell.reboot(); menu.hide(); }
                 }
                 TaskButton {
                     iconName: "power"
-                    label: "Shut down"
                     onClicked: { Shell.powerOff(); menu.hide(); }
                 }
+                Item { Layout.fillWidth: true }
                 TaskButton {
                     iconName: "settings"
                     label: "Settings"
-                    onClicked: { Shell.openConfig(); menu.hide(); }
+                    onClicked: { Shell.openSettings(); menu.hide(); }
                 }
             }
         }
     }
 
     function updateRecent() {
-        recentRow.recentModel = Apps.recent(Settings.values["apps.recentLimit"] || 8);
+        recentSection.recentModel = Apps.recent(Settings.values["apps.recentLimit"] || 8);
     }
 
     Component.onCompleted: updateRecent()

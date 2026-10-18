@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Window
+import QtQuick.Layouts
 
 // Alt+F2 style launcher: type a command or search the applications.
 Window {
@@ -70,16 +71,19 @@ Window {
         border.width: 1
         border.color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.6)
 
-        Column {
+        ColumnLayout {
             anchors.fill: parent
             anchors.margins: 12
             spacing: 10
 
             Rectangle {
-                width: parent.width
-                height: 38
+                id: inputBox
+                Layout.fillWidth: true
+                Layout.preferredHeight: 38
                 radius: Theme.radius
                 color: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.95)
+                border.width: input.activeFocus ? 1 : 0
+                border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.7)
 
                 TextInput {
                     id: input
@@ -107,8 +111,8 @@ Window {
             }
 
             ListView {
-                width: parent.width
-                height: parent.height - 48
+                Layout.fillWidth: true
+                Layout.fillHeight: true
                 clip: true
                 spacing: 2
                 model: dialog.results
@@ -117,6 +121,7 @@ Window {
                     required property var modelData
                     width: ListView.view.width
                     fillWidth: true
+                    iconSize: 24
                     iconName: modelData.icon || ""
                     label: modelData.highlight && modelData.highlight.length > 0
                            ? modelData.highlight : (modelData.name || modelData.id)

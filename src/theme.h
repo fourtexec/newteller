@@ -50,6 +50,18 @@ public:
     // Linear blend of two colours, t in 0..1 (0 = a, 1 = b).
     Q_INVOKABLE QColor mix(const QColor &a, const QColor &b, qreal t) const;
 
+    // --- theme file management (used by the built-in settings application) ---
+    // The full key/value map of one theme, defaults filled in.
+    Q_INVOKABLE QVariantMap themeValues(const QString &name) const;
+    // True when the user has an override file for the theme in the config dir.
+    Q_INVOKABLE bool hasUserTheme(const QString &name) const;
+    // Writes ~/.config/newteller/themes/<name>.json and applies it.
+    Q_INVOKABLE bool saveUserTheme(const QString &name, const QVariantMap &values);
+    // Removes the user override; the theme falls back to the built-in file.
+    Q_INVOKABLE bool deleteUserTheme(const QString &name);
+    // The directory user themes live in (shown in the settings).
+    Q_INVOKABLE QString userThemesPath() const;
+
 public slots:
     void reload();
 

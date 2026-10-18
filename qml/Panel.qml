@@ -4,9 +4,10 @@ import QtQuick.Layouts
 import org.kde.layershell 1.0 as LayerShell
 import NewTeller 1.0
 
-// Panel: start button, pinned apps, plugin slots, clock. The position is
-// configurable (bottom by default, also top/left/right), the bar can be
-// narrow and centred, and auto-hide slides it away after a short delay.
+// Panel: start button, the dock (pinned applications + every running window),
+// plugin slots and the clock. The position is configurable (bottom by default,
+// also top/left/right), the bar can be narrow and centred, and auto-hide
+// slides it away after a short delay.
 Window {
     id: panel
 
@@ -21,6 +22,17 @@ Window {
     // Set while the start menu is open, so the panel stays up next to it.
     property bool menuWanted: false
     readonly property var panelPlugins: Plugins.plugins.filter(p => p.type === "panel" && p.enabled)
+
+    // --- dock configuration ---------------------------------------------
+    // Every started application is shown: windows come from the `Windows`
+    // object (EWMH on X11, wlr-foreign-toplevel on Wayland), with the /proc
+    // based application list of `Apps` as the fallback on other compositors.
+    readonly property bool dockShowWindows: Settings.values["dock.showWindows"] !== false
+    readonly property bool dockGroup: Settings.values["dock.group"] !== false
+    readonly property int dockIconSize: Settings.values["dock.iconSize"] || 28
+    // One entry per dock button:
+    //   { appId, app, windows: [], running, active, badge, title }
+    property var dockEntries: []
 
     visible: true
     color: "transparent"
@@ -78,6 +90,138 @@ Window {
         }
     }
 
+    // --- dock model -------------------------------------------------------
+
+    function rebuildDock() {
+        var result = [];
+        var seen = {};
+
+        // Pinned applications first, in the pinned order.
+        const pinned = Settings.values["panel.pinned"] || [];
+        for (const id of pinned) {
+            const app = Apps.byId(id);
+            if (app.id === undefined)
+                continue;
+            seen[id] = true;
+            result.push({ appId: id, app: app, windows: [], running: false, active: false, badge: 0 });
+        }
+
+        // Running top-level windows, grouped into one button per application.
+        if (dockShowWindows) {
+            var loose = [];
+            var groups = {};
+            var order = [];
+            for (const w of Windows.windows) {
+                const app = Apps.matchWindowApp(w.appId || "", w.title || "");
+                const appId = app.id || "";
+                if (appId.length > 0) {
+                    if (!groups[appId]) {
+                        groups[appId] = [];
+                        order.push(appId);
+                    }
+                    groups[appId].push(w);
+                } else if (dockGroup) {
+                    loose.push({ appId: "", app: {}, windows: [w], running: true, active: !!w.active,
+                                 badge: 1, title: w.title || "" });
+                } else {
+                    loose.push({ appId: "", app: {}, windows: [w], running: true, active: !!w.active,
+                                 badge: 1, title: w.title || "" });
+                }
+            }
+            for (const appId of order) {
+                const wins = groups[appId];
+                var target = null;
+                for (const e of result) {
+                    if (e.appId === appId) {
+                        target = e;
+                        break;
+                    }
+                }
+                if (target) {
+                    target.windows = wins;
+                } else {
+                    seen[appId] = true;
+                    result.push({ appId: appId, app: Apps.byId(appId), windows: wins,
+                                  running: true, active: false, badge: wins.length });
+                }
+            }
+            for (const entry of loose)
+                result.push(entry);
+        }
+
+        // Compositors without a window list: the /proc based running ids.
+        for (const id of Apps.runningIds) {
+            if (seen[id])
+                continue;
+            seen[id] = true;
+            result.push({ appId: id, app: Apps.byId(id), windows: [], running: true,
+                          active: false, badge: 0 });
+        }
+
+        for (const e of result) {
+            for (const w of e.windows) {
+                if (w.active) {
+                    e.active = true;
+                    e.running = true;
+                }
+            }
+            if (e.windows.length > 0) {
+                e.running = true;
+                e.badge = e.windows.length;
+            }
+            if (e.appId.length > 0 && Apps.isRunning(e.appId))
+                e.running = true;
+        }
+        dockEntries = result;
+    }
+
+    function activateEntry(entry) {
+        if (entry.windows.length > 0) {
+            var target = null;
+            for (const w of entry.windows) {
+                if (w.active) {
+                    target = w;
+                    break;
+                }
+            }
+            Windows.activate((target || entry.windows[0]).id);
+        } else if (entry.appId.length > 0) {
+            Apps.launch(entry.appId);
+        }
+    }
+
+    function closeEntry(entry) {
+        for (const w of entry.windows)
+            Windows.closeWindow(w.id);
+    }
+
+    function openDockMenu(entry, button) {
+        dockMenu.openFor(entry, button.x + button.width / 2, button.y + button.height / 2);
+    }
+
+    Component.onCompleted: rebuildDock()
+    Connections {
+        target: Windows
+        function onWindowsChanged() { panel.rebuildDock(); dockMenu.refreshEntry(); }
+    }
+    Connections {
+        target: Apps
+        function onRunningChanged() { panel.rebuildDock(); }
+        function onCountChanged() { panel.rebuildDock(); }
+    }
+    Connections {
+        target: Settings
+        function onValuesChanged() { panel.rebuildDock(); }
+    }
+
+    DockMenu {
+        id: dockMenu
+        screen: panel.screen
+        entriesProvider: panel
+        panelThickness: panel.barThickness
+        position: panel.panelPosition
+    }
+
     // Shared pieces of the bar, used by both layouts below.
     component StartButton: TaskButton {
         objectName: "startButton"
@@ -90,18 +234,29 @@ Window {
         }
     }
 
-    component PinnedApps: Repeater {
-        model: Settings.values["panel.pinned"] || []
+    component DockApps: Repeater {
+        model: panel.dockEntries
 
         delegate: TaskButton {
+            id: dockButton
             required property var modelData
-            readonly property var app: Apps.byId(modelData)
+            readonly property var entry: modelData
+            readonly property string appName: entry.app && entry.app.name ? entry.app.name : (entry.title || "Application")
 
             Layout.alignment: Qt.AlignVCenter | Qt.AlignHCenter
-            visible: app.id !== undefined
-            iconName: app.icon || ""
-            running: Settings.values["panel.showRunning"] !== false && Apps.isRunning(modelData)
-            onClicked: Apps.launch(modelData)
+            iconName: entry.app && entry.app.icon ? entry.app.icon
+                    : (entry.appId.length > 0 ? "square" : "app-window")
+            label: !panel.dockGroup && entry.title && entry.title.length > 0 ? entry.title : ""
+            iconSize: panel.dockIconSize
+            running: entry.running
+            active: entry.active
+            badge: entry.badge
+            onClicked: panel.activateEntry(entry)
+            onMiddleClicked: panel.closeEntry(entry)
+            TapHandler {
+                acceptedButtons: Qt.RightButton
+                onTapped: panel.openDockMenu(dockButton.entry, dockButton)
+            }
         }
     }
 
@@ -129,6 +284,13 @@ Window {
     component Spacer: Item {
         Layout.fillWidth: !panel.vertical
         Layout.fillHeight: panel.vertical
+    }
+
+    component Separator: Rectangle {
+        Layout.preferredWidth: panel.vertical ? 24 : 1
+        Layout.preferredHeight: panel.vertical ? 1 : 24
+        Layout.alignment: Qt.AlignVCenter
+        color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.8)
     }
 
     Loader {
@@ -160,7 +322,8 @@ Window {
                 spacing: 4
 
                 StartButton {}
-                PinnedApps {}
+                Separator {}
+                DockApps {}
                 Spacer {}
                 PluginSlot {}
 
@@ -188,7 +351,8 @@ Window {
                 spacing: 4
 
                 StartButton {}
-                PinnedApps {}
+                Separator {}
+                DockApps {}
                 Spacer {}
                 PluginSlot {}
 

@@ -1,0 +1,13 @@
+{
+  "name": "Ocean",
+  "background": "#101d1c",
+  "foreground": "#e7f2ef",
+  "accent": "#2fbf9b",
+  "surface": "#16302c",
+  "border": "#28504a",
+  "muted": "#7fa79f",
+  "opacity": 0.93,
+  "radius": 12,
+  "fontSize": 10,
+  "fontFamily": "Cantarell"
+}

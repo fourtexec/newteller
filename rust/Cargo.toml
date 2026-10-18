@@ -9,7 +9,7 @@ resolver = "2"
 members = ["crates/newteller-core", "crates/newteller-ctl"]
 
 [workspace.package]
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 rust-version = "1.75"
 license = "MIT"
@@ -21,7 +21,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 libc = "0.2"
 rayon = "1"
-newteller-core = { path = "crates/newteller-core", version = "0.2.0" }
+newteller-core = { path = "crates/newteller-core", version = "0.3.0" }
 
 # The shell links this archive statically, so favour a small, fast, position
 # independent build. Panics must keep unwinding: every `extern "C"` entry point

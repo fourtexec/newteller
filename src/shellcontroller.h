@@ -14,6 +14,7 @@ class Settings;
 // the context property `Shell`.
 class ShellController : public QObject {
     Q_OBJECT
+    Q_PROPERTY(QString version READ version CONSTANT)
     Q_PROPERTY(QString home READ home CONSTANT)
     Q_PROPERTY(QString desktopUrl READ desktopUrl CONSTANT)
     Q_PROPERTY(QString userName READ userName CONSTANT)
@@ -28,6 +29,7 @@ class ShellController : public QObject {
 public:
     explicit ShellController(Settings *settings, QObject *parent = nullptr);
 
+    QString version() const { return QStringLiteral(NEWTELLER_VERSION); }
     QString home() const;
     QString desktopUrl() const;
     QString userName() const;
@@ -42,6 +44,9 @@ public:
     Q_INVOKABLE QUrl iconUrl(const QString &name) const;
 
     Q_INVOKABLE void openUrl(const QString &url) const;
+    // Opens the built-in settings application. The QML lives in the executable's
+    // resources, so it is always available and cannot be deleted like a plugin.
+    Q_INVOKABLE void openSettings();
     Q_INVOKABLE void openConfig() const;
     // Opens the path in the file manager (or its handler for directories).
     Q_INVOKABLE void openPath(const QString &path) const;
@@ -66,6 +71,8 @@ public:
 
 signals:
     void nowChanged();
+    // Emitted by openSettings(); Main.qml shows the embedded settings window.
+    void settingsRequested();
 
 private:
     QString expandHome(const QString &path) const;

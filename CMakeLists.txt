@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(newteller VERSION 0.2.0 LANGUAGES CXX)
+project(newteller VERSION 0.3.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -80,6 +80,7 @@ qt_add_executable(newteller
     src/plugins.cpp
     src/rustbridge.cpp
     src/systemmonitor.cpp
+    src/windowlist.cpp
     src/shellwindow.cpp
     src/windowsystem.cpp
 )

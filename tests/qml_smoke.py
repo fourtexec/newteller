@@ -179,6 +179,7 @@ APPS = [
 
 class Settings(QObject):
     valuesChanged = Signal()
+    dirtyChanged = Signal()
 
     def __init__(self):
         super().__init__()
@@ -196,6 +197,8 @@ class Settings(QObject):
     def values(self):
         return self._values
 
+    dirty = Property(bool, lambda self: False, notify=dirtyChanged)
+
     @Slot(str, "QVariant", result="QVariant")
     def value(self, key, fallback=None):
         return self._values.get(key, fallback)
@@ -205,9 +208,42 @@ class Settings(QObject):
         self._values[key] = value
         self.valuesChanged.emit()
 
+    @Slot(str)
+    def reset(self, key):
+        self._values.pop(key, None)
+        self.valuesChanged.emit()
+
+    @Slot(result="QVariantMap")
+    def defaults(self):
+        return dict(self._values)
+
+    @Slot(result="QVariantList")
+    def keys(self):
+        return list(self._values)
+
+    @Slot(result="QVariantList")
+    def validate(self):
+        return []
+
+    @Slot(result=str)
+    def configPath(self):
+        return "/tmp/newteller-test/shell.json"
+
+    @Slot()
+    def flush(self):
+        pass
+
+    @Slot()
+    def reload(self):
+        pass
+
 
 class Theme(QObject):
     themeChanged = Signal()
+
+    VALUES = {"background": "#1e2127", "foreground": "#e6e6e6", "accent": "#4c8bf5",
+              "surface": "#2a2e36", "border": "#3a3f4b", "muted": "#8a8f98",
+              "opacity": 0.92, "radius": 8, "fontSize": 10, "fontFamily": "Sans"}
 
     def _const(value, kind, notify=themeChanged):
         return Property(kind, lambda self: value, notify=notify)
@@ -224,6 +260,30 @@ class Theme(QObject):
     fontSize = _const(10, int)
     fontFamily = _const("Sans", str)
 
+    @Slot(result="QVariantList")
+    def availableThemes(self):
+        return ["default", "light", "nord"]
+
+    @Slot(str, result="QVariantMap")
+    def themeValues(self, name):
+        return dict(self.VALUES)
+
+    @Slot(str, result=bool)
+    def hasUserTheme(self, name):
+        return False
+
+    @Slot(str, "QVariantMap", result=bool)
+    def saveUserTheme(self, name, values):
+        return True
+
+    @Slot(str, result=bool)
+    def deleteUserTheme(self, name):
+        return True
+
+    @Slot(result=str)
+    def userThemesPath(self):
+        return "/tmp/newteller-test/themes"
+
 
 class Apps(QObject):
     runningChanged = Signal()
@@ -232,6 +292,11 @@ class Apps(QObject):
         super().__init__()
         self.launched = []
         self.running = set()
+
+    count = Property(int, lambda self: len(APPS), notify=runningChanged)
+
+    runningIds = Property("QVariantList", lambda self: sorted(self.running),
+                          notify=runningChanged)
 
     def _categories(self):
         counts = {}
@@ -244,6 +309,10 @@ class Apps(QObject):
 
     @Slot(str, result="QVariantMap")
     def byId(self, app_id):
+        return next((a for a in APPS if a["id"] == app_id), {})
+
+    @Slot(str, str, result="QVariantMap")
+    def matchWindowApp(self, app_id, title=""):
         return next((a for a in APPS if a["id"] == app_id), {})
 
     @Slot(str, int, result="QVariantList")
@@ -288,9 +357,14 @@ class Apps(QObject):
         self.runningChanged.emit()
         return True
 
+    @Slot()
+    def forgetRecent(self):
+        pass
+
 
 class Shell(QObject):
     nowChanged = Signal()
+    settingsRequested = Signal()
 
     def __init__(self, desktop_dir, home_dir):
         super().__init__()
@@ -307,6 +381,7 @@ class Shell(QObject):
         self.nowChanged.emit()
 
     now = Property(QDateTime, lambda self: self._now, notify=nowChanged)
+    version = Property(str, lambda self: "0.3.0-test", constant=True)
     home = Property(str, lambda self: self._home, constant=True)
     desktopUrl = Property(str, lambda self: self._desktop, constant=True)
     userName = Property(str, lambda self: "tester", constant=True)
@@ -349,6 +424,11 @@ class Shell(QObject):
         self.calls.append(("openConfig",))
 
     @Slot()
+    def openSettings(self):
+        self.calls.append(("openSettings",))
+        self.settingsRequested.emit()
+
+    @Slot()
     def lock(self):
         self.calls.append(("lock",))
 
@@ -367,6 +447,16 @@ class Shell(QObject):
     @Slot()
     def powerOff(self):
         self.calls.append(("powerOff",))
+
+    @Slot(result="QVariantMap")
+    def diagnostics(self):
+        return {"platform": "offscreen", "sessionType": "offscreen", "hostname": "testhost",
+                "distro": "TestOS 1.0", "kernel": "6.1.0-test", "user": "tester",
+                "configPath": "/tmp/newteller-test/shell.json"}
+
+    @Slot(str, str)
+    def notify(self, title, body):
+        self.calls.append(("notify", title))
 
 
 class System(QObject):
@@ -401,6 +491,64 @@ class Plugins(QObject):
     @Property("QVariantList", notify=pluginsChanged)
     def plugins(self):
         return self._plugins
+
+    @Slot(str, bool)
+    def setEnabled(self, plugin_id, enabled):
+        for p in self._plugins:
+            if p["id"] == plugin_id:
+                p["enabled"] = enabled
+        self.pluginsChanged.emit()
+
+    @Slot()
+    def rescan(self):
+        self.pluginsChanged.emit()
+
+
+class Windows(QObject):
+    """Stand-in for the WindowList context property (src/windowlist.h)."""
+
+    windowsChanged = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self._windows = [
+            {"id": "w1", "title": "Firefox — Startpage", "appId": "firefox",
+             "active": True, "minimized": False, "maximized": False},
+            {"id": "w2", "title": "Terminal", "appId": "org.gnome.Terminal",
+             "active": False, "minimized": False, "maximized": True},
+        ]
+        self.calls = []
+
+    @Property("QVariantList", notify=windowsChanged)
+    def windows(self):
+        return self._windows
+
+    count = Property(int, lambda self: len(self._windows), notify=windowsChanged)
+    backend = Property(str, lambda self: "x11", constant=True)
+
+    @Slot(str)
+    def activate(self, window_id):
+        self.calls.append(("activate", window_id))
+
+    @Slot(str)
+    def closeWindow(self, window_id):
+        self.calls.append(("close", window_id))
+
+    @Slot(str)
+    def minimize(self, window_id):
+        self.calls.append(("minimize", window_id))
+
+    @Slot(str)
+    def toggleMaximized(self, window_id):
+        self.calls.append(("toggleMaximized", window_id))
+
+    @Slot(result=str)
+    def activeWindow(self):
+        return "w1"
+
+    @Slot(str, result="QStringList")
+    def windowsOfApp(self, app_id):
+        return [w["id"] for w in self._windows if w["appId"] == app_id]
 
 
 # ---------------------------------------------------------------------------
@@ -461,10 +609,10 @@ def main():
 
     settings, theme, apps = Settings(), Theme(), Apps()
     shell, plugin_manager = Shell(desktop_dir, work), Plugins(plugins)
-    system = System()
+    system, window_list = System(), Windows()
     engine = QQmlApplicationEngine()
     for name, obj in (("Settings", settings), ("Theme", theme), ("Apps", apps), ("Shell", shell),
-                      ("Plugins", plugin_manager), ("System", system)):
+                      ("Plugins", plugin_manager), ("System", system), ("Windows", window_list)):
         engine.rootContext().setContextProperty(name, obj)
 
     failures = []
@@ -486,6 +634,8 @@ def main():
 
     def windows(kind):
         return [w for w in QGuiApplication.topLevelWindows() if w.metaObject().className().startswith(kind)]
+
+    windows_of_kind = windows
 
     def attached(kind, window):
         return next((a for a in ATTACHED[kind] if a.window is window), None)
@@ -608,6 +758,55 @@ def main():
         check(desk.property("contextMenuVisible") is True,
               "right-clicking the desktop opens its menu")
         desk.setProperty("contextMenuVisible", False)
+
+    # The dock: every running window becomes a dock entry, grouped per app.
+    if panels:
+        panel = next(w for w in panels if w.screen() is screens[0])
+        entries = panel.property("dockEntries")
+        if hasattr(entries, "toVariant"):
+            entries = entries.toVariant()
+        check(isinstance(entries, list) and len(entries) == 2,
+              f"the dock merges windows and pinned apps into two entries ({entries})")
+        by_app = {e["appId"]: e for e in (entries or [])}
+        firefox = by_app.get("firefox", {})
+        check(firefox.get("running") is True and firefox.get("active") is True
+              and len(firefox.get("windows", [])) == 1
+              and firefox["windows"][0]["id"] == "w1",
+              f"the firefox dock entry carries its window and focus ({firefox})")
+        terminal = by_app.get("org.gnome.Terminal", {})
+        check(terminal.get("windows", [{}])[0].get("id") == "w2",
+              f"the terminal dock entry carries its window ({terminal})")
+
+        # Clicking a dock button activates the focused window of that app.
+        QMetaObject.invokeMethod(panel, "activateEntry", Q_ARG("QVariant", firefox))
+        check(("activate", "w1") in window_list.calls,
+              f"activating a dock entry talks to the window list ({window_list.calls})")
+
+    # One dock menu per panel.
+    dock_menus = windows_of_kind("DockMenu")
+    check(len(dock_menus) == len(panels),
+          f"one dock menu per panel ({len(dock_menus)} vs {len(panels)})")
+
+    # The embedded settings window opens through Shell.openSettings(); the
+    # start menu button, the desktop menu and `newteller --settings` share it.
+    settings_windows = windows_of_kind("SettingsApp")
+    check(len(settings_windows) == 1, f"one settings window (got {len(settings_windows)})")
+    if settings_windows:
+        settings_app = settings_windows[0]
+        check(not settings_app.isVisible(), "settings window starts hidden")
+        shell.settingsRequested.emit()
+        QTest.qWait(50)
+        check(settings_app.isVisible(), "Shell.settingsRequested opens the settings window")
+        check(settings_app.isVisible() and settings_app.title() == "NewTeller Settings",
+              "the settings window carries its title")
+        page = settings_app.property("currentPage")
+        check(page == "appearance", f"settings starts on the appearance page ({page})")
+        settings_app.setProperty("currentPage", "about")
+        QTest.qWait(20)
+        check(settings_app.property("currentPage") == "about",
+              "settings page switching works")
+        settings_app.setProperty("visible", False)
+        QTest.qWait(20)
 
     QTest.qWait(100)
     check(not messages, f"no QML warnings ({len(messages)} found)")

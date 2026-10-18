@@ -3,13 +3,25 @@
   <qresource prefix="/">
     <file>qml/Main.qml</file>
     <file>qml/Panel.qml</file>
+    <file>qml/DockMenu.qml</file>
     <file>qml/StartMenu.qml</file>
     <file>qml/Desktop.qml</file>
     <file>qml/TaskButton.qml</file>
     <file>qml/RunDialog.qml</file>
+    <file>qml/SettingsApp.qml</file>
+    <file>qml/SettingsSection.qml</file>
+    <file>qml/SettingsRow.qml</file>
+    <file>qml/SettingsSwitch.qml</file>
+    <file>qml/SettingsSlider.qml</file>
+    <file>qml/SettingsStepper.qml</file>
+    <file>qml/SettingsChoice.qml</file>
+    <file>qml/SettingsTextField.qml</file>
+    <file>qml/SettingsColorField.qml</file>
     <file>themes/default.json</file>
     <file>themes/light.json</file>
     <file>themes/nord.json</file>
     <file>themes/highcontrast.json</file>
+    <file>themes/ocean.json</file>
+    <file>themes/sunrise.json</file>
   </qresource>
 </RCC>

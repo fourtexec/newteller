@@ -1,7 +1,8 @@
 import QtQuick
 
 // Root object. One desktop background and one panel per screen,
-// plus a single start menu and a single run dialog on the primary screen.
+// plus a single start menu, run dialog and settings window on the primary
+// screen.
 //
 // QtObject has no default property, so the windows are held in named
 // properties. Instantiator (not Repeater, which can only create Items)
@@ -14,6 +15,12 @@ QtObject {
     }
 
     readonly property RunDialog runDialog: RunDialog {
+        screen: Qt.application.screens[0]
+    }
+
+    // The built-in settings application. Its QML is compiled into the
+    // executable, so it is always there and cannot be deleted like a plugin.
+    readonly property SettingsApp settingsApp: SettingsApp {
         screen: Qt.application.screens[0]
     }
 
@@ -40,5 +47,14 @@ QtObject {
     readonly property Shortcut runShortcut: Shortcut {
         sequence: "Alt+F2"
         onActivated: root.runDialog.toggle()
+    }
+
+    // The start menu, the desktop menu and `newteller --settings` all open the
+    // same embedded settings window.
+    readonly property Connections shellConnections: Connections {
+        target: Shell
+        function onSettingsRequested() {
+            root.settingsApp.showFromShell();
+        }
     }
 }

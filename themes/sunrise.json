@@ -1,0 +1,13 @@
+{
+  "name": "Sunrise",
+  "background": "#1e1612",
+  "foreground": "#f7ede2",
+  "accent": "#e8833a",
+  "surface": "#2b201a",
+  "border": "#4a382c",
+  "muted": "#a89283",
+  "opacity": 0.93,
+  "radius": 12,
+  "fontSize": 10,
+  "fontFamily": "Cantarell"
+}

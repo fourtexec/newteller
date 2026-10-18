@@ -40,6 +40,9 @@ Settings::Settings(QObject *parent)
                       QStringList{QStringLiteral("org.gnome.Terminal.desktop"),
                                   QStringLiteral("firefox-esr.desktop"),
                                   QStringLiteral("org.gnome.Nautilus.desktop")});
+    m_defaults.insert(QStringLiteral("dock.showWindows"), true);
+    m_defaults.insert(QStringLiteral("dock.group"), true);
+    m_defaults.insert(QStringLiteral("dock.iconSize"), 28);
     m_defaults.insert(QStringLiteral("startmenu.width"), 440);
     m_defaults.insert(QStringLiteral("startmenu.height"), 580);
     m_defaults.insert(QStringLiteral("startmenu.limit"), 200);

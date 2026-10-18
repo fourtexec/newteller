@@ -68,6 +68,10 @@ public:
 
     Q_INVOKABLE QVariantMap byId(const QString &id) const;   // O(1)
     Q_INVOKABLE int indexOf(const QString &id) const;        // -1 when unknown
+    // Best application for a running top-level window: matches the wayland
+    // app_id or the X11 WM_CLASS against ids, startupWMClass and programs.
+    // Returns {} when no application matches (the dock shows a generic icon).
+    Q_INVOKABLE QVariantMap matchWindowApp(const QString &appId, const QString &title = QString()) const;
     Q_INVOKABLE QVariantList recent(int limit = 8) const;
     Q_INVOKABLE QVariantList launchArgs(const QString &id, const QStringList &files = {}) const;
     // Launches the application, passing `files` to its %f/%u field codes.
