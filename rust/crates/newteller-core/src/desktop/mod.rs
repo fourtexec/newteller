@@ -42,6 +42,7 @@ pub struct DesktopAction {
 /// names in `AppModel::loadFromRust`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
+#[derive(Default)]
 pub struct DesktopEntry {
     /// Desktop file id, for example `firefox-esr.desktop`. Sub-directories are
     /// folded in the way the specification requires: `kde4-okular.desktop`.
@@ -93,34 +94,6 @@ pub struct DesktopEntry {
     pub sort_key: String,
 }
 
-impl Default for DesktopEntry {
-    fn default() -> Self {
-        DesktopEntry {
-            id: String::new(),
-            path: String::new(),
-            name: String::new(),
-            generic_name: String::new(),
-            comment: String::new(),
-            exec: String::new(),
-            icon: String::new(),
-            terminal: false,
-            no_display: false,
-            hidden: false,
-            startup_notify: false,
-            startup_wm_class: String::new(),
-            categories: Vec::new(),
-            keywords: Vec::new(),
-            mime_types: Vec::new(),
-            only_show_in: Vec::new(),
-            not_show_in: Vec::new(),
-            try_exec: String::new(),
-            dbus_activatable: false,
-            actions: Vec::new(),
-            priority: 0,
-            sort_key: String::new(),
-        }
-    }
-}
 
 impl DesktopEntry {
     /// Program that will actually be started: the first token of `Exec`,
@@ -139,6 +112,13 @@ impl DesktopEntry {
         if self.hidden || self.no_display {
             return false;
         }
+        self.matches_desktop(desktop_env)
+    }
+
+    /// The `OnlyShowIn` / `NotShowIn` filter alone. `build()` applies this even
+    /// when `include_hidden` keeps a `NoDisplay` entry in the catalogue. An
+    /// empty `desktop_env` disables the filter, like [`Self::is_visible`].
+    pub fn matches_desktop(&self, desktop_env: &[String]) -> bool {
         if desktop_env.is_empty() {
             return true;
         }
@@ -148,9 +128,11 @@ impl DesktopEntry {
         if !self.only_show_in.is_empty() && !shown {
             return false;
         }
-        !self.not_show_in
-            .iter()
-            .any(|blocked| blocked.eq_ignore_ascii_case(env))
+        !self.not_show_in.iter().any(|blocked| {
+            desktop_env
+                .iter()
+                .any(|env| blocked.eq_ignore_ascii_case(env))
+        })
     }
 }
 
@@ -176,7 +158,7 @@ impl RawDesktopFile {
                 }
             }
         }
-        self.entry.get(key).map(|s| s.clone())
+        self.entry.get(key).cloned()
     }
 
     /// Like [`RawDesktopFile::get`] but resolves the specification escapes
@@ -207,7 +189,7 @@ impl RawDesktopFile {
                 }
             }
         }
-        group.get(key).map(|s| s.clone())
+        group.get(key).cloned()
     }
 
     /// True when the file declares `Type=Application`.
@@ -218,6 +200,7 @@ impl RawDesktopFile {
 
 /// Everything needed to turn a [`RawDesktopFile`] into a [`DesktopEntry`].
 #[derive(Debug, Clone)]
+#[derive(Default)]
 pub struct EntryOptions<'a> {
     /// Desktop file id.
     pub id: &'a str,
@@ -233,18 +216,6 @@ pub struct EntryOptions<'a> {
     pub include_hidden: bool,
 }
 
-impl<'a> Default for EntryOptions<'a> {
-    fn default() -> Self {
-        EntryOptions {
-            id: "",
-            path: "",
-            locales: &[],
-            desktop_env: &[],
-            priority: 0,
-            include_hidden: false,
-        }
-    }
-}
 
 /// Parses desktop file text. Never touches the filesystem.
 pub fn parse_raw(text: &str) -> Result<RawDesktopFile> {
@@ -388,7 +359,7 @@ pub fn build(raw: &RawDesktopFile, options: &EntryOptions) -> Result<DesktopEntr
     if entry.no_display && !options.include_hidden {
         return Err(Error::invalid("NoDisplay=true"));
     }
-    if !entry.is_visible(options.desktop_env) {
+    if !entry.matches_desktop(options.desktop_env) {
         return Err(Error::invalid("not shown in this desktop"));
     }
     if !entry.try_exec.is_empty() && exec::find_in_path(&entry.try_exec).is_none() {
@@ -415,15 +386,18 @@ pub fn locale_candidates(lang: &str) -> Vec<String> {
     if lang.is_empty() || lang == "C" || lang == "POSIX" || lang.eq_ignore_ascii_case("c.utf8") {
         return Vec::new();
     }
-    let without_encoding = match lang.split_once('.') {
-        Some((before, _)) => before,
-        None => lang,
-    };
-    let (base, modifier) = match without_encoding.split_once('@') {
+    // language[_COUNTRY][.codeset][@modifier] - the modifier sits after the
+    // codeset, so it must be split off first or `de_DE.UTF-8@euro` loses it.
+    let (without_modifier, modifier) = match lang.split_once('@') {
         Some((before, after)) => (before, Some(after)),
-        None => (without_encoding, None),
+        None => (lang, None),
     };
-    let (language, country) = match base.split_once(|c| c == '_' || c == '-') {
+    let without_encoding = match without_modifier.split_once('.') {
+        Some((before, _)) => before,
+        None => without_modifier,
+    };
+    let (base, modifier) = (without_encoding, modifier);
+    let (language, country) = match base.split_once(['_', '-']) {
         Some((before, after)) => (before, Some(after)),
         None => (base, None),
     };
@@ -478,10 +452,10 @@ pub fn desktop_env_from_env() -> Vec<String> {
 
 /// `true` for `true`/`1`/`yes`, everything else is `false`.
 pub fn parse_bool(value: Option<&String>) -> bool {
-    match value.map(|v| v.trim()) {
-        Some("true") | Some("True") | Some("1") | Some("yes") => true,
-        _ => false,
-    }
+    matches!(
+        value.map(|v| v.trim()),
+        Some("true") | Some("True") | Some("1") | Some("yes")
+    )
 }
 
 /// Splits a `;` separated list, honouring `\;` escapes and unescaping values.
@@ -668,7 +642,10 @@ mod tests {
         assert_eq!(raw.entry.get("Name").unwrap(), "Odd Name");
         assert_eq!(split_list(raw.entry.get("Keywords").unwrap()), vec!["a;b", "c"]);
         let entry = build(&raw, &options("odd.desktop", &[], &[])).unwrap();
-        assert_eq!(exec::split_command(&entry.exec), vec!["echo", "a\\b c"]);
+        // The general string unescape runs before the quoting rule
+        // (`\\` -> `\`, `\s` -> a space), so the quoted argument keeps both
+        // spaces: `a\\b\s c` -> `a\b  c`.
+        assert_eq!(exec::split_command(&entry.exec), vec!["echo", "a\\b  c"]);
     }
 
     #[test]

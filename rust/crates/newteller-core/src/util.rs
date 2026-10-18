@@ -158,7 +158,7 @@ pub fn basename(input: &str) -> &str {
 /// its members.
 pub fn split_env_list(input: &str) -> Vec<String> {
     input
-        .split(|c| c == ':' || c == ';')
+        .split([':', ';'])
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect()

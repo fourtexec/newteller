@@ -125,6 +125,7 @@ pub struct SearchResult {
 /// A category and how many applications use it.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
+#[derive(Default)]
 pub struct CategoryCount {
     /// Category name, for example `Network`.
     pub name: String,
@@ -132,18 +133,11 @@ pub struct CategoryCount {
     pub count: usize,
 }
 
-impl Default for CategoryCount {
-    fn default() -> Self {
-        CategoryCount {
-            name: String::new(),
-            count: 0,
-        }
-    }
-}
 
 /// An application that is currently running.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
+#[derive(Default)]
 pub struct RunningApp {
     /// Desktop file id.
     pub id: String,
@@ -153,15 +147,6 @@ pub struct RunningApp {
     pub pids: Vec<i32>,
 }
 
-impl Default for RunningApp {
-    fn default() -> Self {
-        RunningApp {
-            id: String::new(),
-            count: 0,
-            pids: Vec::new(),
-        }
-    }
-}
 
 /// Size and shape of the index, for diagnostics.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -391,7 +376,7 @@ impl SearchIndex {
         }
 
         let mut matched: Vec<(usize, Scored, Field)> = Vec::new();
-        let mut considered = 0usize;
+        let mut considered;
         let mut scanned_all = false;
 
         match self.candidates(&parsed) {
@@ -609,7 +594,8 @@ impl SearchIndex {
         }
 
         let prefix: String = query.fold.iter().collect();
-        for (key, list) in self.tokens.range::<str, _>(prefix.as_str()..) {
+        let start = std::ops::Bound::Included(prefix.as_str());
+        for (key, list) in self.tokens.range::<str, _>((start, std::ops::Bound::Unbounded)) {
             if !key.starts_with(prefix.as_str()) {
                 break;
             }

@@ -202,16 +202,16 @@ fn usage_of(path: &str) -> Option<(u64, u64, u64)> {
         return None;
     }
     let block = if stats.f_frsize != 0 {
-        stats.f_frsize as u64
+        stats.f_frsize
     } else {
-        stats.f_bsize as u64
+        stats.f_bsize
     };
     if block == 0 {
         return None;
     }
-    let total = stats.f_blocks as u64 * block;
-    let free = stats.f_bfree as u64 * block;
-    let available = stats.f_bavail as u64 * block;
+    let total = stats.f_blocks * block;
+    let free = stats.f_bfree * block;
+    let available = stats.f_bavail * block;
     Some((total, total.saturating_sub(free), available))
 }
 

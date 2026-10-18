@@ -90,6 +90,7 @@ pub struct ScanReport {
 /// One rejected or unreadable file.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
+#[derive(Default)]
 pub struct ScanError {
     /// Absolute path.
     pub path: String,
@@ -97,14 +98,6 @@ pub struct ScanError {
     pub reason: String,
 }
 
-impl Default for ScanError {
-    fn default() -> Self {
-        ScanError {
-            path: String::new(),
-            reason: String::new(),
-        }
-    }
-}
 
 /// Scans the requested directories and returns the report.
 pub fn scan_dirs(request: &ScanRequest) -> ScanReport {

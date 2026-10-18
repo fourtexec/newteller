@@ -87,21 +87,21 @@ fn null_arguments_never_crash() {
         assert!(nt_index_stats(ptr::null()).is_null());
         assert!(nt_index_scan_report(ptr::null()).is_null());
         assert_eq!(nt_index_len(ptr::null()), -1);
-        assert!(nt_index_set_usage(ptr::null(), ptr::null()) < 0);
+        assert!(nt_index_set_usage(ptr::null_mut(), ptr::null()) < 0);
         assert_eq!(nt_watcher_fd(ptr::null()), -1);
         assert_eq!(nt_watcher_pending_in_ms(ptr::null()), -1);
-        assert!(nt_watcher_add(ptr::null(), ptr::null(), false) < 0);
-        assert!(nt_watcher_remove(ptr::null(), ptr::null()) < 0);
-        assert!(nt_watcher_poll(ptr::null()).is_null());
-        assert!(nt_metrics_snapshot(ptr::null(), 0).is_null());
+        assert!(nt_watcher_add(ptr::null_mut(), ptr::null(), false) < 0);
+        assert!(nt_watcher_remove(ptr::null_mut(), ptr::null()) < 0);
+        assert!(nt_watcher_poll(ptr::null_mut()).is_null());
+        assert!(nt_metrics_snapshot(ptr::null_mut(), 0).is_null());
         assert!(nt_write_file_atomic(ptr::null(), ptr::null(), 0, 0) < 0);
         assert!(nt_read_file(ptr::null()).is_null());
         assert_eq!(nt_fuzzy_match(ptr::null(), ptr::null(), 0), 0);
         // Releasing null handles is a no-op.
-        nt_index_free(ptr::null());
-        nt_metrics_free(ptr::null());
-        nt_watcher_free(ptr::null());
-        nt_free(ptr::null());
+        nt_index_free(ptr::null_mut());
+        nt_metrics_free(ptr::null_mut());
+        nt_watcher_free(ptr::null_mut());
+        nt_free(ptr::null_mut());
     }
 }
 

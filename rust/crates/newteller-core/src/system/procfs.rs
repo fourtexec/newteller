@@ -387,9 +387,9 @@ mod tests {
         let (total, cores) = parse_cpu_stat(STAT).expect("parses");
         assert_eq!(cores.len(), 2);
         assert_eq!(total.user, 1000);
-        assert_eq!(total.total(), 1000 + 20 + 300 + 5000 + 40 + 0 + 10 + 5);
+        assert_eq!(total.total(), (1000 + 20 + 300 + 5000 + 40) + 10 + 5);
         assert_eq!(total.busy(), total.total() - 5000 - 40);
-        assert_eq!(total.percent_since(&CpuTimes::default()) > 0.0, true);
+        assert!(total.percent_since(&CpuTimes::default()) > 0.0);
     }
 
     #[test]
