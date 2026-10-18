@@ -17,7 +17,23 @@ source "$root/scripts/platform.sh"
 newteller_detect_platform
 name="newteller-commit-${sha}-${NEWTELLER_TARGET}"
 stage="$root/build/release/$name"
-if ! cmake -S "$root" -B "$root/build" -G Ninja \
+build_dir="$root/build"
+# A previous `sudo cmake`/build can leave generated files owned by root.
+# Fail early with the right fix instead of reporting a misleading Qt dependency error.
+unwritable_path=''
+if [[ -e "$build_dir" ]]; then
+    unwritable_path=$(find "$build_dir" ! -w -print -quit 2>/dev/null || true)
+fi
+if [[ -n "$unwritable_path" ]]; then
+    cat >&2 <<EOF
+Build directory is not writable by $(id -un): $build_dir
+It may contain files created by running the build with sudo. Fix ownership once with:
+    sudo chown -R "$(id -u):$(id -g)" "$build_dir"
+Then rerun scripts/build-release.sh as your normal user (not with sudo).
+EOF
+    exit 1
+fi
+if ! cmake -S "$root" -B "$build_dir" -G Ninja \
     -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr; then
     cat >&2 <<'HELP'
 
