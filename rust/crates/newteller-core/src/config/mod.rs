@@ -498,12 +498,22 @@ pub fn coerce(key: &str, value: Value) -> Value {
                     })
                     .collect(),
             ),
-            Value::String(text) => Value::Array(
-                text.split(',')
-                    .map(|part| Value::String(part.trim().to_string()))
-                    .filter(|part| !part.as_str().unwrap_or("").is_empty())
-                    .collect(),
-            ),
+            Value::String(text) => {
+                // A value with list separators is split; a bare scalar stays a
+                // string so a typo is visible instead of silently becoming a
+                // one-element list.
+                if text.contains(',') || text.contains(';') {
+                    Value::Array(
+                        text.split([',', ';'])
+                            .map(|part| part.trim())
+                            .filter(|part| !part.is_empty())
+                            .map(|part| Value::String(part.to_string()))
+                            .collect(),
+                    )
+                } else {
+                    Value::String(text)
+                }
+            }
             other => other,
         },
         _ => value,

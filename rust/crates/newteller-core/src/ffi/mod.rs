@@ -64,7 +64,7 @@ pub const WRITE_FSYNC: u32 = 1 << 1;
 pub const WRITE_CREATE_PARENTS: u32 = 1 << 2;
 
 thread_local! {
-    static LAST_ERROR: RefCell<String> = RefCell::new(String::new());
+    static LAST_ERROR: RefCell<String> = const { RefCell::new(String::new()) };
 }
 
 /// Records the reason of the last failure on this thread.
@@ -132,7 +132,7 @@ fn into_raw(text: String) -> *mut c_char {
 }
 
 /// Serialises a value as JSON, or records the error and returns null.
-fn json<T: Serialize>(value: &T) -> *mut c_char {
+fn json<T: Serialize + ?Sized>(value: &T) -> *mut c_char {
     match serde_json::to_string(value) {
         Ok(text) => into_raw(text),
         Err(error) => {
@@ -168,7 +168,7 @@ pub unsafe fn borrow<'a>(pointer: *const c_char) -> Result<&'a str> {
 /// # Safety
 ///
 /// Same requirements as [`borrow`].
-pub unsafe fn borrow_lenient<'a>(pointer: *const c_char, default: &'a str) -> &'a str {
+pub unsafe fn borrow_lenient(pointer: *const c_char, default: &str) -> &str {
     match borrow(pointer) {
         Ok(text) => text,
         Err(error) => {

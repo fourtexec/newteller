@@ -2,12 +2,14 @@ import QtQuick
 import QtQuick.Window
 import org.kde.layershell 1.0 as LayerShell
 
-// Start menu: searchable application list plus session actions.
+// Start menu: searchable application list plus category chips, recently used
+// applications and session actions.
 Window {
     id: menu
 
     property int panelHeight: Settings.values["panel.height"] || 48
     property var results: []
+    property string categoryFilter: ""
 
     width: Settings.values["startmenu.width"] || 440
     height: Settings.values["startmenu.height"] || 580
@@ -30,7 +32,9 @@ Window {
         // on X11 the window manager has to be asked.
         requestActivate();
         search.text = "";
-        results = Apps.search("", 500);
+        categoryFilter = "";
+        refresh();
+        updateRecent();
         search.forceActiveFocus();
     }
 
@@ -43,6 +47,21 @@ Window {
             hide();
         else
             show();
+    }
+
+    function refresh() {
+        const q = search.text.trim();
+        const limit = Settings.values["startmenu.limit"] || 200;
+        var hits = Apps.searchDetailed(q, limit);
+        if (hits.length === 0)
+            hits = Apps.search(q, limit);
+        if (categoryFilter.length > 0) {
+            hits = hits.filter(h => {
+                const app = Apps.byId(h.id);
+                return (app.categories || []).indexOf(categoryFilter) >= 0;
+            });
+        }
+        results = hits;
     }
 
     function launch(app) {
@@ -88,6 +107,7 @@ Window {
 
                 TextInput {
                     id: search
+                    objectName: "startSearch"
                     anchors.fill: parent
                     anchors.margins: 10
                     focus: true
@@ -95,7 +115,7 @@ Window {
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize + 1
                     verticalAlignment: TextInput.AlignVCenter
-                    onTextChanged: menu.results = Apps.search(text, 200)
+                    onTextChanged: menu.refresh()
                     Keys.onEscapePressed: menu.hide()
                     Keys.onReturnPressed: {
                         if (menu.results.length > 0)
@@ -113,21 +133,83 @@ Window {
                 }
             }
 
+            // Category chips, filtered by the full application list.
+            Flow {
+                id: chips
+                width: parent.width
+                spacing: 6
+                visible: Apps.categories.length > 0
+
+                Repeater {
+                    model: Apps.categories.slice(0, 12)
+
+                    delegate: TaskButton {
+                        required property var modelData
+                        label: modelData.name
+                        active: menu.categoryFilter === modelData.name
+                        onClicked: {
+                            menu.categoryFilter = menu.categoryFilter === modelData.name
+                                    ? "" : modelData.name;
+                            menu.refresh();
+                        }
+                    }
+                }
+            }
+
             ListView {
                 id: list
                 width: parent.width
-                height: parent.height - searchBox.height - footer.height - 20
+                height: parent.height - searchBox.height - footer.height - chips.height - 30
                 clip: true
                 spacing: 2
                 model: menu.results
+                cacheBuffer: 400
+                reuseItems: true
 
                 delegate: TaskButton {
                     required property var modelData
                     width: ListView.view.width
                     fillWidth: true
                     iconName: modelData.icon || ""
-                    label: modelData.name
+                    richLabel: true
+                    label: {
+                        if (modelData.highlight && modelData.highlight.length > 0)
+                            return modelData.highlight;
+                        return (modelData.name || modelData.id || "");
+                    }
+                    running: Settings.values["panel.showRunning"] !== false
+                             && Apps.isRunning(modelData.id)
                     onClicked: menu.launch(modelData)
+                }
+
+                Text {
+                    anchors.centerIn: parent
+                    visible: menu.results.length === 0
+                    text: "No applications match"
+                    color: Theme.muted
+                    font.family: Theme.fontFamily
+                    font.pointSize: Theme.fontSize
+                }
+            }
+
+            // Recently launched applications, only with an empty search.
+            Flow {
+                id: recentRow
+                width: parent.width
+                spacing: 6
+                visible: Settings.values["startmenu.showRecent"] !== false
+                         && search.text.length === 0 && recentModel.length > 0
+
+                property var recentModel: []
+
+                Repeater {
+                    model: recentRow.recentModel
+
+                    delegate: TaskButton {
+                        required property var modelData
+                        iconName: modelData.icon || ""
+                        onClicked: menu.launch(modelData)
+                    }
                 }
             }
 
@@ -167,6 +249,19 @@ Window {
                     onClicked: { Shell.openConfig(); menu.hide(); }
                 }
             }
+        }
+    }
+
+    function updateRecent() {
+        recentRow.recentModel = Apps.recent(Settings.values["apps.recentLimit"] || 8);
+    }
+
+    Component.onCompleted: updateRecent()
+    Connections {
+        target: Apps
+        function onRunningChanged() {
+            // Recent order changes after every launch.
+            menu.updateRecent();
         }
     }
 }

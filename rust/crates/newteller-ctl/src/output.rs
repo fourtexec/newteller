@@ -59,7 +59,10 @@ pub fn table(headers: &[&str], rows: &[Vec<String>]) -> String {
     }
 
     let mut out = String::new();
-    out.push_str(&render_row(headers.iter().map(|h| h.to_string()).collect::<Vec<_>>(), &widths));
+    out.push_str(&render_row(
+        &headers.iter().map(|h| h.to_string()).collect::<Vec<_>>(),
+        &widths,
+    ));
     for row in rows {
         out.push_str(&render_row(row, &widths));
     }
@@ -75,6 +78,9 @@ fn render_row(cells: &[String], widths: &[usize]) -> String {
         let padding = width.saturating_sub(display_width(&text));
         if index + 1 < cells.len() {
             line.push_str(&" ".repeat(padding + 2));
+        } else {
+            // Pad the last column too, so every row has the same width.
+            line.push_str(&" ".repeat(padding));
         }
     }
     line.push('\n');

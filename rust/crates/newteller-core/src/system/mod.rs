@@ -29,6 +29,8 @@ pub const FLAG_PROCESSES: u32 = 1 << 3;
 pub const FLAG_UNAME: u32 = 1 << 4;
 /// Include one utilisation value per core.
 pub const FLAG_PER_CORE: u32 = 1 << 5;
+/// Bits 8..=15 of the flag word carry the thermal zone limit (0 = unlimited).
+pub const FLAG_THERMAL_LIMIT_SHIFT: u32 = 8;
 
 /// Which parts of the system to sample.
 ///
@@ -96,6 +98,9 @@ impl SnapshotOptions {
     }
 
     /// Builds options from the bit field used by the C ABI.
+    ///
+    /// Bits 8..=15 carry the thermal zone limit (0 = unlimited), so the value
+    /// survives the round trip through [`SnapshotOptions::to_flags`].
     pub fn from_flags(flags: u32) -> SnapshotOptions {
         SnapshotOptions {
             disks: flags & FLAG_DISKS != 0,
@@ -104,7 +109,7 @@ impl SnapshotOptions {
             processes: flags & FLAG_PROCESSES != 0,
             uname: flags & FLAG_UNAME != 0,
             per_core: flags & FLAG_PER_CORE != 0,
-            ..SnapshotOptions::default()
+            thermal_limit: ((flags >> FLAG_THERMAL_LIMIT_SHIFT) & 0xff) as usize,
         }
     }
 
@@ -129,6 +134,7 @@ impl SnapshotOptions {
         if self.per_core {
             flags |= FLAG_PER_CORE;
         }
+        flags |= ((self.thermal_limit as u32) & 0xff) << FLAG_THERMAL_LIMIT_SHIFT;
         flags
     }
 }
@@ -273,12 +279,15 @@ pub struct Snapshot {
     pub elapsed_ms: f64,
 }
 
+/// `name -> (rx bytes, tx bytes)` per interface, kept between samples.
+type NetCounters = HashMap<String, (u64, u64)>;
+
 /// Keeps the previous samples needed for rates.
 #[derive(Debug)]
 pub struct Monitor {
     started: Instant,
     previous_cpu: Option<(Instant, CpuTimes, Vec<CpuTimes>)>,
-    previous_net: Option<(Instant, HashMap<String, (u64, u64)>)>,
+    previous_net: Option<(Instant, NetCounters)>,
     model: Option<procfs::CpuModel>,
     uname: Option<Uname>,
 }

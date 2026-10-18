@@ -23,6 +23,7 @@ use crate::util;
 /// Full information about one process.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
+#[derive(Default)]
 pub struct ProcessInfo {
     /// Process id.
     pub pid: i32,
@@ -52,25 +53,6 @@ pub struct ProcessInfo {
     pub stime_ticks: u64,
 }
 
-impl Default for ProcessInfo {
-    fn default() -> Self {
-        ProcessInfo {
-            pid: 0,
-            ppid: 0,
-            name: String::new(),
-            cmdline: Vec::new(),
-            exe: None,
-            uid: 0,
-            state: String::new(),
-            threads: 0,
-            rss_bytes: 0,
-            vsize_bytes: 0,
-            start_ticks: 0,
-            utime_ticks: 0,
-            stime_ticks: 0,
-        }
-    }
-}
 
 impl ProcessInfo {
     /// The program that was started: `cmdline[0]` without its directory, or
@@ -86,6 +68,7 @@ impl ProcessInfo {
 /// The cheap subset used for running-application detection.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
+#[derive(Default)]
 pub struct LightProcess {
     /// Process id.
     pub pid: i32,
@@ -97,16 +80,6 @@ pub struct LightProcess {
     pub uid: u32,
 }
 
-impl Default for LightProcess {
-    fn default() -> Self {
-        LightProcess {
-            pid: 0,
-            name: String::new(),
-            program: String::new(),
-            uid: 0,
-        }
-    }
-}
 
 /// Fields parsed out of `/proc/<pid>/stat`.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -388,8 +361,10 @@ mod tests {
 
     #[test]
     fn process_info_falls_back_to_comm_for_kernel_threads() {
-        let mut process = ProcessInfo::default();
-        process.name = "kworker/0:1".to_string();
+        let mut process = ProcessInfo {
+            name: "kworker/0:1".to_string(),
+            ..ProcessInfo::default()
+        };
         assert_eq!(process.program(), "kworker/0:1");
         process.cmdline = vec!["/usr/lib/firefox-esr/firefox-esr".to_string(), "-P".to_string()];
         assert_eq!(process.program(), "firefox-esr");

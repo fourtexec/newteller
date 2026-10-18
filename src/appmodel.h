@@ -70,7 +70,8 @@ public:
     Q_INVOKABLE int indexOf(const QString &id) const;        // -1 when unknown
     Q_INVOKABLE QVariantList recent(int limit = 8) const;
     Q_INVOKABLE QVariantList launchArgs(const QString &id, const QStringList &files = {}) const;
-    Q_INVOKABLE bool launch(const QString &id);
+    // Launches the application, passing `files` to its %f/%u field codes.
+    Q_INVOKABLE bool launch(const QString &id, const QStringList &files = QStringList());
     Q_INVOKABLE bool launchAction(const QString &id, const QString &actionId);
 
     Q_INVOKABLE bool isRunning(const QString &id) const;

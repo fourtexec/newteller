@@ -338,7 +338,7 @@ fn plugins(options: &Options) -> i32 {
             let id = value
                 .get("id")
                 .and_then(|v| v.as_str())
-                .unwrap_or_else(|| "")
+                .unwrap_or("")
                 .to_string();
             let enabled = !disabled.contains(&id);
             let row = vec![
@@ -495,8 +495,8 @@ fn search_command(options: &Options) -> i32 {
         .enumerate()
         .map(|(rank, hit)| {
             vec![
-                (rank + 1).to_string(),
-                hit.score.to_string(),
+                output::right(&(rank + 1).to_string(), 3),
+                output::right(&hit.score.to_string(), 5),
                 hit.kind.clone(),
                 hit.field.clone(),
                 output::truncate(&hit.name, 30),
@@ -676,9 +676,9 @@ fn bench(options: &Options) -> i32 {
     println!("catalogue    : {} applications ({} tokens, {} trigrams, {} KiB)",
         stats.apps, stats.tokens, stats.trigrams, stats.memory_bytes / 1024);
     println!("scan         : {:.1} ms", stats.scan_ms);
-    println!("index build  : {:.1} ms", build_ms);
+    println!("index build  : {build_ms:.1} ms");
     println!("queries      : {} ({} hits, {} full scans)", queries.len(), hits, full_scans);
-    println!("total        : {:.2} ms", total_ms);
+    println!("total        : {total_ms:.2} ms");
     println!("per query    : mean {:.1} us, median {:.1} us, p95 {:.1} us, max {:.1} us",
         mean, percentile(0.5), percentile(0.95), percentile(1.0));
     println!("throughput   : {:.0} queries/second",
@@ -819,7 +819,7 @@ fn print_metrics(snapshot: &Snapshot) {
         output::truncate(&snapshot.cpu.model, 40)
     );
     if let Some(hottest) = snapshot.cpu.per_core.iter().cloned().reduce(f64::max) {
-        println!("      hottest core {:.1}%", hottest);
+        println!("      hottest core {hottest:.1}%");
     }
     println!(
         "mem   {} {:6.1}%  {}  swap {:.1}% of {}",

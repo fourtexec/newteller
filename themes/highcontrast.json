@@ -1,0 +1,12 @@
+{
+  "background": "#000000",
+  "foreground": "#ffffff",
+  "accent": "#ffff00",
+  "surface": "#000000",
+  "border": "#ffffff",
+  "muted": "#cccccc",
+  "opacity": 1.0,
+  "radius": 2,
+  "fontSize": 12,
+  "fontFamily": "Sans"
+}
