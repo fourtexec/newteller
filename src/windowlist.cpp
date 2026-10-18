@@ -128,15 +128,19 @@ void WindowList::wlRegistryGlobal(void *data, wl_registry *registry, uint32_t na
     } else if (std::strcmp(interface, "wl_seat") == 0 && list->m_wlSeat == nullptr) {
         list->m_wlSeat = static_cast<wl_seat *>(
             wl_registry_bind(registry, name, &wl_seat_interface, qMin(version, uint32_t(5))));
-        static void (*seatListener[])(void) = {
-            reinterpret_cast<void (*)(void)>(+[](void *self, void *seat, uint32_t capabilities) {
+        // The seat is bound only so the `activate` request can name it. The
+        // generated wl_seat_add_listener helper is used because wl_seat and
+        // wl_proxy are unrelated opaque types (a C++ static_cast between them
+        // is ill-formed; only libwayland's own C cast may go through them).
+        static const wl_seat_listener seatListener = {
+            [](void *self, wl_seat *seat, uint32_t capabilities) {
                 Q_UNUSED(self); Q_UNUSED(seat); Q_UNUSED(capabilities);
-            }),
-            reinterpret_cast<void (*)(void)>(+[](void *self, void *seat, const char *seatName) {
+            },
+            [](void *self, wl_seat *seat, const char *seatName) {
                 Q_UNUSED(self); Q_UNUSED(seat); Q_UNUSED(seatName);
-            }),
+            },
         };
-        wl_proxy_add_listener(static_cast<wl_proxy *>(list->m_wlSeat), seatListener, list);
+        wl_seat_add_listener(list->m_wlSeat, &seatListener, list);
     }
 }
 
@@ -545,12 +549,17 @@ void WindowList::x11Close(quint64 window)
 void WindowList::x11Minimize(quint64 window)
 {
     // WM_CHANGE_STATE with IconicState(3) is the classic iconify request; it
-    // goes to the client window itself, not to the root.
+    // goes to the client window itself, not to the root. WM_CHANGE_STATE is
+    // not one of the X protocol's predefined atoms, so there is no
+    // XCB_ATOM_WM_CHANGE_STATE constant and it must be interned by name.
+    const quint32 changeState = x11Atom("WM_CHANGE_STATE");
+    if (changeState == 0)
+        return;
     xcb_client_message_event_t event {};
     event.response_type = XCB_CLIENT_MESSAGE;
     event.format = 32;
     event.window = xcb_window_t(window);
-    event.type = XCB_ATOM_WM_CHANGE_STATE;
+    event.type = changeState;
     event.data.data32[0] = 3; // IconicState
     xcb_send_event(m_xcb, 0, xcb_window_t(window), XCB_EVENT_MASK_NO_EVENT,
                    reinterpret_cast<const char *>(&event));
