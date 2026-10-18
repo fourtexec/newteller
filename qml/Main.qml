@@ -43,6 +43,18 @@ QtObject {
         }
     }
 
+    // Notification popups, one window per screen; fed by the built-in
+    // notification daemon (org.freedesktop.Notifications and the
+    // newteller-ctl socket).
+    readonly property Instantiator notificationPopups: Instantiator {
+        model: Qt.application.screens
+
+        delegate: Notifications {
+            required property var modelData
+            screen: modelData
+        }
+    }
+
     // Alt+F2 opens the run dialog anywhere in the session.
     readonly property Shortcut runShortcut: Shortcut {
         sequence: "Alt+F2"

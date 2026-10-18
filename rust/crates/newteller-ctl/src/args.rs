@@ -36,6 +36,10 @@ pub struct Options {
     pub debounce_ms: u32,
     /// Follow sub-directories in `watch`.
     pub recursive: bool,
+    /// Icon name for `notify`.
+    pub icon: Option<String>,
+    /// Popup timeout in milliseconds for `notify`; 0 keeps it up.
+    pub timeout_ms: Option<i64>,
 }
 
 impl Default for Options {
@@ -56,6 +60,8 @@ impl Default for Options {
             queries: 200,
             debounce_ms: 250,
             recursive: false,
+            icon: None,
+            timeout_ms: None,
         }
     }
 }
@@ -141,6 +147,8 @@ pub fn parse(argv: &[String]) -> Parsed {
             "--queries" => options.queries = number!(usize),
             "--interval" => options.interval_ms = number!(u64),
             "--debounce" => options.debounce_ms = number!(u32),
+            "--icon" => options.icon = Some(value!()),
+            "--timeout" => options.timeout_ms = Some(number!(i64)),
             "--colour" | "--color" => {
                 let value = value!();
                 options.colour = Some(if value.starts_with('#') {

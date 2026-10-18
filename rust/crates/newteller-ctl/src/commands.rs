@@ -1,6 +1,7 @@
 //! Implementation of every subcommand. Each function returns the process exit
 //! code: `0` success, `1` failure, `2` usage.
 
+use std::io::Write;
 use std::path::Path;
 use std::time::Instant;
 
@@ -36,6 +37,7 @@ pub fn run(options: &Options) -> i32 {
         "bench" => bench(options),
         "metrics" => metrics(options),
         "watch" => watch_command(options),
+        "notify" => notify(options),
         "doctor" => doctor(options),
         "version" => {
             println!("{}", newteller_core::VERSION);
@@ -947,6 +949,69 @@ fn watch_command(options: &Options) -> i32 {
         }
         std::thread::sleep(std::time::Duration::from_millis(50));
     }
+}
+
+/// Sends a desktop notification through the running shell.
+///
+/// `newteller-ctl notify "Title" [Body]` writes one JSON line into the
+/// notification socket of the shell (`$XDG_RUNTIME_DIR/newteller/notify.sock`),
+/// which shows the popup without spawning any helper process.
+fn notify(options: &Options) -> i32 {
+    if options.positional.is_empty() {
+        eprintln!("usage: newteller-ctl notify <title> [body] [--icon <name>] [--timeout <ms>]");
+        return 2;
+    }
+    let title = options.positional[0].clone();
+    let body = options.positional.get(1).cloned().unwrap_or_default();
+
+    let runtime = match std::env::var("XDG_RUNTIME_DIR") {
+        Ok(value) if !value.is_empty() => value,
+        _ => {
+            eprintln!("newteller-ctl: XDG_RUNTIME_DIR is not set; cannot find the shell socket");
+            return 1;
+        }
+    };
+    let socket_path = format!("{runtime}/newteller/notify.sock");
+    if !Path::new(&socket_path).exists() {
+        eprintln!(
+            "newteller-ctl: {} does not exist. Is the NewTeller shell running with notifications.enabled = true?",
+            socket_path
+        );
+        return 1;
+    }
+
+    use std::os::unix::net::UnixStream;
+    let mut stream = match UnixStream::connect(&socket_path) {
+        Ok(stream) => stream,
+        Err(error) => {
+            eprintln!("newteller-ctl: cannot reach the notification socket: {error}");
+            return 1;
+        }
+    };
+
+    let mut payload = Map::new();
+    payload.insert("app".to_string(), Value::String("newteller-ctl".to_string()));
+    payload.insert("title".to_string(), Value::String(title));
+    payload.insert("body".to_string(), Value::String(body));
+    if let Some(icon) = &options.icon {
+        payload.insert("icon".to_string(), Value::String(icon.clone()));
+    }
+    if let Some(timeout) = options.timeout_ms {
+        payload.insert("timeout".to_string(), Value::from(timeout));
+    }
+
+    let line = Value::Object(payload).to_string();
+    if let Err(error) = stream.write_all(line.as_bytes()).and_then(|()| stream.write_all(b"\n")) {
+        eprintln!("newteller-ctl: cannot write to the notification socket: {error}");
+        return 1;
+    }
+
+    if options.json {
+        println!("{{\"sent\": true, \"socket\": \"{}\"}}", socket_path.replace('\\', "\\\\"));
+    } else {
+        println!("Notification sent to the NewTeller shell.");
+    }
+    0
 }
 
 fn doctor(options: &Options) -> i32 {

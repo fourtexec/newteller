@@ -8,6 +8,7 @@
 #include <QUrl>
 #include <QVariantMap>
 
+class NotificationDaemon;
 class Settings;
 
 // Session actions, icon resolution and small system facts. Exposed to QML as
@@ -27,7 +28,8 @@ class ShellController : public QObject {
     Q_PROPERTY(QDateTime now READ now NOTIFY nowChanged)
 
 public:
-    explicit ShellController(Settings *settings, QObject *parent = nullptr);
+    explicit ShellController(Settings *settings, NotificationDaemon *notifications = nullptr,
+                             QObject *parent = nullptr);
 
     QString version() const { return QStringLiteral(NEWTELLER_VERSION); }
     QString home() const;
@@ -78,6 +80,7 @@ private:
     QString expandHome(const QString &path) const;
 
     Settings *m_settings;
+    NotificationDaemon *m_notifications;
     QTimer m_clock;
     QDateTime m_now;
     // icon name -> resolved file URL ("" = fall back to the theme), so the

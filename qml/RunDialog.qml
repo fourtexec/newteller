@@ -63,13 +63,8 @@ Window {
             hide();
     }
 
-    Rectangle {
+    ShellFrame {
         anchors.fill: parent
-        anchors.margins: 4
-        radius: Theme.radius + 4
-        color: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, Theme.opacity)
-        border.width: 1
-        border.color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.6)
 
         ColumnLayout {
             anchors.fill: parent

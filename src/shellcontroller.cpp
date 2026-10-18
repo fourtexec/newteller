@@ -1,4 +1,5 @@
 #include "shellcontroller.h"
+#include "notifications.h"
 #include "settings.h"
 
 #include <QClipboard>
@@ -11,9 +12,10 @@
 #include <QSysInfo>
 #include <QUrl>
 
-ShellController::ShellController(Settings *settings, QObject *parent)
+ShellController::ShellController(Settings *settings, NotificationDaemon *notifications, QObject *parent)
     : QObject(parent)
     , m_settings(settings)
+    , m_notifications(notifications)
 {
     // One shared ticker: the panel, the start menu and clock widgets all bind
     // to `Shell.now` instead of running their own timers.
@@ -154,8 +156,15 @@ void ShellController::copyToClipboard(const QString &text) const
 
 void ShellController::notify(const QString &title, const QString &body) const
 {
-    // notify-send talks to org.freedesktop.Notifications; a missing binary is
-    // not an error, the shell keeps working without a notification daemon.
+    // The built-in daemon shows the popup itself when it owns the session; if
+    // it is disabled (or another daemon owns org.freedesktop.Notifications and
+    // ours is off), notify-send hands the message to whoever is responsible.
+    if (m_notifications
+        && m_settings->value(QStringLiteral("notifications.enabled"), true).toBool()) {
+        m_notifications->send(QStringLiteral("NewTeller"), title, body);
+        return;
+    }
+    // A missing binary is not an error, the shell keeps working without it.
     QProcess::startDetached(QStringLiteral("notify-send"),
                             {QStringLiteral("--app-name=NewTeller"), title, body});
 }

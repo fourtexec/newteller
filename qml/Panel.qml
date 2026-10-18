@@ -8,6 +8,11 @@ import NewTeller 1.0
 // plugin slots and the clock. The position is configurable (bottom by default,
 // also top/left/right), the bar can be narrow and centred, and auto-hide
 // slides it away after a short delay.
+//
+// The dock adapts to the situation: applications whose windows are all
+// minimised move into a separate, dimmed zone at the end of the strip, the
+// icons shrink when many applications run at once, and the strip becomes
+// scrollable when even the smallest icons do not fit.
 Window {
     id: panel
 
@@ -29,10 +34,19 @@ Window {
     // based application list of `Apps` as the fallback on other compositors.
     readonly property bool dockShowWindows: Settings.values["dock.showWindows"] !== false
     readonly property bool dockGroup: Settings.values["dock.group"] !== false
+    readonly property bool separateBackground: Settings.values["dock.separateBackground"] !== false
+    readonly property bool shrinkIcons: Settings.values["dock.shrinkIcons"] !== false
     readonly property int dockIconSize: Settings.values["dock.iconSize"] || 28
+    // Icon size after the adaptive shrink pass (recomputed in rebuildDock).
+    property int effectiveIconSize: dockIconSize
+    property bool showDockLabels: false
     // One entry per dock button:
-    //   { appId, app, windows: [], running, active, badge, title }
+    //   { appId, app, windows: [], running, active, badge, title, pinned, background }
+    // `dockEntries` is the combined list (main zone first), so the dock menu
+    // and external users always see everything.
     property var dockEntries: []
+    property var dockMainEntries: []
+    property var dockBackgroundEntries: []
 
     visible: true
     color: "transparent"
@@ -81,6 +95,14 @@ Window {
     // X11: a dock window that reserves the chosen edge.
     ShellWindow.role: ShellWindow.Dock
 
+    // The clock popup, opened by tapping the clock at the end of the bar.
+    ClockPopup {
+        id: clockPopup
+        panelPosition: panel.panelPosition
+        panelThickness: panel.barThickness
+        edgeMargin: panel.edgeMargin
+    }
+
     // Kept in sync with the start menu so the panel does not slide away
     // underneath it.
     Connections {
@@ -96,14 +118,16 @@ Window {
         var result = [];
         var seen = {};
 
-        // Pinned applications first, in the pinned order.
+        // Pinned applications first, in the pinned order. They keep their slot
+        // even when all of their windows are minimised.
         const pinned = Settings.values["panel.pinned"] || [];
         for (const id of pinned) {
             const app = Apps.byId(id);
             if (app.id === undefined)
                 continue;
             seen[id] = true;
-            result.push({ appId: id, app: app, windows: [], running: false, active: false, badge: 0 });
+            result.push({ appId: id, app: app, windows: [], running: false, active: false,
+                          badge: 0, pinned: true, background: false });
         }
 
         // Running top-level windows, grouped into one button per application.
@@ -120,12 +144,9 @@ Window {
                         order.push(appId);
                     }
                     groups[appId].push(w);
-                } else if (dockGroup) {
-                    loose.push({ appId: "", app: {}, windows: [w], running: true, active: !!w.active,
-                                 badge: 1, title: w.title || "" });
                 } else {
                     loose.push({ appId: "", app: {}, windows: [w], running: true, active: !!w.active,
-                                 badge: 1, title: w.title || "" });
+                                 badge: 1, title: w.title || "", pinned: false, background: false });
                 }
             }
             for (const appId of order) {
@@ -142,7 +163,8 @@ Window {
                 } else {
                     seen[appId] = true;
                     result.push({ appId: appId, app: Apps.byId(appId), windows: wins,
-                                  running: true, active: false, badge: wins.length });
+                                  running: true, active: false, badge: wins.length,
+                                  pinned: false, background: false });
                 }
             }
             for (const entry of loose)
@@ -155,7 +177,7 @@ Window {
                 continue;
             seen[id] = true;
             result.push({ appId: id, app: Apps.byId(id), windows: [], running: true,
-                          active: false, badge: 0 });
+                          active: false, badge: 0, pinned: false, background: false });
         }
 
         for (const e of result) {
@@ -171,8 +193,43 @@ Window {
             }
             if (e.appId.length > 0 && Apps.isRunning(e.appId))
                 e.running = true;
+            // Everything that only has minimised windows went to the
+            // background: parked at the end of the strip, dimmed.
+            const allMinimized = e.windows.length > 0 && e.windows.every(w => w.minimized);
+            e.background = separateBackground && allMinimized && !e.pinned;
         }
-        dockEntries = result;
+
+        var main = [];
+        var background = [];
+        for (const e of result)
+            (e.background ? background : main).push(e);
+        dockMainEntries = main;
+        dockBackgroundEntries = background;
+        dockEntries = main.concat(background);
+        updateAdaptiveDock(main.length + background.length);
+    }
+
+    // Shrinks the dock icons while the strip would overflow, and hides the
+    // window-title labels first. The strip itself scrolls when even the
+    // smallest icons do not fit.
+    function updateAdaptiveDock(count) {
+        const base = dockIconSize;
+        const span = vertical ? Screen.height : Screen.width;
+        const reserved = 64 /* start */ + 14 /* separators */
+                       + (vertical ? 26 : 88) /* clock */
+                       + panelPlugins.length * 30 + 24;
+        const available = Math.max(120, span - reserved);
+        var size = base;
+        var labels = !dockGroup && !vertical;
+        const widthFor = (s, withLabels) => count * (s + 14 + (withLabels ? 108 : 0));
+        if (widthFor(size, labels) > available)
+            labels = false;
+        if (shrinkIcons) {
+            while (size > 16 && widthFor(size, labels) > available)
+                size -= 2;
+        }
+        effectiveIconSize = Math.max(16, size);
+        showDockLabels = labels;
     }
 
     function activateEntry(entry) {
@@ -188,6 +245,17 @@ Window {
         } else if (entry.appId.length > 0) {
             Apps.launch(entry.appId);
         }
+    }
+
+    // A dock click is a toggle, the way modern docks behave: an already
+    // focused single window is sent to the background, everything else is
+    // activated (which also restores a minimised window).
+    function dockClicked(entry) {
+        if (entry.windows.length === 1 && entry.windows[0].active && !entry.windows[0].minimized) {
+            Windows.minimize(entry.windows[0].id);
+            return;
+        }
+        activateEntry(entry);
     }
 
     function closeEntry(entry) {
@@ -235,29 +303,42 @@ Window {
     }
 
     component DockApps: Repeater {
-        model: panel.dockEntries
+        property bool backgroundZone: false
+        model: backgroundZone ? panel.dockBackgroundEntries : panel.dockMainEntries
 
         delegate: TaskButton {
             id: dockButton
             required property var modelData
             readonly property var entry: modelData
-            readonly property string appName: entry.app && entry.app.name ? entry.app.name : (entry.title || "Application")
+            readonly property string appName: entry.app && entry.app.name ? entry.app.name
+                                                                          : (entry.title || "Application")
 
-            Layout.alignment: Qt.AlignVCenter | Qt.AlignHCenter
+            height: dockStrip.height
             iconName: entry.app && entry.app.icon ? entry.app.icon
                     : (entry.appId.length > 0 ? "square" : "app-window")
-            label: !panel.dockGroup && entry.title && entry.title.length > 0 ? entry.title : ""
-            iconSize: panel.dockIconSize
+            label: panel.showDockLabels && entry.title && entry.title.length > 0
+                   ? entry.title : ""
+            iconSize: panel.effectiveIconSize
             running: entry.running
             active: entry.active
+            dimmed: entry.background === true
             badge: entry.badge
-            onClicked: panel.activateEntry(entry)
+            onClicked: panel.dockClicked(entry)
             onMiddleClicked: panel.closeEntry(entry)
             TapHandler {
                 acceptedButtons: Qt.RightButton
                 onTapped: panel.openDockMenu(dockButton.entry, dockButton)
             }
         }
+    }
+
+    // Divider between the running zone and the minimised/background zone.
+    component BackgroundSeparator: Rectangle {
+        visible: panel.separateBackground && panel.dockBackgroundEntries.length > 0
+        Layout.preferredWidth: panel.vertical ? 24 : 1
+        Layout.preferredHeight: panel.vertical ? 1 : 24
+        Layout.alignment: Qt.AlignVCenter
+        color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.55)
     }
 
     component PluginSlot: Repeater {
@@ -271,7 +352,6 @@ Window {
     }
 
     component ClockText: Text {
-        Layout.alignment: Qt.AlignVCenter | Qt.AlignHCenter
         text: (Settings.values["panel.showDate"]
                ? Qt.formatDateTime(Shell.now, Settings.values["panel.dateFormat"] || "ddd d MMM") + "  "
                : "")
@@ -281,9 +361,29 @@ Window {
         font.pointSize: Theme.fontSize
     }
 
-    component Spacer: Item {
-        Layout.fillWidth: !panel.vertical
-        Layout.fillHeight: panel.vertical
+    // The clock is a button: tapping it opens the clock popup with the
+    // analogue dial and the month calendar.
+    component ClockButton: Rectangle {
+        id: clockButton
+        Layout.alignment: Qt.AlignVCenter | Qt.AlignHCenter
+        implicitWidth: clockLabel.implicitWidth + 18
+        implicitHeight: Math.min(panel.barThickness - 10, clockLabel.implicitHeight + 10)
+        radius: Theme.radius
+        color: clockHover.hovered
+               ? Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.08)
+               : "transparent"
+
+        HoverHandler { id: clockHover }
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: clockPopup.toggle()
+        }
+        ClockText {
+            id: clockLabel
+            anchors.centerIn: parent
+            horizontalAlignment: Text.AlignHCenter
+        }
     }
 
     component Separator: Rectangle {
@@ -307,6 +407,37 @@ Window {
         }
     }
 
+    // Scrollable dock strip: it only becomes interactive when the buttons do
+    // not fit, so nothing steals wheel events on a quiet desktop.
+    component DockStrip: Flickable {
+        id: dockStrip
+        Layout.fillWidth: !panel.vertical
+        Layout.fillHeight: panel.vertical
+        Layout.alignment: Qt.AlignVCenter
+        Layout.maximumWidth: contentWidth > 0 ? contentWidth + 4 : 8
+        clip: true
+        contentWidth: stripRow.width
+        contentHeight: stripRow.height
+        interactive: panel.vertical ? contentHeight > height : contentWidth > width
+
+        WheelHandler {
+            enabled: dockStrip.interactive
+            orientation: panel.vertical ? Qt.Vertical : Qt.Horizontal
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+        }
+
+        Row {
+            id: stripRow
+            spacing: 2
+            y: (dockStrip.height - height) / 2
+            x: Math.max(0, (dockStrip.width - width) / 2)
+
+            DockApps {}
+            BackgroundSeparator {}
+            DockApps { backgroundZone: true }
+        }
+    }
+
     Component {
         id: horizontalBar
 
@@ -323,14 +454,12 @@ Window {
 
                 StartButton {}
                 Separator {}
-                DockApps {}
-                Spacer {}
+                DockStrip {}
                 PluginSlot {}
 
-                ClockText {
+                ClockButton {
                     Layout.rightMargin: 6
-                    Layout.leftMargin: 6
-                    horizontalAlignment: Text.AlignRight
+                    Layout.leftMargin: 4
                 }
             }
         }
@@ -352,14 +481,12 @@ Window {
 
                 StartButton {}
                 Separator {}
-                DockApps {}
-                Spacer {}
+                DockStrip {}
                 PluginSlot {}
 
-                ClockText {
+                ClockButton {
                     Layout.bottomMargin: 6
-                    Layout.topMargin: 6
-                    horizontalAlignment: Text.AlignHCenter
+                    Layout.topMargin: 4
                 }
             }
         }

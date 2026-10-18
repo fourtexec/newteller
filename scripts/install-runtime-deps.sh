@@ -11,7 +11,7 @@ newteller_detect_platform
 
 apt-get update
 packages=(
-    libqt6core6t64 libqt6gui6 libqt6qml6 libqt6quick6 libqt6svg6
+    libqt6core6t64 libqt6gui6 libqt6dbus6 libqt6qml6 libqt6quick6 libqt6svg6
     liblayershellqtinterface6 layer-shell-qt
     qt6-qpa-plugins qt6-wayland qt6-image-formats-plugins
     qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtquick-layouts

@@ -15,6 +15,8 @@ Rectangle {
     property bool running: false
     // Number of windows behind the button; > 1 widens the running indicator.
     property int badge: 0
+    // All windows of the entry are minimised (background zone of the dock).
+    property bool dimmed: false
     property int iconSize: 22
     // A dot pinned to the top-right corner (used by the category chips).
     property bool cornerDot: false
@@ -30,6 +32,11 @@ Rectangle {
     // surface can coexist with the buttons without stealing their hover.
     HoverHandler {
         id: hoverHandler
+    }
+    // Background-zone buttons fade until the pointer reaches them.
+    opacity: (dimmed && !hoverHandler.hovered && !area.pressed) ? 0.55 : 1.0
+    Behavior on opacity {
+        NumberAnimation { duration: 120 }
     }
     color: area.pressed
            ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45)
@@ -88,14 +95,16 @@ Rectangle {
     }
 
     // Running indicator: a short pill centred under the content, wider when
-    // the application has several windows.
+    // the application has several windows. Dimmed entries get a muted pill so
+    // a minimised application reads differently from an active one.
     Rectangle {
         visible: btn.running
         width: Math.min(btn.badge > 1 ? 22 : 12, btn.width - 12)
         height: 3
         radius: 1.5
         color: btn.active ? Theme.accent
-                          : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.75)
+                          : btn.dimmed ? Theme.muted
+                                       : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.75)
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 3

@@ -48,6 +48,7 @@ CATALOGUE AND SEARCH
 SYSTEM
     metrics               one sample of cpu, memory, network, battery, disks
     watch <path>...       inotify events, debounced (Ctrl-C to stop)
+    notify <title> [body] show a desktop notification of the running shell
     doctor                diagnostics for a bug report
 
 GLOBAL FLAGS
@@ -56,6 +57,8 @@ GLOBAL FLAGS
     --dirs <a:b:c>        application directories, colon separated
     --no-fuzzy            disable typo tolerance
     --colour <hex>        highlight colour for search results
+    --icon <name>         icon name for notify
+    --timeout <ms>        popup timeout for notify (0 keeps it up)
     --interval <ms>       sampling interval for metrics --watch
     --count <n>           number of samples for metrics --watch
     --apps <n>            synthetic catalogue size for bench

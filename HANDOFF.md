@@ -322,3 +322,62 @@ src/systemmonitor.h src/systemmonitor.cpp`.
 - Panel shows a running badge, start menu shows highlighted fuzzy hits, the system monitor
   plugin updates on the single shared ticker, desktop right-click menu works.
 - README documents the new keys, the CLI and the Rust build option.
+
+## 5. Features added in the dock/settings/notification round (commit after 60e31a2)
+
+### 5.1 Settings additions (all live through `Settings`/`Theme`, stored in shell.json)
+
+- `dock.separateBackground` (bool, true) — applications whose windows are all minimised move
+  into a dimmed background zone at the end of the dock strip.
+- `dock.shrinkIcons` (bool, true) — dock icons shrink (down to 16 px) while the strip would
+  overflow; the strip becomes wheel-scrollable when even that is not enough.
+- `windows.style` (card | glass | flat | outline), `windows.radius` (-1 = theme),
+  `windows.opacityPercent` (0 = theme), `windows.borderWidth` (-1 = theme),
+  `windows.borderColor` ("" = theme), `windows.shadow` (0..3) — the shared frame of every
+  floating shell window, implemented once in `qml/ShellFrame.qml` and used by the start menu,
+  run dialog, dock menu, clock popup and notification cards. Edited in Settings → Appearance
+  → "Window style", with a live preview.
+- `notifications.enabled`, `notifications.doNotDisturb`, `notifications.position`,
+  `notifications.duration` (seconds, 0 = sticky), `notifications.historyLimit` — see 5.3.
+  Settings gained a "Notifications" page (popups config, daemon status, history, test button).
+
+### 5.2 Settings pickers (no new QML module dependencies)
+
+- `qml/SettingsFilePicker.qml` — in-shell file manager dialog (FolderListModel based):
+  breadcrumb path field, Up/Home/Pictures/Documents/Downloads shortcuts, images/all-files
+  filter, image preview pane. "Desktop → Choose from file manager" writes
+  `desktop.wallpaper`.
+- `qml/SettingsFontPicker.qml` — dropdown over `Qt.fontFamilies()` with per-entry preview in
+  its own face and a filter field; replaces the free-text font family field of the theme
+  editor.
+- `qml/ColorPaletteWindow.qml` — colour palette (curated swatches + hue bar + saturation/value
+  square) opened from every `SettingsColorField` via the new `paletteRequested` signal; the
+  host window connects `applied` back to the field that opened it.
+
+### 5.3 Notifications (`src/notifications.h/.cpp`, context property `Notifications`)
+
+- QtDBus daemon that claims `org.freedesktop.Notifications` (Notify / CloseNotification /
+  GetCapabilities / GetServerInformation, signals NotificationClosed + ActionInvoked) when no
+  other daemon owns the session bus; otherwise it steps aside gracefully.
+- Private Unix socket `$XDG_RUNTIME_DIR/newteller/notify.sock` fed by the new
+  `newteller-ctl notify <title> [body] [--icon name] [--timeout ms]` command (one JSON line).
+- `qml/Notifications.qml` — one popup window per screen (Instantiator in Main.qml), corner
+  configurable, DND aware, action buttons, per-card expiry timer, history in the settings.
+- `ShellController::notify` now prefers the built-in daemon and falls back to `notify-send`.
+
+### 5.4 Clock popup and dock behaviour
+
+- `qml/ClockPopup.qml` — tapping the panel clock (it is a real button now) opens a card with a
+  digital read-out, a Canvas analogue dial and a month calendar; anchored at the panel end,
+  opposite the bar.
+- Dock click is a toggle for single-window entries (focused → minimise, otherwise activate);
+  the dock menu gained per-window minimise/restore; pinned apps keep their slot while
+  unpinned fully-minimised apps park in the background zone.
+
+### 5.5 Build notes
+
+- `find_package(Qt6 ... COMPONENTS ... DBus)` — QtDBus is part of qtbase; runtime needs
+  `libqt6dbus6` (added to `scripts/install-runtime-deps.sh`).
+- New sources: `src/notifications.cpp`; new QML registered in `resources.qrc`.
+- `tests/qml_smoke.py` mocks the new `Notifications` context property and asserts one clock
+  popup per panel and one notification window per screen.

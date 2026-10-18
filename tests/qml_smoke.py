@@ -551,6 +551,41 @@ class Windows(QObject):
         return [w["id"] for w in self._windows if w["appId"] == app_id]
 
 
+class Notifications(QObject):
+    """Stand-in for the NotificationDaemon context property (src/notifications.h)."""
+
+    activeChanged = Signal()
+    historyChanged = Signal()
+    dbusChanged = Signal()
+    arrived = Signal("QVariantMap")
+
+    def __init__(self):
+        super().__init__()
+        self._active = []
+        self._history = []
+
+    active = Property("QVariantList", lambda self: self._active, notify=activeChanged)
+    history = Property("QVariantList", lambda self: self._history, notify=historyChanged)
+    ownsDBus = Property(bool, lambda self: False, notify=dbusChanged)
+    dbusAvailable = Property(bool, lambda self: False, constant=True)
+
+    @Slot(str, str, str, str, int, result="QVariant")
+    def send(self, app, summary, body, icon, timeout):
+        return 1
+
+    @Slot("QVariant", "QVariant")
+    def dismiss(self, notification_id, reason=2):
+        pass
+
+    @Slot("QVariant", str)
+    def invokeAction(self, notification_id, action_key):
+        pass
+
+    @Slot()
+    def clearHistory(self):
+        pass
+
+
 # ---------------------------------------------------------------------------
 
 def compile_resources():
@@ -610,9 +645,11 @@ def main():
     settings, theme, apps = Settings(), Theme(), Apps()
     shell, plugin_manager = Shell(desktop_dir, work), Plugins(plugins)
     system, window_list = System(), Windows()
+    notifications = Notifications()
     engine = QQmlApplicationEngine()
     for name, obj in (("Settings", settings), ("Theme", theme), ("Apps", apps), ("Shell", shell),
-                      ("Plugins", plugin_manager), ("System", system), ("Windows", window_list)):
+                      ("Plugins", plugin_manager), ("System", system), ("Windows", window_list),
+                      ("Notifications", notifications)):
         engine.rootContext().setContextProperty(name, obj)
 
     failures = []
@@ -786,6 +823,20 @@ def main():
     dock_menus = windows_of_kind("DockMenu")
     check(len(dock_menus) == len(panels),
           f"one dock menu per panel ({len(dock_menus)} vs {len(panels)})")
+
+    # The clock popup lives with its panel and starts hidden.
+    clock_popups = windows_of_kind("ClockPopup")
+    check(len(clock_popups) == len(panels),
+          f"one clock popup per panel ({len(clock_popups)} vs {len(panels)})")
+    if clock_popups:
+        check(not clock_popups[0].isVisible(), "the clock popup starts hidden")
+
+    # One notification window per screen, hidden until something arrives.
+    notification_windows = windows_of_kind("Notifications")
+    check(len(notification_windows) == len(screens),
+          f"one notification window per screen ({len(notification_windows)} vs {len(screens)})")
+    if notification_windows:
+        check(not notification_windows[0].isVisible(), "notifications start hidden")
 
     # The embedded settings window opens through Shell.openSettings(); the
     # start menu button, the desktop menu and `newteller --settings` share it.

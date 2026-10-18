@@ -17,6 +17,12 @@
     <file>qml/SettingsChoice.qml</file>
     <file>qml/SettingsTextField.qml</file>
     <file>qml/SettingsColorField.qml</file>
+    <file>qml/ShellFrame.qml</file>
+    <file>qml/ClockPopup.qml</file>
+    <file>qml/Notifications.qml</file>
+    <file>qml/ColorPaletteWindow.qml</file>
+    <file>qml/SettingsFontPicker.qml</file>
+    <file>qml/SettingsFilePicker.qml</file>
     <file>themes/default.json</file>
     <file>themes/light.json</file>
     <file>themes/nord.json</file>

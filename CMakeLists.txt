@@ -7,7 +7,7 @@ set(CMAKE_AUTOMOC ON)
 
 include(GNUInstallDirs)
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Qml Quick Svg)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Qml Quick Svg DBus)
 
 # wlr-layer-shell support (panel, desktop, menu). Package names differ per distro,
 # so we try both the Qt6 and the generic CMake package names.
@@ -83,6 +83,7 @@ qt_add_executable(newteller
     src/windowlist.cpp
     src/shellwindow.cpp
     src/windowsystem.cpp
+    src/notifications.cpp
 )
 
 target_compile_definitions(newteller PRIVATE NEWTELLER_VERSION="${PROJECT_VERSION}")
@@ -93,6 +94,7 @@ target_link_libraries(newteller PRIVATE
     Qt6::Qml
     Qt6::Quick
     Qt6::Svg
+    Qt6::DBus
     LayerShellQt::Interface
     ${WAYLAND_CLIENT_LIBRARY}
     ${XCB_LIBRARY}

@@ -21,6 +21,7 @@ Window {
         { id: "startmenu", label: "Start menu", icon: "search" },
         { id: "apps", label: "Applications", icon: "package" },
         { id: "system", label: "System", icon: "cpu" },
+        { id: "notifications", label: "Notifications", icon: "bell" },
         { id: "plugins", label: "Plugins", icon: "puzzle" },
         { id: "about", label: "About", icon: "info" }
     ]
@@ -32,6 +33,27 @@ Window {
     // Theme editor state (values of the selected theme being edited).
     property var themeEditor: ({})
     property string themeEditorName: ""
+    // Font family chosen through the font dropdown of the theme editor.
+    property string editorFontFamily: "Sans"
+    // The colour field the palette popup was opened from.
+    property var paletteTarget: null
+
+    function openPalette(field) {
+        paletteTarget = field;
+        colorPalette.openFor(field.colorValue, field, 6, 36);
+    }
+
+    function refreshWindowBorderField() {
+        const c = Settings.values["windows.borderColor"];
+        winBorderField.setValue((c !== undefined && c !== null && c.length > 0)
+                                ? Qt.color(c) : Theme.border);
+    }
+
+    Component.onCompleted: refreshWindowBorderField()
+    Connections {
+        target: Settings
+        function onValuesChanged() { settingsWindow.refreshWindowBorderField() }
+    }
 
     function pageIndexOf(id) {
         for (var i = 0; i < pages.length; ++i) {
@@ -62,7 +84,7 @@ Window {
         opacityBox.value = Number(themeEditor.opacity) || 0.92;
         radiusBox.value = Number(themeEditor.radius) || 10;
         fontSizeBox.value = Number(themeEditor.fontSize) || 10;
-        fontFamilyField.text = themeEditor.fontFamily || "Sans";
+        editorFontFamily = themeEditor.fontFamily || "Sans";
     }
 
     function collectThemeEditor() {
@@ -76,7 +98,7 @@ Window {
             opacity: opacityBox.value,
             radius: Math.round(radiusBox.value),
             fontSize: Math.round(fontSizeBox.value),
-            fontFamily: fontFamilyField.text
+            fontFamily: editorFontFamily
         };
     }
 
@@ -339,32 +361,56 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: "Background"
-                                SettingsColorField { id: backgroundField; onEdited: (hex) => settingsWindow.saveTheme() }
+                                SettingsColorField {
+                                    id: backgroundField
+                                    onEdited: (hex) => settingsWindow.saveTheme()
+                                    onPaletteRequested: settingsWindow.openPalette(backgroundField)
+                                }
                             }
                             SettingsRow {
                                 width: parent.width
                                 title: "Foreground"
-                                SettingsColorField { id: foregroundField; onEdited: (hex) => settingsWindow.saveTheme() }
+                                SettingsColorField {
+                                    id: foregroundField
+                                    onEdited: (hex) => settingsWindow.saveTheme()
+                                    onPaletteRequested: settingsWindow.openPalette(foregroundField)
+                                }
                             }
                             SettingsRow {
                                 width: parent.width
                                 title: "Accent"
-                                SettingsColorField { id: accentField; onEdited: (hex) => settingsWindow.saveTheme() }
+                                SettingsColorField {
+                                    id: accentField
+                                    onEdited: (hex) => settingsWindow.saveTheme()
+                                    onPaletteRequested: settingsWindow.openPalette(accentField)
+                                }
                             }
                             SettingsRow {
                                 width: parent.width
                                 title: "Surface"
-                                SettingsColorField { id: surfaceField; onEdited: (hex) => settingsWindow.saveTheme() }
+                                SettingsColorField {
+                                    id: surfaceField
+                                    onEdited: (hex) => settingsWindow.saveTheme()
+                                    onPaletteRequested: settingsWindow.openPalette(surfaceField)
+                                }
                             }
                             SettingsRow {
                                 width: parent.width
                                 title: "Border"
-                                SettingsColorField { id: borderField; onEdited: (hex) => settingsWindow.saveTheme() }
+                                SettingsColorField {
+                                    id: borderField
+                                    onEdited: (hex) => settingsWindow.saveTheme()
+                                    onPaletteRequested: settingsWindow.openPalette(borderField)
+                                }
                             }
                             SettingsRow {
                                 width: parent.width
                                 title: "Muted text"
-                                SettingsColorField { id: mutedField; onEdited: (hex) => settingsWindow.saveTheme() }
+                                SettingsColorField {
+                                    id: mutedField
+                                    onEdited: (hex) => settingsWindow.saveTheme()
+                                    onPaletteRequested: settingsWindow.openPalette(mutedField)
+                                }
                             }
                             SettingsRow {
                                 width: parent.width
@@ -384,7 +430,14 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: "Font family"
-                                SettingsTextField { id: fontFamilyField; onTextEdited: (t) => settingsWindow.saveTheme() }
+                                subtitle: "Every font installed on the system."
+                                TaskButton {
+                                    id: fontFamilyButton
+                                    iconName: "type"
+                                    label: settingsWindow.editorFontFamily
+                                    onClicked: fontPicker.openFor(settingsWindow.editorFontFamily,
+                                                                  fontFamilyButton)
+                                }
                             }
                             SettingsRow {
                                 width: parent.width
@@ -403,6 +456,94 @@ Window {
                                         label: "Discard custom copy"
                                         visible: Theme.hasUserTheme(settingsWindow.themeEditorName)
                                         onClicked: settingsWindow.resetTheme()
+                                    }
+                                }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Window style"
+                            subtitle: "The frame of the shell windows — start menu, run dialog, "
+                                      + "dock menu, clock and notifications. Values of -1 or 0 follow the theme."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Style"
+                                settingKey: "windows.style"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "card", label: "Card" },
+                                        { value: "glass", label: "Glass" },
+                                        { value: "flat", label: "Flat" },
+                                        { value: "outline", label: "Outline" }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Corner radius"
+                                subtitle: "-1 follows the theme radius."
+                                settingKey: "windows.radius"
+                                SettingsStepper { from: -1; to: 32; suffix: " px" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Background opacity"
+                                subtitle: "0 follows the theme."
+                                settingKey: "windows.opacityPercent"
+                                SettingsSlider { from: 0; to: 100; step: 5; suffix: " %" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Border width"
+                                subtitle: "-1 follows the theme."
+                                settingKey: "windows.borderWidth"
+                                SettingsStepper { from: -1; to: 6; suffix: " px" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Border colour"
+                                subtitle: "Empty follows the theme."
+
+                                Row {
+                                    spacing: 6
+
+                                    SettingsColorField {
+                                        id: winBorderField
+                                        onEdited: (hex) => Settings.setValue("windows.borderColor", hex)
+                                        onPaletteRequested: settingsWindow.openPalette(winBorderField)
+                                    }
+                                    TaskButton {
+                                        iconName: "rotate-ccw"
+                                        label: "Follow theme"
+                                        onClicked: Settings.reset("windows.borderColor")
+                                    }
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Shadow"
+                                settingKey: "windows.shadow"
+                                SettingsStepper { from: 0; to: 3 }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Preview"
+
+                                Item {
+                                    width: 280
+                                    height: 96
+
+                                    ShellFrame {
+                                        anchors.fill: parent
+
+                                        Row {
+                                            anchors.centerIn: parent
+                                            spacing: 8
+                                            Rectangle { width: 46; height: 12; radius: 6; color: Theme.accent }
+                                            Rectangle { width: 32; height: 12; radius: 6; color: Theme.muted }
+                                            Rectangle { width: 24; height: 12; radius: 6; color: Theme.border }
+                                        }
                                     }
                                 }
                             }
@@ -523,6 +664,22 @@ Window {
                                 title: "Dock icon size"
                                 settingKey: "dock.iconSize"
                                 SettingsSlider { from: 16; to: 48; step: 2; suffix: " px" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Background zone"
+                                subtitle: "Applications whose windows are all minimised gather in a "
+                                          + "dimmed zone at the end of the dock."
+                                settingKey: "dock.separateBackground"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Shrink icons on overflow"
+                                subtitle: "The dock icons shrink when many applications run at once; "
+                                          + "the strip scrolls when even that is not enough."
+                                settingKey: "dock.shrinkIcons"
+                                SettingsSwitch {}
                             }
                         }
 
@@ -661,6 +818,17 @@ Window {
                                             label: "Browse images"
                                             onClicked: {
                                                 wallpaperOverlay.visible = true;
+                                            }
+                                        }
+                                        TaskButton {
+                                            iconName: "folder"
+                                            label: "Choose from file manager"
+                                            onClicked: {
+                                                const wp = Settings.value("desktop.wallpaper", "") || "";
+                                                const dir = wp.length > 0 && wp.indexOf("/") >= 0
+                                                        ? wp.substring(0, wp.lastIndexOf("/"))
+                                                        : Shell.home + "/Pictures";
+                                                filePicker.openFor(dir, true);
                                             }
                                         }
                                         TaskButton {
@@ -883,6 +1051,132 @@ Window {
                                 title: "Config file watching"
                                 settingKey: "watch.debounce"
                                 SettingsStepper { from: 0; to: 10000; step: 50; suffix: " ms" }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---- Notifications ----------------------------------------------
+            Item {
+                Flickable {
+                    id: notifScroll
+                    anchors.fill: parent
+                    contentHeight: notifColumn.implicitHeight + 24
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Column {
+                        id: notifColumn
+                        x: 16
+                        y: 12
+                        width: notifScroll.width - 32
+                        spacing: 16
+
+                        SettingsSection {
+                            title: "Popups"
+                            subtitle: "The built-in daemon serves org.freedesktop.Notifications, "
+                                      + "so notify-send and every application reach the shell. "
+                                      + "newteller-ctl notify works through the private socket."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Notification popups"
+                                settingKey: "notifications.enabled"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Do not disturb"
+                                subtitle: "Popups stay hidden; critical notifications still come through."
+                                settingKey: "notifications.doNotDisturb"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Corner"
+                                settingKey: "notifications.position"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "top-left", label: "Top left" },
+                                        { value: "top-center", label: "Top center" },
+                                        { value: "top-right", label: "Top right" },
+                                        { value: "bottom-left", label: "Bottom left" },
+                                        { value: "bottom-center", label: "Bottom center" },
+                                        { value: "bottom-right", label: "Bottom right" }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Duration"
+                                subtitle: "0 keeps a popup until it is clicked."
+                                settingKey: "notifications.duration"
+                                SettingsStepper { from: 0; to: 120; suffix: " s" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "History length"
+                                settingKey: "notifications.historyLimit"
+                                SettingsStepper { from: 5; to: 200; step: 5 }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Try it"
+                                TaskButton {
+                                    iconName: "bell-ring"
+                                    label: "Send a test notification"
+                                    onClicked: Shell.notify("NewTeller",
+                                                            "This is what a notification looks like.")
+                                }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Daemon"
+                            subtitle: "When another notification daemon owns the session, NewTeller "
+                                      + "only shows the notifications that arrive on its own socket."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "D-Bus service"
+                                Text {
+                                    color: Theme.foreground
+                                    font.family: Theme.fontFamily
+                                    font.pointSize: Theme.fontSize
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: Notifications.ownsDBus
+                                          ? "This shell serves org.freedesktop.Notifications"
+                                          : "Another daemon owns org.freedesktop.Notifications"
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Recent notifications"
+                                TaskButton {
+                                    iconName: "eraser"
+                                    label: "Clear history"
+                                    onClicked: Notifications.clearHistory()
+                                }
+                            }
+
+                            Repeater {
+                                model: (Notifications.history || []).slice().reverse()
+
+                                delegate: SettingsRow {
+                                    required property var modelData
+                                    width: parent.width
+                                    title: (modelData.summary || "").length > 0
+                                           ? modelData.summary : "(untitled)"
+                                    subtitle: (modelData.app || "") + "  ·  "
+                                              + Qt.formatDateTime(new Date(modelData.time || 0),
+                                                                  "ddd d MMM HH:mm")
+
+                                    TaskButton {
+                                        iconName: "x"
+                                        onClicked: Notifications.dismiss(modelData.id, 3)
+                                    }
+                                }
                             }
                         }
                     }
@@ -1142,6 +1436,30 @@ Window {
             font.family: Theme.fontFamily
             font.pointSize: Theme.fontSize - 1
         }
+    }
+
+    // ------------------------------------------------------------------
+    // Popups: colour palette, font dropdown, file manager
+    // ------------------------------------------------------------------
+    ColorPaletteWindow {
+        id: colorPalette
+        onApplied: (chosen) => {
+            if (settingsWindow.paletteTarget) {
+                settingsWindow.paletteTarget.setValue(chosen);
+                settingsWindow.paletteTarget.edited(chosen.toString());
+            }
+        }
+    }
+    SettingsFontPicker {
+        id: fontPicker
+        onPicked: (family) => {
+            settingsWindow.editorFontFamily = family;
+            settingsWindow.saveTheme();
+        }
+    }
+    SettingsFilePicker {
+        id: filePicker
+        onAccepted: (path) => Settings.setValue("desktop.wallpaper", path)
     }
 
     // ------------------------------------------------------------------

@@ -110,9 +110,10 @@ Window {
         anchors.fill: parent
         anchors.margins: 4
         radius: Theme.radius + 2
-        color: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, Theme.opacity)
-        border.width: 1
-        border.color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.6)
+        color: "transparent"
+
+        ShellFrame {
+            anchors.fill: parent
 
         Column {
             id: menuColumn
@@ -154,7 +155,7 @@ Window {
                     TaskButton {
                         id: windowButton
                         anchors.left: parent.left
-                        anchors.right: windowClose.left
+                        anchors.right: windowState.left
                         anchors.rightMargin: 4
                         height: parent.height
                         fillWidth: true
@@ -164,6 +165,22 @@ Window {
                         active: !!modelData.active
                         onClicked: {
                             Windows.activate(modelData.id);
+                            dockMenu.close();
+                        }
+                    }
+                    // Minimise or restore this window, matching its state.
+                    TaskButton {
+                        id: windowState
+                        anchors.right: windowClose.left
+                        anchors.rightMargin: 2
+                        width: 30
+                        height: parent.height
+                        iconName: modelData.minimized ? "maximize-2" : "minimize-2"
+                        onClicked: {
+                            if (modelData.minimized)
+                                Windows.activate(modelData.id);
+                            else
+                                Windows.minimize(modelData.id);
                             dockMenu.close();
                         }
                     }
@@ -217,6 +234,7 @@ Window {
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSize
             }
+        }
         }
     }
 }

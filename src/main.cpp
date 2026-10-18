@@ -6,6 +6,7 @@
 // plugins and themes.
 
 #include "appmodel.h"
+#include "notifications.h"
 #include "plugins.h"
 #include "settings.h"
 #include "shellcontroller.h"
@@ -179,10 +180,11 @@ int main(int argc, char *argv[])
 
     ThemeManager theme(&settings);
     AppModel apps(&settings);
-    ShellController shell(&settings);
+    WindowList windows;
+    NotificationDaemon notifications(&settings);
+    ShellController shell(&settings, &notifications);
     PluginManager plugins(&settings);
     SystemMonitor system(&settings);
-    WindowList windows;
 
     if (cli.printConfig) {
         std::printf("%s", qUtf8Printable(printJson(settings.values())));
@@ -211,6 +213,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("Plugins"), &plugins);
     engine.rootContext()->setContextProperty(QStringLiteral("System"), &system);
     engine.rootContext()->setContextProperty(QStringLiteral("Windows"), &windows);
+    engine.rootContext()->setContextProperty(QStringLiteral("Notifications"), &notifications);
 
     engine.load(QUrl(QStringLiteral("qrc:/qml/Main.qml")));
     if (engine.rootObjects().isEmpty())
