@@ -120,7 +120,7 @@ Window {
 
                 TaskButton {
                     label: "Home"
-                    iconName: "home"
+                    iconName: "house"
                     onClicked: picker.enter(Shell.home)
                 }
                 TaskButton {
@@ -140,7 +140,7 @@ Window {
                 }
                 TaskButton {
                     label: picker.imagesOnly ? "All files" : "Images only"
-                    iconName: "filter"
+                    iconName: "funnel"
                     onClicked: {
                         picker.imagesOnly = !picker.imagesOnly;
                         folderModel.nameFilters = picker.imagesOnly

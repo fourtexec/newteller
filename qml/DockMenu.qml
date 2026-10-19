@@ -28,7 +28,7 @@ Window {
     height: menuColumn.implicitHeight + 20
     visible: false
     color: "transparent"
-    flags: Qt.FramelessWindowHint | Qt.Tool
+    flags: Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint
 
     // Positioning without layer-shell (X11, XWayland).
     x: {
@@ -217,7 +217,7 @@ Window {
                 height: 34
                 fillWidth: true
                 visible: dockMenu.entry && dockMenu.entry.windows.length > 0
-                iconName: "trash-2"
+                iconName: "trash"
                 label: "Close all windows"
                 onClicked: {
                     for (const w of dockMenu.entry.windows)

@@ -3,6 +3,7 @@
 #include <QAbstractListModel>
 #include <QHash>
 #include <QStringList>
+#include <QTimer>
 #include <QVariantList>
 #include <QVariantMap>
 #include <QVector>
@@ -110,6 +111,11 @@ private:
     QVector<AppEntry> m_apps;
     QHash<QString, int> m_indexById; // id -> row, rebuilt on reload only
     QStringList m_runningIds;
+    // Periodic re-scan of /proc: applications started outside the shell (from
+    // GNOME's activities overview, a terminal, ...) still have to appear in
+    // the dock. Without this tick the list would only change when the shell
+    // itself launches something.
+    QTimer m_runningTimer;
     mutable QHash<int, QByteArray> m_roles;
     // Rust search index, owned through the RAII wrapper; invalid without Rust.
     Rust::Index m_index;

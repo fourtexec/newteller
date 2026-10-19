@@ -42,7 +42,9 @@ public:
     bool isWayland() const;
     QDateTime now() const { return m_now; }
 
-    // Resolution order: absolute path -> IconKit set on disk -> system icon theme (image://theme/).
+    // Resolution order: absolute path -> icons compiled into the binary ->
+    // IconKit set on disk (settings: icons.path) -> the kit bundled with the
+    // installation -> system icon theme (image://theme/).
     Q_INVOKABLE QUrl iconUrl(const QString &name) const;
 
     Q_INVOKABLE void openUrl(const QString &url) const;
@@ -78,6 +80,7 @@ signals:
 
 private:
     QString expandHome(const QString &path) const;
+    static QUrl themeIconUrl(const QString &name);
 
     Settings *m_settings;
     NotificationDaemon *m_notifications;

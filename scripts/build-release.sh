@@ -63,6 +63,18 @@ install -m 644 scripts/platform.sh "$stage/platform.sh"
 install -m 755 scripts/install-release.sh "$stage/install.sh"
 printf 'commit=%s\ntarget=%s\n' "$sha" "$NEWTELLER_TARGET" > "$stage/BUILDINFO"
 
+# The icon kit (github.com/fourtexec/iconkit) ships with the release so every
+# icon resolves even without the system icon theme. CI pins it and passes the
+# directory through NEWTELLER_ICONS_DIR; a local ./iconkit clone works too.
+icons_dir="${NEWTELLER_ICONS_DIR:-$root/iconkit/icons}"
+if [[ -d "$icons_dir" ]]; then
+    mkdir -p "$stage/usr/share/newteller/icons"
+    cp -r "$icons_dir"/. "$stage/usr/share/newteller/icons/"
+    test -f "$stage/usr/share/newteller/icons/lucide/layout-grid.svg"
+else
+    echo "warning: IconKit not found ($icons_dir); the release ships without the bundled icon sets." >&2
+fi
+
 # QML and built-in themes are compiled into newteller via resources.qrc.
 test -x "$stage/usr/bin/newteller"
 test -x "$stage/usr/bin/newteller-ctl"

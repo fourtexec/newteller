@@ -23,7 +23,7 @@ Window {
     height: 470
     visible: false
     color: "transparent"
-    flags: Qt.FramelessWindowHint | Qt.Tool
+    flags: Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint
 
     // Positioning without layer-shell (X11, XWayland): the end of the panel,
     // on the opposite side of the bar.

@@ -12,7 +12,7 @@ Window {
     height: 360
     visible: false
     color: "transparent"
-    flags: Qt.FramelessWindowHint | Qt.Tool
+    flags: Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint
     // Centered on the primary screen; without layer-shell (X11) this is the
     // real position, with layer-shell the margins do the same job.
     x: Screen.virtualX + Math.max(0, (Screen.width - width) / 2)

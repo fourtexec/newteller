@@ -60,7 +60,13 @@ jobs:
           python3 -m venv /tmp/newteller-venv-qt68
           /tmp/newteller-venv-qt68/bin/pip install 'PySide6-Essentials>=6.8,<6.9'
           /tmp/newteller-venv-qt68/bin/python tests/qml_smoke.py
+      - name: Fetch IconKit (pinned)
+        run: |
+          git clone https://github.com/fourtexec/iconkit.git iconkit
+          git -C iconkit checkout --quiet 0ba06b922242c9dc99836a1dddd646e475ad4205
       - name: Build and package
+        env:
+          NEWTELLER_ICONS_DIR: ${{ github.workspace }}/iconkit/icons
         run: bash scripts/build-release.sh "$GITHUB_SHA"
       - name: Preserve release archive
         uses: actions/upload-artifact@v4

@@ -3,9 +3,11 @@
 #include "settings.h"
 
 #include <QClipboard>
+#include <QCoreApplication>
 #include <QDesktopServices>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QGuiApplication>
 #include <QProcess>
 #include <QStandardPaths>
@@ -94,16 +96,50 @@ QUrl ShellController::iconUrl(const QString &name) const
     const auto cached = m_iconCache.constFind(name);
     if (cache && cached != m_iconCache.constEnd()) {
         if (cached->isEmpty())
-            return QUrl(QStringLiteral("image://theme/") + QString::fromUtf8(QUrl::toPercentEncoding(name)));
+            return themeIconUrl(name);
         return QUrl(*cached);
     }
 
     QString resolved;
-    const QString set = m_settings->value(QStringLiteral("icons.set"), QStringLiteral("lucide")).toString();
-    const QString kit = expandHome(m_settings->value(QStringLiteral("icons.path")).toString());
-    const QString file = kit + QLatin1Char('/') + set + QLatin1Char('/') + name + QStringLiteral(".svg");
-    if (QFile::exists(file))
-        resolved = QUrl::fromLocalFile(file).toString();
+
+    // 1. The core set compiled into the binary (IconKit's lucide icons): the
+    //    shell chrome always renders, even on a system without IconKit on
+    //    disk and without these names in the system icon theme.
+    const QString qrc = QStringLiteral("qrc:/icons/") + name + QStringLiteral(".svg");
+    if (QFile::exists(qrc))
+        resolved = qrc;
+
+    // 2. A user-managed IconKit checkout (settings: icons.path + icons.set)
+    //    overrides everything the binary and the installation carry.
+    if (resolved.isEmpty()) {
+        const QString overridePath = expandHome(
+            m_settings->value(QStringLiteral("icons.path")).toString());
+        if (!overridePath.isEmpty()) {
+            const QString set = m_settings->value(QStringLiteral("icons.set"),
+                                                  QStringLiteral("lucide")).toString();
+            const QString file = overridePath + QLatin1Char('/') + set + QLatin1Char('/')
+                                 + name + QStringLiteral(".svg");
+            if (QFile::exists(file))
+                resolved = QUrl::fromLocalFile(file).toString();
+        }
+    }
+
+    // 3. The IconKit bundled with the release (the install ships
+    //    github.com/fourtexec/iconkit under share/newteller/icons).
+    if (resolved.isEmpty()) {
+        const QString set = m_settings->value(QStringLiteral("icons.set"),
+                                              QStringLiteral("lucide")).toString();
+        const QString relative = set + QLatin1Char('/') + name + QStringLiteral(".svg");
+        const QString appShare = QCoreApplication::applicationDirPath()
+                                 + QStringLiteral("/../share/newteller/icons/");
+        for (const QString &base : { appShare, QStringLiteral("/usr/share/newteller/icons/") }) {
+            const QString file = base + relative;
+            if (QFile::exists(file)) {
+                resolved = QUrl::fromLocalFile(QFileInfo(file).absoluteFilePath()).toString();
+                break;
+            }
+        }
+    }
 
     if (cache)
         m_iconCache.insert(name, resolved);
@@ -111,8 +147,14 @@ QUrl ShellController::iconUrl(const QString &name) const
     if (!resolved.isEmpty())
         return QUrl(resolved);
 
-    // Served by ThemeIconProvider (main.cpp) from the system icon theme.
-    return QUrl(QStringLiteral("image://theme/") + QString::fromUtf8(QUrl::toPercentEncoding(name)));
+    // 4. Served by ThemeIconProvider (main.cpp) from the system icon theme.
+    return themeIconUrl(name);
+}
+
+QUrl ShellController::themeIconUrl(const QString &name)
+{
+    return QUrl(QStringLiteral("image://theme/")
+                + QString::fromUtf8(QUrl::toPercentEncoding(name)));
 }
 
 void ShellController::openUrl(const QString &url) const

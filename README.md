@@ -183,7 +183,7 @@ watched, so edits apply without a restart:
   "panel.pinned": ["org.gnome.Terminal.desktop", "firefox-esr.desktop"],
   "theme.name": "default",
   "desktop.wallpaper": "/home/you/Pictures/wall.jpg",
-  "icons.path": "~/iconkit/icons",
+  "icons.path": "",
   "icons.set": "lucide",
   "system.interval": 2000
 }
@@ -220,7 +220,7 @@ All keys, with their defaults:
 | `desktop.iconSize` | `48` | icon size in pixels |
 | `desktop.cellWidth` / `desktop.cellHeight` | `96` / `110` | icon grid cell |
 | `desktop.contextMenu` | `true` | desktop right-click menu |
-| `icons.path` / `icons.set` | `"~/iconkit/icons"` / `"lucide"` | IconKit location |
+| `icons.path` / `icons.set` | `""` / `"lucide"` | extra IconKit checkout overriding the bundled icons / set folder inside it |
 | `icons.cache` | `true` | cache resolved icons |
 | `plugins.disabled` | `[]` | plugin IDs to disable |
 | `plugins.autoRescan` | `true` | rescan when the plugin directories change |
@@ -235,8 +235,12 @@ All keys, with their defaults:
 | `run.history` | `[]` | run dialog history |
 
 - `panel.pinned` takes desktop file IDs (see `/usr/share/applications`).
-- `icons.set` is a folder inside IconKit's `icons/` directory, e.g. `lucide`, `tabler/outline`.
-  Icon names not found there fall back to the system icon theme.
+- Icons come from [IconKit](https://github.com/fourtexec/iconkit): a small core
+  set is compiled into the executable, and the release ships the full kit under
+  `/usr/share/newteller/icons`. `icons.path` points at a local IconKit checkout
+  (`~/iconkit/icons` after `git clone https://github.com/fourtexec/iconkit`) to
+  override the bundled sets; names missing everywhere fall back to the system
+  icon theme.
 
 `newteller-ctl schema` prints the same table in machine-readable form.
 

@@ -104,6 +104,13 @@ AppModel::AppModel(Settings *settings, QObject *parent)
         {ProgramRole, "program"},
         {RunningRole, "running"},
     };
+    // Applications started outside the shell have to show up in the dock too,
+    // so the /proc scan repeats periodically; refreshRunning() is cheap when
+    // nothing changed and the QML only rebuilds the dock on runningChanged.
+    m_runningTimer.setInterval(1500);
+    m_runningTimer.setTimerType(Qt::CoarseTimer);
+    connect(&m_runningTimer, &QTimer::timeout, this, &AppModel::refreshRunning);
+    m_runningTimer.start();
     reload();
 }
 

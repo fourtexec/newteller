@@ -26,7 +26,7 @@ Window {
     height: Math.min(Screen.height - 2 * screenMargin, column.implicitHeight + 2 * framePad)
     visible: false
     color: "transparent"
-    flags: Qt.FramelessWindowHint | Qt.Tool
+    flags: Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint
 
     // Positioning without layer-shell (X11, XWayland).
     x: {

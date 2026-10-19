@@ -21,6 +21,7 @@ Usage (no compositor or X server needed):
 import glob
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -43,7 +44,7 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen:configfile=" + _config.name
 os.environ["QT_QUICK_BACKEND"] = "software"
 
 import PySide6  # noqa: E402
-from PySide6.QtCore import (Q_ARG, QDateTime, QEnum, QMargins, QMetaObject, QObject, QPoint,  # noqa: E402
+from PySide6.QtCore import (Q_ARG, QDateTime, QEnum, QFile, QMargins, QMetaObject, QObject, QPoint,  # noqa: E402
                             QtMsgType, QTimer, QUrl, Property, Qt, Signal, Slot,
                             qInstallMessageHandler)
 from PySide6.QtGui import QColor, QGuiApplication  # noqa: E402
@@ -394,7 +395,11 @@ class Shell(QObject):
 
     @Slot(str, result=QUrl)
     def iconUrl(self, name):
-        return QUrl()  # The real lookup needs IconKit or the "theme" image provider.
+        # Mirror the real resolution for the bundled core set, so the smoke
+        # test actually renders the compiled icons (a wrong resources.qrc
+        # entry would fail the test with a missing-resource error).
+        url = QUrl(f"qrc:/icons/{name}.svg")
+        return url if QFile.exists(url.toString()) else QUrl()
 
     @Slot(str)
     def openUrl(self, url):
@@ -684,6 +689,30 @@ def main():
     check(not parse_errors,
           f"every QML file parses on Qt {PySide6.QtCore.qVersion()} "
           f"({len(parse_errors)} error(s): {'; '.join(parse_errors[:3])})")
+
+    # The bundled core icons have to stay in step with the QML: every literal
+    # iconName in the QML sources needs an icons/<name>.svg in the repository
+    # (Shell.iconUrl embeds them through resources.qrc), and every file in
+    # icons/ must be listed in resources.qrc - rcc silently skips files that
+    # are not listed, which would show as a blank icon at runtime.
+    icon_dir = os.path.join(ROOT, "icons")
+    qrc_root = ElementTree.parse(os.path.join(ROOT, "resources.qrc")).getroot()
+    qrc_files = {(node.text or "").strip() for node in qrc_root.iter("file")}
+    qrc_icons = {os.path.basename(name) for name in qrc_files if name.startswith("icons/")}
+    literal_icons = set()
+    for qml in glob.glob(os.path.join(ROOT, "qml", "*.qml")) + \
+               glob.glob(os.path.join(ROOT, "plugins", "*", "Widget.qml")):
+        text = open(qml, encoding="utf-8").read()
+        # Both `iconName: "x"` (TaskButton and friends) and the `icon:` field
+        # of models (the settings pages sidebar) name bundled icons.
+        literal_icons.update(re.findall(r'\biconName:\s*"([^"]+)"', text))
+        literal_icons.update(re.findall(r'\bicon:\s*"([^"]+)"', text))
+    missing_files = sorted(name for name in literal_icons
+                           if not os.path.exists(os.path.join(icon_dir, name + ".svg")))
+    check(not missing_files, f"every literal iconName has an icons/ file (missing: {missing_files})")
+    on_disk = {os.path.basename(p) for p in glob.glob(os.path.join(icon_dir, "*.svg"))}
+    unlisted = sorted(on_disk - qrc_icons)
+    check(not unlisted, f"every icons/ file is listed in resources.qrc (unlisted: {unlisted})")
 
     engine.load(QUrl("qrc:/qml/Main.qml"))
     if not engine.rootObjects():

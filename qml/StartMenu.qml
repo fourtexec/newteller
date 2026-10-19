@@ -16,7 +16,7 @@ Window {
     height: Settings.values["startmenu.height"] || 580
     visible: false
     color: "transparent"
-    flags: Qt.FramelessWindowHint | Qt.Tool
+    flags: Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint
     // Positioning used only without layer-shell (X11, including XWayland on GNOME).
     x: Screen.virtualX + 8
     y: Screen.virtualY + Screen.height - height - panelHeight - 12

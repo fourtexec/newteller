@@ -37,6 +37,17 @@ Window {
     // X11: a desktop window, kept below all other windows by the window manager.
     ShellWindow.role: ShellWindow.Desktop
 
+    // Without a wallpaper the desktop is a calm gradient in the theme colours
+    // instead of a flat dark slab.
+    Rectangle {
+        anchors.fill: parent
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: Qt.lighter(Theme.background, 1.45) }
+            GradientStop { position: 0.55; color: Theme.background }
+            GradientStop { position: 1.0; color: Qt.darker(Theme.background, 1.18) }
+        }
+    }
+
     Image {
         anchors.fill: parent
         asynchronous: true
@@ -210,7 +221,7 @@ Window {
             TaskButton {
                 width: parent.width
                 fillWidth: true
-                iconName: "file-json"
+                iconName: "file-code"
                 label: "Config file"
                 onClicked: {
                     contextMenu.visible = false;

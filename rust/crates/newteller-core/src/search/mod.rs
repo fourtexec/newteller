@@ -170,6 +170,27 @@ pub struct IndexStats {
     pub skipped: usize,
 }
 
+/// The keys a process is matched against the index's `programs` map with:
+/// the kernel's `comm`, the first `cmdline` argument and the `exe` basename,
+/// all folded.
+///
+/// `comm` is truncated to 15 characters by the kernel, which often cuts the
+/// name right after a hyphen ("gnome-terminal-" for gnome-terminal-server),
+/// so the trimmed form is offered as a key as well.
+fn program_keys(name: &str, cmdline: &[String], exe: Option<&str>) -> Vec<String> {
+    let mut keys = vec![crate::util::fold_str(name)];
+    if name.ends_with('-') {
+        keys.push(crate::util::fold_str(name.trim_end_matches('-')));
+    }
+    if let Some(program) = cmdline.first() {
+        keys.push(crate::util::fold_str(crate::util::basename(program)));
+    }
+    if let Some(exe) = exe {
+        keys.push(crate::util::fold_str(crate::util::basename(exe)));
+    }
+    keys
+}
+
 /// Application catalogue plus the structures needed to search it.
 #[derive(Debug)]
 pub struct SearchIndex {
@@ -455,14 +476,7 @@ impl SearchIndex {
         let processes = system::process::list_processes(0);
         let mut found: HashMap<usize, Vec<i32>> = HashMap::new();
         for process in &processes {
-            let mut keys: Vec<String> = Vec::with_capacity(3);
-            keys.push(crate::util::fold_str(&process.name));
-            if let Some(program) = process.cmdline.first() {
-                keys.push(crate::util::fold_str(crate::util::basename(program)));
-            }
-            if let Some(exe) = process.exe.as_deref() {
-                keys.push(crate::util::fold_str(crate::util::basename(exe)));
-            }
+            let keys = program_keys(&process.name, &process.cmdline, process.exe.as_deref());
             let mut seen_here: HashSet<usize> = HashSet::new();
             for key in keys {
                 if key.is_empty() {
@@ -763,5 +777,24 @@ mod tests {
         assert_eq!(stats.apps, 6);
         assert!(stats.trigrams > 0);
         assert!(stats.memory_bytes > 0);
+    }
+
+    #[test]
+    fn truncated_comm_names_still_match_their_program() {
+        // The kernel cuts `comm` at 15 characters: gnome-terminal-server's is
+        // "gnome-terminal-". The trimmed key must hit the Exec program name.
+        let mut terminal = entry("org.gnome.Terminal.desktop", "Terminal", &["shell"], "");
+        terminal.exec = "gnome-terminal".to_string();
+        let index = SearchIndex::from_entries(vec![terminal]);
+
+        let keys = program_keys("gnome-terminal-", &[], None);
+        assert!(keys.iter().any(|key| index.programs.contains_key(key)),
+                "no key of {keys:?} matches the indexed programs");
+        assert!(index.programs.contains_key("gnome-terminal"));
+        // A name cut in the middle of a word (no trailing hyphen) still gets
+        // its raw form, and cmdlines keep working.
+        assert!(program_keys("gnome-terminal-serv", &[], None)[0] == "gnome-terminal-serv");
+        let keys = program_keys("python3", &["/usr/bin/python3.13".to_string()], None);
+        assert!(keys.contains(&"python3.13".to_string()));
     }
 }

@@ -30,4 +30,50 @@
     <file>themes/ocean.json</file>
     <file>themes/sunrise.json</file>
   </qresource>
+  <!-- The core icons (github.com/fourtexec/iconkit, lucide set, ISC licence):
+       compiled into the binary so the shell chrome renders on any system,
+       before IconKit on disk or the system icon theme are consulted. -->
+  <qresource prefix="/icons">
+    <file>icons/arrow-up.svg</file>
+    <file>icons/app-window.svg</file>
+    <file>icons/bell.svg</file>
+    <file>icons/bell-ring.svg</file>
+    <file>icons/check.svg</file>
+    <file>icons/chevron-left.svg</file>
+    <file>icons/chevron-right.svg</file>
+    <file>icons/clipboard.svg</file>
+    <file>icons/cpu.svg</file>
+    <file>icons/download.svg</file>
+    <file>icons/eraser.svg</file>
+    <file>icons/file-code.svg</file>
+    <file>icons/file-text.svg</file>
+    <file>icons/funnel.svg</file>
+    <file>icons/folder.svg</file>
+    <file>icons/house.svg</file>
+    <file>icons/image.svg</file>
+    <file>icons/info.svg</file>
+    <file>icons/layout-grid.svg</file>
+    <file>icons/lock.svg</file>
+    <file>icons/log-out.svg</file>
+    <file>icons/minus.svg</file>
+    <file>icons/monitor.svg</file>
+    <file>icons/moon.svg</file>
+    <file>icons/package.svg</file>
+    <file>icons/palette.svg</file>
+    <file>icons/panel-bottom.svg</file>
+    <file>icons/plus.svg</file>
+    <file>icons/power.svg</file>
+    <file>icons/puzzle.svg</file>
+    <file>icons/rotate-ccw.svg</file>
+    <file>icons/rotate-cw.svg</file>
+    <file>icons/save.svg</file>
+    <file>icons/search.svg</file>
+    <file>icons/settings.svg</file>
+    <file>icons/shuffle.svg</file>
+    <file>icons/square.svg</file>
+    <file>icons/terminal.svg</file>
+    <file>icons/trash.svg</file>
+    <file>icons/type.svg</file>
+    <file>icons/x.svg</file>
+  </qresource>
 </RCC>

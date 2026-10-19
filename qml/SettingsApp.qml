@@ -1339,7 +1339,7 @@ Window {
                                 subtitle: Settings.configPath()
 
                                 TaskButton {
-                                    iconName: "file-json"
+                                    iconName: "file-code"
                                     label: "Open JSON"
                                     onClicked: Shell.openConfig()
                                 }
