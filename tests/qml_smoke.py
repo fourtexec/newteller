@@ -18,12 +18,14 @@ Usage (no compositor or X server needed):
     python3 tests/qml_smoke.py
 """
 
+import glob
 import json
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
+import xml.etree.ElementTree as ElementTree
 from enum import IntEnum
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -46,7 +48,7 @@ from PySide6.QtCore import (Q_ARG, QDateTime, QEnum, QMargins, QMetaObject, QObj
                             qInstallMessageHandler)
 from PySide6.QtGui import QColor, QGuiApplication  # noqa: E402
 from PySide6.QtQml import (QmlAnonymous, QmlAttached, QmlNamedElement,  # noqa: E402
-                           QmlUncreatable, QQmlApplicationEngine)
+                           QmlUncreatable, QQmlApplicationEngine, QQmlComponent)
 from PySide6.QtTest import QTest  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -658,6 +660,30 @@ def main():
         if not condition:
             failures.append(what)
             print("FAIL:", what, file=sys.stderr)
+
+    # Parse (without instantiating) every QML file compiled into the binary.
+    # engine.load() below only exercises the files Main.qml eagerly creates,
+    # and only under this Qt's parser: newer parsers silently accept syntax
+    # that older ones reject (Qt <= 6.8 still reserves the ES3 words, so
+    # `const long` once shipped a clock popup that failed to parse when a
+    # user started the shell on an older Qt). Parsing each compiled resource
+    # here, under the oldest Qt this test runs on, catches every file up
+    # front. Plugin widgets are parsed from their on-disk locations.
+    qrc_qml = []
+    for node in ElementTree.parse(os.path.join(ROOT, "resources.qrc")).getroot().iter("file"):
+        name = (node.text or "").strip()
+        if name.endswith(".qml"):
+            qrc_qml.append(QUrl("qrc:/" + name))
+    plugin_qml = [QUrl.fromLocalFile(p) for p in
+                  sorted(glob.glob(os.path.join(ROOT, "plugins", "*", "Widget.qml")))]
+    parse_errors = []
+    for url in qrc_qml + plugin_qml:
+        component = QQmlComponent(engine, url)
+        parse_errors.extend(error.toString() for error in component.errors())
+        del component
+    check(not parse_errors,
+          f"every QML file parses on Qt {PySide6.QtCore.qVersion()} "
+          f"({len(parse_errors)} error(s): {'; '.join(parse_errors[:3])})")
 
     engine.load(QUrl("qrc:/qml/Main.qml"))
     if not engine.rootObjects():

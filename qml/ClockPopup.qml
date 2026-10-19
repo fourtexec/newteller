@@ -188,14 +188,16 @@ Window {
                     // Minute ticks and hour marks.
                     for (var i = 0; i < 60; ++i) {
                         const a = i * Math.PI / 30;
-                        const long = i % 5 === 0;
-                        const r1 = r - (long ? 8 : 4);
+                        // NB: "long" is a reserved word in the QML parser,
+                        // so the hour marks are called "major" here.
+                        const major = i % 5 === 0;
+                        const r1 = r - (major ? 8 : 4);
                         ctx.beginPath();
                         ctx.moveTo(cx + r1 * Math.sin(a), cy - r1 * Math.cos(a));
                         ctx.lineTo(cx + (r - 2) * Math.sin(a), cy - (r - 2) * Math.cos(a));
-                        ctx.lineWidth = long ? 2 : 1;
-                        ctx.strokeStyle = long ? Theme.muted.toString()
-                                               : Qt.rgba(Theme.muted.r, Theme.muted.g, Theme.muted.b, 0.5).toString();
+                        ctx.lineWidth = major ? 2 : 1;
+                        ctx.strokeStyle = major ? Theme.muted.toString()
+                                                : Qt.rgba(Theme.muted.r, Theme.muted.g, Theme.muted.b, 0.5).toString();
                         ctx.stroke();
                     }
 

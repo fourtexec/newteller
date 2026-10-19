@@ -40,11 +40,26 @@ jobs:
         run: |
           cd rust
           cargo test --workspace
-      - name: QML smoke test
+      # The shell must parse on every Qt version the artifacts run on. The
+      # newest PySide6 passes syntax that older parsers reject (Qt 6.8 still
+      # reserves the ES3 words), so the smoke test also runs on 6.8 — the Qt
+      # Debian 13 installs at runtime.
+      - name: QML smoke test (newest Qt)
         run: |
           python3 -m venv /tmp/newteller-venv
           /tmp/newteller-venv/bin/pip install PySide6-Essentials
           /tmp/newteller-venv/bin/python tests/qml_smoke.py
+      - name: QML smoke test (Qt 6.8 parser)
+        shell: bash
+        run: |
+          minor=$(python3 -c 'import sys; print(sys.version_info[1])')
+          if [ "$minor" -gt 13 ]; then
+            echo "PySide6 6.8 has no wheels for this Python; skipping the old-parser leg."
+            exit 0
+          fi
+          python3 -m venv /tmp/newteller-venv-qt68
+          /tmp/newteller-venv-qt68/bin/pip install 'PySide6-Essentials>=6.8,<6.9'
+          /tmp/newteller-venv-qt68/bin/python tests/qml_smoke.py
       - name: Build and package
         run: bash scripts/build-release.sh "$GITHUB_SHA"
       - name: Preserve release archive
