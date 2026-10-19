@@ -19,15 +19,20 @@ Window {
     y: Screen.virtualY + Math.max(0, (Screen.height - height) / 3)
 
     function show() {
+        // Snap first so the first frame is the small, transparent card.
+        card.prepareOpen();
         visible = true;
         input.text = "";
         refresh();
         input.forceActiveFocus();
         requestActivate();
+        card.playOpen();
     }
 
     function hide() {
-        visible = false;
+        if (!visible || card.closing)
+            return;
+        card.playClose(function() { visible = false; });
     }
 
     function toggle() {
@@ -64,6 +69,7 @@ Window {
     }
 
     ShellFrame {
+        id: card
         anchors.fill: parent
 
         ColumnLayout {

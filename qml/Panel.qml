@@ -28,6 +28,10 @@ Window {
     property bool menuWanted: false
     readonly property var panelPlugins: Plugins.plugins.filter(p => p.type === "panel" && p.enabled)
 
+    Motion {
+        id: motion
+    }
+
     // --- dock configuration ---------------------------------------------
     // Every started application is shown: windows come from the `Windows`
     // object (EWMH on X11, wlr-foreign-toplevel on Wayland), with the /proc
@@ -382,6 +386,11 @@ Window {
         color: clockHover.hovered
                ? Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.08)
                : "transparent"
+        Behavior on color {
+            ColorAnimation {
+                duration: motion.micro
+            }
+        }
 
         HoverHandler { id: clockHover }
         MouseArea {
@@ -410,9 +419,18 @@ Window {
         sourceComponent: panel.vertical ? verticalBar : horizontalBar
         // Slide the bar content in and out of the reserved strip.
         opacity: panel.revealed ? 1.0 : 0.0
+        // While fading, the bar also sinks back towards its own edge, so
+        // auto-hide reads as the bar sliding away rather than a blink.
+        transform: Translate {
+            x: (panel.vertical ? (panel.panelPosition === "left" ? -1 : 1) : 0)
+               * (1 - barLoader.opacity) * 14
+            y: (panel.vertical ? 0 : (panel.panelPosition === "top" ? -1 : 1))
+               * (1 - barLoader.opacity) * 14
+        }
         Behavior on opacity {
             NumberAnimation {
-                duration: 150
+                duration: motion.fast
+                easing.type: motion.easeEnter
             }
         }
     }

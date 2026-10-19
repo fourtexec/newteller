@@ -27,17 +27,27 @@ Window {
             x = Math.max(8, Math.min(g.x, Screen.width - width - 8));
             y = Math.max(8, Math.min(g.y + item.height + 4, Screen.height - height - 8));
         }
+        // Snap first so the first frame is the small, transparent card.
+        pickerCard.prepareOpen();
         visible = true;
         requestActivate();
         filter.forceActiveFocus();
+        pickerCard.playOpen();
+    }
+
+    function hide() {
+        if (!visible || pickerCard.closing)
+            return;
+        pickerCard.playClose(function() { visible = false; });
     }
 
     onActiveChanged: {
         if (!active)
-            visible = false;
+            hide();
     }
 
     ShellFrame {
+        id: pickerCard
         anchors.fill: parent
 
         ColumnLayout {
@@ -48,7 +58,7 @@ Window {
             ShellTitleBar {
                 Layout.fillWidth: true
                 title: "Choose a font"
-                onCloseClicked: fontPicker.visible = false
+                onCloseClicked: fontPicker.hide()
             }
 
             Rectangle {
@@ -140,7 +150,7 @@ Window {
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
                                 fontPicker.picked(row.modelData);
-                                fontPicker.visible = false;
+                                fontPicker.hide();
                             }
                         }
                     }

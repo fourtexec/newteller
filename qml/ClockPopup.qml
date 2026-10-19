@@ -64,16 +64,18 @@ Window {
     function show() {
         viewYear = Shell.now.getFullYear();
         viewMonth = Shell.now.getMonth();
+        // Snap first, so the first rendered frame is the small, transparent
+        // card; then grow it out of the panel end.
+        card.prepareOpen();
         visible = true;
         requestActivate();
-        card.scale = 0.98;
-        card.opacity = 0.6;
-        card.scale = 1.0;
-        card.opacity = 1.0;
+        card.playOpen();
     }
 
     function hide() {
-        visible = false;
+        if (!visible || card.closing)
+            return;
+        card.playClose(function() { visible = false; });
     }
 
     function toggle() {
@@ -132,13 +134,10 @@ Window {
     ShellFrame {
         id: card
         anchors.fill: parent
-
-        Behavior on scale {
-            NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
-        }
-        Behavior on opacity {
-            NumberAnimation { duration: 140 }
-        }
+        // The card grows out of the panel, next to the clock it came from.
+        openOrigin: clock.panelPosition === "top" ? Item.TopRight
+                    : clock.panelPosition === "right" ? Item.TopLeft
+                    : Item.BottomRight
 
         ColumnLayout {
             anchors.fill: parent

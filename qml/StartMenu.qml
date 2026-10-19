@@ -28,6 +28,9 @@ Window {
     LayerShell.Window.scope: "newteller-menu"
 
     function show() {
+        // Snap the card to its small, transparent state before the window is
+        // shown, so the first frame never flashes at full opacity.
+        menuCard.prepareOpen();
         visible = true;
         // Layer-shell's exclusive keyboard mode focuses the menu on Wayland;
         // on X11 the window manager has to be asked.
@@ -37,15 +40,14 @@ Window {
         refresh();
         updateRecent();
         search.forceActiveFocus();
-        // Subtle open animation: the card grows out of the panel.
-        menuCard.scale = 0.98;
-        menuCard.opacity = 0.6;
-        menuCard.scale = 1.0;
-        menuCard.opacity = 1.0;
+        // The card grows out of the start button.
+        menuCard.playOpen();
     }
 
     function hide() {
-        visible = false;
+        if (!visible || menuCard.closing)
+            return;
+        menuCard.playClose(function() { visible = false; });
     }
 
     function toggle() {
@@ -94,13 +96,8 @@ Window {
     ShellFrame {
         id: menuCard
         anchors.fill: parent
-
-        Behavior on scale {
-            NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
-        }
-        Behavior on opacity {
-            NumberAnimation { duration: 140 }
-        }
+        // The menu grows out of the start button at the panel's start.
+        openOrigin: Item.BottomLeft
 
         ColumnLayout {
             anchors.fill: parent

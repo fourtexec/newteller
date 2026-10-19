@@ -5,6 +5,10 @@ import QtQuick
 Rectangle {
     id: control
 
+    Motion {
+        id: motion
+    }
+
     property string settingKey: ""
     property bool checked: false
     signal changed(bool value)
@@ -18,7 +22,7 @@ Rectangle {
     border.color: checked ? Theme.accent
                           : Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.9)
     Behavior on color {
-        ColorAnimation { duration: 140 }
+        ColorAnimation { duration: motion.fast }
     }
 
     function refresh() {
@@ -47,7 +51,7 @@ Rectangle {
         anchors.verticalCenter: parent.verticalCenter
         color: "#ffffff"
         Behavior on x {
-            NumberAnimation { duration: 140; easing.type: Easing.OutCubic }
+            NumberAnimation { duration: motion.fast; easing.type: motion.easeEnter }
         }
     }
 

@@ -13,6 +13,10 @@ import Qt.labs.folderlistmodel
 Window {
     id: settingsWindow
 
+    Motion {
+        id: motion
+    }
+
     // The page identifiers and their sidebar entries.
     readonly property var pages: [
         { id: "appearance", label: "Appearance", icon: "palette" },
@@ -149,8 +153,34 @@ Window {
     }
 
     onVisibleChanged: {
-        if (visible)
+        if (visible) {
             loadThemeEditor(Theme.name);
+            // The content settles in with a short fade over the window's own
+            // background; hiding stays instant.
+            contentItem.opacity = 0;
+            openFade.restart();
+        }
+    }
+
+    NumberAnimation {
+        id: openFade
+        target: settingsWindow.contentItem
+        property: "opacity"
+        from: 0
+        to: 1
+        duration: motion.fast
+        easing.type: motion.easeEnter
+    }
+    // The page that just became current fades in; StackLayout manages the
+    // geometry of its pages, so opacity is the one property safe to animate.
+    NumberAnimation {
+        id: pageFade
+        target: null
+        property: "opacity"
+        from: 0
+        to: 1
+        duration: motion.fast
+        easing.type: motion.easeEnter
     }
 
     // ------------------------------------------------------------------
@@ -250,6 +280,14 @@ Window {
             id: pageStack
             anchors.fill: parent
             currentIndex: settingsWindow.pageIndexOf(settingsWindow.currentPage)
+
+            onCurrentIndexChanged: {
+                const page = pageStack.children[pageStack.currentIndex];
+                if (!page)
+                    return;
+                pageFade.target = page;
+                pageFade.restart();
+            }
 
             // ---- Appearance -------------------------------------------------
             Item {

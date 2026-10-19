@@ -19,6 +19,11 @@ Window {
     property real anchorY: 0
 
     readonly property real menuWidth: 280
+    // The edge the menu grows from: the side of the panel it sits against.
+    readonly property int openOrigin: position === "top" ? Item.Top
+                                      : position === "left" ? Item.Left
+                                      : position === "right" ? Item.Right
+                                      : Item.Bottom
     readonly property real clampedX: Math.max(8, Math.min(anchorX - menuWidth / 2,
                                                           Screen.width - menuWidth - 8))
     readonly property real clampedY: Math.max(8, Math.min(anchorY - height / 2,
@@ -70,12 +75,18 @@ Window {
         entry = entryData;
         anchorX = centerX;
         anchorY = centerY;
+        // Snap first so the first frame is the small, transparent card.
+        menuCard.prepareOpen();
         visible = true;
         requestActivate();
+        // The menu grows out of the dock button, towards the panel edge.
+        menuCard.playOpen();
     }
 
     function close() {
-        visible = false;
+        if (!visible || menuCard.closing)
+            return;
+        menuCard.playClose(function() { visible = false; });
     }
 
     // The window list changed while the menu is open (a window closed, the
@@ -113,7 +124,9 @@ Window {
         color: "transparent"
 
         ShellFrame {
+            id: menuCard
             anchors.fill: parent
+            openOrigin: dockMenu.openOrigin
 
         Column {
             id: menuColumn

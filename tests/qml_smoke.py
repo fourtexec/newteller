@@ -810,11 +810,12 @@ def main():
         check(got == want, f"start menu sits above the panel ({got} vs {want})")
 
         QTest.mouseClick(panel, Qt.LeftButton, Qt.NoModifier, start_button)
-        QTest.qWait(50)
+        QTest.qWait(300)  # the close animation plays before the window hides
         check(not menu.isVisible(), "clicking Start again closes the start menu")
 
         QMetaObject.invokeMethod(menu, "show")
         QMetaObject.invokeMethod(menu, "launch", Q_ARG("QVariant", APPS[1]))
+        QTest.qWait(300)  # hide() animates the card out first
         check(apps.launched == ["org.gnome.Terminal"], f"launching from the menu ({apps.launched})")
         check(not menu.isVisible(), "launching an application closes the menu")
         check(apps.isRunning("org.gnome.Terminal"), "the launched application is marked running")
@@ -865,7 +866,7 @@ def main():
             check(len(results or []) == 1 and results[0]["id"] == "org.gnome.Nautilus",
                   f"run dialog query filters ({results})")
         QMetaObject.invokeMethod(dialog, "hide")
-        QTest.qWait(20)
+        QTest.qWait(300)  # the hide animation fades the card out first
         check(not dialog.isVisible(), "closing the run dialog")
 
     # Desktop right-click menu.
@@ -974,6 +975,59 @@ def main():
           f"one notification window per screen ({len(notification_windows)} vs {len(screens)})")
     if notification_windows:
         check(not notification_windows[0].isVisible(), "notifications start hidden")
+
+        # The popup window diffs the daemon's queue by id: arrivals and
+        # departures animate per card while the model keeps its order.
+        notif_win = notification_windows[0]
+        first = {"id": 1, "app": "Mail", "summary": "Hello", "body": "First",
+                 "icon": "bell", "actions": [], "timeout": 0}
+        second = {"id": 2, "app": "Chat", "summary": "Yo", "body": "Second",
+                  "icon": "bell", "actions": [], "timeout": 0}
+        notifications._active = [first, second]
+        notifications.activeChanged.emit()
+        QTest.qWait(50)
+        check(notif_win.isVisible(), "a notification makes the popup window visible")
+        stack = notif_win.findChild(QObject, "notifStack")
+        check(stack is not None, "the notification stack exists")
+
+        def stack_ids():
+            # Delegates keep creation order in childItems() even after the
+            # model moves them, so read the visual order from y instead.
+            content = stack.property("contentItem")
+            rows = []
+            for d in content.childItems():
+                entry = d.property("entry")
+                if hasattr(entry, "toVariant"):
+                    entry = entry.toVariant()
+                # contentItem also holds internal items without the delegate's
+                # properties; only real cards carry an entry mapping.
+                if isinstance(entry, dict) and "id" in entry:
+                    rows.append((d.y(), entry["id"]))
+            rows.sort(key=lambda row: row[0])
+            return [i for _, i in rows]
+
+        if stack is not None:
+            check(stack.property("count") == 2, "two notifications are stacked")
+            check(stack_ids() == [1, 2], f"cards keep the daemon's order ({stack_ids()})")
+
+            notifications._active = [second]
+            notifications.activeChanged.emit()
+            QTest.qWait(300)  # let the exit transition finish
+            check(stack.property("count") == 1, "the dismissed notification leaves the stack")
+            check(stack_ids() == [2], f"the surviving card keeps its slot ({stack_ids()})")
+
+            # Re-notify the older id: the diff appends it and moves it back
+            # to the front of the stack.
+            notifications._active = [first, second]
+            notifications.activeChanged.emit()
+            QTest.qWait(300)
+            check(stack.property("count") == 2 and stack_ids() == [1, 2],
+                  f"a re-arriving card lands in order ({stack_ids()})")
+
+        notifications._active = []
+        notifications.activeChanged.emit()
+        QTest.qWait(400)  # the exit animation plays before the window hides
+        check(not notif_win.isVisible(), "the last notification dismiss hides the window")
 
     # The colour palette is a panel pinned to the left edge of the screen,
     # not a floating window.

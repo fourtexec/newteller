@@ -5,6 +5,10 @@ import QtQuick
 Rectangle {
     id: btn
 
+    Motion {
+        id: motion
+    }
+
     property string iconName: ""
     property string label: ""
     property bool active: false
@@ -36,7 +40,7 @@ Rectangle {
     // Background-zone buttons fade until the pointer reaches them.
     opacity: (dimmed && !hoverHandler.hovered && !area.pressed) ? 0.55 : 1.0
     Behavior on opacity {
-        NumberAnimation { duration: 120 }
+        NumberAnimation { duration: motion.fast }
     }
     color: area.pressed
            ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45)
@@ -47,7 +51,7 @@ Rectangle {
                : "transparent"
 
     Behavior on color {
-        ColorAnimation { duration: 120 }
+        ColorAnimation { duration: motion.micro }
     }
 
     Row {
@@ -77,7 +81,7 @@ Rectangle {
                 // Tiny press dip and hover lift: the icon reacts to the pointer.
                 scale: area.pressed ? 0.88 : hoverHandler.hovered ? 1.08 : 1.0
                 Behavior on scale {
-                    NumberAnimation { duration: 90 }
+                    NumberAnimation { duration: motion.micro; easing.type: motion.easeEnter }
                 }
             }
         }
@@ -108,6 +112,14 @@ Rectangle {
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 3
+        // Growing the pill (a second window opened) and re-colouring it
+        // (focus moved) are state changes worth a beat, not a jump.
+        Behavior on width {
+            NumberAnimation { duration: motion.fast; easing.type: motion.easeEnter }
+        }
+        Behavior on color {
+            ColorAnimation { duration: motion.fast }
+        }
     }
 
     Rectangle {

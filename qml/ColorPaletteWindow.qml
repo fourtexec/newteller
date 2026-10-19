@@ -55,8 +55,49 @@ Window {
         hue = parts[0];
         sat = parts[1];
         val = parts[2];
+        // Snap first so the first frame is the shifted, transparent panel.
+        prepareOpen();
         visible = true;
         requestActivate();
+        playOpen();
+    }
+
+    // The palette is a full-height sidebar, so instead of the shared card
+    // scaling it slides in from the left edge it is pinned to.
+    Motion {
+        id: motion
+    }
+    property bool closing: false
+    property var closeHandler: null
+
+    function prepareOpen() {
+        openAnim.stop();
+        closeAnim.stop();
+        closing = false;
+        closeHandler = null;
+        paletteShift.x = -motion.slide - 18;
+        paletteCard.opacity = 0;
+    }
+
+    function playOpen() {
+        closing = false;
+        closeAnim.stop();
+        openAnim.restart();
+    }
+
+    function playClose(onDone) {
+        if (closing)
+            return;
+        closing = true;
+        closeHandler = onDone;
+        openAnim.stop();
+        closeAnim.restart();
+    }
+
+    function hide() {
+        if (!visible || closing)
+            return;
+        playClose(function() { visible = false; });
     }
 
     // Note: existing callers pass an anchor item and offsets from the old
@@ -103,18 +144,68 @@ Window {
 
     onActiveChanged: {
         if (!active)
-            visible = false;
+            hide();
     }
 
     Shortcut {
         sequence: "Esc"
         enabled: picker.visible
-        onActivated: picker.visible = false
+        onActivated: picker.hide()
+    }
+
+    ParallelAnimation {
+        id: openAnim
+        NumberAnimation {
+            target: paletteShift
+            property: "x"
+            from: -motion.slide - 18
+            to: 0
+            duration: motion.enter
+            easing.type: motion.easeEnter
+        }
+        NumberAnimation {
+            target: paletteCard
+            property: "opacity"
+            from: 0
+            to: 1
+            duration: Math.round(motion.enter * 0.75)
+            easing.type: motion.easeEnter
+        }
+    }
+    ParallelAnimation {
+        id: closeAnim
+        onStopped: {
+            if (!picker.closing)
+                return;
+            picker.closing = false;
+            const done = picker.closeHandler;
+            picker.closeHandler = null;
+            if (done)
+                done();
+        }
+        NumberAnimation {
+            target: paletteShift
+            property: "x"
+            to: -motion.slide - 12
+            duration: motion.exit
+            easing.type: motion.easeExit
+        }
+        NumberAnimation {
+            target: paletteCard
+            property: "opacity"
+            to: 0
+            duration: motion.exit
+            easing.type: motion.easeExit
+        }
     }
 
     ShellFrame {
         id: paletteCard
         anchors.fill: parent
+        transform: Translate {
+            id: paletteShift
+            x: 0
+        }
 
         ColumnLayout {
             anchors.fill: parent
@@ -138,7 +229,7 @@ Window {
                     width: 28
                     height: 28
                     iconName: "x"
-                    onClicked: picker.visible = false
+                    onClicked: picker.hide()
                 }
             }
 
@@ -329,13 +420,13 @@ Window {
                     active: true
                     onClicked: {
                         picker.applied(picker.current);
-                        picker.visible = false;
+                        picker.hide();
                     }
                 }
                 TaskButton {
                     iconName: "x"
                     label: "Cancel"
-                    onClicked: picker.visible = false
+                    onClicked: picker.hide()
                 }
             }
         }

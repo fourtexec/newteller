@@ -17,10 +17,108 @@ import QtQuick
 // The default property is the content: children declared inside the frame are
 // laid out inside the card. Callers reserve no extra space — the frame keeps
 // room for its own shadow.
+//
+// The frame also owns the shared open/close choreography of every floating
+// surface: show() calls prepareOpen() before the window becomes visible and
+// playOpen() after; hide() routes through playClose(), which fades the card
+// out before the callback hides the window. Windows can point openOrigin at
+// the edge they grow from (the start menu out of its button, the clock out of
+// the panel) instead of the default centre.
 Rectangle {
     id: frame
 
     default property alias content: card.data
+
+    Motion {
+        id: motion
+    }
+
+    // The point the card scales from while opening (Item.Center by default).
+    property int openOrigin: Item.Center
+    // Set between playClose() and the moment the card has faded away.
+    property bool closing: false
+    // The hide callback handed to playClose().
+    property var closeHandler: null
+
+    // Snap to the "about to open" state. Call before making the window
+    // visible, so the first rendered frame is already the small, transparent
+    // card and nothing flashes at full opacity.
+    function prepareOpen() {
+        openAnim.stop();
+        closeAnim.stop();
+        closing = false;
+        closeHandler = null;
+        scale = 0.97;
+        opacity = 0;
+    }
+
+    function playOpen() {
+        closing = false;
+        closeAnim.stop();
+        openAnim.restart();
+    }
+
+    // Fade the card away, then run onDone (which normally hides the window).
+    // Interrupted closes are safe: playOpen() cancels the pending callback.
+    function playClose(onDone) {
+        if (closing)
+            return;
+        closing = true;
+        closeHandler = onDone;
+        openAnim.stop();
+        closeAnim.restart();
+    }
+
+    ParallelAnimation {
+        id: openAnim
+        NumberAnimation {
+            target: frame
+            property: "scale"
+            from: 0.97
+            to: 1.0
+            duration: motion.enter
+            easing.type: motion.easeEnter
+        }
+        NumberAnimation {
+            target: frame
+            property: "opacity"
+            from: 0
+            to: 1.0
+            duration: Math.round(motion.enter * 0.75)
+            easing.type: motion.easeEnter
+        }
+    }
+    ParallelAnimation {
+        id: closeAnim
+        // stopped() also fires when playOpen() cancels the close; the
+        // closing flag separates a real finish from a cancellation.
+        onStopped: {
+            if (!frame.closing)
+                return;
+            frame.closing = false;
+            const done = frame.closeHandler;
+            frame.closeHandler = null;
+            if (done)
+                done();
+        }
+        // No explicit from: an interrupted open closes from where it is.
+        NumberAnimation {
+            target: frame
+            property: "scale"
+            to: 0.98
+            duration: motion.exit
+            easing.type: motion.easeExit
+        }
+        NumberAnimation {
+            target: frame
+            property: "opacity"
+            to: 0
+            duration: motion.exit
+            easing.type: motion.easeExit
+        }
+    }
+
+    transformOrigin: frame.openOrigin
 
     readonly property string style: Settings.values["windows.style"] || "card"
     readonly property int shadow: style === "flat" || style === "outline"

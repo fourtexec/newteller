@@ -21,8 +21,17 @@ Window {
         folderModel.folder = "file://" + startFolder;
         pathInput.text = startFolder;
         selectedPath = "";
+        // Snap first so the first frame is the small, transparent card.
+        pickerCard.prepareOpen();
         visible = true;
         requestActivate();
+        pickerCard.playOpen();
+    }
+
+    function hide() {
+        if (!visible || pickerCard.closing)
+            return;
+        pickerCard.playClose(function() { visible = false; });
     }
 
     function enter(folder) {
@@ -39,7 +48,7 @@ Window {
 
     function choose(filePath) {
         accepted(filePath);
-        visible = false;
+        hide();
     }
 
     property string selectedPath: ""
@@ -52,7 +61,7 @@ Window {
 
     onActiveChanged: {
         if (!active)
-            visible = false;
+            hide();
     }
 
     FolderListModel {
@@ -66,6 +75,7 @@ Window {
     }
 
     ShellFrame {
+        id: pickerCard
         anchors.fill: parent
 
         ColumnLayout {
@@ -77,7 +87,7 @@ Window {
                 Layout.fillWidth: true
                 title: "Choose a file"
                 iconName: "folder"
-                onCloseClicked: picker.visible = false
+                onCloseClicked: picker.hide()
             }
 
             // --- location row ---------------------------------------------
@@ -297,7 +307,7 @@ Window {
                 TaskButton {
                     iconName: "x"
                     label: "Cancel"
-                    onClicked: picker.visible = false
+                    onClicked: picker.hide()
                 }
             }
         }

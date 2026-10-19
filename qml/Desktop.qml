@@ -37,6 +37,10 @@ Window {
     // X11: a desktop window, kept below all other windows by the window manager.
     ShellWindow.role: ShellWindow.Desktop
 
+    Motion {
+        id: motion
+    }
+
     // Without a wallpaper the desktop is a calm gradient in the theme colours
     // instead of a flat dark slab.
     Rectangle {
@@ -161,6 +165,22 @@ Window {
         border.width: 1
         border.color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.6)
         z: 100
+
+        // Menus appear immediately but get a very short fade-in, so they do
+        // not pop; they close instantly, the way menus should.
+        onVisibleChanged: {
+            if (visible)
+                menuIn.restart();
+        }
+        NumberAnimation {
+            id: menuIn
+            target: contextMenu
+            property: "opacity"
+            from: 0
+            to: 1
+            duration: motion.micro
+            easing.type: motion.easeEnter
+        }
 
         Column {
             id: menuColumn
