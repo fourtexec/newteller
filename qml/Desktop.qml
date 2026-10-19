@@ -100,7 +100,7 @@ Window {
                 sourceSize.width: desk.iconSize
                 sourceSize.height: desk.iconSize
                 fillMode: Image.PreserveAspectFit
-                source: Shell.iconUrl(fileIsDir ? "folder" : "file")
+                source: Shell.tintedIcon(fileIsDir ? "folder" : "file", Theme.foreground)
             }
 
             Text {

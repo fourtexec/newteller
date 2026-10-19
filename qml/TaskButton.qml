@@ -73,9 +73,9 @@ Rectangle {
                 sourceSize.height: btn.iconSize * 2
                 fillMode: Image.PreserveAspectFit
                 smooth: true
-                source: Shell.iconUrl(btn.iconName)
-                // Tiny press feedback: the icon dips while the button is held.
-                scale: area.pressed ? 0.88 : 1.0
+                source: Shell.tintedIcon(btn.iconName, Theme.foreground)
+                // Tiny press dip and hover lift: the icon reacts to the pointer.
+                scale: area.pressed ? 0.88 : hoverHandler.hovered ? 1.08 : 1.0
                 Behavior on scale {
                     NumberAnimation { duration: 90 }
                 }

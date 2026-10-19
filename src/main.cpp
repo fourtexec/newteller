@@ -6,6 +6,7 @@
 // plugins and themes.
 
 #include "appmodel.h"
+#include "fileportal.h"
 #include "notifications.h"
 #include "plugins.h"
 #include "settings.h"
@@ -214,6 +215,9 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("System"), &system);
     engine.rootContext()->setContextProperty(QStringLiteral("Windows"), &windows);
     engine.rootContext()->setContextProperty(QStringLiteral("Notifications"), &notifications);
+
+    FilePortal filePortal;
+    engine.rootContext()->setContextProperty(QStringLiteral("FilePortal"), &filePortal);
 
     engine.load(QUrl(QStringLiteral("qrc:/qml/Main.qml")));
     if (engine.rootObjects().isEmpty())

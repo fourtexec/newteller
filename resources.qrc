@@ -18,6 +18,7 @@
     <file>qml/SettingsTextField.qml</file>
     <file>qml/SettingsColorField.qml</file>
     <file>qml/ShellFrame.qml</file>
+    <file>qml/ShellTitleBar.qml</file>
     <file>qml/ClockPopup.qml</file>
     <file>qml/NotificationPopups.qml</file>
     <file>qml/ColorPaletteWindow.qml</file>

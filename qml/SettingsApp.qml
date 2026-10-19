@@ -828,7 +828,7 @@ Window {
                                                 const dir = wp.length > 0 && wp.indexOf("/") >= 0
                                                         ? wp.substring(0, wp.lastIndexOf("/"))
                                                         : Shell.home + "/Pictures";
-                                                filePicker.openFor(dir, true);
+                                                settingsWindow.pickWallpaper(dir);
                                             }
                                         }
                                         TaskButton {
@@ -1441,6 +1441,33 @@ Window {
     // ------------------------------------------------------------------
     // Popups: colour palette, font dropdown, file manager
     // ------------------------------------------------------------------
+    // "Choose from file manager" opens the file chooser that is already
+    // installed in the system (the freedesktop FileChooser portal; on GNOME
+    // that is the GTK file dialog). The integrated browser is only a fallback
+    // for systems without the portal service.
+    function pickWallpaper(startDir) {
+        if (FilePortal.available) {
+            filePortalDir = startDir;
+            FilePortal.pickFile("Choose a wallpaper", startDir, true);
+        } else {
+            filePicker.openFor(startDir, true);
+        }
+    }
+
+    property string filePortalDir: ""
+
+    Connections {
+        target: FilePortal
+        function onFilePicked(path) {
+            if (path.length > 0)
+                Settings.setValue("desktop.wallpaper", path);
+        }
+        function onPickFailed() {
+            filePicker.openFor(settingsWindow.filePortalDir.length > 0
+                               ? settingsWindow.filePortalDir : Shell.home, true);
+        }
+    }
+
     ColorPaletteWindow {
         id: colorPalette
         onApplied: (chosen) => {

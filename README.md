@@ -22,10 +22,13 @@ real desktop:
   auto-hide
 - **Dock: every started application appears in the panel.** Real top-level windows
   are tracked on X11 (EWMH) and on Wayland compositors with wlr-foreign-toplevel
-  (KDE Plasma, sway, Hyprland, labwc, Wayfire, niri, ...); on other compositors the
-  dock falls back to the /proc based application list. Windows can be activated,
-  minimised and closed from the dock (click, middle click and a right-click menu),
-  and windows of one application can be grouped into a single button.
+  (KDE Plasma, sway, Hyprland, labwc, Wayfire, niri, ...). On GNOME 48+ the
+  read-only `ext_foreign_toplevel_list` protocol lists the native Wayland
+  windows, XWayland windows come from the EWMH back end, and the /proc based
+  application list fills any remaining gap. Windows can be activated,
+  minimised and closed from the dock (click, middle click and a right-click
+  menu; read-only toplevels fall back to launching the application), and
+  windows of one application can be grouped into a single button.
 - Start menu: highlighted fuzzy search, category chips, recently used row,
   Lock / Log out / Sleep / Restart / Shut down, Settings
 - **Settings application: a full settings GUI built into the shell.** Every key of
@@ -240,7 +243,9 @@ All keys, with their defaults:
   `/usr/share/newteller/icons`. `icons.path` points at a local IconKit checkout
   (`~/iconkit/icons` after `git clone https://github.com/fourtexec/iconkit`) to
   override the bundled sets; names missing everywhere fall back to the system
-  icon theme.
+  icon theme. The glyph icons of the shell chrome are recoloured to the theme
+  foreground, so they are white on dark themes and dark on light themes;
+  colourful application logos keep their own colours.
 
 `newteller-ctl schema` prints the same table in machine-readable form.
 
@@ -264,6 +269,11 @@ It manages the whole configuration of the shell:
   windows of one application, icon size) and the pinned applications list.
 - **Desktop** — wallpaper browser over `~/Pictures` and `/usr/share/backgrounds`
   (with a random pick), icon visibility and grid sizes, right-click menu toggle.
+  "Choose from file manager" opens the file chooser that is already installed in
+  the system (the freedesktop FileChooser portal — the GTK dialog on GNOME, the
+  KDE dialog on Plasma); the integrated browser is only a fallback for systems
+  without the portal service. The colour palette of the theme editor opens as a
+  full-height panel on the left edge of the screen.
 - **Start menu** — size, typo-tolerant search, recent row and limits.
 - **Applications** — terminal command, catalogue cap, clear the usage history.
 - **System** — metrics sampling interval and the per-core/battery/thermal/disk

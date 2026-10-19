@@ -28,17 +28,31 @@ struct xcb_connection_t;
 //     through the _NET_ACTIVE_WINDOW, WM_CHANGE_STATE and _NET_CLOSE_WINDOW
 //     client messages. Property notify on the root window and the client
 //     windows keeps the list current without polling.
-//   * Wayland: zwlr_foreign_toplevel_management_unstable_v1 on a private
-//     wl_display connection, so the compositor reports every toplevel with its
-//     app_id, title and state (supported by KDE Plasma, sway, Hyprland, labwc,
-//     Wayfire, niri, ...). set_active/close/minimize are protocol requests.
+//   * Wayland: on a private wl_display connection two listing protocols are
+//     used side by side, so GNOME is covered as well:
+//       - zwlr_foreign_toplevel_management_unstable_v1 (KDE Plasma, sway,
+//         Hyprland, labwc, Wayfire, niri, ...) reports every toplevel with
+//         title, app_id and state; activate/close/minimize are requests.
+//       - ext_foreign_toplevel_list_v1 (GNOME 48+, also adopted by other
+//         compositors) only lists toplevels with title and app_id and is
+//         read-only; its entries carry readOnly: true and the dock falls
+//         back to launching the matched application when one is clicked.
+//     When the session runs XWayland (GNOME and KDE do by default) the X11
+//     back end above is started in addition, and the two lists are merged:
+//     a wlr toplevel wins over the matching X11 window, an X11 window (with
+//     its working activate/minimize/close) wins over the matching read-only
+//     ext entry. Duplicates are recognised by equal title and application id.
 //   * Anything else (offscreen tests, compositors without the protocol): an
 //     empty list; the dock then falls back to the /proc based running
 //     application list of `Apps`.
+//
+// Window map fields: { id, title, appId, active, minimized, maximized,
+// readOnly }. `id` is a stable opaque string for this session (x... = X11,
+// w... = wlr toplevel, e... = ext toplevel).
 class WindowList : public QObject {
     Q_OBJECT
     // One map per window:
-    //   { id, title, appId, active, minimized, maximized }
+    //   { id, title, appId, active, minimized, maximized, readOnly }
     // `id` is a stable opaque string for this session.
     Q_PROPERTY(QVariantList windows READ windows NOTIFY windowsChanged)
     Q_PROPERTY(int count READ count NOTIFY windowsChanged)
@@ -75,12 +89,22 @@ public:
     static void wlToplevelState(void *data, void *toplevel, wl_array *state);
     static void wlToplevelDone(void *data, void *toplevel);
     static void wlToplevelClosed(void *data, void *toplevel);
+    // ext_foreign_toplevel_list_v1 (GNOME 48+, read-only listing). The
+    // listener lambdas dispatch into these; everything that touches the
+    // pending maps is a regular member.
+    static void extListFinished(void *data);
 
 signals:
     void windowsChanged();
 
 private:
     void setWindows(QVariantList windows);
+    // wlr toplevels, then the X11 windows no wlr toplevel already covers,
+    // then the read-only ext toplevels nothing else covers.
+    QVariantList mergedWindowList();
+    // True when `list` already contains a window with the same title and
+    // application id (duplicate reports of one window through two protocols).
+    static bool windowListContains(const QVariantList &list, const QVariantMap &window);
 
     // --- X11 (EWMH) -------------------------------------------------------
     void startX11();
@@ -103,6 +127,10 @@ private:
     void waylandRoundtrip();
     void waylandEmit();
     void waylandToplevelCreated(void *handle);
+    void extToplevelCreated(void *handle);
+    void extToplevelClosed(void *handle);
+    void extToplevelTitle(void *handle, const char *title);
+    void extToplevelAppId(void *handle, const char *appId);
     void waylandUpdate(void *handle, const QString &key, const QString &value);
     void waylandState(void *handle, bool active, bool minimized, bool maximized);
     void waylandToplevelClosed(void *handle);
@@ -125,9 +153,13 @@ private:
     wl_registry *m_wlRegistry = nullptr;
     wl_seat *m_wlSeat = nullptr;
     void *m_wlManager = nullptr; // zwlr_foreign_toplevel_manager_v1 *
+    void *m_extManager = nullptr; // ext_foreign_toplevel_list_v1 *
     QSocketNotifier *m_wlNotifier = nullptr;
     uint32_t m_wlManagerName = 0;
     uint32_t m_wlManagerVersion = 0;
-    QHash<void *, QVariantMap> m_waylandPending; // handle proxy -> entry
-    QHash<QString, void *> m_waylandByWindowId;  // our id -> handle proxy
+    uint32_t m_extManagerName = 0;
+    QHash<void *, QVariantMap> m_waylandPending; // handle proxy -> entry (wlr)
+    QHash<QString, void *> m_waylandByWindowId;  // our id -> handle proxy (wlr)
+    QHash<void *, QVariantMap> m_extPending;     // handle proxy -> entry (ext, read-only)
+    QHash<QString, void *> m_extByWindowId;      // our id -> handle proxy (ext)
 };

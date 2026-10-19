@@ -73,6 +73,13 @@ Window {
             anchors.margins: 12
             spacing: 8
 
+            ShellTitleBar {
+                Layout.fillWidth: true
+                title: "Choose a file"
+                iconName: "folder"
+                onCloseClicked: picker.visible = false
+            }
+
             // --- location row ---------------------------------------------
             RowLayout {
                 Layout.fillWidth: true
@@ -196,8 +203,8 @@ Window {
                                 fillMode: Image.PreserveAspectFit
                                 smooth: true
                                 source: fileRow.fileIsDir
-                                        ? Shell.iconUrl("folder")
-                                        : Shell.iconUrl(mimeTypeFor(fileRow.fileName))
+                                        ? Shell.tintedIcon("folder", Theme.foreground)
+                                        : Shell.tintedIcon(mimeTypeFor(fileRow.fileName), Theme.foreground)
                             }
 
                             Text {

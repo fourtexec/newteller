@@ -241,7 +241,17 @@ Window {
                     break;
                 }
             }
-            Windows.activate((target || entry.windows[0]).id);
+            target = target || entry.windows[0];
+            if (target.readOnly) {
+                // A read-only toplevel (ext_foreign_toplevel_list, e.g. GNOME
+                // Wayland) cannot be focused from here: launching the matched
+                // application is the best effort - single-instance apps raise
+                // their existing window.
+                if (entry.appId.length > 0)
+                    Apps.launch(entry.appId);
+                return;
+            }
+            Windows.activate(target.id);
         } else if (entry.appId.length > 0) {
             Apps.launch(entry.appId);
         }
@@ -410,11 +420,13 @@ Window {
     // Scrollable dock strip: it only becomes interactive when the buttons do
     // not fit, so nothing steals wheel events on a quiet desktop. The strip
     // takes all the leftover width of the bar (like a spacer would), so the
-    // start button keeps its place at the very left.
+    // start button keeps its place at the very left. It always fills the bar
+    // height: a Flickable has no implicit height, and without fillHeight the
+    // whole dock once collapsed to zero-height, invisible buttons.
     component DockStrip: Flickable {
         id: dockStrip
         Layout.fillWidth: !panel.vertical
-        Layout.fillHeight: panel.vertical
+        Layout.fillHeight: true
         Layout.alignment: Qt.AlignVCenter
         clip: true
         contentWidth: stripRow.width

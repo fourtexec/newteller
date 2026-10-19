@@ -121,19 +121,19 @@ Window {
             anchors.margins: 10
             spacing: 4
 
-            Text {
+            // The shell's own title bar: application name and a close button.
+            ShellTitleBar {
                 width: parent.width
-                text: {
+                iconName: dockMenu.entry && dockMenu.entry.app && dockMenu.entry.app.icon
+                          ? dockMenu.entry.app.icon : "app-window"
+                title: {
                     if (!dockMenu.entry)
-                        return "";
+                        return "Application";
                     if (dockMenu.entry.app && dockMenu.entry.app.name)
                         return dockMenu.entry.app.name;
                     return dockMenu.entry.title || "Application";
                 }
-                color: Theme.muted
-                font.family: Theme.fontFamily
-                font.pointSize: Theme.fontSize - 1
-                elide: Text.ElideRight
+                onCloseClicked: dockMenu.close()
             }
 
             Rectangle {
@@ -169,12 +169,15 @@ Window {
                         }
                     }
                     // Minimise or restore this window, matching its state.
+                    // Read-only toplevels (ext_foreign_toplevel_list) can be
+                    // neither minimised nor closed, so they get no buttons.
                     TaskButton {
                         id: windowState
                         anchors.right: windowClose.left
                         anchors.rightMargin: 2
                         width: 30
                         height: parent.height
+                        visible: !modelData.readOnly
                         iconName: modelData.minimized ? "maximize-2" : "minimize-2"
                         onClicked: {
                             if (modelData.minimized)
@@ -189,6 +192,7 @@ Window {
                         anchors.right: parent.right
                         width: 30
                         height: parent.height
+                        visible: !modelData.readOnly
                         iconName: "x"
                         onClicked: {
                             Windows.closeWindow(modelData.id);

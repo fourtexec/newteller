@@ -45,6 +45,12 @@ Window {
             anchors.margins: 10
             spacing: 8
 
+            ShellTitleBar {
+                Layout.fillWidth: true
+                title: "Choose a font"
+                onCloseClicked: fontPicker.visible = false
+            }
+
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 32

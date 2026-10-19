@@ -3,6 +3,7 @@
 #include "settings.h"
 
 #include <QClipboard>
+#include <QColor>
 #include <QCoreApplication>
 #include <QDesktopServices>
 #include <QDir>
@@ -32,8 +33,10 @@ ShellController::ShellController(Settings *settings, NotificationDaemon *notific
 
     // The icon cache follows the icon settings.
     connect(settings, &Settings::changed, this, [this](const QString &key) {
-        if (key.isEmpty() || key.startsWith(QLatin1String("icons.")))
+        if (key.isEmpty() || key.startsWith(QLatin1String("icons."))) {
             m_iconCache.clear();
+            m_tintCache.clear();
+        }
     });
 }
 
@@ -155,6 +158,80 @@ QUrl ShellController::themeIconUrl(const QString &name)
 {
     return QUrl(QStringLiteral("image://theme/")
                 + QString::fromUtf8(QUrl::toPercentEncoding(name)));
+}
+
+QUrl ShellController::tintedIcon(const QString &name, const QColor &color) const
+{
+    if (name.isEmpty())
+        return {};
+
+    // The IconKit glyph set (lucide) draws with stroke="currentColor", which
+    // the SVG renderer resolves to black. On a dark theme those glyphs would
+    // be nearly invisible, so they are recoloured to the theme foreground.
+    // Application icons from the system theme (colourful logos) are returned
+    // unchanged - tintedIcon only rewrites SVGs it finds in the IconKit sets.
+    QString source;
+    const QString qrc = QStringLiteral("qrc:/icons/") + name + QStringLiteral(".svg");
+    if (QFile::exists(qrc)) {
+        source = qrc;
+    } else {
+        const QString set = m_settings->value(QStringLiteral("icons.set"),
+                                              QStringLiteral("lucide")).toString();
+        const QString overridePath = expandHome(
+            m_settings->value(QStringLiteral("icons.path")).toString());
+        if (!overridePath.isEmpty()) {
+            const QString file = overridePath + QLatin1Char('/') + set + QLatin1Char('/')
+                                 + name + QStringLiteral(".svg");
+            if (QFile::exists(file))
+                source = file;
+        }
+        if (source.isEmpty()) {
+            const QString relative = set + QLatin1Char('/') + name + QStringLiteral(".svg");
+            const QString appShare = QCoreApplication::applicationDirPath()
+                                     + QStringLiteral("/../share/newteller/icons/");
+            for (const QString &base : { appShare, QStringLiteral("/usr/share/newteller/icons/") }) {
+                const QString file = base + relative;
+                if (QFile::exists(file)) {
+                    source = QFileInfo(file).absoluteFilePath();
+                    break;
+                }
+            }
+        }
+    }
+    if (source.isEmpty())
+        return iconUrl(name); // not an IconKit glyph: the system theme decides
+
+    const QUrl original = source.startsWith(QLatin1String("qrc:"))
+                          ? QUrl(source) : QUrl::fromLocalFile(source);
+    const QString cacheKey = name + QLatin1Char('@') + color.name();
+    if (m_tintCache.contains(cacheKey))
+        return QUrl(m_tintCache.value(cacheKey));
+
+    QFile in(source);
+    if (!in.open(QIODevice::ReadOnly))
+        return original;
+    const QString svg = QString::fromUtf8(in.readAll());
+    in.close();
+    if (!svg.contains(QLatin1String("currentColor")))
+        return original; // nothing to recolour
+
+    const QString cacheDir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
+                             + QStringLiteral("/tinted-icons");
+    if (!QDir().mkpath(cacheDir))
+        return original;
+    QString safeName = name;
+    safeName.replace(QLatin1Char('/'), QLatin1Char('_'));
+    const QString outPath = cacheDir + QLatin1Char('/') + safeName + QLatin1Char('-')
+                            + color.name().mid(1) + QStringLiteral(".svg");
+    {
+        QFile out(outPath);
+        if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate))
+            return original;
+        out.write(QString(svg).replace(QLatin1String("currentColor"), color.name()).toUtf8());
+    }
+    const QUrl outUrl = QUrl::fromLocalFile(outPath);
+    m_tintCache.insert(cacheKey, outUrl.toString());
+    return outUrl;
 }
 
 void ShellController::openUrl(const QString &url) const

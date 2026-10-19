@@ -80,6 +80,12 @@ extern const wl_interface ntToplevelHandleInterface = {
     "zwlr_foreign_toplevel_handle_v1", 3, 8, kHandleRequests, 7, kHandleEvents
 };
 
+// The ext_foreign_toplevel_list_v1 interfaces have external linkage so the
+// registry binding and the anonymous-namespace wire tables below can use
+// them; the definitions follow their wire tables.
+extern const wl_interface ntExtToplevelHandleInterface;
+extern const wl_interface ntExtToplevelListInterface;
+
 namespace {
 
 const wl_interface *kManagerEventTypes[] = { &ntToplevelHandleInterface };
@@ -93,12 +99,40 @@ const wl_interface kManagerInterface = {
     "zwlr_foreign_toplevel_management_unstable_v1", 3, 1, kManagerRequests, 2, kManagerEvents
 };
 
+// --- ext_foreign_toplevel_list_v1 (GNOME 48+, read-only) -------------------
+const wl_interface *kExtStopTypes[] = { &ntExtToplevelListInterface };
+const wl_message kExtListRequests[] = { { "stop", "o", kExtStopTypes } };
+const wl_interface *kExtToplevelEventTypes[] = { &ntExtToplevelHandleInterface };
+const wl_message kExtManagerEvents[] = {
+    { "toplevel", "n", kExtToplevelEventTypes },
+    { "finished", "", nullptr },
+};
+const wl_message kExtHandleRequests[] = { { "destroy", "", nullptr } };
+const wl_message kExtHandleEvents[] = {
+    { "closed", "", nullptr },
+    { "done", "", nullptr },
+    { "title", "s", nullptr },
+    { "app_id", "s", nullptr },
+    { "identifier", "s", nullptr },
+};
+
+} // namespace
+
+extern const wl_interface ntExtToplevelListInterface = {
+    "ext_foreign_toplevel_list_v1", 1, 1, kExtListRequests, 2, kExtManagerEvents
+};
+
+extern const wl_interface ntExtToplevelHandleInterface = {
+    "ext_foreign_toplevel_handle_v1", 1, 1, kExtHandleRequests, 5, kExtHandleEvents
+};
+
+namespace {
+
 // X11 client message source indication: 1 = application, 2 = pager/launcher.
 constexpr uint32_t kSourcePager = 2;
 constexpr uint32_t kCurrentTime = 0; // XCB_CURRENT_TIME
 
 } // namespace
-
 // ---------------------------------------------------------------------------
 // Wayland callbacks. libwayland dispatches through void(**)(void) listener
 // tables with one entry per event, so every slot is filled (no-ops included).
@@ -125,6 +159,23 @@ void WindowList::wlRegistryGlobal(void *data, wl_registry *registry, uint32_t na
             }),
         };
         wl_proxy_add_listener(static_cast<wl_proxy *>(list->m_wlManager), managerListener, list);
+    } else if (std::strcmp(interface, "ext_foreign_toplevel_list_v1") == 0) {
+        // GNOME's read-only window list. Bound next to the wlr manager on the
+        // same private connection; whichever protocols the compositor speaks
+        // feed the merged window list.
+        list->m_extManagerName = name;
+        list->m_extManager = wl_registry_bind(registry, name, &ntExtToplevelListInterface, 1);
+        static void (*extManagerListener[])(void) = {
+            reinterpret_cast<void (*)(void)>(+[](void *self, void *manager, void *toplevel) {
+                Q_UNUSED(manager);
+                static_cast<WindowList *>(self)->extToplevelCreated(toplevel);
+            }),
+            reinterpret_cast<void (*)(void)>(+[](void *self, void *manager) {
+                Q_UNUSED(manager);
+                static_cast<WindowList *>(self)->extListFinished(self);
+            }),
+        };
+        wl_proxy_add_listener(static_cast<wl_proxy *>(list->m_extManager), extManagerListener, list);
     } else if (std::strcmp(interface, "wl_seat") == 0 && list->m_wlSeat == nullptr) {
         list->m_wlSeat = static_cast<wl_seat *>(
             wl_registry_bind(registry, name, &wl_seat_interface, qMin(version, uint32_t(5))));
@@ -215,6 +266,82 @@ static void (*kRegistryListener[])(void) = {
     reinterpret_cast<void (*)(void)>(&WindowList::wlRegistryGlobalRemove),
 };
 
+// --- ext_foreign_toplevel_list_v1 callbacks --------------------------------
+// The manager and handle listener tables dispatch straight into these
+// members, exactly like the wlr callbacks above.
+
+void WindowList::extListFinished(void *data)
+{
+    Q_UNUSED(data);
+    // The compositor retired the ext list; wlr (if any) keeps running.
+}
+
+void WindowList::extToplevelCreated(void *handle)
+{
+    static void (*extHandleListener[])(void) = {
+        reinterpret_cast<void (*)(void)>(+[](void *self, void *toplevel) {
+            static_cast<WindowList *>(self)->extToplevelClosed(toplevel);
+        }),
+        reinterpret_cast<void (*)(void)>(+[](void *self, void *toplevel) {
+            Q_UNUSED(toplevel);
+            static_cast<WindowList *>(self)->waylandEmit();
+        }),
+        reinterpret_cast<void (*)(void)>(+[](void *self, void *toplevel, const char *value) {
+            static_cast<WindowList *>(self)->extToplevelTitle(toplevel, value);
+        }),
+        reinterpret_cast<void (*)(void)>(+[](void *self, void *toplevel, const char *value) {
+            static_cast<WindowList *>(self)->extToplevelAppId(toplevel, value);
+        }),
+        reinterpret_cast<void (*)(void)>(+[](void *self, void *toplevel, const char *value) {
+            Q_UNUSED(self);
+            Q_UNUSED(toplevel);
+            Q_UNUSED(value); // stable cross-session identifier, not needed yet
+        }),
+    };
+    wl_proxy_add_listener(static_cast<wl_proxy *>(handle), extHandleListener, this);
+
+    const QString id = QStringLiteral("e%1").arg(m_nextWindowId++);
+    m_extByWindowId.insert(id, handle);
+    QVariantMap w;
+    w.insert(QStringLiteral("id"), id);
+    w.insert(QStringLiteral("title"), QString());
+    w.insert(QStringLiteral("appId"), QString());
+    w.insert(QStringLiteral("active"), false);
+    w.insert(QStringLiteral("minimized"), false);
+    w.insert(QStringLiteral("maximized"), false);
+    // The ext protocol carries no state and no requests: the dock can list
+    // the window but cannot focus, minimise or close it.
+    w.insert(QStringLiteral("readOnly"), true);
+    m_extPending.insert(handle, w);
+}
+
+void WindowList::extToplevelClosed(void *handle)
+{
+    wl_proxy_marshal(static_cast<wl_proxy *>(handle), 0); // destroy
+    m_extPending.remove(handle);
+    for (auto it = m_extByWindowId.begin(); it != m_extByWindowId.end(); ++it) {
+        if (it.value() == handle) {
+            m_extByWindowId.erase(it);
+            break;
+        }
+    }
+    waylandEmit();
+}
+
+void WindowList::extToplevelTitle(void *handle, const char *title)
+{
+    const auto it = m_extPending.find(handle);
+    if (it != m_extPending.end())
+        it->insert(QStringLiteral("title"), QString::fromUtf8(title));
+}
+
+void WindowList::extToplevelAppId(void *handle, const char *appId)
+{
+    const auto it = m_extPending.find(handle);
+    if (it != m_extPending.end())
+        it->insert(QStringLiteral("appId"), QString::fromUtf8(appId));
+}
+
 // ---------------------------------------------------------------------------
 // WindowList
 // ---------------------------------------------------------------------------
@@ -224,7 +351,16 @@ WindowList::WindowList(QObject *parent)
 {
     if (QGuiApplication::platformName().startsWith(QLatin1String("wayland"))) {
         startWayland();
-        m_backend = m_wlDisplay ? QStringLiteral("wayland") : QStringLiteral("none");
+        // GNOME and KDE run XWayland, and many applications still speak X11:
+        // the EWMH back end covers those windows (with working activation,
+        // iconification and closing) on a Wayland session as well.
+        startX11();
+        if (m_wlDisplay && m_xcb)
+            m_backend = QStringLiteral("wayland+x11");
+        else if (m_wlDisplay)
+            m_backend = QStringLiteral("wayland");
+        else if (m_xcb)
+            m_backend = QStringLiteral("x11");
     } else if (QGuiApplication::platformName().startsWith(QLatin1String("xcb"))) {
         startX11();
         m_backend = m_xcb ? QStringLiteral("x11") : QStringLiteral("none");
@@ -256,13 +392,14 @@ void WindowList::setWindows(QVariantList windows)
 
 void WindowList::refresh()
 {
-    if (m_backend == QLatin1String("x11")) {
-        setWindows(readX11Windows());
-    } else if (m_backend == QLatin1String("wayland")) {
-        // Dispatches the queued toplevel events into m_waylandPending.
+    if (m_backend == QLatin1String("none"))
+        return;
+    if (m_backend == QLatin1String("wayland") || m_backend == QLatin1String("wayland+x11")) {
+        // Dispatches the queued toplevel events into the pending maps.
         waylandRoundtrip();
-        setWindows(waylandSnapshot());
     }
+    if (m_xcb || m_wlDisplay)
+        setWindows(mergedWindowList());
 }
 
 QString WindowList::activeWindow() const
@@ -594,18 +731,19 @@ quint32 WindowList::x11Atom(const char *) { return 0; }
 #endif
 
 // ---------------------------------------------------------------------------
-// Public actions, routed to the active back end
+// Public actions, routed to whatever back end owns the window id
 // ---------------------------------------------------------------------------
 
 void WindowList::activate(const QString &id)
 {
-    if (m_backend == QLatin1String("x11")) {
+    if (m_xcb) {
         const auto it = m_x11ByWindowId.constFind(id);
-        if (it != m_x11ByWindowId.constEnd())
+        if (it != m_x11ByWindowId.constEnd()) {
             x11Activate(it.value());
-        return;
+            return;
+        }
     }
-    if (m_backend == QLatin1String("wayland")) {
+    if (m_wlDisplay) {
         const auto it = m_waylandByWindowId.constFind(id);
         if (it != m_waylandByWindowId.constEnd() && m_wlSeat) {
             wl_proxy_marshal(static_cast<wl_proxy *>(it.value()), WLR_HANDLE_ACTIVATE, m_wlSeat);
@@ -616,13 +754,14 @@ void WindowList::activate(const QString &id)
 
 void WindowList::closeWindow(const QString &id)
 {
-    if (m_backend == QLatin1String("x11")) {
+    if (m_xcb) {
         const auto it = m_x11ByWindowId.constFind(id);
-        if (it != m_x11ByWindowId.constEnd())
+        if (it != m_x11ByWindowId.constEnd()) {
             x11Close(it.value());
-        return;
+            return;
+        }
     }
-    if (m_backend == QLatin1String("wayland")) {
+    if (m_wlDisplay) {
         const auto it = m_waylandByWindowId.constFind(id);
         if (it != m_waylandByWindowId.constEnd()) {
             wl_proxy_marshal(static_cast<wl_proxy *>(it.value()), WLR_HANDLE_CLOSE);
@@ -633,13 +772,14 @@ void WindowList::closeWindow(const QString &id)
 
 void WindowList::minimize(const QString &id)
 {
-    if (m_backend == QLatin1String("x11")) {
+    if (m_xcb) {
         const auto it = m_x11ByWindowId.constFind(id);
-        if (it != m_x11ByWindowId.constEnd())
+        if (it != m_x11ByWindowId.constEnd()) {
             x11Minimize(it.value());
-        return;
+            return;
+        }
     }
-    if (m_backend == QLatin1String("wayland")) {
+    if (m_wlDisplay) {
         const auto it = m_waylandByWindowId.constFind(id);
         if (it != m_waylandByWindowId.constEnd()) {
             wl_proxy_marshal(static_cast<wl_proxy *>(it.value()), WLR_HANDLE_SET_MINIMIZED);
@@ -656,13 +796,14 @@ void WindowList::toggleMaximized(const QString &id)
         if (w.value(QStringLiteral("id")) == id)
             currentlyMaximized = w.value(QStringLiteral("maximized")).toBool();
     }
-    if (m_backend == QLatin1String("x11")) {
+    if (m_xcb) {
         const auto it = m_x11ByWindowId.constFind(id);
-        if (it != m_x11ByWindowId.constEnd())
+        if (it != m_x11ByWindowId.constEnd()) {
             x11ToggleMaximized(it.value(), currentlyMaximized);
-        return;
+            return;
+        }
     }
-    if (m_backend == QLatin1String("wayland")) {
+    if (m_wlDisplay) {
         const auto it = m_waylandByWindowId.constFind(id);
         if (it != m_waylandByWindowId.constEnd()) {
             wl_proxy_marshal(static_cast<wl_proxy *>(it.value()),
@@ -689,13 +830,15 @@ void WindowList::startWayland()
     wl_proxy_add_listener(reinterpret_cast<wl_proxy *>(m_wlRegistry), kRegistryListener, this);
 
     // Two roundtrips: the first processes the registry globals (binds the
-    // manager and the seat), the second the initial toplevel events the
-    // compositor sends right after the manager bind.
+    // manager(s) and the seat), the second the initial toplevel events the
+    // compositor sends right after the binds.
     wl_display_roundtrip(m_wlDisplay);
     wl_display_roundtrip(m_wlDisplay);
 
-    if (!m_wlManager) {
-        // The compositor does not implement the protocol (GNOME, for example).
+    if (!m_wlManager && !m_extManager) {
+        // The compositor implements neither listing protocol (GNOME before 48,
+        // for example). The X11 back end may still cover the session's
+        // XWayland windows, so only this connection is closed here.
         stopWayland();
         return;
     }
@@ -719,8 +862,11 @@ void WindowList::stopWayland()
     m_wlRegistry = nullptr;
     m_wlManager = nullptr;
     m_wlSeat = nullptr;
+    m_extManager = nullptr;
     m_waylandPending.clear();
     m_waylandByWindowId.clear();
+    m_extPending.clear();
+    m_extByWindowId.clear();
 }
 
 void WindowList::waylandSocketReady()
@@ -729,22 +875,24 @@ void WindowList::waylandSocketReady()
         return;
     m_wlNotifier->setEnabled(false);
     if (wl_display_get_error(m_wlDisplay) != 0) {
-        setWindows({});
         stopWayland();
-        m_backend = QStringLiteral("none");
+        if (!m_xcb)
+            m_backend = QStringLiteral("none");
+        setWindows(mergedWindowList());
         return;
     }
     // Standard cooperative read: claim the read, drain the socket, dispatch.
     while (wl_display_prepare_read(m_wlDisplay) != 0)
         wl_display_dispatch_pending(m_wlDisplay);
     if (wl_display_read_events(m_wlDisplay) < 0) {
-        setWindows({});
         stopWayland();
-        m_backend = QStringLiteral("none");
+        if (!m_xcb)
+            m_backend = QStringLiteral("none");
+        setWindows(mergedWindowList());
         return;
     }
     wl_display_dispatch_pending(m_wlDisplay);
-    setWindows(waylandSnapshot());
+    setWindows(mergedWindowList());
     if (m_wlNotifier)
         m_wlNotifier->setEnabled(true);
 }
@@ -754,9 +902,10 @@ void WindowList::waylandRoundtrip()
     if (!m_wlDisplay)
         return;
     if (wl_display_roundtrip(m_wlDisplay) < 0) {
-        setWindows({});
+        // The connection died; the X11 back end (if any) keeps the dock alive.
         stopWayland();
-        m_backend = QStringLiteral("none");
+        if (!m_xcb)
+            m_backend = QStringLiteral("none");
     }
 }
 
@@ -817,17 +966,76 @@ void WindowList::waylandToplevelClosed(void *handle)
 
 void WindowList::waylandFinished()
 {
-    // The compositor is done with this protocol (manager retirement).
+    // The compositor is done with the wlr protocol (manager retirement); the
+    // ext list, if bound, keeps feeding the merged snapshot.
     m_waylandPending.clear();
     m_waylandByWindowId.clear();
-    setWindows({});
+    setWindows(mergedWindowList());
 }
 
 QVariantList WindowList::waylandSnapshot() const
 {
     QVariantList out;
-    out.reserve(m_waylandPending.size());
+    out.reserve(m_waylandPending.size() + m_extPending.size());
     for (const QVariantMap &entry : m_waylandPending)
         out.append(entry);
+    for (const QVariantMap &entry : m_extPending)
+        out.append(entry);
     return out;
+}
+
+// ---------------------------------------------------------------------------
+// Merged multi-protocol list
+// ---------------------------------------------------------------------------
+
+bool WindowList::windowListContains(const QVariantList &list, const QVariantMap &window)
+{
+    const QString title = window.value(QStringLiteral("title")).toString();
+    if (title.isEmpty())
+        return false; // untitled windows are never treated as duplicates
+    const QString appId = window.value(QStringLiteral("appId")).toString();
+    for (const QVariant &entry : list) {
+        const QVariantMap other = entry.toMap();
+        if (other.value(QStringLiteral("title")).toString() != title)
+            continue;
+        const QString otherApp = other.value(QStringLiteral("appId")).toString();
+        if (appId.isEmpty() || otherApp.isEmpty())
+            return true;
+        if (appId.compare(otherApp, Qt::CaseInsensitive) == 0)
+            return true;
+    }
+    return false;
+}
+
+QVariantList WindowList::mergedWindowList()
+{
+    QVariantList out;
+    if (m_wlDisplay) {
+        // 1. wlr toplevels: full control, and compositors that implement the
+        //    protocol report their XWayland windows through it as well.
+        out.reserve(m_waylandPending.size() + m_extPending.size() + 16);
+        for (const QVariantMap &entry : m_waylandPending)
+            out.append(entry);
+        // 2. X11 windows that no wlr toplevel already represents. They win
+        //    over the read-only ext reports of the same window, because
+        //    activate/minimize/close actually work for them.
+        if (m_xcb) {
+            const QVariantList x11 = readX11Windows();
+            for (const QVariant &entry : x11) {
+                const QVariantMap w = entry.toMap();
+                if (!windowListContains(out, w))
+                    out.append(w);
+            }
+        }
+        // 3. Read-only ext toplevels (GNOME's native Wayland windows) that
+        //    nothing else shows.
+        for (const QVariantMap &entry : m_extPending) {
+            if (!windowListContains(out, entry))
+                out.append(entry);
+        }
+        return out;
+    }
+    if (m_xcb)
+        return readX11Windows();
+    return {};
 }

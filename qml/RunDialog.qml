@@ -71,6 +71,13 @@ Window {
             anchors.margins: 12
             spacing: 10
 
+            ShellTitleBar {
+                Layout.fillWidth: true
+                title: "Run a command"
+                iconName: "app-window"
+                onCloseClicked: dialog.hide()
+            }
+
             Rectangle {
                 id: inputBox
                 Layout.fillWidth: true

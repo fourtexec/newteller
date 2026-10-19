@@ -128,8 +128,8 @@ Window {
                         sourceSize.width: 18
                         sourceSize.height: 18
                         fillMode: Image.PreserveAspectFit
-                        source: Shell.iconUrl("search")
-                        visible: Shell.iconUrl("search").toString().length > 0
+                        source: Shell.tintedIcon("search", Theme.foreground)
+                        visible: Shell.tintedIcon("search", Theme.foreground).toString().length > 0
                     }
 
                     TextInput {

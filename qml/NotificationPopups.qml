@@ -88,16 +88,27 @@ Window {
                 id: card
                 required property var modelData
                 width: column.width
-                height: cardColumn.implicitHeight + 22
+                height: cardColumn.implicitHeight + 26
 
                 readonly property var entry: modelData || {}
                 readonly property var actions: (entry.actions || []).filter(a => a && a.length > 0)
+                // 1.0 -> 0.0 while the timeout runs; drives the progress line.
+                property real progress: (entry.timeout || 0) > 0 ? 1.0 : 0.0
 
                 // Expire on the daemon-side timeout (0 = sticky).
                 Timer {
+                    id: lifeTimer
                     running: card.entry.timeout > 0 && card.visible
                     interval: card.entry.timeout || 0
                     onTriggered: Notifications.dismiss(card.entry.id, 1)
+                }
+                NumberAnimation {
+                    target: card
+                    property: "progress"
+                    from: 1.0
+                    to: 0.0
+                    duration: Math.max(1, card.entry.timeout || 1)
+                    running: lifeTimer.running
                 }
 
                 MouseArea {
@@ -109,17 +120,29 @@ Window {
                 RowLayout {
                     id: cardColumn
                     anchors.fill: parent
-                    anchors.margins: 10
-                    spacing: 10
+                    anchors.margins: 12
+                    spacing: 11
+
+                    // The notification's own accent: a rounded vertical bar in
+                    // the theme accent colour, echoing the shell chrome.
+                    Rectangle {
+                        Layout.preferredWidth: 3
+                        Layout.fillHeight: true
+                        Layout.alignment: Qt.AlignLeft
+                        radius: 1.5
+                        color: Theme.accent
+                    }
 
                     Item {
-                        Layout.preferredWidth: 36
-                        Layout.preferredHeight: 36
+                        Layout.preferredWidth: 38
+                        Layout.preferredHeight: 38
                         Layout.alignment: Qt.AlignTop
                         Rectangle {
                             anchors.fill: parent
-                            radius: 10
+                            radius: 12
                             color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
+                            border.width: 1
+                            border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35)
                             Image {
                                 anchors.centerIn: parent
                                 width: 22
@@ -128,8 +151,8 @@ Window {
                                 sourceSize.height: 44
                                 fillMode: Image.PreserveAspectFit
                                 smooth: true
-                                source: Shell.iconUrl(card.entry.icon && card.entry.icon.length > 0
-                                                      ? card.entry.icon : "bell")
+                                source: Shell.tintedIcon(card.entry.icon && card.entry.icon.length > 0
+                                                         ? card.entry.icon : "bell", Theme.foreground)
                             }
                         }
                     }
@@ -142,10 +165,11 @@ Window {
                         Text {
                             Layout.fillWidth: true
                             visible: (card.entry.app || "").length > 0
-                            text: card.entry.app || ""
+                            text: (card.entry.app || "").toUpperCase()
                             color: Theme.muted
                             font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSize - 2
+                            font.pointSize: Theme.fontSize - 3
+                            font.letterSpacing: 0.8
                             elide: Text.ElideRight
                         }
                         Text {
@@ -162,7 +186,8 @@ Window {
                             Layout.fillWidth: true
                             visible: (card.entry.body || "").length > 0
                             text: card.entry.body || ""
-                            color: Theme.foreground
+                            color: Qt.rgba(Theme.foreground.r, Theme.foreground.g,
+                                           Theme.foreground.b, 0.85)
                             font.family: Theme.fontFamily
                             font.pointSize: Theme.fontSize
                             wrapMode: Text.Wrap
@@ -172,6 +197,7 @@ Window {
 
                         Row {
                             Layout.fillWidth: true
+                            Layout.topMargin: 4
                             spacing: 6
                             visible: card.actions.length > 0
 
@@ -193,12 +219,41 @@ Window {
                     }
 
                     TaskButton {
+                        id: closeButton
                         Layout.alignment: Qt.AlignTop
                         width: 26
                         height: 26
                         iconName: "x"
+                        // Quiet until the pointer reaches the card.
+                        opacity: cardHover.hovered ? 1.0 : 0.35
+                        Behavior on opacity {
+                            NumberAnimation { duration: 120 }
+                        }
                         onClicked: Notifications.dismiss(card.entry.id, 2)
                     }
+                }
+
+                // Remaining-time line along the bottom edge.
+                Rectangle {
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.bottom: parent.bottom
+                    height: 3
+                    radius: 1.5
+                    visible: (card.entry.timeout || 0) > 0
+                    clip: true
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        width: parent.width * card.progress
+                        radius: 1.5
+                        color: Theme.accent
+                    }
+                }
+
+                HoverHandler {
+                    id: cardHover
                 }
             }
         }

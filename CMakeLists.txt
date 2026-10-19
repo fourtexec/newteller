@@ -77,6 +77,7 @@ qt_add_executable(newteller
     src/theme.cpp
     src/appmodel.cpp
     src/shellcontroller.cpp
+    src/fileportal.cpp
     src/plugins.cpp
     src/rustbridge.cpp
     src/systemmonitor.cpp

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QColor>
 #include <QDateTime>
 #include <QHash>
 #include <QObject>
@@ -46,6 +47,11 @@ public:
     // IconKit set on disk (settings: icons.path) -> the kit bundled with the
     // installation -> system icon theme (image://theme/).
     Q_INVOKABLE QUrl iconUrl(const QString &name) const;
+    // Like iconUrl(), but IconKit glyph icons are recoloured to `color` (the
+    // lucide set draws with stroke="currentColor", which renders black - the
+    // recolour makes them follow the theme foreground, i.e. white on dark
+    // themes). System theme application icons are returned unchanged.
+    Q_INVOKABLE QUrl tintedIcon(const QString &name, const QColor &color) const;
 
     Q_INVOKABLE void openUrl(const QString &url) const;
     // Opens the built-in settings application. The QML lives in the executable's
@@ -89,4 +95,6 @@ private:
     // icon name -> resolved file URL ("" = fall back to the theme), so the
     // bindings in TaskButton do not stat the same files every frame.
     mutable QHash<QString, QString> m_iconCache;
+    // "name@color" -> recoloured SVG file URL (Shell.tintedIcon).
+    mutable QHash<QString, QString> m_tintCache;
 };

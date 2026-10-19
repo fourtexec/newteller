@@ -50,6 +50,7 @@ from PySide6.QtCore import (Q_ARG, QDateTime, QEnum, QFile, QMargins, QMetaObjec
 from PySide6.QtGui import QColor, QGuiApplication  # noqa: E402
 from PySide6.QtQml import (QmlAnonymous, QmlAttached, QmlNamedElement,  # noqa: E402
                            QmlUncreatable, QQmlApplicationEngine, QQmlComponent)
+from PySide6.QtQuick import QQuickItem  # noqa: E402
 from PySide6.QtTest import QTest  # noqa: E402
 
 # ---------------------------------------------------------------------------
@@ -401,6 +402,13 @@ class Shell(QObject):
         url = QUrl(f"qrc:/icons/{name}.svg")
         return url if QFile.exists(url.toString()) else QUrl()
 
+    @Slot(str, QColor, result=QUrl)
+    def tintedIcon(self, name, color):
+        # The real implementation recolours the compiled IconKit SVGs to the
+        # theme foreground (stroke="currentColor" would render black); the
+        # test serves the original so the resource is still exercised.
+        return self.iconUrl(name)
+
     @Slot(str)
     def openUrl(self, url):
         self.calls.append(("openUrl", url))
@@ -466,6 +474,23 @@ class Shell(QObject):
         self.calls.append(("notify", title))
 
 
+class FilePortal(QObject):
+    """Stand-in for the FilePortal context property (src/fileportal.h)."""
+
+    filePicked = Signal(str)
+    pickFailed = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self.calls = []
+
+    available = Property(bool, lambda self: True, constant=True)
+
+    @Slot(str, str, bool)
+    def pickFile(self, title, start_folder, images_only):
+        self.calls.append(("pickFile", title, start_folder, images_only))
+
+
 class System(QObject):
     """Stand-in for the SystemMonitor context property (src/systemmonitor.h)."""
 
@@ -523,6 +548,11 @@ class Windows(QObject):
              "active": True, "minimized": False, "maximized": False},
             {"id": "w2", "title": "Terminal", "appId": "org.gnome.Terminal",
              "active": False, "minimized": False, "maximized": True},
+            # A read-only toplevel as ext_foreign_toplevel_list reports them
+            # (GNOME 48+): it is listed but cannot be focused or closed.
+            {"id": "e1", "title": "Files", "appId": "org.gnome.Nautilus",
+             "active": False, "minimized": False, "maximized": False,
+             "readOnly": True},
         ]
         self.calls = []
 
@@ -560,7 +590,6 @@ class Windows(QObject):
 
 class Notifications(QObject):
     """Stand-in for the NotificationDaemon context property (src/notifications.h)."""
-
     activeChanged = Signal()
     historyChanged = Signal()
     dbusChanged = Signal()
@@ -652,11 +681,11 @@ def main():
     settings, theme, apps = Settings(), Theme(), Apps()
     shell, plugin_manager = Shell(desktop_dir, work), Plugins(plugins)
     system, window_list = System(), Windows()
-    notifications = Notifications()
+    notifications, file_portal = Notifications(), FilePortal()
     engine = QQmlApplicationEngine()
     for name, obj in (("Settings", settings), ("Theme", theme), ("Apps", apps), ("Shell", shell),
                       ("Plugins", plugin_manager), ("System", system), ("Windows", window_list),
-                      ("Notifications", notifications)):
+                      ("Notifications", notifications), ("FilePortal", file_portal)):
         engine.rootContext().setContextProperty(name, obj)
 
     failures = []
@@ -857,8 +886,8 @@ def main():
         entries = panel.property("dockEntries")
         if hasattr(entries, "toVariant"):
             entries = entries.toVariant()
-        check(isinstance(entries, list) and len(entries) == 2,
-              f"the dock merges windows and pinned apps into two entries ({entries})")
+        check(isinstance(entries, list) and len(entries) == 3,
+              f"the dock merges windows and pinned apps into three entries ({entries})")
         by_app = {e["appId"]: e for e in (entries or [])}
         firefox = by_app.get("firefox", {})
         check(firefox.get("running") is True and firefox.get("active") is True
@@ -873,6 +902,59 @@ def main():
         QMetaObject.invokeMethod(panel, "activateEntry", Q_ARG("QVariant", firefox))
         check(("activate", "w1") in window_list.calls,
               f"activating a dock entry talks to the window list ({window_list.calls})")
+
+        # A read-only toplevel (ext_foreign_toplevel_list, GNOME) cannot be
+        # activated: clicking its entry launches the matched application.
+        nautilus = by_app.get("org.gnome.Nautilus", {})
+        check(len(nautilus.get("windows", [])) == 1
+              and nautilus["windows"][0].get("readOnly") is True,
+              f"the read-only window is listed in the dock ({nautilus})")
+        window_list.calls.clear()
+        QMetaObject.invokeMethod(panel, "activateEntry", Q_ARG("QVariant", nautilus))
+        check(("activate", "e1") not in window_list.calls
+              and apps.launched and apps.launched[-1] == "org.gnome.Nautilus",
+              f"a read-only entry launches its application instead ({window_list.calls}, "
+              f"{apps.launched})")
+
+        # The dock buttons must have real geometry, not zero-height items: a
+        # Flickable without an explicit height once collapsed the whole strip
+        # (the dock looked empty although the entries were all there).
+        def walk_items(item, out):
+            out.append(item)
+            for child in item.childItems():
+                walk_items(child, out)
+
+        content = panel.property("contentItem")
+        items = []
+        if content is not None:
+            walk_items(content, items)
+        # Inline components (`component StartButton: TaskButton`) get their own
+        # class name, so both spellings have to be matched here.
+        def is_task_button(i):
+            name = i.metaObject().className()
+            return "TaskButton" in name or "StartButton" in name
+
+        buttons = [i for i in items if isinstance(i, QQuickItem) and is_task_button(i)]
+        check(len(buttons) >= 2,
+              f"the dock strip instantiates its buttons ({len(buttons)} found)")
+        collapsed = [f"{b.objectName() or b.property('iconName')}:"
+                     f"{b.width():.0f}x{b.height():.0f}" for b in buttons if b.height() < 16]
+        check(not collapsed, f"dock buttons have real geometry (collapsed: {collapsed})")
+        if collapsed:
+            for b in buttons:
+                chain = []
+                p = b.parentItem()
+                while p is not None:
+                    chain.append(p.metaObject().className().split("_QML")[0] + f"({p.width():.0f}x{p.height():.0f})")
+                    p = p.parentItem()
+                print("    btn", b.objectName() or b.property("iconName"),
+                      "icon=", repr(b.property("iconName")),
+                      "size=", b.width(), "x", b.height(),
+                      "implicitH=", b.property("implicitHeight"),
+                      "chain=", " > ".join(chain))
+        start = next((b for b in buttons if b.objectName() == "startButton"), None)
+        check(start is not None and start.height() >= 16,
+              "the start button keeps its geometry")
 
     # One dock menu per panel.
     dock_menus = windows_of_kind("DockMenu")
@@ -892,6 +974,22 @@ def main():
           f"one notification window per screen ({len(notification_windows)} vs {len(screens)})")
     if notification_windows:
         check(not notification_windows[0].isVisible(), "notifications start hidden")
+
+    # The colour palette is a panel pinned to the left edge of the screen,
+    # not a floating window.
+    palettes = windows_of_kind("ColorPaletteWindow")
+    check(len(palettes) == 1, f"one colour palette window (got {len(palettes)})")
+    if palettes:
+        palette = palettes[0]
+        check(not palette.isVisible(), "the colour palette starts hidden")
+        pls = attached("layershell", palette)
+        check(pls is not None
+              and pls.anchors == (LayerShellWindow.Anchor.AnchorLeft
+                                  | LayerShellWindow.Anchor.AnchorTop
+                                  | LayerShellWindow.Anchor.AnchorBottom)
+              and pls.layer == LayerShellWindow.Layer.LayerTop
+              and pls.scope == "newteller-palette",
+              "the colour palette is a left-edge layer panel")
 
     # The embedded settings window opens through Shell.openSettings(); the
     # start menu button, the desktop menu and `newteller --settings` share it.
