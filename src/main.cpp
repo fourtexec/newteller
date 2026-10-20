@@ -9,11 +9,13 @@
 #include "fileportal.h"
 #include "notifications.h"
 #include "plugins.h"
+#include "quicksettings.h"
 #include "settings.h"
 #include "shellcontroller.h"
 #include "shellwindow.h"
 #include "systemmonitor.h"
 #include "theme.h"
+#include "tray.h"
 #include "windowlist.h"
 #include "windowsystem.h"
 
@@ -186,6 +188,8 @@ int main(int argc, char *argv[])
     ShellController shell(&settings, &notifications);
     PluginManager plugins(&settings);
     SystemMonitor system(&settings);
+    TrayWatcher tray(&settings);
+    QuickSettings quick(&settings);
 
     if (cli.printConfig) {
         std::printf("%s", qUtf8Printable(printJson(settings.values())));
@@ -207,6 +211,7 @@ int main(int argc, char *argv[])
 
     QQmlApplicationEngine engine;
     engine.addImageProvider(QStringLiteral("theme"), new ThemeIconProvider);
+    engine.addImageProvider(QStringLiteral("tray"), createTrayImageProvider(&tray));
     engine.rootContext()->setContextProperty(QStringLiteral("Settings"), &settings);
     engine.rootContext()->setContextProperty(QStringLiteral("Theme"), &theme);
     engine.rootContext()->setContextProperty(QStringLiteral("Apps"), &apps);
@@ -215,6 +220,8 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("System"), &system);
     engine.rootContext()->setContextProperty(QStringLiteral("Windows"), &windows);
     engine.rootContext()->setContextProperty(QStringLiteral("Notifications"), &notifications);
+    engine.rootContext()->setContextProperty(QStringLiteral("Tray"), &tray);
+    engine.rootContext()->setContextProperty(QStringLiteral("Quick"), &quick);
 
     FilePortal filePortal;
     engine.rootContext()->setContextProperty(QStringLiteral("FilePortal"), &filePortal);

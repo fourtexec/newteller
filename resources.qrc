@@ -25,6 +25,10 @@
     <file>qml/ColorPaletteWindow.qml</file>
     <file>qml/SettingsFontPicker.qml</file>
     <file>qml/SettingsFilePicker.qml</file>
+    <file>qml/ShellToolTip.qml</file>
+    <file>qml/PanelToolTip.qml</file>
+    <file>qml/NotificationCenter.qml</file>
+    <file>qml/QuickSettingsPopup.qml</file>
     <file>themes/default.json</file>
     <file>themes/light.json</file>
     <file>themes/nord.json</file>
@@ -34,17 +38,23 @@
   </qresource>
   <!-- The core icons (github.com/fourtexec/iconkit, lucide set, ISC licence):
        compiled into the binary so the shell chrome renders on any system,
-       before IconKit on disk or the system icon theme are consulted. -->
-  <qresource prefix="/icons">
+       before IconKit on disk or the system icon theme are consulted. The
+       prefix is "/" and the file paths start with icons/, so every icon sits
+       at qrc:/icons/<name>.svg - exactly where Shell.iconUrl() looks. -->
+  <qresource prefix="/">
     <file>icons/arrow-up.svg</file>
     <file>icons/app-window.svg</file>
+    <file>icons/battery.svg</file>
+    <file>icons/battery-charging.svg</file>
     <file>icons/bell.svg</file>
+    <file>icons/bell-off.svg</file>
     <file>icons/bell-ring.svg</file>
     <file>icons/check.svg</file>
     <file>icons/chevron-left.svg</file>
     <file>icons/chevron-right.svg</file>
     <file>icons/clipboard.svg</file>
     <file>icons/cpu.svg</file>
+    <file>icons/disc-3.svg</file>
     <file>icons/download.svg</file>
     <file>icons/eraser.svg</file>
     <file>icons/file-code.svg</file>
@@ -63,6 +73,10 @@
     <file>icons/package.svg</file>
     <file>icons/palette.svg</file>
     <file>icons/panel-bottom.svg</file>
+    <file>icons/pause.svg</file>
+    <file>icons/pin.svg</file>
+    <file>icons/pin-off.svg</file>
+    <file>icons/play.svg</file>
     <file>icons/plus.svg</file>
     <file>icons/power.svg</file>
     <file>icons/puzzle.svg</file>
@@ -72,10 +86,18 @@
     <file>icons/search.svg</file>
     <file>icons/settings.svg</file>
     <file>icons/shuffle.svg</file>
+    <file>icons/skip-back.svg</file>
+    <file>icons/skip-forward.svg</file>
+    <file>icons/sliders-horizontal.svg</file>
     <file>icons/square.svg</file>
+    <file>icons/sun.svg</file>
     <file>icons/terminal.svg</file>
     <file>icons/trash.svg</file>
     <file>icons/type.svg</file>
+    <file>icons/volume-2.svg</file>
+    <file>icons/volume-x.svg</file>
+    <file>icons/wifi.svg</file>
+    <file>icons/wifi-off.svg</file>
     <file>icons/x.svg</file>
   </qresource>
 </RCC>

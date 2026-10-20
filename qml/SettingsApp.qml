@@ -656,6 +656,14 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: "Quick settings indicators"
+                                subtitle: "The bell and the indicators button at the end of the bar: "
+                                          + "notification centre, volume, brightness, network and media."
+                                settingKey: "panel.indicators"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: "Show date next to the clock"
                                 settingKey: "panel.showDate"
                                 SettingsSwitch {}
@@ -722,9 +730,26 @@ Window {
                         }
 
                         SettingsSection {
+                            title: "System tray"
+                            subtitle: "The shell acts as the StatusNotifierWatcher of the session: "
+                                      + "applications register their tray icons with it. Left click "
+                                      + "activates, middle click triggers the secondary action, and "
+                                      + "right click asks the application to open its own menu."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Show the system tray"
+                                subtitle: "Hidden when another tray host owns the session."
+                                settingKey: "tray.enabled"
+                                SettingsSwitch {}
+                            }
+                        }
+
+                        SettingsSection {
                             title: "Pinned applications"
                             subtitle: "Desktop file ids, as in /usr/share/applications. Right-click a dock "
-                                      + "button at runtime for per-window actions."
+                                      + "button at runtime for per-window actions, or right-click an "
+                                      + "application in the start menu to pin or unpin it."
 
                             SettingsRow {
                                 width: parent.width

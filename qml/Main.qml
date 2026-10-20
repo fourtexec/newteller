@@ -18,6 +18,18 @@ QtObject {
         screen: Qt.application.screens[0]
     }
 
+    // The notification centre and the quick settings card: one of each, on
+    // the primary screen, opened from the bell and the indicators button of
+    // every panel.
+    readonly property NotificationCenter notificationCenter: NotificationCenter {
+        screen: Qt.application.screens[0]
+    }
+
+    readonly property QuickSettingsPopup quickSettings: QuickSettingsPopup {
+        screen: Qt.application.screens[0]
+        notificationCenter: root.notificationCenter
+    }
+
     // The built-in settings application. Its QML is compiled into the
     // executable, so it is always there and cannot be deleted like a plugin.
     readonly property SettingsApp settingsApp: SettingsApp {
@@ -40,6 +52,8 @@ QtObject {
             required property var modelData
             screen: modelData
             startMenu: root.startMenu
+            notificationCenter: root.notificationCenter
+            quickSettings: root.quickSettings
         }
     }
 

@@ -20,6 +20,22 @@ real desktop:
 - Panel: Start button, pinned apps with a running badge, plugin slots, clock with
   optional date, on any edge (`panel.position`: bottom/top/left/right), optional
   auto-hide
+- **System tray: the shell is the session's StatusNotifierWatcher.** Applications
+  that implement `org.kde.StatusNotifierItem` (Qt's QSystemTrayIcon, Electron
+  apps, GTK applets, ...) register their icons with the shell and appear at the
+  end of the panel: left click activates, middle click triggers the secondary
+  action, the wheel scrolls, and right click asks the application to open its
+  own context menu. Icons arrive either as pixmaps (IconPixmap) or through the
+  system icon theme, and the tray hides itself when another tray host owns the
+  session (`tray.enabled`).
+- **Quick settings: the indicators button at the end of the panel.** One card
+  with the media player that is playing (MPRIS over D-Bus: title, artist,
+  play/pause, next/previous), a volume slider (via `wpctl` or `pactl`, with a
+  mute button), a brightness slider (`/sys/class/backlight`, written through
+  GNOME's SettingsDaemon.Power when available), the Wi-Fi toggle and network
+  status (NetworkManager), the do-not-disturb switch and the battery level.
+  Every row hides itself when its backend is missing
+  (`panel.indicators`).
 - **Dock: every started application appears in the panel.** Real top-level windows
   are tracked on X11 (EWMH) and on Wayland compositors with wlr-foreign-toplevel
   (KDE Plasma, sway, Hyprland, labwc, Wayfire, niri, ...). On GNOME 48+ the
@@ -30,13 +46,24 @@ real desktop:
   menu; read-only toplevels fall back to launching the application), and
   windows of one application can be grouped into a single button.
 - Start menu: highlighted fuzzy search, category chips, recently used row,
-  Lock / Log out / Sleep / Restart / Shut down, Settings
+  Lock / Log out / Sleep / Restart / Shut down, Settings; right-click an
+  application to pin or unpin it on the dock
+- **Notification centre: the bell at the end of the panel.** The history of the
+  built-in notification daemon, newest first, with per-entry removal, a clear-all
+  button and the do-not-disturb switch; the bell counts what arrived while it
+  was closed. Per-row removal is `Notifications.removeHistory()` on the daemon.
 - **Settings application: a full settings GUI built into the shell.** Every key of
   `shell.json`, a theme editor, plugin management, diagnostics and config export —
   see [Settings application](#settings-application). The QML is compiled into the
   `newteller` executable, so it cannot be deleted or damaged without replacing the
   binary itself.
-- Run dialog (`Alt+F2`): run a shell command or search applications
+- Run dialog (`Alt+F2`): run a shell command or search applications; bare
+  commands are remembered (`run.history`, capped by `run.historyLimit`) and
+  Up/Down walks the history
+- **Tooltips.** Panel buttons (dock icons, tray icons, bell, indicators, clock)
+  describe themselves in a small layer surface above the hovered button; buttons
+  inside the menus (start menu session actions, quick settings, notification
+  centre) use an in-window bubble.
 - Desktop: wallpaper, icons from `~/Desktop` (double-click to open), desktop
   plugins, right-click menu (change wallpaper, paste to a file, open a terminal,
   settings)
@@ -51,10 +78,11 @@ real desktop:
 
 Not implemented yet (planned, in this order):
 
-1. System tray (StatusNotifierItem over D-Bus)
-2. Notifications (`org.freedesktop.Notifications`)
-3. Drag-and-drop desktop icon layout
-4. Per-window thumbnails and drag-to-reorder dock buttons
+1. DBusMenu for tray items that only ship a menu object (right click currently
+   asks the application to open its own menu, which KStatusNotifierItem and
+   libappindicator applications do)
+2. Drag-and-drop desktop icon layout
+3. Per-window thumbnails and drag-to-reorder dock buttons
 
 ## Build (Debian 13 / Ubuntu 26.04 LTS)
 
@@ -211,6 +239,8 @@ All keys, with their defaults:
 | `dock.showWindows` | `true` | show running applications/windows in the dock |
 | `dock.group` | `true` | merge all windows of one application into one dock button |
 | `dock.iconSize` | `28` | dock button icon size in pixels |
+| `panel.indicators` | `true` | bell (notification centre) and quick settings button at the end of the bar |
+| `tray.enabled` | `true` | act as the session's StatusNotifierWatcher and show the registered tray icons |
 | `startmenu.width` / `startmenu.height` | `440` / `580` | menu size |
 | `startmenu.limit` | `200` | maximum search hits |
 | `startmenu.fuzzy` | `true` | typo-tolerant search |
@@ -236,6 +266,7 @@ All keys, with their defaults:
 | `system.battery` / `system.thermal` / `system.disks` | `true` | metric groups to sample |
 | `watch.debounce` | `250` | file-watch debounce in ms |
 | `run.history` | `[]` | run dialog history |
+| `run.historyLimit` | `25` | how many commands the run dialog remembers |
 
 - `panel.pinned` takes desktop file IDs (see `/usr/share/applications`).
 - Icons come from [IconKit](https://github.com/fourtexec/iconkit): a small core

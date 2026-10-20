@@ -59,8 +59,39 @@ Window {
         } else {
             // A bare command: run it through the shell.
             Shell.runShell(q);
+            rememberCommand(q);
         }
         hide();
+    }
+
+    // --- command history --------------------------------------------------
+    // Bare commands land in the run.history settings key; Up/Down walk it.
+    property int historyIndex: -1
+    property bool navigatingHistory: false
+
+    function rememberCommand(command) {
+        const limit = Settings.values["run.historyLimit"] || 25;
+        var history = (Settings.values["run.history"] || []).slice();
+        history = history.filter(c => c !== command);
+        history.unshift(command);
+        while (history.length > limit)
+            history.pop();
+        Settings.setValue("run.history", history);
+        historyIndex = -1;
+    }
+
+    function historyStep(delta) {
+        const history = Settings.values["run.history"] || [];
+        if (history.length === 0)
+            return;
+        const next = Math.max(-1, Math.min(history.length - 1, historyIndex + delta));
+        if (next === historyIndex)
+            return;
+        historyIndex = next;
+        navigatingHistory = true;
+        input.text = next >= 0 ? history[next] : "";
+        navigatingHistory = false;
+        input.cursorPosition = input.text.length;
     }
 
     onActiveChanged: {
@@ -103,9 +134,15 @@ Window {
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize + 1
                     verticalAlignment: TextInput.AlignVCenter
-                    onTextChanged: dialog.refresh()
+                    onTextChanged: {
+                        if (!dialog.navigatingHistory)
+                            dialog.historyIndex = -1;
+                        dialog.refresh();
+                    }
                     Keys.onEscapePressed: dialog.hide()
                     Keys.onReturnPressed: dialog.runCurrent()
+                    Keys.onUpPressed: dialog.historyStep(1)
+                    Keys.onDownPressed: dialog.historyStep(-1)
 
                     Text {
                         anchors.fill: parent
@@ -116,6 +153,17 @@ Window {
                         font: input.font
                     }
                 }
+            }
+
+            // History hint, only when there is history to walk.
+            Text {
+                Layout.fillWidth: true
+                visible: (Settings.values["run.history"] || []).length > 0
+                text: "Up/Down walks the command history"
+                horizontalAlignment: Text.AlignHCenter
+                color: Qt.rgba(Theme.muted.r, Theme.muted.g, Theme.muted.b, 0.7)
+                font.family: Theme.fontFamily
+                font.pointSize: Theme.fontSize - 2
             }
 
             ListView {

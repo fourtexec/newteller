@@ -52,6 +52,9 @@ public:
     // The user clicked one of the `actions` buttons of a popup.
     Q_INVOKABLE void invokeAction(uint id, const QString &actionKey);
     Q_INVOKABLE void clearHistory();
+    // Removes one entry from the history (the X button in the notification
+    // centre). Notifications still on screen are dismissed first.
+    Q_INVOKABLE void removeHistory(uint id);
 
     // Reply of GetServerInformation() as a D-Bus struct (ssss).
     struct ServerInformation {

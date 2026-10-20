@@ -17,6 +17,11 @@ Window {
     id: panel
 
     property var startMenu
+    // The single notification centre and quick settings card on the primary
+    // screen; assigned by Main.qml. The bell and the indicators button live
+    // in every panel, so they talk to these shared windows.
+    property var notificationCenter: null
+    property var quickSettings: null
     // "bottom", "top", "left" or "right".
     readonly property string panelPosition: Settings.values["panel.position"] || "bottom"
     readonly property bool vertical: panelPosition === "left" || panelPosition === "right"
@@ -41,6 +46,13 @@ Window {
     readonly property bool separateBackground: Settings.values["dock.separateBackground"] !== false
     readonly property bool shrinkIcons: Settings.values["dock.shrinkIcons"] !== false
     readonly property int dockIconSize: Settings.values["dock.iconSize"] || 28
+    // The quick settings cluster at the end of the bar (bell + indicators).
+    readonly property bool showIndicators: Settings.values["panel.indicators"] !== false
+    // The tray shows only when the shell won the StatusNotifierWatcher name
+    // and at least one item registered.
+    readonly property bool showTray: Tray.available
+                                     && Settings.values["tray.enabled"] !== false
+                                     && Tray.count > 0
     // Icon size after the adaptive shrink pass (recomputed in rebuildDock).
     property int effectiveIconSize: dockIconSize
     property bool showDockLabels: false
@@ -105,6 +117,25 @@ Window {
         panelPosition: panel.panelPosition
         panelThickness: panel.barThickness
         edgeMargin: panel.edgeMargin
+    }
+
+    // One tooltip window per panel; hovering a panel button points it at the
+    // button (showToolTip below).
+    PanelToolTip {
+        id: panelToolTip
+        position: panel.panelPosition
+        panelThickness: panel.barThickness
+    }
+
+    function showToolTip(item, text) {
+        if (!text || text.length === 0)
+            return;
+        const centre = item.mapToItem(null, item.width / 2, item.height / 2);
+        panelToolTip.showAt(text, centre.x, centre.y);
+    }
+
+    function hideToolTip() {
+        panelToolTip.hide();
     }
 
     // Kept in sync with the start menu so the panel does not slide away
@@ -339,6 +370,19 @@ Window {
             badge: entry.badge
             onClicked: panel.dockClicked(entry)
             onMiddleClicked: panel.closeEntry(entry)
+            HoverHandler {
+                onHoveredChanged: {
+                    if (hovered)
+                        panel.showToolTip(dockButton,
+                                          dockButton.entry.windows.length > 1
+                                              ? dockButton.appName + " ("
+                                                + dockButton.entry.windows.length + " windows)"
+                                              : (dockButton.entry.title && dockButton.entry.title.length > 0
+                                                 ? dockButton.entry.title : dockButton.appName));
+                    else
+                        panel.hideToolTip();
+                }
+            }
             TapHandler {
                 acceptedButtons: Qt.RightButton
                 onTapped: panel.openDockMenu(dockButton.entry, dockButton)
@@ -392,7 +436,16 @@ Window {
             }
         }
 
-        HoverHandler { id: clockHover }
+        HoverHandler {
+            id: clockHover
+            onHoveredChanged: {
+                if (hovered)
+                    panel.showToolTip(clockButton,
+                                      Qt.formatDateTime(Shell.now, "dddd, d MMMM yyyy  HH:mm"));
+                else
+                    panel.hideToolTip();
+            }
+        }
         MouseArea {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
@@ -410,6 +463,255 @@ Window {
         Layout.preferredHeight: panel.vertical ? 1 : 24
         Layout.alignment: Qt.AlignVCenter
         color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.8)
+    }
+
+    // --- system tray -------------------------------------------------------
+    // Icons of applications that registered with our StatusNotifierWatcher:
+    // left click activates, middle click secondary-activates, right click
+    // asks the item to open its own context menu, and the wheel scrolls.
+    component TrayBox: Row {
+        spacing: 2
+        visible: panel.showTray
+        Layout.alignment: Qt.AlignVCenter | Qt.AlignHCenter
+
+        Repeater {
+            model: Tray.items
+
+            delegate: Item {
+                id: trayIcon
+                required property var modelData
+                readonly property string entryId: modelData.id
+                objectName: "trayButton"
+
+                width: 26
+                height: 26
+                opacity: modelData.status === "Passive" ? 0.55 : 1.0
+                Behavior on opacity {
+                    NumberAnimation { duration: motion.fast }
+                }
+
+                Image {
+                    anchors.centerIn: parent
+                    width: 20
+                    height: 20
+                    sourceSize.width: 40
+                    sourceSize.height: 40
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+                    asynchronous: true
+                    source: Tray.iconUrl(trayIcon.entryId)
+                    // Growing in when the icon first renders, so a tray
+                    // refresh does not pop.
+                    opacity: status === Image.Ready ? 1 : 0
+                    Behavior on opacity {
+                        NumberAnimation { duration: motion.micro }
+                    }
+                }
+
+                // Attention dot for items that ask for it.
+                Rectangle {
+                    visible: trayIcon.modelData.status === "NeedsAttention"
+                    width: 7
+                    height: 7
+                    radius: 3.5
+                    color: Theme.accent
+                    anchors.top: parent.top
+                    anchors.right: parent.right
+                    anchors.topMargin: 1
+                    anchors.rightMargin: 1
+                }
+
+                HoverHandler {
+                    onHoveredChanged: {
+                        if (hovered)
+                            panel.showToolTip(trayIcon,
+                                              trayIcon.modelData.tooltipTitle
+                                              || trayIcon.modelData.title
+                                              || trayIcon.modelData.name || "");
+                        else
+                            panel.hideToolTip();
+                    }
+                }
+
+                MouseArea {
+                    anchors.fill: parent
+                    acceptedButtons: Qt.LeftButton | Qt.MiddleButton | Qt.RightButton
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: (mouse) => {
+                        panel.hideToolTip();
+                        if (mouse.button === Qt.RightButton)
+                            Tray.contextMenu(trayIcon.entryId,
+                                             Math.round(mouse.globalX || 0),
+                                             Math.round(mouse.globalY || 0));
+                        else if (mouse.button === Qt.MiddleButton)
+                            Tray.secondaryActivate(trayIcon.entryId);
+                        else
+                            Tray.activate(trayIcon.entryId);
+                    }
+                    onWheel: (wheel) => {
+                        Tray.scroll(trayIcon.entryId,
+                                    wheel.angleDelta.y >= 0 ? 1 : -1, false);
+                    }
+                }
+            }
+        }
+    }
+
+    // --- bell: the notification centre --------------------------------------
+    component BellButton: Rectangle {
+        id: bellButton
+        readonly property bool dnd: Settings.values["notifications.doNotDisturb"] === true
+        readonly property int unread: panel.notificationCenter
+                                      ? panel.notificationCenter.unreadCount : 0
+
+        Layout.alignment: Qt.AlignVCenter | Qt.AlignHCenter
+        width: 34
+        height: Math.min(panel.barThickness - 10, 34)
+        radius: Theme.radius
+        color: bellHover.hovered
+               ? Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.08)
+               : "transparent"
+        Behavior on color {
+            ColorAnimation { duration: motion.micro }
+        }
+
+        HoverHandler {
+            id: bellHover
+            onHoveredChanged: {
+                if (hovered) {
+                    const unread = bellButton.unread;
+                    panel.showToolTip(bellButton,
+                                      unread > 0 ? "Notifications (" + unread + " new)"
+                                                 : "Notifications");
+                } else {
+                    panel.hideToolTip();
+                }
+            }
+        }
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                panel.hideToolTip();
+                if (panel.notificationCenter)
+                    panel.notificationCenter.toggle();
+            }
+        }
+
+        Image {
+            anchors.centerIn: parent
+            width: 18
+            height: 18
+            sourceSize.width: 36
+            sourceSize.height: 36
+            fillMode: Image.PreserveAspectFit
+            source: Shell.tintedIcon(bellButton.dnd ? "bell-off" : "bell", Theme.foreground)
+        }
+
+        // Unread badge: a count up to nine, a dot beyond that.
+        Rectangle {
+            visible: bellButton.unread > 0 && !bellButton.dnd
+            width: bellButton.unread > 9 ? 14 : Math.max(14, unreadLabel.implicitWidth + 8)
+            height: 14
+            radius: 7
+            color: Theme.accent
+            border.width: 1
+            border.color: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, 0.9)
+            anchors.top: parent.top
+            anchors.right: parent.right
+            anchors.topMargin: 1
+            anchors.rightMargin: 1
+
+            Text {
+                id: unreadLabel
+                anchors.centerIn: parent
+                visible: bellButton.unread <= 9
+                text: String(bellButton.unread)
+                color: "#ffffff"
+                font.family: Theme.fontFamily
+                font.pointSize: Theme.fontSize - 3
+                font.bold: true
+            }
+        }
+    }
+
+    // --- indicators: the quick settings button ------------------------------
+    // One button that summarises the machine: the battery level when there is
+    // one, otherwise the volume or network state. Clicking it opens the
+    // quick settings card.
+    component IndicatorsButton: Rectangle {
+        id: indicatorsButton
+        readonly property bool playing: Quick.mediaAvailable && Quick.mediaPlaying
+        readonly property string glyph: Quick.volumeMuted ? "volume-x"
+                                        : System.batteryCharging ? "battery-charging"
+                                        : System.batteryPresent ? "battery"
+                                        : Quick.networkAvailable && !Quick.wifiEnabled ? "wifi-off"
+                                        : Quick.networkAvailable ? "wifi"
+                                        : "sliders-horizontal"
+
+        Layout.alignment: Qt.AlignVCenter | Qt.AlignHCenter
+        implicitWidth: indicatorsRow.implicitWidth + 14
+        height: Math.min(panel.barThickness - 10, 34)
+        radius: Theme.radius
+        color: indicatorsHover.hovered
+               ? Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.08)
+               : "transparent"
+        Behavior on color {
+            ColorAnimation { duration: motion.micro }
+        }
+
+        HoverHandler {
+            id: indicatorsHover
+            onHoveredChanged: {
+                if (hovered) {
+                    var tip = Quick.networkStatus;
+                    if (System.batteryPresent)
+                        tip = Math.round(System.batteryPercent) + "% "
+                              + (System.batteryTimeText.length > 0
+                                 ? System.batteryTimeText : System.batteryStatus);
+                    else if (Quick.volumeAvailable)
+                        tip = (Quick.volumeMuted ? "Muted" : "Volume " + Quick.volume + "%")
+                              + (tip.length > 0 ? " - " + tip : "");
+                    panel.showToolTip(indicatorsButton, tip.length > 0 ? tip : "Quick settings");
+                } else {
+                    panel.hideToolTip();
+                }
+            }
+        }
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                panel.hideToolTip();
+                if (panel.quickSettings)
+                    panel.quickSettings.toggle();
+            }
+        }
+
+        Row {
+            id: indicatorsRow
+            anchors.centerIn: parent
+            spacing: 5
+
+            Image {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 18
+                height: 18
+                sourceSize.width: 36
+                sourceSize.height: 36
+                fillMode: Image.PreserveAspectFit
+                source: Shell.tintedIcon(indicatorsButton.glyph,
+                                         System.batteryCritical ? Theme.accent : Theme.foreground)
+            }
+            Text {
+                visible: System.batteryPresent
+                anchors.verticalCenter: parent.verticalCenter
+                text: Math.round(System.batteryPercent) + "%"
+                color: Theme.foreground
+                font.family: Theme.fontFamily
+                font.pointSize: Theme.fontSize - 1
+            }
+        }
     }
 
     Loader {
@@ -488,6 +790,17 @@ Window {
                 DockStrip {}
                 PluginSlot {}
 
+                TrayBox {}
+                BellButton {
+                    visible: panel.showIndicators
+                }
+                IndicatorsButton {
+                    visible: panel.showIndicators
+                }
+                Separator {
+                    visible: panel.showTray || panel.showIndicators
+                }
+
                 ClockButton {
                     Layout.rightMargin: 6
                     Layout.leftMargin: 4
@@ -514,6 +827,17 @@ Window {
                 Separator {}
                 DockStrip {}
                 PluginSlot {}
+
+                TrayBox {}
+                BellButton {
+                    visible: panel.showIndicators
+                }
+                IndicatorsButton {
+                    visible: panel.showIndicators
+                }
+                Separator {
+                    visible: panel.showTray || panel.showIndicators
+                }
 
                 ClockButton {
                     Layout.bottomMargin: 6

@@ -195,6 +195,8 @@ class Settings(QObject):
             "startmenu.width": 440,
             "startmenu.height": 580,
             "desktop.wallpaper": "",
+            "run.history": ["cmatrix", "htop"],
+            "run.historyLimit": 25,
         }
 
     @Property("QVariantMap", notify=valuesChanged)
@@ -209,6 +211,9 @@ class Settings(QObject):
 
     @Slot(str, "QVariant")
     def setValue(self, key, value):
+        # QML lists arrive as QJSValue on some Qt versions.
+        if hasattr(value, "toVariant"):
+            value = value.toVariant()
         self._values[key] = value
         self.valuesChanged.emit()
 
@@ -398,8 +403,9 @@ class Shell(QObject):
     def iconUrl(self, name):
         # Mirror the real resolution for the bundled core set, so the smoke
         # test actually renders the compiled icons (a wrong resources.qrc
-        # entry would fail the test with a missing-resource error).
-        url = QUrl(f"qrc:/icons/{name}.svg")
+        # entry would fail the test with a missing-resource error). The ':/'
+        # form works on every Qt build; 'qrc:/' does not from Python.
+        url = QUrl(f":/icons/{name}.svg")
         return url if QFile.exists(url.toString()) else QUrl()
 
     @Slot(str, QColor, result=QUrl)
@@ -509,6 +515,9 @@ class System(QObject):
     batteryPresent = Property(bool, lambda self: False, constant=True)
     batteryPercent = Property(float, lambda self: 0.0, constant=True)
     batteryStatus = Property(str, lambda self: "", constant=True)
+    batteryCharging = Property(bool, lambda self: False, constant=True)
+    batteryCritical = Property(bool, lambda self: False, constant=True)
+    batteryTimeText = Property(str, lambda self: "", constant=True)
     # An int: the desktop-sysinfo widget prints "N processes".
     processes = Property(int, lambda self: 123, constant=True)
 
@@ -619,7 +628,118 @@ class Notifications(QObject):
 
     @Slot()
     def clearHistory(self):
+        self._history.clear()
+        self.historyChanged.emit()
+
+    @Slot("QVariant")
+    def removeHistory(self, notification_id):
         pass
+
+
+class Tray(QObject):
+    """Stand-in for the TrayWatcher context property (src/tray.h)."""
+
+    itemsChanged = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self.calls = []
+        self._items = [{
+            "id": ":1.42|/StatusNotifierItem",
+            "service": ":1.42",
+            "path": "/StatusNotifierItem",
+            "name": "Volume applet",
+            "title": "Volume applet",
+            "status": "Active",
+            "tooltipTitle": "Volume",
+            "tooltipBody": "Output 42%",
+        }]
+
+    items = Property("QVariantList", lambda self: self._items, notify=itemsChanged)
+    count = Property(int, lambda self: len(self._items), notify=itemsChanged)
+    available = Property(bool, lambda self: True, constant=True)
+    enabled = Property(bool, lambda self: True, constant=True)
+
+    @Slot(str, result=QUrl)
+    def iconUrl(self, item_id):
+        # Serves a compiled icon so the panel actually renders something.
+        return QUrl(":/icons/bell.svg")
+
+    @Slot(str)
+    def activate(self, item_id):
+        self.calls.append(("activate", item_id))
+
+    @Slot(str)
+    def secondaryActivate(self, item_id):
+        self.calls.append(("secondaryActivate", item_id))
+
+    @Slot(str, int, int)
+    def contextMenu(self, item_id, x, y):
+        self.calls.append(("contextMenu", item_id, x, y))
+
+    @Slot(str, int, bool)
+    def scroll(self, item_id, delta, horizontal):
+        self.calls.append(("scroll", item_id, delta, horizontal))
+
+
+class Quick(QObject):
+    """Stand-in for the QuickSettings context property (src/quicksettings.h)."""
+
+    volumeChanged = Signal()
+    brightnessChanged = Signal()
+    networkChanged = Signal()
+    mediaChanged = Signal()
+
+    volumeAvailable = Property(bool, lambda self: True, constant=True)
+    volume = Property(int, lambda self: 42, notify=volumeChanged)
+    volumeMuted = Property(bool, lambda self: False, notify=volumeChanged)
+    brightnessAvailable = Property(bool, lambda self: True, constant=True)
+    brightness = Property(int, lambda self: 80, notify=brightnessChanged)
+    networkAvailable = Property(bool, lambda self: True, constant=True)
+    networkState = Property(int, lambda self: 70, notify=networkChanged)
+    networkStatus = Property(str, lambda self: "Connected", notify=networkChanged)
+    wifiEnabled = Property(bool, lambda self: True, notify=networkChanged)
+    mediaAvailable = Property(bool, lambda self: True, constant=True)
+    mediaPlayer = Property(str, lambda self: "org.mpris.MediaPlayer2.test", constant=True)
+    mediaTitle = Property(str, lambda self: "Test song", notify=mediaChanged)
+    mediaArtist = Property(str, lambda self: "Test artist", notify=mediaChanged)
+    mediaPlaying = Property(bool, lambda self: True, notify=mediaChanged)
+
+    def __init__(self):
+        super().__init__()
+        self.calls = []
+
+    @Slot(int)
+    def setVolume(self, percent):
+        self.calls.append(("setVolume", percent))
+
+    @Slot()
+    def toggleMuted(self):
+        self.calls.append(("toggleMuted",))
+
+    @Slot(int)
+    def setBrightness(self, percent):
+        self.calls.append(("setBrightness", percent))
+
+    @Slot()
+    def toggleWifi(self):
+        self.calls.append(("toggleWifi",))
+
+    @Slot()
+    def mediaPlayPause(self):
+        self.calls.append(("mediaPlayPause",))
+
+    @Slot()
+    def mediaNext(self):
+        self.calls.append(("mediaNext",))
+
+    @Slot()
+    def mediaPrevious(self):
+        self.calls.append(("mediaPrevious",))
+
+    @Slot()
+    def refresh(self):
+        self.calls.append(("refresh",))
 
 
 # ---------------------------------------------------------------------------
@@ -682,10 +802,12 @@ def main():
     shell, plugin_manager = Shell(desktop_dir, work), Plugins(plugins)
     system, window_list = System(), Windows()
     notifications, file_portal = Notifications(), FilePortal()
+    tray, quick = Tray(), Quick()
     engine = QQmlApplicationEngine()
     for name, obj in (("Settings", settings), ("Theme", theme), ("Apps", apps), ("Shell", shell),
                       ("Plugins", plugin_manager), ("System", system), ("Windows", window_list),
-                      ("Notifications", notifications), ("FilePortal", file_portal)):
+                      ("Notifications", notifications), ("FilePortal", file_portal),
+                      ("Tray", tray), ("Quick", quick)):
         engine.rootContext().setContextProperty(name, obj)
 
     failures = []
@@ -754,7 +876,11 @@ def main():
     check([s.name() for s in screens] == [s["name"] for s in SCREENS], "offscreen platform has the test screens")
 
     def windows(kind):
-        return [w for w in QGuiApplication.topLevelWindows() if w.metaObject().className().startswith(kind)]
+        # Match the QML type exactly, so PanelToolTip does not count as Panel.
+        # Instantiated types carry _QMLTYPE_<n> and sometimes an extra _QML_<n>.
+        return [w for w in QGuiApplication.topLevelWindows()
+                if re.match(rf"^{kind}(_QMLTYPE_\d+)?(_QML_?\d+)?$",
+                            w.metaObject().className())]
 
     windows_of_kind = windows
 
@@ -820,6 +946,15 @@ def main():
         check(not menu.isVisible(), "launching an application closes the menu")
         check(apps.isRunning("org.gnome.Terminal"), "the launched application is marked running")
 
+        # Right-clicking an application row offers pin/unpin; the function
+        # writes the same panel.pinned list the dock reads.
+        QMetaObject.invokeMethod(menu, "togglePin", Q_ARG("QVariant", {"id": "org.gnome.Nautilus"}))
+        check("org.gnome.Nautilus" in settings._values["panel.pinned"],
+              f"pinning writes panel.pinned ({settings._values['panel.pinned']})")
+        QMetaObject.invokeMethod(menu, "togglePin", Q_ARG("QVariant", {"id": "org.gnome.Nautilus"}))
+        check("org.gnome.Nautilus" not in settings._values["panel.pinned"],
+              f"unpinning removes the id again ({settings._values['panel.pinned']})")
+
         # Highlighted fuzzy search (StartMenu shows StyledText hit highlights).
         search = menu.findChild(QObject, "startSearch")
         check(search is not None, "start menu search field")
@@ -865,9 +1000,30 @@ def main():
                 results = results.toVariant()
             check(len(results or []) == 1 and results[0]["id"] == "org.gnome.Nautilus",
                   f"run dialog query filters ({results})")
-        QMetaObject.invokeMethod(dialog, "hide")
-        QTest.qWait(300)  # the hide animation fades the card out first
-        check(not dialog.isVisible(), "closing the run dialog")
+            # History: Up walks back through the remembered commands. QTest
+            # wants a window, not an item; the input holds the focus.
+            QTest.keyClick(dialog, Qt.Key_Up)
+            QTest.qWait(20)
+            check(rq.property("text") == "cmatrix",
+                  f"Up recalls the newest command ({rq.property('text')})")
+            QTest.keyClick(dialog, Qt.Key_Up)
+            QTest.qWait(20)
+            check(rq.property("text") == "htop",
+                  f"Up again reaches the older command ({rq.property('text')})")
+            QTest.keyClick(dialog, Qt.Key_Down)
+            QTest.qWait(20)
+            check(rq.property("text") == "cmatrix",
+                  f"Down walks forward again ({rq.property('text')})")
+            # A bare command runs through the shell and lands in the history.
+            rq.setProperty("text", "nload")
+            QTest.qWait(20)
+            QMetaObject.invokeMethod(dialog, "runCurrent")
+            QTest.qWait(300)  # the hide animation fades the card out first
+            check(("runShell", "nload") in shell.calls,
+                  f"an unknown command runs through the shell ({shell.calls})")
+            check(settings._values["run.history"][0] == "nload",
+                  f"the command is remembered ({settings._values['run.history']})")
+            check(not dialog.isVisible(), "closing the run dialog")
 
     # Desktop right-click menu.
     if desktops:
@@ -968,6 +1124,68 @@ def main():
           f"one clock popup per panel ({len(clock_popups)} vs {len(panels)})")
     if clock_popups:
         check(not clock_popups[0].isVisible(), "the clock popup starts hidden")
+
+    # One tooltip window per panel, hidden until a button is hovered.
+    tooltips = windows_of_kind("PanelToolTip")
+    check(len(tooltips) == len(panels),
+          f"one panel tooltip per panel ({len(tooltips)} vs {len(panels)})")
+    check(all(not t.isVisible() for t in tooltips), "panel tooltips start hidden")
+
+    # The tray: the stand-in watcher reports one item, the panels render it.
+    if panels:
+        panel = next(w for w in panels if w.screen() is screens[0])
+        content = panel.property("contentItem")
+        items = []
+        if content is not None:
+            walk_items(content, items)
+        tray_buttons = [i for i in items
+                        if isinstance(i, QQuickItem) and i.objectName() == "trayButton"]
+        check(len(tray_buttons) == 1,
+              f"the tray renders the watcher's items ({len(tray_buttons)})")
+        collapsed = [f"{b.width():.0f}x{b.height():.0f}" for b in tray_buttons if b.height() < 16]
+        check(not collapsed, f"tray buttons have real geometry (collapsed: {collapsed})")
+
+    # The notification centre: one window on the primary screen; the bell
+    # badge counts the history entries newer than the last seen timestamp.
+    centers = windows_of_kind("NotificationCenter")
+    check(len(centers) == 1, f"one notification centre (got {len(centers)})")
+    if centers:
+        center = centers[0]
+        check(not center.isVisible(), "the notification centre starts hidden")
+        QMetaObject.invokeMethod(center, "toggle")
+        QTest.qWait(300)  # the open animation plays
+        check(center.isVisible(), "toggling opens the notification centre")
+        notifications._history = [
+            {"id": 1, "app": "Mail", "summary": "Hello", "body": "First", "time": 1000},
+            {"id": 2, "app": "Chat", "summary": "Yo", "body": "Second", "time": 2000},
+        ]
+        notifications.historyChanged.emit()
+        QTest.qWait(50)
+        # Everything on screen counts as seen; closing keeps the mark.
+        check(int(center.property("unreadCount")) == 0,
+              f"an open centre counts as seen ({center.property('unreadCount')})")
+        QMetaObject.invokeMethod(center, "hide")
+        QTest.qWait(300)
+        check(not center.isVisible(), "closing the notification centre")
+        center.setProperty("lastSeen", 0)
+        QTest.qWait(50)
+        check(int(center.property("unreadCount")) == 2,
+              f"the badge counts history newer than lastSeen ({center.property('unreadCount')})")
+
+    # The quick settings card behind the indicators button.
+    quick_popups = windows_of_kind("QuickSettingsPopup")
+    check(len(quick_popups) == 1, f"one quick settings popup (got {len(quick_popups)})")
+    if quick_popups:
+        quick_popup = quick_popups[0]
+        check(not quick_popup.isVisible(), "the quick settings popup starts hidden")
+        QMetaObject.invokeMethod(quick_popup, "toggle")
+        QTest.qWait(300)
+        check(quick_popup.isVisible(), "toggling opens the quick settings popup")
+        check(("refresh",) in quick.calls, "opening refreshes volume and brightness")
+        check(quick_popup.height() >= 240, "the quick settings popup has content height")
+        QMetaObject.invokeMethod(quick_popup, "hide")
+        QTest.qWait(300)
+        check(not quick_popup.isVisible(), "closing the quick settings popup")
 
     # One notification window per screen, hidden until something arrives.
     notification_windows = windows_of_kind("NotificationPopups")

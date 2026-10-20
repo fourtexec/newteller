@@ -288,6 +288,19 @@ void NotificationDaemon::clearHistory()
     emit historyChanged();
 }
 
+void NotificationDaemon::removeHistory(uint id)
+{
+    // A popup that is still on screen goes away with its history entry.
+    dismiss(id, kReasonDismissed);
+    for (int i = m_history.size() - 1; i >= 0; --i) {
+        if (m_history.at(i).toMap().value(QStringLiteral("id")).toUInt() == id) {
+            m_history.removeAt(i);
+            emit historyChanged();
+            return;
+        }
+    }
+}
+
 void NotificationDaemon::trimHistory()
 {
     const int limit = qBound(5, m_settings->value(QStringLiteral("notifications.historyLimit"), 20).toInt(), 200);

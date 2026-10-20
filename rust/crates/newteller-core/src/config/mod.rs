@@ -350,12 +350,14 @@ pub const SCHEMA: &[KeySchema] = &[
     KeySchema { key: "panel.dateFormat", kind: "string", default_json: "\"ddd d MMM\"", doc: "Qt format string for the date next to the clock." },
     KeySchema { key: "panel.showDate", kind: "bool", default_json: "false", doc: "Show the date next to the clock." },
     KeySchema { key: "panel.showRunning", kind: "bool", default_json: "true", doc: "Mark running applications on their panel buttons." },
+    KeySchema { key: "panel.indicators", kind: "bool", default_json: "true", doc: "Show the bell (notification centre) and the quick settings button at the end of the bar." },
     KeySchema { key: "panel.pinned", kind: "stringlist", default_json: "[\"org.gnome.Terminal.desktop\",\"firefox-esr.desktop\",\"org.gnome.Nautilus.desktop\"]", doc: "Desktop file ids pinned to the panel, in order." },
     KeySchema { key: "dock.showWindows", kind: "bool", default_json: "true", doc: "Show the running windows and applications in the dock." },
     KeySchema { key: "dock.group", kind: "bool", default_json: "true", doc: "Merge every window of one application into a single dock button." },
     KeySchema { key: "dock.iconSize", kind: "int", default_json: "28", doc: "Dock button icon size in pixels." },
     KeySchema { key: "dock.separateBackground", kind: "bool", default_json: "true", doc: "Show applications that only have minimised windows in a separate zone at the end of the dock." },
     KeySchema { key: "dock.shrinkIcons", kind: "bool", default_json: "true", doc: "Shrink dock icons automatically when many applications run at once." },
+    KeySchema { key: "tray.enabled", kind: "bool", default_json: "true", doc: "Act as the session's StatusNotifierWatcher and show the tray icons of the applications that register with it." },
     KeySchema { key: "windows.style", kind: "string", default_json: "\"card\"", doc: "Frame style of the shell windows: card, glass, flat or outline." },
     KeySchema { key: "windows.radius", kind: "int", default_json: "-1", doc: "Corner radius of the shell windows in pixels; -1 follows the theme." },
     KeySchema { key: "windows.opacityPercent", kind: "int", default_json: "0", doc: "Window background opacity in percent; 0 follows the theme." },
@@ -397,6 +399,7 @@ pub const SCHEMA: &[KeySchema] = &[
     KeySchema { key: "system.disks", kind: "bool", default_json: "false", doc: "Sample every real filesystem, the most expensive part of a snapshot." },
     KeySchema { key: "watch.debounce", kind: "int", default_json: "250", doc: "Milliseconds a watched file must stay quiet before the shell reloads it." },
     KeySchema { key: "run.history", kind: "stringlist", default_json: "[]", doc: "Commands previously typed into the run dialog." },
+    KeySchema { key: "run.historyLimit", kind: "int", default_json: "25", doc: "How many commands the run dialog remembers." },
 ];
 
 /// A schema entry with its default already parsed, for JSON consumers.
@@ -627,6 +630,7 @@ fn range_problem(key: &str, value: &Value) -> Option<String> {
         "windows.shadow" => (0, 3),
         "notifications.duration" => (0, 3600),
         "notifications.historyLimit" => (5, 200),
+        "run.historyLimit" => (1, 100),
         "startmenu.width" => (200, 4096),
         "startmenu.height" => (200, 4096),
         "startmenu.limit" => (1, 5_000),

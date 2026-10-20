@@ -40,6 +40,7 @@ Window {
         refresh();
         updateRecent();
         search.forceActiveFocus();
+        pinMenu.close();
         // The card grows out of the start button.
         menuCard.playOpen();
     }
@@ -77,6 +78,36 @@ Window {
         hide();
     }
 
+    // --- pin to dock --------------------------------------------------------
+    // Right-clicking an application row pins or unpins it: the panel.pinned
+    // list of ids is what the dock shows even when nothing runs.
+    property var pinTarget: null
+
+    function isPinned(app) {
+        return app && ((Settings.values["panel.pinned"] || []).indexOf(app.id) >= 0);
+    }
+
+    function togglePin(app) {
+        if (!app)
+            return;
+        const pinned = (Settings.values["panel.pinned"] || []).slice();
+        const index = pinned.indexOf(app.id);
+        if (index >= 0)
+            pinned.splice(index, 1);
+        else
+            pinned.push(app.id);
+        Settings.setValue("panel.pinned", pinned);
+    }
+
+    function openPinMenu(button, app) {
+        pinTarget = app;
+        const pos = button.mapToItem(menuCard, button.width, 0);
+        pinMenu.x = Math.max(8, Math.min(pos.x - pinMenu.width,
+                                         menuCard.width - pinMenu.width - 8));
+        pinMenu.y = Math.max(8, pos.y - pinMenu.height - 4);
+        pinMenu.open();
+    }
+
     // Hiding is delayed so that clicking the Start button while the menu
     // is open can toggle it closed instead of reopening it.
     onActiveChanged: {
@@ -98,6 +129,57 @@ Window {
         anchors.fill: parent
         // The menu grows out of the start button at the panel's start.
         openOrigin: Item.BottomLeft
+
+        // Click-away surface for the pin menu: enabled only while it shows,
+        // so it never steals clicks otherwise.
+        MouseArea {
+            anchors.fill: parent
+            z: 40
+            enabled: pinMenu.shown
+            onClicked: pinMenu.close()
+            onWheel: (wheel) => wheel.accepted = pinMenu.shown
+        }
+
+        // Pin / unpin popup for the right-clicked application row.
+        Rectangle {
+            id: pinMenu
+            property bool shown: false
+
+            function open() { shown = true }
+            function close() { shown = false }
+
+            visible: opacity > 0
+            opacity: shown ? 1 : 0
+            Behavior on opacity {
+                NumberAnimation { duration: 130; easing.type: Easing.OutCubic }
+            }
+
+            z: 50
+            radius: Theme.radius + 2
+            color: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, 0.98)
+            border.width: 1
+            border.color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.8)
+
+            width: pinColumn.width + 8
+            height: pinColumn.height + 8
+
+            Column {
+                id: pinColumn
+                anchors.centerIn: parent
+
+                TaskButton {
+                    width: 180
+                    height: 32
+                    fillWidth: true
+                    iconName: menu.isPinned(menu.pinTarget) ? "pin-off" : "pin"
+                    label: menu.isPinned(menu.pinTarget) ? "Unpin from dock" : "Pin to dock"
+                    onClicked: {
+                        menu.togglePin(menu.pinTarget);
+                        pinMenu.close();
+                    }
+                }
+            }
+        }
 
         ColumnLayout {
             anchors.fill: parent
@@ -140,7 +222,12 @@ Window {
                         font.pointSize: Theme.fontSize + 1
                         verticalAlignment: TextInput.AlignVCenter
                         onTextChanged: menu.refresh()
-                        Keys.onEscapePressed: menu.hide()
+                        Keys.onEscapePressed: {
+                            if (pinMenu.shown)
+                                pinMenu.close();
+                            else
+                                menu.hide();
+                        }
                         Keys.onReturnPressed: {
                             if (menu.results.length > 0)
                                 menu.launch(menu.results[0]);
@@ -192,6 +279,7 @@ Window {
                 reuseItems: true
 
                 delegate: TaskButton {
+                    id: appRow
                     required property var modelData
                     width: ListView.view.width
                     fillWidth: true
@@ -206,6 +294,11 @@ Window {
                     running: Settings.values["panel.showRunning"] !== false
                              && Apps.isRunning(modelData.id)
                     onClicked: menu.launch(modelData)
+
+                    TapHandler {
+                        acceptedButtons: Qt.RightButton
+                        onTapped: menu.openPinMenu(appRow, modelData)
+                    }
                 }
 
                 Text {
@@ -264,22 +357,27 @@ Window {
 
                 TaskButton {
                     iconName: "lock"
+                    tooltipText: "Lock"
                     onClicked: { Shell.lock(); menu.hide(); }
                 }
                 TaskButton {
                     iconName: "log-out"
+                    tooltipText: "Log out"
                     onClicked: { Shell.logout(); menu.hide(); }
                 }
                 TaskButton {
                     iconName: "moon"
+                    tooltipText: "Sleep"
                     onClicked: { Shell.suspend(); menu.hide(); }
                 }
                 TaskButton {
                     iconName: "rotate-cw"
+                    tooltipText: "Restart"
                     onClicked: { Shell.reboot(); menu.hide(); }
                 }
                 TaskButton {
                     iconName: "power"
+                    tooltipText: "Shut down"
                     onClicked: { Shell.powerOff(); menu.hide(); }
                 }
                 Item { Layout.fillWidth: true }

@@ -24,6 +24,10 @@ Rectangle {
     property int iconSize: 22
     // A dot pinned to the top-right corner (used by the category chips).
     property bool cornerDot: false
+    // Set to let the window's tooltip surface (PanelToolTip for the panel,
+    // ShellToolTip elsewhere) describe the button while hovered.
+    property string tooltipText: ""
+    readonly property bool hovered: hoverHandler.hovered
 
     signal clicked()
     // Middle click closes windows (dock behaviour); optional.
@@ -145,6 +149,18 @@ Rectangle {
                 btn.middleClicked();
             else
                 btn.clicked();
+        }
+    }
+
+    // Panel buttons report their hover to the panel's tooltip window; other
+    // windows keep the in-window ShellToolTip bubble. (In the panel the
+    // bubble would fall outside the bar window, so the panel never sets
+    // tooltipText - it wires its own HoverHandlers instead.)
+    Loader {
+        active: btn.tooltipText.length > 0
+        anchors.fill: parent
+        sourceComponent: ShellToolTip {
+            text: btn.tooltipText
         }
     }
 }

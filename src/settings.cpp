@@ -45,6 +45,8 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("dock.iconSize"), 28);
     m_defaults.insert(QStringLiteral("dock.separateBackground"), true);
     m_defaults.insert(QStringLiteral("dock.shrinkIcons"), true);
+    m_defaults.insert(QStringLiteral("panel.indicators"), true);
+    m_defaults.insert(QStringLiteral("tray.enabled"), true);
     m_defaults.insert(QStringLiteral("windows.style"), QStringLiteral("card"));
     m_defaults.insert(QStringLiteral("windows.radius"), -1);
     m_defaults.insert(QStringLiteral("windows.opacityPercent"), 0);
@@ -91,6 +93,7 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("system.disks"), true);
     m_defaults.insert(QStringLiteral("watch.debounce"), 250);
     m_defaults.insert(QStringLiteral("run.history"), QStringList());
+    m_defaults.insert(QStringLiteral("run.historyLimit"), 25);
 
     // The Rust schema knows the same keys; merge its defaults on top so a new
     // key appears here without editing this table.
