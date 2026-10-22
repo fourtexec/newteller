@@ -1,0 +1,17 @@
+{
+  "id": "desktop-weather",
+  "name": "Desktop Weather",
+  "version": "1.0.0",
+  "type": "desktop",
+  "entry": "Widget.qml",
+  "x": 60,
+  "y": 180,
+  "order": 20,
+  "description": "Weather widget showing temperature, conditions, and forecast.",
+  "settings": {
+    "location": "auto",
+    "units": "metric",
+    "showForecast": true,
+    "refreshInterval": 30
+  }
+}

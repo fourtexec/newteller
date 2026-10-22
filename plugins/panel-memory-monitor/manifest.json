@@ -1,0 +1,14 @@
+{
+  "id": "panel-memory-monitor",
+  "name": "Memory Monitor",
+  "version": "1.0.0",
+  "type": "panel",
+  "entry": "Widget.qml",
+  "order": 6,
+  "description": "Shows memory usage as a bar graph in the panel.",
+  "settings": {
+    "showPercentage": true,
+    "barColor": "accent",
+    "width": 80
+  }
+}

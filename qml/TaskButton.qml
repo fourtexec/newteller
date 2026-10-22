@@ -27,6 +27,8 @@ Rectangle {
     // Set to let the window's tooltip surface (PanelToolTip for the panel,
     // ShellToolTip elsewhere) describe the button while hovered.
     property string tooltipText: ""
+    // Label for dock buttons
+    property string dockLabel: ""
     readonly property bool hovered: hoverHandler.hovered
 
     signal clicked()
@@ -81,8 +83,19 @@ Rectangle {
                 sourceSize.height: btn.iconSize * 2
                 fillMode: Image.PreserveAspectFit
                 smooth: true
-                source: Shell.tintedIcon(btn.iconName, Theme.foreground)
-                // Tiny press dip and hover lift: the icon reacts to the pointer.
+                // Use custom icon color if specified
+                source: {
+                    var iconColor = Theme.foreground
+                    // Check if dock icon color mode is custom
+                    if (btn.dockIconColorMode === "custom" && btn.dockCustomIconColor.length > 0) {
+                        iconColor = btn.dockCustomIconColor
+                    } else if (btn.dockIconColorMode === "original") {
+                        // Return original icon without tinting
+                        return Shell.iconUrl(btn.iconName, "")
+                    }
+                    return Shell.tintedIcon(btn.iconName, iconColor)
+                }
+                // Tiny press dip and hover lift
                 scale: area.pressed ? 0.88 : hoverHandler.hovered ? 1.08 : 1.0
                 Behavior on scale {
                     NumberAnimation { duration: motion.micro; easing.type: motion.easeEnter }
@@ -102,28 +115,31 @@ Rectangle {
         }
     }
 
-    // Running indicator: a short pill centred under the content, wider when
-    // the application has several windows. Dimmed entries get a muted pill so
-    // a minimised application reads differently from an active one.
+    // Running indicator
     Rectangle {
         visible: btn.running
         width: Math.min(btn.badge > 1 ? 22 : 12, btn.width - 12)
         height: 3
         radius: 1.5
-        color: btn.active ? Theme.accent
-                          : btn.dimmed ? Theme.muted
-                                       : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.75)
+        color: btn.active ? Theme.accent : btn.dimmed ? Theme.muted : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.75)
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
         anchors.bottomMargin: 3
-        // Growing the pill (a second window opened) and re-colouring it
-        // (focus moved) are state changes worth a beat, not a jump.
-        Behavior on width {
-            NumberAnimation { duration: motion.fast; easing.type: motion.easeEnter }
-        }
-        Behavior on color {
-            ColorAnimation { duration: motion.fast }
-        }
+        Behavior on width { NumberAnimation { duration: motion.fast; easing.type: motion.easeEnter } }
+        Behavior on color { ColorAnimation { duration: motion.fast } }
+    }
+    // Dock label
+    Text {
+        visible: btn.dockLabel.length > 0 && btn.showDockLabels
+        text: btn.dockLabel
+        color: Theme.foreground
+        font.family: Theme.fontFamily
+        font.pointSize: Theme.fontSize - 2
+        elide: Text.ElideRight
+        horizontalAlignment: Text.AlignHCenter
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: 2
+        anchors.horizontalCenter: parent.horizontalCenter
     }
 
     Rectangle {

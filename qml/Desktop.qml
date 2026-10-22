@@ -10,12 +10,25 @@ Window {
     id: desk
 
     readonly property string wallpaper: Settings.values["desktop.wallpaper"] || ""
+    readonly property string wallpaperMode: Settings.values["desktop.wallpaperMode"] || "fill"
+    readonly property int wallpaperBlur: Settings.values["desktop.wallpaperBlur"] || 0
+    readonly property int wallpaperDarken: Settings.values["desktop.wallpaperDarken"] || 0
+    readonly property bool perMonitorWallpaper: Settings.values["desktop.perMonitorWallpaper"] === true
+    readonly property bool wallpaperSlideshow: Settings.values["desktop.wallpaperSlideshow"] === true
+    readonly property int wallpaperSlideshowInterval: Settings.values["desktop.wallpaperSlideshowInterval"] || 60
     readonly property bool showIcons: Settings.values["desktop.showIcons"] !== false
     readonly property int iconSize: Settings.values["desktop.iconSize"] || 48
     readonly property int cellWidth: Settings.values["desktop.cellWidth"] || 96
     readonly property int cellHeight: Settings.values["desktop.cellHeight"] || 110
     readonly property bool contextMenuEnabled: Settings.values["desktop.contextMenu"] !== false
     readonly property var desktopPlugins: Plugins.plugins.filter(p => p.type === "desktop" && p.enabled)
+    readonly property string desktopBackgroundColor: Settings.values["desktop.backgroundColor"] || ""
+    readonly property bool desktopBackgroundGradient: Settings.values["desktop.backgroundGradient"] !== false
+    readonly property string iconColor: Settings.values["desktop.iconColor"] || "#ffffff"
+    readonly property bool iconShadow: Settings.values["desktop.iconShadow"] !== false
+    readonly property bool iconGlow: Settings.values["desktop.iconGlow"] === true
+    readonly property bool showHiddenFiles: Settings.values["desktop.showHiddenFiles"] === true
+    readonly property bool autoArrangeIcons: Settings.values["desktop.autoArrangeIcons"] !== false
     // Exposed for the smoke test and for plugins.
     property alias contextMenuVisible: contextMenu.visible
 
@@ -44,6 +57,7 @@ Window {
     // Without a wallpaper the desktop is a calm gradient in the theme colours
     // instead of a flat dark slab.
     Rectangle {
+        visible: !desk.desktopBackgroundColor || desk.desktopBackgroundColor.length === 0 || desk.desktopBackgroundGradient
         anchors.fill: parent
         gradient: Gradient {
             GradientStop { position: 0.0; color: Qt.lighter(Theme.background, 1.45) }
@@ -51,13 +65,43 @@ Window {
             GradientStop { position: 1.0; color: Qt.darker(Theme.background, 1.18) }
         }
     }
+    // Custom background color
+    Rectangle {
+        visible: desk.desktopBackgroundColor && desk.desktopBackgroundColor.length > 0 && !desk.desktopBackgroundGradient
+        anchors.fill: parent
+        color: desk.desktopBackgroundColor
+    }
 
     Image {
         anchors.fill: parent
         asynchronous: true
-        fillMode: Image.PreserveAspectCrop
+        fillMode: {
+            switch (desk.wallpaperMode) {
+            case "fill": return Image.PreserveAspectCrop
+            case "fit": return Image.PreserveAspectFit
+            case "stretch": return Image.Stretch
+            case "tile": return Image.Tile
+            case "center": return Image.PreserveAspectFit
+            default: return Image.PreserveAspectCrop
+            }
+        }
         source: desk.wallpaper.length === 0 ? ""
                 : (desk.wallpaper.indexOf("://") > 0 ? desk.wallpaper : "file://" + desk.wallpaper)
+        // Apply blur and darken effects
+        layer.enabled: desk.wallpaperBlur > 0 || desk.wallpaperDarken > 0
+        layer.effect: {
+            if (desk.wallpaperBlur > 0 && desk.wallpaperDarken > 0) {
+                return [
+                    FastBlur { radius: desk.wallpaperBlur },
+                    ColorOverlay { color: "#000000"; opacity: desk.wallpaperDarken / 100 }
+                ]
+            } else if (desk.wallpaperBlur > 0) {
+                return FastBlur { radius: desk.wallpaperBlur }
+            } else if (desk.wallpaperDarken > 0) {
+                return ColorOverlay { color: "#000000"; opacity: desk.wallpaperDarken / 100 }
+            }
+            return null
+        }
     }
 
     FolderListModel {
@@ -65,7 +109,7 @@ Window {
         folder: Shell.desktopUrl
         showDirs: true
         showDotAndDotDot: false
-        showHidden: false
+        showHidden: desk.showHiddenFiles
         sortField: FolderListModel.Name
     }
 
@@ -104,7 +148,31 @@ Window {
                 sourceSize.width: desk.iconSize
                 sourceSize.height: desk.iconSize
                 fillMode: Image.PreserveAspectFit
-                source: Shell.tintedIcon(fileIsDir ? "folder" : "file", Theme.foreground)
+                source: {
+                    var iconName = fileIsDir ? "folder" : "file"
+                    // Use custom icon color if specified
+                    if (desk.iconColor && desk.iconColor.length > 0) {
+                        return Shell.tintedIcon(iconName, desk.iconColor)
+                    }
+                    return Shell.tintedIcon(iconName, Theme.foreground)
+                }
+                // Icon effects
+                DropShadow {
+                    visible: desk.iconShadow
+                    horizontalOffset: 0
+                    verticalOffset: 0
+                    radius: 4
+                    samples: 8
+                    color: "#000000"
+                    opacity: 0.5
+                }
+                Glow {
+                    visible: desk.iconGlow
+                    radius: 4
+                    samples: 8
+                    color: desk.iconColor || Theme.foreground
+                    opacity: 0.3
+                }
             }
 
             Text {
@@ -117,10 +185,10 @@ Window {
                 elide: Text.ElideRight
                 maximumLineCount: 2
                 text: fileBaseName
-                color: "white"
+                color: desk.iconColor && desk.iconColor.length > 0 ? desk.iconColor : "white"
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSize
-                style: Text.Outline
+                style: desk.iconShadow ? Text.Outline : Text.Plain
                 styleColor: "#80000000"
             }
 
