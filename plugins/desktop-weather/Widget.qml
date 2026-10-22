@@ -1,244 +1,254 @@
 import QtQuick
-import QtQuick.Controls
-import NewTeller 1.0
 
 // Desktop Weather Widget
-// Shows current weather conditions, temperature, and optional forecast
+// Shows current weather conditions, temperature, and optional 5-day forecast.
 Rectangle {
     id: widget
-    
-    property string location: manifest.settings ? manifest.settings.location : "auto"
-    property string units: manifest.settings ? manifest.settings.units : "metric"
-    property bool showForecast: manifest.settings ? manifest.settings.showForecast : true
-    property int refreshInterval: manifest.settings ? manifest.settings.refreshInterval : 30
-    
-    // Weather data (would be populated from a weather API in a real implementation)
+
+    readonly property var pluginSettings: (parent && parent.modelData && parent.modelData.settings)
+                                          ? parent.modelData.settings : ({})
+    property string location: pluginSettings.location ? String(pluginSettings.location) : "auto"
+    property string units: pluginSettings.units ? String(pluginSettings.units) : "metric"
+    property bool showForecast: pluginSettings.showForecast !== false
+    property int refreshInterval: pluginSettings.refreshInterval !== undefined
+                                  ? Math.max(1, Number(pluginSettings.refreshInterval)) : 30
+
     property var weatherData: ({
-        temperature: "--",
-        condition: "Loading...",
+        temperature: "21",
+        condition: "Sunny",
         conditionIcon: "sun",
-        high: "--",
-        low: "--",
-        humidity: 0,
-        windSpeed: 0,
-        forecast: []
+        high: "24",
+        low: "14",
+        humidity: 48,
+        windSpeed: 12,
+        forecast: mockForecast
     })
-    
-    // For demo purposes, we'll use mock data
-    property var mockForecast: [
-        { day: "Mon", icon: "sun", high: "22", low: "15" },
-        { day: "Tue", icon: "cloud-rain", high: "18", low: "12" },
-        { day: "Wed", icon: "cloud", high: "19", low: "14" },
-        { day: "Thu", icon: "sun", high: "21", low: "16" },
-        { day: "Fri", icon: "cloud-rain", high: "17", low: "11" }
+
+    readonly property var mockForecast: [
+        { day: "Mon", icon: "sun", high: 22, low: 15 },
+        { day: "Tue", icon: "cloud-rain", high: 18, low: 12 },
+        { day: "Wed", icon: "cloud", high: 19, low: 14 },
+        { day: "Thu", icon: "sun", high: 21, low: 16 },
+        { day: "Fri", icon: "cloud-rain", high: 17, low: 11 }
     ]
-    
-    width: 240
-    height: showForecast ? 220 : 120
-    radius: Theme.radius
+
+    function formatTemp(celsius) {
+        const c = Number(celsius)
+        if (isNaN(c))
+            return "--"
+        const val = units === "imperial" ? Math.round(c * 9 / 5 + 32) : Math.round(c)
+        return String(val) + (units === "imperial" ? "°F" : "°C")
+    }
+
+    function updateWeather() {
+        const samples = [
+            { temp: 22, cond: "Sunny", icon: "sun", high: 25, low: 15, hum: 42, wind: 11 },
+            { temp: 19, cond: "Partly Cloudy", icon: "cloud", high: 21, low: 13, hum: 55, wind: 14 },
+            { temp: 17, cond: "Rain", icon: "cloud-rain", high: 18, low: 12, hum: 78, wind: 19 },
+            { temp: 21, cond: "Clear", icon: "sun", high: 24, low: 14, hum: 46, wind: 9 }
+        ]
+        const pick = samples[Math.floor(Math.random() * samples.length)]
+        weatherData = {
+            temperature: pick.temp,
+            condition: pick.cond,
+            conditionIcon: pick.icon,
+            high: pick.high,
+            low: pick.low,
+            humidity: pick.hum,
+            windSpeed: pick.wind,
+            forecast: mockForecast
+        }
+    }
+
+    Component.onCompleted: updateWeather()
+
+    width: 248
+    height: showForecast ? 216 : 132
+    radius: Theme.radius + 4
     color: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, Theme.opacity * 0.95)
     border.width: 1
-    border.color: Theme.border
-    
-    // Simulate weather data updates
+    border.color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.6)
+
     Timer {
         id: refreshTimer
-        interval: refreshInterval * 60 * 1000 // minutes to ms
+        interval: widget.refreshInterval * 60 * 1000
         running: true
         repeat: true
-        onTriggered: updateWeather()
+        onTriggered: widget.updateWeather()
     }
-    
-    function updateWeather() {
-        // In a real implementation, this would fetch from a weather API
-        // For now, we'll cycle through mock data
-        var temps = ["22", "18", "19", "21", "17", "20", "23"]
-        var conditions = ["Sunny", "Partly Cloudy", "Cloudy", "Rain", "Clear", "Foggy"]
-        var icons = ["sun", "cloud-sun", "cloud", "cloud-rain", "sun", "cloud-fog"]
-        
-        var idx = Math.floor(Math.random() * temps.length)
-        weatherData.temperature = temps[idx]
-        weatherData.condition = conditions[idx]
-        weatherData.conditionIcon = icons[idx]
-        weatherData.high = String(Math.floor(Math.random() * 10) + 15)
-        weatherData.low = String(Math.floor(Math.random() * 10) + 5)
-        weatherData.humidity = Math.floor(Math.random() * 60) + 20
-        weatherData.windSpeed = Math.floor(Math.random() * 20) + 5
-        weatherData.forecast = mockForecast
+
+    // Background drag handle beneath interactive controls
+    MouseArea {
+        anchors.fill: parent
+        drag.target: widget
+        cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
     }
-    
-    Component.onCompleted: {
-        // Initialize with mock data
-        updateWeather()
-    }
-    
+
     Column {
         anchors.fill: parent
         anchors.margins: 12
         spacing: 8
-        
-        // Header with location and settings button
-        Row {
+
+        Item {
             width: parent.width
-            spacing: 8
-            
+            height: 24
+
             Text {
-                text: location === "auto" ? "Current Location" : location
+                anchors.left: parent.left
+                anchors.right: settingsBtn.left
+                anchors.rightMargin: 6
+                anchors.verticalCenter: parent.verticalCenter
+                text: widget.location === "auto" ? "Current Location" : widget.location
                 color: Theme.foreground
                 font.family: Theme.fontFamily
-                font.pointSize: Theme.fontSize + 2
+                font.pointSize: Theme.fontSize + 1
                 font.bold: true
                 elide: Text.ElideRight
             }
-            
-            Item { width: 8; height: 1 }
-            
-            // Settings button
-            MouseArea {
+
+            Rectangle {
+                id: settingsBtn
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
                 width: 24
                 height: 24
-                cursorShape: Qt.PointingHandCursor
-                onClicked: settingsPopup.visible = !settingsPopup.visible
-                
+                radius: Theme.radius
+                color: settingsMouse.containsMouse
+                       ? Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.08)
+                       : "transparent"
+
                 Image {
                     anchors.centerIn: parent
-                    width: 20
-                    height: 20
-                    source: Shell.iconUrl("settings", Theme.foreground)
+                    width: 16
+                    height: 16
+                    sourceSize.width: 32
+                    sourceSize.height: 32
+                    source: Shell.tintedIcon("settings", Theme.foreground)
+                }
+
+                MouseArea {
+                    id: settingsMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: settingsPopup.visible = !settingsPopup.visible
                 }
             }
         }
-        
-        // Current weather
+
         Row {
             width: parent.width
             spacing: 12
-            
-            // Weather icon
+
             Image {
-                width: 48
-                height: 48
-                source: Shell.iconUrl(weatherData.conditionIcon, Theme.accent)
+                width: 44
+                height: 44
+                sourceSize.width: 88
+                sourceSize.height: 88
+                anchors.verticalCenter: parent.verticalCenter
+                source: Shell.tintedIcon(widget.weatherData.conditionIcon || "sun", Theme.accent)
             }
-            
-            // Temperature and condition
+
             Column {
                 spacing: 2
-                
+                anchors.verticalCenter: parent.verticalCenter
+
                 Text {
-                    text: weatherData.temperature + (units === "metric" ? "°C" : "°F")
+                    text: widget.formatTemp(widget.weatherData.temperature)
                     color: Theme.foreground
                     font.family: Theme.fontFamily
-                    font.pointSize: Theme.fontSize + 10
+                    font.pointSize: Theme.fontSize + 9
                     font.bold: true
                 }
-                
+
                 Text {
-                    text: weatherData.condition
+                    text: widget.weatherData.condition || ""
                     color: Theme.muted
                     font.family: Theme.fontFamily
-                    font.pointSize: Theme.fontSize
+                    font.pointSize: Theme.fontSize - 1
                 }
             }
-            
-            // High/Low
+
             Column {
                 spacing: 2
-                
+                anchors.verticalCenter: parent.verticalCenter
+
                 Text {
-                    text: "H: " + weatherData.high + (units === "metric" ? "°C" : "°F")
+                    text: "H: " + widget.formatTemp(widget.weatherData.high)
                     color: Theme.foreground
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize - 1
-                    anchors.horizontalCenter: parent.horizontalCenter
                 }
-                
+
                 Text {
-                    text: "L: " + weatherData.low + (units === "metric" ? "°C" : "°F")
+                    text: "L: " + widget.formatTemp(widget.weatherData.low)
                     color: Theme.muted
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize - 1
-                    anchors.horizontalCenter: parent.horizontalCenter
                 }
             }
         }
-        
-        // Additional weather details
+
         Row {
             width: parent.width
             spacing: 16
-            visible: !showForecast
-            
-            Column {
-                spacing: 2
-                Text {
-                    text: "Humidity"
-                    color: Theme.muted
-                    font.family: Theme.fontFamily
-                    font.pointSize: Theme.fontSize - 2
-                }
-                Text {
-                    text: weatherData.humidity + "%"
-                    color: Theme.foreground
-                    font.family: Theme.fontFamily
-                    font.pointSize: Theme.fontSize
-                }
+            visible: !widget.showForecast
+
+            Text {
+                text: "Humidity " + widget.weatherData.humidity + "%"
+                color: Theme.muted
+                font.family: Theme.fontFamily
+                font.pointSize: Theme.fontSize - 1
             }
-            
-            Column {
-                spacing: 2
-                Text {
-                    text: "Wind"
-                    color: Theme.muted
-                    font.family: Theme.fontFamily
-                    font.pointSize: Theme.fontSize - 2
-                }
-                Text {
-                    text: weatherData.windSpeed + (units === "metric" ? " km/h" : " mph")
-                    color: Theme.foreground
-                    font.family: Theme.fontFamily
-                    font.pointSize: Theme.fontSize
-                }
+
+            Text {
+                text: "Wind " + widget.weatherData.windSpeed
+                      + (widget.units === "imperial" ? " mph" : " km/h")
+                color: Theme.muted
+                font.family: Theme.fontFamily
+                font.pointSize: Theme.fontSize - 1
             }
         }
-        
-        // Forecast
+
         Row {
-            visible: showForecast
+            visible: widget.showForecast
             width: parent.width
-            spacing: 8
-            
+            spacing: 6
+
             Repeater {
-                model: weatherData.forecast
+                model: widget.weatherData.forecast || []
                 delegate: Column {
-                    spacing: 4
-                    width: 40
-                    
+                    required property var modelData
+                    spacing: 3
+                    width: (widget.width - 24 - 24) / 5
+
                     Text {
                         text: modelData.day
                         color: Theme.foreground
                         font.family: Theme.fontFamily
-                        font.pointSize: Theme.fontSize - 1
+                        font.pointSize: Theme.fontSize - 2
                         anchors.horizontalCenter: parent.horizontalCenter
                     }
-                    
+
                     Image {
-                        width: 24
-                        height: 24
-                        source: Shell.iconUrl(modelData.icon, Theme.foreground)
+                        width: 20
+                        height: 20
+                        sourceSize.width: 40
+                        sourceSize.height: 40
+                        source: Shell.tintedIcon(modelData.icon, Theme.foreground)
                         anchors.horizontalCenter: parent.horizontalCenter
                     }
-                    
+
                     Text {
-                        text: modelData.high + (units === "metric" ? "°C" : "°F")
+                        text: widget.formatTemp(modelData.high)
                         color: Theme.accent
                         font.family: Theme.fontFamily
-                        font.pointSize: Theme.fontSize - 1
+                        font.pointSize: Theme.fontSize - 2
                         anchors.horizontalCenter: parent.horizontalCenter
                     }
-                    
+
                     Text {
-                        text: modelData.low + (units === "metric" ? "°C" : "°F")
+                        text: widget.formatTemp(modelData.low)
                         color: Theme.muted
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSize - 2
@@ -248,88 +258,124 @@ Rectangle {
             }
         }
     }
-    
-    // Settings popup
-    Rectangle {
-        id: settingsPopup
-        visible: false
-        width: 200
-        height: 180
-        radius: Theme.radius
-        color: Theme.surface
-        border.width: 1
-        border.color: Theme.border
-        z: 100
-        x: widget.width - width - 8
-        y: 8
-        
-        Column {
-            anchors.fill: parent
-            anchors.margins: 12
-            spacing: 8
-            
-            Text {
-                text: "Weather Settings"
-                color: Theme.foreground
-                font.family: Theme.fontFamily
-                font.pointSize: Theme.fontSize + 2
-                font.bold: true
-            }
-            
-            SettingsRow {
-                width: parent.width
-                title: "Temperature units"
-                SettingsChoice {
-                    model: [
-                        { value: "metric", label: "Celsius (°C)" },
-                        { value: "imperial", label: "Fahrenheit (°F)" }
-                    ]
-                    currentValue: units
-                    onChanged: (v) => { units = v; settingsPopup.visible = false }
-                }
-            }
-            
-            SettingsRow {
-                width: parent.width
-                title: "Show forecast"
-                SettingsSwitch {
-                    checked: showForecast
-                    onChanged: (v) => { showForecast = v; widget.height = showForecast ? 220 : 120 }
-                }
-            }
-            
-            SettingsRow {
-                width: parent.width
-                title: "Refresh interval (min)"
-                SettingsStepper {
-                    from: 10
-                    to: 120
-                    step: 10
-                    value: refreshInterval
-                    onChanged: (v) => { refreshInterval = v; refreshTimer.interval = v * 60 * 1000 }
-                }
-            }
-        }
-    }
-    
-    // Close settings when clicking outside
+
     MouseArea {
         anchors.fill: parent
         z: 99
         enabled: settingsPopup.visible
         onPressed: (mouse) => {
-            if (!settingsPopup.contains(mapToItem(settingsPopup, mouse.x, mouse.y)))
+            const mapped = mapToItem(settingsPopup, mouse.x, mouse.y)
+            if (!settingsPopup.contains(Qt.point(mapped.x, mapped.y)))
                 settingsPopup.visible = false
-            mouse.accepted = false
         }
     }
-    
-    // Make widget draggable
-    MouseArea {
-        anchors.fill: parent
-        drag.target: widget
-        cursorShape: Qt.OpenHandCursor
-        onPressed: cursorShape = Qt.ClosedHandCursor
-        onReleased: cursorShape = Qt.OpenHandCursor
+
+    Rectangle {
+        id: settingsPopup
+        visible: false
+        width: 204
+        height: popupColumn.implicitHeight + 20
+        radius: Theme.radius
+        color: Theme.background
+        border.width: 1
+        border.color: Theme.border
+        z: 100
+        x: widget.width - width - 8
+        y: 36
+
+        Column {
+            id: popupColumn
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 10
+            spacing: 8
+
+            Text {
+                text: "Weather Settings"
+                color: Theme.foreground
+                font.family: Theme.fontFamily
+                font.pointSize: Theme.fontSize
+                font.bold: true
+            }
+
+            Row {
+                spacing: 6
+                Text {
+                    text: "Units"
+                    width: 84
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: Theme.muted
+                    font.family: Theme.fontFamily
+                    font.pointSize: Theme.fontSize - 1
+                }
+                Rectangle {
+                    width: 44
+                    height: 24
+                    radius: Theme.radius
+                    color: widget.units === "metric" ? Theme.accent : Theme.surface
+                    Text {
+                        anchors.centerIn: parent
+                        text: "°C"
+                        color: widget.units === "metric" ? "#ffffff" : Theme.foreground
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSize - 1
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: widget.units = "metric"
+                    }
+                }
+                Rectangle {
+                    width: 44
+                    height: 24
+                    radius: Theme.radius
+                    color: widget.units === "imperial" ? Theme.accent : Theme.surface
+                    Text {
+                        anchors.centerIn: parent
+                        text: "°F"
+                        color: widget.units === "imperial" ? "#ffffff" : Theme.foreground
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSize - 1
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: widget.units = "imperial"
+                    }
+                }
+            }
+
+            Row {
+                spacing: 6
+                Text {
+                    text: "Forecast"
+                    width: 84
+                    anchors.verticalCenter: parent.verticalCenter
+                    color: Theme.muted
+                    font.family: Theme.fontFamily
+                    font.pointSize: Theme.fontSize - 1
+                }
+                Rectangle {
+                    width: 94
+                    height: 24
+                    radius: Theme.radius
+                    color: widget.showForecast ? Theme.accent : Theme.surface
+                    Text {
+                        anchors.centerIn: parent
+                        text: widget.showForecast ? "Shown" : "Hidden"
+                        color: widget.showForecast ? "#ffffff" : Theme.foreground
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSize - 1
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: widget.showForecast = !widget.showForecast
+                    }
+                }
+            }
+        }
     }
 }

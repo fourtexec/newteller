@@ -398,6 +398,7 @@ class Shell(QObject):
     hostname = Property(str, lambda self: "testhost", constant=True)
     distro = Property(str, lambda self: "TestOS 1.0", constant=True)
     kernelVersion = Property(str, lambda self: "6.1.0-test", constant=True)
+    isWayland = Property(bool, lambda self: True, constant=True)
 
     @Slot(str, result=QUrl)
     def iconUrl(self, name):
@@ -781,22 +782,28 @@ def main():
     panel_plugin = os.path.join(work, "PanelWidget.qml")
     with open(panel_plugin, "w") as f:
         f.write("import QtQuick\nRectangle { width: 30; height: 30; color: Theme.accent }\n")
-    plugins = [
-        {"id": "desktop-clock", "name": "Desktop Clock", "type": "desktop", "enabled": True, "x": 60, "y": 60,
-         "entry": QUrl.fromLocalFile(os.path.join(ROOT, "plugins/desktop-clock/Widget.qml")).toString()},
+    plugins = []
+    for manifest_path in sorted(glob.glob(os.path.join(ROOT, "plugins", "*", "manifest.json"))):
+        manifest = json.load(open(manifest_path, encoding="utf-8"))
+        plugin_dir = os.path.dirname(manifest_path)
+        plugins.append({
+            "id": manifest["id"],
+            "name": manifest.get("name", manifest["id"]),
+            "version": manifest.get("version", "1.0.0"),
+            "description": manifest.get("description", ""),
+            "settings": manifest.get("settings", {}),
+            "type": manifest["type"],
+            "enabled": True,
+            "x": manifest.get("x", 40),
+            "y": manifest.get("y", 40),
+            "entry": QUrl.fromLocalFile(os.path.join(plugin_dir, manifest["entry"])).toString(),
+        })
+    plugins.extend([
         {"id": "panel-test", "name": "Panel test", "type": "panel", "enabled": True, "x": 0, "y": 0,
          "entry": QUrl.fromLocalFile(panel_plugin).toString()},
-        {"id": "panel-system-monitor", "name": "System Monitor", "type": "panel",
-         "enabled": True, "x": 0, "y": 0,
-         "entry": QUrl.fromLocalFile(
-             os.path.join(ROOT, "plugins/panel-system-monitor/Widget.qml")).toString()},
-        {"id": "desktop-sysinfo", "name": "System Info", "type": "desktop", "enabled": True,
-         "x": 60, "y": 220,
-         "entry": QUrl.fromLocalFile(
-             os.path.join(ROOT, "plugins/desktop-sysinfo/Widget.qml")).toString()},
         {"id": "disabled", "name": "Disabled", "type": "desktop", "enabled": False, "x": 0, "y": 0,
          "entry": QUrl.fromLocalFile(os.path.join(work, "missing.qml")).toString()},
-    ]
+    ])
 
     settings, theme, apps = Settings(), Theme(), Apps()
     shell, plugin_manager = Shell(desktop_dir, work), Plugins(plugins)
@@ -858,6 +865,7 @@ def main():
         # of models (the settings pages sidebar) name bundled icons.
         literal_icons.update(re.findall(r'\biconName:\s*"([^"]+)"', text))
         literal_icons.update(re.findall(r'\bicon:\s*"([^"]+)"', text))
+        literal_icons.update(re.findall(r'\bShell\.(?:iconUrl|tintedIcon)\(\s*"([^"]+)"', text))
     missing_files = sorted(name for name in literal_icons
                            if not os.path.exists(os.path.join(icon_dir, name + ".svg")))
     check(not missing_files, f"every literal iconName has an icons/ file (missing: {missing_files})")
@@ -1277,10 +1285,14 @@ def main():
               "the settings window carries its title")
         page = settings_app.property("currentPage")
         check(page == "appearance", f"settings starts on the appearance page ({page})")
-        settings_app.setProperty("currentPage", "about")
-        QTest.qWait(20)
-        check(settings_app.property("currentPage") == "about",
-              "settings page switching works")
+        pages = settings_app.property("pages")
+        if hasattr(pages, "toVariant"):
+            pages = pages.toVariant()
+        for entry in (pages or []):
+            settings_app.setProperty("currentPage", entry["id"])
+            QTest.qWait(15)
+            check(settings_app.property("currentPage") == entry["id"],
+                  f"settings page switching works ({entry['id']})")
         settings_app.setProperty("visible", False)
         QTest.qWait(20)
 
@@ -1299,4 +1311,11 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    rc = main()
+    if sys.version_info < (3, 12):
+        # Shiboken6 6.12 under-counts Py_True in QML slot/property marshalling,
+        # which triggers bool_dealloc during Py_FinalizeEx on pre-PEP-683 Pythons.
+        sys.stdout.flush()
+        sys.stderr.flush()
+        os._exit(rc)
+    sys.exit(rc)

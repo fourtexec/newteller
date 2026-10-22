@@ -1,116 +1,80 @@
 import QtQuick
-import NewTeller 1.0
+import QtQuick.Window
 
 // Panel CPU Monitor Widget
-// Shows CPU usage as a bar graph
-Item {
+// Shows CPU usage as a compact bar graph in the panel.
+Rectangle {
     id: widget
-    
-    property bool showPercentage: manifest.settings ? manifest.settings.showPercentage : true
-    property string barColor: manifest.settings ? manifest.settings.barColor : "accent"
-    property int widgetWidth: manifest.settings ? manifest.settings.width : 80
-    property bool showPerCore: manifest.settings ? manifest.settings.showPerCore : false
-    
-    readonly property int panelHeight: panel ? panel.barThickness : 48
-    
-    width: widgetWidth
-    height: panelHeight
-    
-    // Get the panel reference from the parent
-    property var panel: parent.parent ? parent.parent : null
-    
-    // CPU usage from System object
+
+    readonly property var pluginSettings: (parent && parent.modelData && parent.modelData.settings)
+                                          ? parent.modelData.settings : ({})
+    property bool showPercentage: pluginSettings.showPercentage !== false
+    property string barColor: pluginSettings.barColor ? String(pluginSettings.barColor) : "accent"
+    property int widgetWidth: pluginSettings.width !== undefined ? Number(pluginSettings.width) : 84
+
     readonly property real cpuPercent: System ? System.cpuPercent : 0
     readonly property int cpuCount: System ? System.cpuCount : 1
-    readonly property var perCoreUsage: System && System.perCoreCpu ? System.perCoreCpu : []
-    
+    readonly property color resolvedColor: barColor === "accent" ? Theme.accent
+                                           : barColor === "foreground" ? Theme.foreground
+                                           : barColor === "surface" ? Theme.surface
+                                           : Qt.color(barColor)
+
+    width: widgetWidth
+    height: 34
+    radius: Theme.radius
+    color: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.7)
+
     Row {
         anchors.fill: parent
-        spacing: 4
-        
-        // CPU bar
+        anchors.leftMargin: 8
+        anchors.rightMargin: 8
+        spacing: 6
+
         Rectangle {
-            width: showPercentage ? parent.width - 40 : parent.width
-            height: parent.height - 4
-            radius: 2
-            color: Theme.border
-            
+            anchors.verticalCenter: parent.verticalCenter
+            width: widget.showPercentage ? Math.max(16, parent.width - 54) : Math.max(16, parent.width - 16)
+            height: 8
+            radius: 4
+            color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.5)
+
             Rectangle {
-                width: parent.width * (cpuPercent / 100)
+                id: fillBar
+                width: parent.width * Math.max(0, Math.min(1, widget.cpuPercent / 100))
                 height: parent.height
-                radius: 2
-                color: barColor === "accent" ? Theme.accent : 
-                       barColor === "foreground" ? Theme.foreground :
-                       barColor === "surface" ? Theme.surface :
-                       Qt.color(barColor)
-                
-                // Gradient for better visibility
+                radius: 4
+                color: widget.resolvedColor
+
                 gradient: Gradient {
-                    GradientStop { position: 0.0; color: Qt.lighter(parent.color, 1.2) }
-                    GradientStop { position: 1.0; color: parent.color }
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0.0; color: Qt.lighter(widget.resolvedColor, 1.2) }
+                    GradientStop { position: 1.0; color: widget.resolvedColor }
                 }
             }
         }
-        
-        // Percentage text
+
         Text {
-            visible: showPercentage
-            width: 36
-            height: parent.height
-            text: Math.round(cpuPercent) + "%"
+            visible: widget.showPercentage
+            width: 32
+            anchors.verticalCenter: parent.verticalCenter
+            text: Math.round(widget.cpuPercent) + "%"
             color: Theme.foreground
             font.family: Theme.fontFamily
             font.pointSize: Theme.fontSize - 1
             horizontalAlignment: Text.AlignRight
-            verticalAlignment: Text.AlignVCenter
         }
     }
-    
-    // Tooltip
-    PanelToolTip {
-        id: tooltip
-        position: panel ? panel.panelPosition : "bottom"
-        panelThickness: panel ? panel.barThickness : 48
-        
-        Row {
-            spacing: 8
-            
-            Column {
-                spacing: 2
-                Text {
-                    text: "CPU Usage"
-                    color: Theme.foreground
-                    font.family: Theme.fontFamily
-                    font.pointSize: Theme.fontSize
-                    font.bold: true
-                }
-                Text {
-                    text: "Total: " + Math.round(cpuPercent) + "%"
-                    color: Theme.muted
-                    font.family: Theme.fontFamily
-                    font.pointSize: Theme.fontSize - 1
-                }
-                
-                // Per-core usage
-                Repeater {
-                    visible: showPerCore && perCoreUsage.length > 0
-                    model: perCoreUsage
-                    delegate: Text {
-                        text: "Core " + (index + 1) + ": " + Math.round(modelData) + "%"
-                        color: Theme.muted
-                        font.family: Theme.fontFamily
-                        font.pointSize: Theme.fontSize - 2
-                    }
-                }
-            }
+
+    HoverHandler {
+        onHoveredChanged: {
+            const win = widget.Window.window
+            if (!win || typeof win.showToolTip !== "function")
+                return
+            if (hovered)
+                win.showToolTip(widget,
+                                "CPU " + Math.round(widget.cpuPercent) + "% ("
+                                + widget.cpuCount + " cores)")
+            else if (typeof win.hideToolTip === "function")
+                win.hideToolTip()
         }
-    }
-    
-    // Show tooltip on hover
-    MouseArea {
-        anchors.fill: parent
-        hoverEnabled: true
-        onEntered: tooltip.showAt("CPU: " + Math.round(cpuPercent) + "%", widget.width / 2, widget.height)
-        onExited: tooltip.hide()
     }
 }

@@ -7,6 +7,7 @@ import QtQuick
 Row {
     id: control
 
+    property string settingKey: ""
     property color colorValue: "#000000"
     signal edited(string hex)
     signal paletteRequested()
@@ -17,6 +18,26 @@ Row {
     function setValue(c) {
         colorValue = c;
         input.text = c.toString().toUpperCase();
+    }
+
+    function refresh() {
+        if (settingKey.length > 0) {
+            const raw = Settings.value(settingKey, "");
+            if (raw !== undefined && raw !== null && raw.toString().length > 0) {
+                const parsed = Qt.color(raw.toString());
+                if (parsed.toString() !== "#00000000") {
+                    setValue(parsed);
+                    return;
+                }
+            }
+            setValue(Theme.foreground);
+        }
+    }
+
+    Component.onCompleted: refresh()
+    Connections {
+        target: Settings
+        function onValuesChanged() { control.refresh() }
     }
 
     // The swatch itself opens the palette.
@@ -92,6 +113,8 @@ Row {
                 const candidate = text.trim();
                 if (Qt.color(candidate).toString() !== "#00000000") {
                     control.colorValue = Qt.color(candidate);
+                    if (control.settingKey.length > 0)
+                        Settings.setValue(control.settingKey, candidate);
                     control.edited(candidate);
                 } else {
                     text = control.colorValue.toString().toUpperCase();

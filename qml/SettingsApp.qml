@@ -540,18 +540,22 @@ Window {
                                 width: parent.width
                                 title: "Panel background"
                                 visible: Settings.values["panel.customColors"] === true
+                                settingKey: "panel.backgroundColor"
                                 SettingsColorField {
+                                    id: panelBgColorField
                                     onEdited: (hex) => Settings.setValue("panel.backgroundColor", hex)
-                                    onPaletteRequested: settingsWindow.openPalette(this)
+                                    onPaletteRequested: settingsWindow.openPalette(panelBgColorField)
                                 }
                             }
                             SettingsRow {
                                 width: parent.width
                                 title: "Panel foreground"
                                 visible: Settings.values["panel.customColors"] === true
+                                settingKey: "panel.foregroundColor"
                                 SettingsColorField {
+                                    id: panelFgColorField
                                     onEdited: (hex) => Settings.setValue("panel.foregroundColor", hex)
-                                    onPaletteRequested: settingsWindow.openPalette(this)
+                                    onPaletteRequested: settingsWindow.openPalette(panelFgColorField)
                                 }
                             }
                             SettingsRow {
@@ -604,8 +608,9 @@ Window {
                                 visible: Settings.values["dock.iconColorMode"] === "custom"
                                 settingKey: "dock.customIconColor"
                                 SettingsColorField {
+                                    id: dockCustomColorField
                                     onEdited: (hex) => Settings.setValue("dock.customIconColor", hex)
-                                    onPaletteRequested: settingsWindow.openPalette(this)
+                                    onPaletteRequested: settingsWindow.openPalette(dockCustomColorField)
                                 }
                             }
                         }
@@ -1163,8 +1168,9 @@ Window {
                                 visible: !Settings.values["desktop.backgroundGradient"]
                                 settingKey: "desktop.backgroundColor"
                                 SettingsColorField {
+                                    id: desktopBgColorField
                                     onEdited: (hex) => Settings.setValue("desktop.backgroundColor", hex)
-                                    onPaletteRequested: settingsWindow.openPalette(this)
+                                    onPaletteRequested: settingsWindow.openPalette(desktopBgColorField)
                                 }
                             }
                         }
@@ -1207,8 +1213,9 @@ Window {
                                 title: "Icon color"
                                 settingKey: "desktop.iconColor"
                                 SettingsColorField {
+                                    id: desktopIconColorField
                                     onEdited: (hex) => Settings.setValue("desktop.iconColor", hex)
-                                    onPaletteRequested: settingsWindow.openPalette(this)
+                                    onPaletteRequested: settingsWindow.openPalette(desktopIconColorField)
                                 }
                             }
                             SettingsRow {
@@ -1685,8 +1692,9 @@ Window {
                                 visible: Settings.values["notifications.theme"] === "custom"
                                 settingKey: "notifications.customBackground"
                                 SettingsColorField {
+                                    id: notifBgColorField
                                     onEdited: (hex) => Settings.setValue("notifications.customBackground", hex)
-                                    onPaletteRequested: settingsWindow.openPalette(this)
+                                    onPaletteRequested: settingsWindow.openPalette(notifBgColorField)
                                 }
                             }
                             SettingsRow {
@@ -1695,8 +1703,9 @@ Window {
                                 visible: Settings.values["notifications.theme"] === "custom"
                                 settingKey: "notifications.customForeground"
                                 SettingsColorField {
+                                    id: notifFgColorField
                                     onEdited: (hex) => Settings.setValue("notifications.customForeground", hex)
-                                    onPaletteRequested: settingsWindow.openPalette(this)
+                                    onPaletteRequested: settingsWindow.openPalette(notifFgColorField)
                                 }
                             }
                             SettingsRow {

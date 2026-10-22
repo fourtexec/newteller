@@ -132,7 +132,9 @@ Rectangle {
 Plugin settings defined in `manifest.json` are available through the `manifest.settings` object:
 
 ```qml
-property string mySetting: manifest.settings ? manifest.settings.mySetting : "default"
+readonly property var pluginSettings: (parent && parent.modelData && parent.modelData.settings)
+                                      ? parent.modelData.settings : ({})
+property string mySetting: pluginSettings.mySetting ? String(pluginSettings.mySetting) : "default"
 ```
 
 ### Available Global Objects
@@ -151,7 +153,8 @@ Plugins have access to the following global objects:
 - **Shell**: Shell utilities
   - `Shell.now` - Current timestamp
   - `Shell.home` - User's home directory
-  - `Shell.iconUrl(name, color)` - Get icon URL
+  - `Shell.iconUrl(name)` - Get icon URL
+  - `Shell.tintedIcon(name, color)` - Get tinted icon URL
   - `Shell.notify(title, message)` - Show notification
   - `Shell.openUrl(url)` - Open URL
   - `Shell.openPath(path)` - Open file path
