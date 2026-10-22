@@ -324,6 +324,6 @@ Window {
             return "file-text";
         if (n.endsWith(".pdf"))
             return "file-text";
-        return "file";
+        return "file-text";
     }
 }

@@ -73,35 +73,33 @@ Window {
     }
 
     Image {
+        id: wallpaperImage
         anchors.fill: parent
         asynchronous: true
+        smooth: true
         fillMode: {
             switch (desk.wallpaperMode) {
             case "fill": return Image.PreserveAspectCrop
             case "fit": return Image.PreserveAspectFit
             case "stretch": return Image.Stretch
             case "tile": return Image.Tile
-            case "center": return Image.PreserveAspectFit
+            case "center": return Image.Pad
             default: return Image.PreserveAspectCrop
             }
         }
+        sourceSize: desk.wallpaperBlur > 0 && width > 0 && height > 0
+                    ? Qt.size(Math.max(16, Math.round(width / (1 + desk.wallpaperBlur * 0.4))),
+                              Math.max(16, Math.round(height / (1 + desk.wallpaperBlur * 0.4))))
+                    : Qt.size(0, 0)
         source: desk.wallpaper.length === 0 ? ""
                 : (desk.wallpaper.indexOf("://") > 0 ? desk.wallpaper : "file://" + desk.wallpaper)
-        // Apply blur and darken effects
-        layer.enabled: desk.wallpaperBlur > 0 || desk.wallpaperDarken > 0
-        layer.effect: {
-            if (desk.wallpaperBlur > 0 && desk.wallpaperDarken > 0) {
-                return [
-                    FastBlur { radius: desk.wallpaperBlur },
-                    ColorOverlay { color: "#000000"; opacity: desk.wallpaperDarken / 100 }
-                ]
-            } else if (desk.wallpaperBlur > 0) {
-                return FastBlur { radius: desk.wallpaperBlur }
-            } else if (desk.wallpaperDarken > 0) {
-                return ColorOverlay { color: "#000000"; opacity: desk.wallpaperDarken / 100 }
-            }
-            return null
-        }
+    }
+
+    Rectangle {
+        anchors.fill: parent
+        visible: desk.wallpaperDarken > 0
+        color: "#000000"
+        opacity: Math.max(0, Math.min(1, desk.wallpaperDarken / 100))
     }
 
     FolderListModel {
@@ -139,6 +137,31 @@ Window {
             required property url fileUrl
             required property bool fileIsDir
 
+            readonly property string resolvedIconName: fileIsDir ? "folder" : "file-text"
+
+            Rectangle {
+                visible: desk.iconGlow
+                anchors.centerIn: icon
+                width: desk.iconSize + 8
+                height: desk.iconSize + 8
+                radius: (desk.iconSize + 8) / 2
+                color: desk.iconColor && desk.iconColor.length > 0 ? desk.iconColor : Theme.foreground
+                opacity: 0.18
+            }
+
+            Image {
+                visible: desk.iconShadow
+                x: icon.x + 1
+                y: icon.y + 2
+                width: desk.iconSize
+                height: desk.iconSize
+                sourceSize.width: desk.iconSize
+                sourceSize.height: desk.iconSize
+                fillMode: Image.PreserveAspectFit
+                source: Shell.tintedIcon(resolvedIconName, "#000000")
+                opacity: 0.35
+            }
+
             Image {
                 id: icon
                 anchors.top: parent.top
@@ -149,29 +172,10 @@ Window {
                 sourceSize.height: desk.iconSize
                 fillMode: Image.PreserveAspectFit
                 source: {
-                    var iconName = fileIsDir ? "folder" : "file"
-                    // Use custom icon color if specified
                     if (desk.iconColor && desk.iconColor.length > 0) {
-                        return Shell.tintedIcon(iconName, desk.iconColor)
+                        return Shell.tintedIcon(resolvedIconName, desk.iconColor)
                     }
-                    return Shell.tintedIcon(iconName, Theme.foreground)
-                }
-                // Icon effects
-                DropShadow {
-                    visible: desk.iconShadow
-                    horizontalOffset: 0
-                    verticalOffset: 0
-                    radius: 4
-                    samples: 8
-                    color: "#000000"
-                    opacity: 0.5
-                }
-                Glow {
-                    visible: desk.iconGlow
-                    radius: 4
-                    samples: 8
-                    color: desk.iconColor || Theme.foreground
-                    opacity: 0.3
+                    return Shell.tintedIcon(resolvedIconName, Theme.foreground)
                 }
             }
 

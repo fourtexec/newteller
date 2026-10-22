@@ -88,6 +88,8 @@ void PluginManager::rescan()
             p.insert(QStringLiteral("id"), id);
             p.insert(QStringLiteral("name"), m.value(QStringLiteral("name"), sub));
             p.insert(QStringLiteral("version"), m.value(QStringLiteral("version"), QStringLiteral("0.0.0")));
+            p.insert(QStringLiteral("description"), m.value(QStringLiteral("description")).toString());
+            p.insert(QStringLiteral("settings"), m.value(QStringLiteral("settings")).toMap());
             p.insert(QStringLiteral("type"), type);
             p.insert(QStringLiteral("order"), m.value(QStringLiteral("order"), 0));
             p.insert(QStringLiteral("x"), m.value(QStringLiteral("x"), 40));

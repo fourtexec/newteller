@@ -55,7 +55,9 @@ Window {
                                      && Tray.count > 0
     // Icon size after the adaptive shrink pass (recomputed in rebuildDock).
     property int effectiveIconSize: dockIconSize
-    readonly property bool showDockLabels: Settings.values["dock.showLabels"] === true
+    // Window-title labels next to icons when ungrouped (recomputed in rebuildDock).
+    property bool showDockLabels: false
+    readonly property bool dockShowAppLabels: Settings.values["dock.showLabels"] === true
     readonly property string dockLabelPosition: Settings.values["dock.labelPosition"] || "bottom"
     readonly property string dockIconColorMode: Settings.values["dock.iconColorMode"] || "theme"
     readonly property string dockCustomIconColor: Settings.values["dock.customIconColor"] || "#ffffff"
@@ -380,10 +382,9 @@ Window {
                     : (entry.appId.length > 0 ? "square" : "app-window")
             label: panel.showDockLabels && entry.title && entry.title.length > 0
                    ? entry.title : ""
-            dockLabel: panel.showDockLabels && entry.title && entry.title.length > 0
-                      ? entry.title : ""
+            dockLabel: panel.dockShowAppLabels ? dockButton.appName : ""
             iconSize: panel.effectiveIconSize
-            showDockLabels: panel.showDockLabels
+            showDockLabels: panel.dockShowAppLabels
             dockIconColorMode: panel.dockIconColorMode
             dockCustomIconColor: panel.dockCustomIconColor
             running: entry.running

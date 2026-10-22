@@ -1,297 +1,295 @@
 import QtQuick
-import QtQuick.Controls
-import NewTeller 1.0
 
 // Desktop Calendar Widget
-// Shows a monthly calendar with the current date highlighted
+// Shows a monthly calendar with the current date highlighted.
 Rectangle {
     id: widget
-    
-    property bool showWeekNumbers: manifest.settings ? manifest.settings.showWeekNumbers : false
-    property int firstDayOfWeek: manifest.settings ? manifest.settings.firstDayOfWeek : 0 // 0=Sunday, 1=Monday
-    property bool showHeader: manifest.settings ? manifest.settings.showHeader : true
-    property bool showTodayMarker: manifest.settings ? manifest.settings.showTodayMarker : true
-    
-    width: 280
-    height: showHeader ? 320 : 280
-    radius: Theme.radius
-    color: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, Theme.opacity * 0.95)
-    border.width: 1
-    border.color: Theme.border
-    
-    // Get current date
-    property int currentYear: new Date().getFullYear()
-    property int currentMonth: new Date().getMonth()
-    property int today: new Date().getDate()
-    
-    // Navigation
+
+    readonly property var pluginSettings: (parent && parent.modelData && parent.modelData.settings)
+                                          ? parent.modelData.settings : ({})
+    property bool showWeekNumbers: pluginSettings.showWeekNumbers === true
+    property int firstDayOfWeek: pluginSettings.firstDayOfWeek !== undefined
+                                 ? Number(pluginSettings.firstDayOfWeek) : 0
+    property bool showHeader: pluginSettings.showHeader !== false
+    property bool showTodayMarker: pluginSettings.showTodayMarker !== false
+
+    readonly property int currentYear: Shell.now.getFullYear()
+    readonly property int currentMonth: Shell.now.getMonth()
+    readonly property int today: Shell.now.getDate()
+
     property int displayYear: currentYear
     property int displayMonth: currentMonth
-    
-    // Week day names
+
     readonly property var weekDays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-    
-    // Month names
-    readonly property var monthNames: ["January", "February", "March", "April", "May", "June", 
-                                         "July", "August", "September", "October", "November", "December"]
-    
-    Column {
+    readonly property var monthNames: ["January", "February", "March", "April", "May", "June",
+                                       "July", "August", "September", "October", "November", "December"]
+
+    readonly property int daysInMonth: new Date(displayYear, displayMonth + 1, 0).getDate()
+    readonly property int firstDay: new Date(displayYear, displayMonth, 1).getDay()
+    readonly property int offset: (firstDay - firstDayOfWeek + 7) % 7
+    readonly property int prevMonthDays: new Date(displayYear, displayMonth, 0).getDate()
+    readonly property int totalCells: offset + daysInMonth
+    readonly property int remainingCells: (7 - (totalCells % 7)) % 7
+    readonly property int rowCount: Math.ceil(totalCells / 7)
+
+    width: 280
+    height: bodyColumn.implicitHeight + 24
+    radius: Theme.radius + 4
+    color: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, Theme.opacity * 0.95)
+    border.width: 1
+    border.color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.6)
+
+    // Background drag and middle-click reset (placed beneath interactive controls).
+    MouseArea {
         anchors.fill: parent
+        acceptedButtons: Qt.LeftButton | Qt.MiddleButton
+        drag.target: widget
+        cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+        onClicked: (mouse) => {
+            if (mouse.button === Qt.MiddleButton) {
+                widget.displayYear = widget.currentYear
+                widget.displayMonth = widget.currentMonth
+            }
+        }
+    }
+
+    Column {
+        id: bodyColumn
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
         anchors.margins: 12
         spacing: 8
-        
-        // Header with month/year and navigation
-        Row {
-            visible: showHeader
+
+        Item {
+            visible: widget.showHeader
             width: parent.width
-            spacing: 8
-            
-            // Previous month button
-            MouseArea {
-                width: 32
-                height: 32
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    displayMonth--
-                    if (displayMonth < 0) {
-                        displayMonth = 11
-                        displayYear--
-                    }
-                }
-                
+            height: 36
+
+            Rectangle {
+                id: prevBtn
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                width: 30
+                height: 30
+                radius: Theme.radius
+                color: prevMouse.containsMouse
+                       ? Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.08)
+                       : "transparent"
+
                 Image {
                     anchors.centerIn: parent
-                    width: 20
-                    height: 20
-                    source: Shell.iconUrl("chevron-left", Theme.foreground)
+                    width: 18
+                    height: 18
+                    sourceSize.width: 36
+                    sourceSize.height: 36
+                    source: Shell.tintedIcon("chevron-left", Theme.foreground)
                 }
-            }
-            
-            // Month and year
-            Column {
-                spacing: 2
-                Text {
-                    text: monthNames[displayMonth]
-                    color: Theme.foreground
-                    font.family: Theme.fontFamily
-                    font.pointSize: Theme.fontSize + 4
-                    font.bold: true
-                    anchors.horizontalCenter: parent.horizontalCenter
-                }
-                Text {
-                    text: displayYear
-                    color: Theme.muted
-                    font.family: Theme.fontFamily
-                    font.pointSize: Theme.fontSize
-                    anchors.horizontalCenter: parent.horizontalCenter
-                }
-            }
-            
-            // Next month button
-            MouseArea {
-                width: 32
-                height: 32
-                cursorShape: Qt.PointingHandCursor
-                onClicked: {
-                    displayMonth++
-                    if (displayMonth > 11) {
-                        displayMonth = 0
-                        displayYear++
-                    }
-                }
-                
-                Image {
-                    anchors.centerIn: parent
-                    width: 20
-                    height: 20
-                    source: Shell.iconUrl("chevron-right", Theme.foreground)
-                }
-            }
-        }
-        
-        // Week day headers
-        Row {
-            width: parent.width
-            spacing: 4
-            
-            // Week numbers column (optional)
-            Item {
-                width: showWeekNumbers ? 24 : 0
-                height: 24
-            }
-            
-            Repeater {
-                model: weekDays.length
-                delegate: Text {
-                    width: (parent.width - (showWeekNumbers ? 24 : 0)) / 7 - 4
-                    height: 24
-                    text: weekDays[(index + firstDayOfWeek) % 7]
-                    color: Theme.muted
-                    font.family: Theme.fontFamily
-                    font.pointSize: Theme.fontSize - 1
-                    font.bold: true
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-            }
-        }
-        
-        // Calendar grid
-        Grid {
-            width: parent.width
-            columns: 7
-            spacing: 4
-            
-            // Week numbers column (optional)
-            Item {
-                width: showWeekNumbers ? 24 : 0
-                height: 1
-            }
-            
-            // Get days in month
-            property int daysInMonth: new Date(displayYear, displayMonth + 1, 0).getDate()
-            property int firstDay: new Date(displayYear, displayMonth, 1).getDay()
-            
-            // Get days from previous month to show
-            property int offset: (firstDay - firstDayOfWeek + 7) % 7
-            property int prevMonthDays: new Date(displayYear, displayMonth, 0).getDate()
-            
-            // Days from previous month
-            Repeater {
-                model: offset
-                delegate: Text {
-                    width: (parent.width - (showWeekNumbers ? 24 : 0)) / 7 - 4
-                    height: 32
-                    text: prevMonthDays - offset + modelData + 1
-                    color: Theme.muted
-                    font.family: Theme.fontFamily
-                    font.pointSize: Theme.fontSize - 1
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                    opacity: 0.5
-                }
-            }
-            
-            // Days in current month
-            Repeater {
-                id: daysRepeater
-                model: daysInMonth
-                delegate: Rectangle {
-                    width: (parent.width - (showWeekNumbers ? 24 : 0)) / 7 - 4
-                    height: 32
-                    radius: showTodayMarker && (displayYear === currentYear && displayMonth === currentMonth && modelData === today) ? 16 : 4
-                    color: "transparent"
-                    border.width: 0
-                    
-                    // Today marker
-                    Rectangle {
-                        visible: showTodayMarker && (displayYear === currentYear && displayMonth === currentMonth && modelData === today)
-                        anchors.fill: parent
-                        radius: 16
-                        color: Theme.accent
-                        opacity: 0.2
-                        border.width: 1
-                        border.color: Theme.accent
-                    }
-                    
-                    Text {
-                        anchors.fill: parent
-                        text: modelData + 1
-                        color: (displayYear === currentYear && displayMonth === currentMonth && modelData + 1 === today) ? Theme.accent : Theme.foreground
-                        font.family: Theme.fontFamily
-                        font.pointSize: Theme.fontSize
-                        font.bold: (displayYear === currentYear && displayMonth === currentMonth && modelData + 1 === today)
-                        horizontalAlignment: Text.AlignHCenter
-                        verticalAlignment: Text.AlignVCenter
-                    }
-                    
-                    MouseArea {
-                        anchors.fill: parent
-                        cursorShape: Qt.PointingHandCursor
-                        hoverEnabled: true
-                        
-                        // Highlight on hover
-                        Rectangle {
-                            anchors.fill: parent
-                            radius: 16
-                            color: Theme.accent
-                            opacity: parent.hovered ? 0.1 : 0
+
+                MouseArea {
+                    id: prevMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (widget.displayMonth === 0) {
+                            widget.displayMonth = 11
+                            widget.displayYear--
+                        } else {
+                            widget.displayMonth--
                         }
                     }
                 }
             }
-            
-            // Days from next month
-            property int totalCells: offset + daysInMonth
-            property int remainingCells: Math.ceil(totalCells / 7) * 7 - totalCells
-            
+
+            Column {
+                anchors.centerIn: parent
+                spacing: 0
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: widget.monthNames[widget.displayMonth] + " " + widget.displayYear
+                    color: Theme.foreground
+                    font.family: Theme.fontFamily
+                    font.pointSize: Theme.fontSize + 2
+                    font.bold: true
+                }
+            }
+
+            Rectangle {
+                id: nextBtn
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                width: 30
+                height: 30
+                radius: Theme.radius
+                color: nextMouse.containsMouse
+                       ? Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.08)
+                       : "transparent"
+
+                Image {
+                    anchors.centerIn: parent
+                    width: 18
+                    height: 18
+                    sourceSize.width: 36
+                    sourceSize.height: 36
+                    source: Shell.tintedIcon("chevron-right", Theme.foreground)
+                }
+
+                MouseArea {
+                    id: nextMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: {
+                        if (widget.displayMonth === 11) {
+                            widget.displayMonth = 0
+                            widget.displayYear++
+                        } else {
+                            widget.displayMonth++
+                        }
+                    }
+                }
+            }
+        }
+
+        Row {
+            width: parent.width
+            spacing: 4
+
+            Item {
+                visible: widget.showWeekNumbers
+                width: 22
+                height: 22
+            }
+
             Repeater {
-                model: remainingCells > 0 ? remainingCells : 0
+                model: 7
                 delegate: Text {
-                    width: (parent.width - (showWeekNumbers ? 24 : 0)) / 7 - 4
-                    height: 32
-                    text: modelData + 1
+                    required property int index
+                    readonly property real gridAvail: bodyColumn.width
+                                                      - (widget.showWeekNumbers ? 26 : 0)
+                    width: (gridAvail - 24) / 7
+                    height: 22
+                    text: widget.weekDays[(index + widget.firstDayOfWeek) % 7]
                     color: Theme.muted
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize - 1
+                    font.bold: true
                     horizontalAlignment: Text.AlignHCenter
                     verticalAlignment: Text.AlignVCenter
-                    opacity: 0.5
                 }
             }
         }
-        
-        // Week numbers (optional)
-        Column {
-            visible: showWeekNumbers
-            width: 24
-            height: daysRepeater.height
+
+        Row {
+            width: parent.width
             spacing: 4
-            
-            // Calculate week numbers
-            property int firstWeek: Math.ceil((offset + 1) / 7)
-            
-            Repeater {
-                model: Math.ceil((offset + daysInMonth) / 7) + 1
-                delegate: Text {
-                    width: 24
-                    height: 32
-                    text: firstWeek + modelData - 1
-                    color: Theme.muted
-                    font.family: Theme.fontFamily
-                    font.pointSize: Theme.fontSize - 2
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                    opacity: 0.7
+
+            Column {
+                visible: widget.showWeekNumbers
+                width: 22
+                spacing: 4
+
+                Repeater {
+                    model: widget.rowCount
+                    delegate: Text {
+                        required property int index
+                        width: 22
+                        height: 30
+                        text: String(index + 1)
+                        color: Theme.muted
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSize - 2
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        opacity: 0.7
+                    }
+                }
+            }
+
+            Grid {
+                id: calendarGrid
+                readonly property real gridWidth: bodyColumn.width
+                                                  - (widget.showWeekNumbers ? 26 : 0)
+                readonly property real cellWidth: (gridWidth - 24) / 7
+                width: gridWidth
+                columns: 7
+                spacing: 4
+
+                Repeater {
+                    model: widget.offset
+                    delegate: Text {
+                        required property int index
+                        width: calendarGrid.cellWidth
+                        height: 30
+                        text: String(widget.prevMonthDays - widget.offset + index + 1)
+                        color: Theme.muted
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSize - 1
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        opacity: 0.45
+                    }
+                }
+
+                Repeater {
+                    model: widget.daysInMonth
+                    delegate: Rectangle {
+                        id: dayCell
+                        required property int index
+                        readonly property int dayNumber: index + 1
+                        readonly property bool isToday: widget.displayYear === widget.currentYear
+                                                        && widget.displayMonth === widget.currentMonth
+                                                        && dayNumber === widget.today
+
+                        width: calendarGrid.cellWidth
+                        height: 30
+                        radius: 6
+                        color: widget.showTodayMarker && isToday
+                               ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
+                               : (dayArea.containsMouse
+                                  ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.10)
+                                  : "transparent")
+                        border.width: widget.showTodayMarker && isToday ? 1 : 0
+                        border.color: Theme.accent
+
+                        Text {
+                            anchors.fill: parent
+                            text: String(dayCell.dayNumber)
+                            color: dayCell.isToday ? Theme.accent : Theme.foreground
+                            font.family: Theme.fontFamily
+                            font.pointSize: Theme.fontSize
+                            font.bold: dayCell.isToday
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                        }
+
+                        MouseArea {
+                            id: dayArea
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                        }
+                    }
+                }
+
+                Repeater {
+                    model: widget.remainingCells
+                    delegate: Text {
+                        required property int index
+                        width: calendarGrid.cellWidth
+                        height: 30
+                        text: String(index + 1)
+                        color: Theme.muted
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSize - 1
+                        horizontalAlignment: Text.AlignHCenter
+                        verticalAlignment: Text.AlignVCenter
+                        opacity: 0.45
+                    }
                 }
             }
         }
-    }
-    
-    // Reset to current month
-    MouseArea {
-        anchors.fill: parent
-        acceptedButtons: Qt.MiddleButton
-        onClicked: (mouse) => {
-            if (mouse.button === Qt.MiddleButton) {
-                displayYear = currentYear
-                displayMonth = currentMonth
-            }
-        }
-    }
-    
-    // Make widget draggable
-    MouseArea {
-        anchors.fill: parent
-        drag.target: widget
-        cursorShape: Qt.OpenHandCursor
-        onPressed: cursorShape = Qt.ClosedHandCursor
-        onReleased: cursorShape = Qt.OpenHandCursor
-    }
-    
-    // Tooltip
-    ShellToolTip {
-        text: "Middle-click to reset to current month"
-        target: widget
     }
 }

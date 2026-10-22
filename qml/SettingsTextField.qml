@@ -6,6 +6,7 @@ Rectangle {
     id: control
 
     property string settingKey: ""
+    property string placeholder: ""
     property alias text: input.text
     signal textEdited(string text)
 
@@ -43,6 +44,16 @@ Rectangle {
             if (control.settingKey.length > 0)
                 Settings.setValue(control.settingKey, text);
             control.textEdited(text);
+        }
+
+        Text {
+            anchors.fill: parent
+            verticalAlignment: Text.AlignVCenter
+            visible: input.text.length === 0 && control.placeholder.length > 0
+            text: control.placeholder
+            color: Theme.muted
+            font: input.font
+            elide: Text.ElideRight
         }
     }
 }
