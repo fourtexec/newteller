@@ -26,9 +26,9 @@ Window {
         { id: "apps", label: "Applications", icon: "package" },
         { id: "system", label: "System", icon: "cpu" },
         { id: "notifications", label: "Notifications", icon: "bell" },
+        { id: "plugins", label: "Plugins", icon: "puzzle" },
         { id: "hotkeys", label: "Hotkeys", icon: "keyboard" },
         { id: "animations", label: "Animations", icon: "sparkles" },
-        { id: "plugins", label: "Plugins", icon: "puzzle" },
         { id: "about", label: "About", icon: "info" }
     ]
     property string currentPage: "appearance"
@@ -2151,6 +2151,7 @@ Window {
 
             // ---- About ------------------------------------------------------
             Item {
+                Flickable {
                     id: aboutScroll
                     anchors.fill: parent
                     contentHeight: aboutColumn.implicitHeight + 24

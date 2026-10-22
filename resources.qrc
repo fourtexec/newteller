@@ -90,6 +90,11 @@
     <file>icons/skip-forward.svg</file>
     <file>icons/sliders-horizontal.svg</file>
     <file>icons/square.svg</file>
+    <file>icons/cloud.svg</file>
+    <file>icons/cloud-rain.svg</file>
+    <file>icons/globe.svg</file>
+    <file>icons/keyboard.svg</file>
+    <file>icons/sparkles.svg</file>
     <file>icons/sun.svg</file>
     <file>icons/terminal.svg</file>
     <file>icons/trash.svg</file>

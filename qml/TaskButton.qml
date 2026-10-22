@@ -29,6 +29,9 @@ Rectangle {
     property string tooltipText: ""
     // Label for dock buttons
     property string dockLabel: ""
+    property bool showDockLabels: false
+    property string dockIconColorMode: "theme"
+    property string dockCustomIconColor: ""
     readonly property bool hovered: hoverHandler.hovered
 
     signal clicked()
@@ -91,7 +94,7 @@ Rectangle {
                         iconColor = btn.dockCustomIconColor
                     } else if (btn.dockIconColorMode === "original") {
                         // Return original icon without tinting
-                        return Shell.iconUrl(btn.iconName, "")
+                        return Shell.iconUrl(btn.iconName)
                     }
                     return Shell.tintedIcon(btn.iconName, iconColor)
                 }
