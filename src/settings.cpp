@@ -95,6 +95,137 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("run.history"), QStringList());
     m_defaults.insert(QStringLiteral("run.historyLimit"), 25);
 
+    // ===== Appearance & Theming =====
+    // Panel styling
+    m_defaults.insert(QStringLiteral("panel.backgroundColor"), QString());
+    m_defaults.insert(QStringLiteral("panel.backgroundOpacity"), 0.92);
+    m_defaults.insert(QStringLiteral("panel.foregroundColor"), QString());
+    m_defaults.insert(QStringLiteral("panel.customColors"), false);
+    // Dock styling
+    m_defaults.insert(QStringLiteral("dock.backgroundColor"), QString());
+    m_defaults.insert(QStringLiteral("dock.backgroundOpacity"), -1);
+    m_defaults.insert(QStringLiteral("dock.hoverOpacity"), 0.15);
+    m_defaults.insert(QStringLiteral("dock.activeOpacity"), 0.30);
+    m_defaults.insert(QStringLiteral("dock.showLabels"), false);
+    m_defaults.insert(QStringLiteral("dock.labelPosition"), QStringLiteral("bottom"));
+    m_defaults.insert(QStringLiteral("dock.iconColorMode"), QStringLiteral("theme"));
+    m_defaults.insert(QStringLiteral("dock.customIconColor"), QStringLiteral("#ffffff"));
+    // Start menu styling
+    m_defaults.insert(QStringLiteral("startmenu.backgroundColor"), QString());
+    m_defaults.insert(QStringLiteral("startmenu.backgroundOpacity"), -1);
+    m_defaults.insert(QStringLiteral("startmenu.foregroundColor"), QString());
+    m_defaults.insert(QStringLiteral("startmenu.accentColor"), QString());
+    m_defaults.insert(QStringLiteral("startmenu.highlightColor"), QStringLiteral("#ffffff"));
+    // Desktop styling
+    m_defaults.insert(QStringLiteral("desktop.backgroundColor"), QString());
+    m_defaults.insert(QStringLiteral("desktop.backgroundGradient"), true);
+    m_defaults.insert(QStringLiteral("desktop.iconColor"), QStringLiteral("#ffffff"));
+    m_defaults.insert(QStringLiteral("desktop.iconShadow"), true);
+    m_defaults.insert(QStringLiteral("desktop.iconGlow"), false);
+    // Window styling
+    m_defaults.insert(QStringLiteral("windows.enableAnimations"), true);
+    m_defaults.insert(QStringLiteral("windows.animationSpeed"), 1.0);
+    // Theme variants
+    m_defaults.insert(QStringLiteral("theme.followSystem"), false);
+    m_defaults.insert(QStringLiteral("theme.systemTheme"), QStringLiteral("auto"));
+
+    // ===== Panel & Dock Improvements =====
+    m_defaults.insert(QStringLiteral("panel.spacing"), 8);
+    m_defaults.insert(QStringLiteral("panel.leftSpacing"), 8);
+    m_defaults.insert(QStringLiteral("panel.rightSpacing"), 8);
+    m_defaults.insert(QStringLiteral("panel.centerDock"), false);
+    m_defaults.insert(QStringLiteral("dock.position"), QStringLiteral("left"));
+    m_defaults.insert(QStringLiteral("dock.multiRow"), false);
+    m_defaults.insert(QStringLiteral("dock.rows"), 1);
+    m_defaults.insert(QStringLiteral("dock.scrollable"), true);
+    m_defaults.insert(QStringLiteral("dock.iconSpacing"), 4);
+    m_defaults.insert(QStringLiteral("panel.zoneSpacing"), 8);
+
+    // ===== Desktop Enhancements =====
+    m_defaults.insert(QStringLiteral("desktop.wallpaperMode"), QStringLiteral("fill"));
+    m_defaults.insert(QStringLiteral("desktop.wallpaperBlur"), 0);
+    m_defaults.insert(QStringLiteral("desktop.wallpaperDarken"), 0);
+    m_defaults.insert(QStringLiteral("desktop.perMonitorWallpaper"), false);
+    m_defaults.insert(QStringLiteral("desktop.wallpaperSlideshow"), false);
+    m_defaults.insert(QStringLiteral("desktop.wallpaperSlideshowInterval"), 60);
+    m_defaults.insert(QStringLiteral("desktop.autoArrangeIcons"), true);
+    m_defaults.insert(QStringLiteral("desktop.iconTextColor"), QStringLiteral("#ffffff"));
+    m_defaults.insert(QStringLiteral("desktop.iconTextShadow"), true);
+    m_defaults.insert(QStringLiteral("desktop.showHiddenFiles"), false);
+    m_defaults.insert(QStringLiteral("desktop.doubleClickSpeed"), 500);
+
+    // ===== Notifications =====
+    m_defaults.insert(QStringLiteral("notifications.theme"), QStringLiteral("system"));
+    m_defaults.insert(QStringLiteral("notifications.customBackground"), QString());
+    m_defaults.insert(QStringLiteral("notifications.customForeground"), QString());
+    m_defaults.insert(QStringLiteral("notifications.groupByApp"), false);
+    m_defaults.insert(QStringLiteral("notifications.showAppIcon"), true);
+    m_defaults.insert(QStringLiteral("notifications.soundEnabled"), true);
+    m_defaults.insert(QStringLiteral("notifications.soundFile"), QString());
+    m_defaults.insert(QStringLiteral("notifications.doNotDisturbSchedule"), false);
+    m_defaults.insert(QStringLiteral("notifications.dndStartTime"), QStringLiteral("22:00"));
+    m_defaults.insert(QStringLiteral("notifications.dndEndTime"), QStringLiteral("08:00"));
+    m_defaults.insert(QStringLiteral("notifications.urgencyLevel"), 2);
+
+    // ===== System & Behavior =====
+    // Hotkeys
+    m_defaults.insert(QStringLiteral("hotkeys.enabled"), true);
+    m_defaults.insert(QStringLiteral("hotkeys.startMenu"), QStringLiteral("Meta"));
+    m_defaults.insert(QStringLiteral("hotkeys.runDialog"), QStringLiteral("Alt+F2"));
+    m_defaults.insert(QStringLiteral("hotkeys.settings"), QStringLiteral("Meta+,Meta+S"));
+    m_defaults.insert(QStringLiteral("hotkeys.notificationCenter"), QStringLiteral("Meta+N"));
+    m_defaults.insert(QStringLiteral("hotkeys.quickSettings"), QStringLiteral("Meta+Q"));
+    m_defaults.insert(QStringLiteral("hotkeys.lockScreen"), QStringLiteral("Meta+L"));
+    m_defaults.insert(QStringLiteral("hotkeys.logout"), QStringLiteral("Meta+Shift+Q"));
+    m_defaults.insert(QStringLiteral("hotkeys.sleep"), QStringLiteral("Meta+Shift+S"));
+    m_defaults.insert(QStringLiteral("hotkeys.reboot"), QStringLiteral("Meta+Shift+R"));
+    m_defaults.insert(QStringLiteral("hotkeys.shutdown"), QStringLiteral("Meta+Shift+P"));
+    m_defaults.insert(QStringLiteral("hotkeys.terminal"), QStringLiteral("Meta+T"));
+    m_defaults.insert(QStringLiteral("hotkeys.fileManager"), QStringLiteral("Meta+E"));
+    m_defaults.insert(QStringLiteral("hotkeys.switcher"), QStringLiteral("Alt+Tab"));
+    // Startup apps
+    m_defaults.insert(QStringLiteral("startup.apps"), QStringList());
+    m_defaults.insert(QStringLiteral("startup.delay"), 0);
+    // Window management
+    m_defaults.insert(QStringLiteral("windowRules.alwaysOnTop"), QStringList());
+    m_defaults.insert(QStringLiteral("windowRules.maximized"), QStringList());
+    // Power management
+    m_defaults.insert(QStringLiteral("power.sleepAction"), QStringLiteral("suspend"));
+    m_defaults.insert(QStringLiteral("power.lockOnSleep"), true);
+    // Clipboard
+    m_defaults.insert(QStringLiteral("clipboard.historyEnabled"), true);
+    m_defaults.insert(QStringLiteral("clipboard.historySize"), 100);
+    m_defaults.insert(QStringLiteral("clipboard.persistHistory"), true);
+
+    // ===== Performance & Features =====
+    // Animations
+    m_defaults.insert(QStringLiteral("animations.enabled"), true);
+    m_defaults.insert(QStringLiteral("animations.speed"), 1.0);
+    m_defaults.insert(QStringLiteral("animations.panelHide"), true);
+    // Caching
+    m_defaults.insert(QStringLiteral("cache.iconCache"), true);
+    m_defaults.insert(QStringLiteral("cache.searchCache"), true);
+    m_defaults.insert(QStringLiteral("cache.maxIconCacheSize"), 1000);
+    m_defaults.insert(QStringLiteral("cache.maxSearchCacheSize"), 500);
+    // Metrics
+    m_defaults.insert(QStringLiteral("system.showCpuTemp"), false);
+    m_defaults.insert(QStringLiteral("system.showGpu"), false);
+    m_defaults.insert(QStringLiteral("system.showFanSpeed"), false);
+    // Search
+    m_defaults.insert(QStringLiteral("search.maxResults"), 50);
+    m_defaults.insert(QStringLiteral("search.showCategories"), true);
+    m_defaults.insert(QStringLiteral("search.categoryIcons"), true);
+
+    // ===== Multi-monitor =====
+    m_defaults.insert(QStringLiteral("multiMonitor.perMonitorSettings"), false);
+    m_defaults.insert(QStringLiteral("multiMonitor.panelPositions"), QVariantMap());
+    m_defaults.insert(QStringLiteral("multiMonitor.wallpapers"), QVariantMap());
+
+    // ===== Plugin System Improvements =====
+    m_defaults.insert(QStringLiteral("plugins.onlineEnabled"), true);
+    m_defaults.insert(QStringLiteral("plugins.autoUpdate"), false);
+    m_defaults.insert(QStringLiteral("plugins.showDescriptions"), true);
+
     // The Rust schema knows the same keys; merge its defaults on top so a new
     // key appears here without editing this table.
     if (Rust::available()) {

@@ -26,6 +26,8 @@ Window {
         { id: "apps", label: "Applications", icon: "package" },
         { id: "system", label: "System", icon: "cpu" },
         { id: "notifications", label: "Notifications", icon: "bell" },
+        { id: "hotkeys", label: "Hotkeys", icon: "keyboard" },
+        { id: "animations", label: "Animations", icon: "sparkles" },
         { id: "plugins", label: "Plugins", icon: "puzzle" },
         { id: "about", label: "About", icon: "info" }
     ]
@@ -392,6 +394,31 @@ Window {
                         }
 
                         SettingsSection {
+                            title: "Theme variants"
+                            subtitle: "Automatically switch themes based on system preferences."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Follow system theme"
+                                settingKey: "theme.followSystem"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "System theme preference"
+                                visible: Settings.values["theme.followSystem"] === true
+                                settingKey: "theme.systemTheme"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "auto", label: "Auto-detect" },
+                                        { value: "light", label: "Light" },
+                                        { value: "dark", label: "Dark" }
+                                    ]
+                                }
+                            }
+                        }
+
+                        SettingsSection {
                             title: "Theme editor"
                             subtitle: "Colours and typography of " + (settingsWindow.themeEditorName || Theme.name)
                                       + ". Saving writes a user theme file that overrides the built-in one."
@@ -495,6 +522,90 @@ Window {
                                         visible: Theme.hasUserTheme(settingsWindow.themeEditorName)
                                         onClicked: settingsWindow.resetTheme()
                                     }
+                                }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Panel styling"
+                            subtitle: "Custom colors for the panel, independent from the theme."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Use custom panel colors"
+                                settingKey: "panel.customColors"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Panel background"
+                                visible: Settings.values["panel.customColors"] === true
+                                SettingsColorField {
+                                    onEdited: (hex) => Settings.setValue("panel.backgroundColor", hex)
+                                    onPaletteRequested: settingsWindow.openPalette(this)
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Panel foreground"
+                                visible: Settings.values["panel.customColors"] === true
+                                SettingsColorField {
+                                    onEdited: (hex) => Settings.setValue("panel.foregroundColor", hex)
+                                    onPaletteRequested: settingsWindow.openPalette(this)
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Panel opacity"
+                                visible: Settings.values["panel.customColors"] === true
+                                settingKey: "panel.backgroundOpacity"
+                                SettingsSlider { from: 0.3; to: 1.0; step: 0.01 }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Dock styling"
+                            subtitle: "Custom appearance for dock buttons."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Show labels"
+                                settingKey: "dock.showLabels"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Label position"
+                                settingKey: "dock.labelPosition"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "bottom", label: "Bottom" },
+                                        { value: "right", label: "Right" },
+                                        { value: "top", label: "Top" },
+                                        { value: "left", label: "Left" }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Icon color mode"
+                                settingKey: "dock.iconColorMode"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "theme", label: "Theme color" },
+                                        { value: "custom", label: "Custom color" },
+                                        { value: "original", label: "Original icon colors" }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Custom icon color"
+                                visible: Settings.values["dock.iconColorMode"] === "custom"
+                                settingKey: "dock.customIconColor"
+                                SettingsColorField {
+                                    onEdited: (hex) => Settings.setValue("dock.customIconColor", hex)
+                                    onPaletteRequested: settingsWindow.openPalette(this)
                                 }
                             }
                         }
@@ -730,6 +841,84 @@ Window {
                         }
 
                         SettingsSection {
+                            title: "Panel layout"
+                            subtitle: "Advanced panel positioning and spacing options."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Left spacing"
+                                settingKey: "panel.leftSpacing"
+                                SettingsSlider { from: 0; to: 64; step: 2; suffix: " px" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Right spacing"
+                                settingKey: "panel.rightSpacing"
+                                SettingsSlider { from: 0; to: 64; step: 2; suffix: " px" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Zone spacing"
+                                settingKey: "panel.zoneSpacing"
+                                SettingsSlider { from: 0; to: 24; step: 2; suffix: " px" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Dock position in panel"
+                                settingKey: "dock.position"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "left", label: "Left" },
+                                        { value: "center", label: "Center" },
+                                        { value: "right", label: "Right" }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Center dock buttons"
+                                settingKey: "panel.centerDock"
+                                SettingsSwitch {}
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Dock layout"
+                            subtitle: "Advanced dock configuration options."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Multi-row dock"
+                                settingKey: "dock.multiRow"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Number of rows"
+                                settingKey: "dock.rows"
+                                SettingsStepper { from: 1; to: 3 }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Scrollable dock"
+                                settingKey: "dock.scrollable"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Icon spacing"
+                                settingKey: "dock.iconSpacing"
+                                SettingsSlider { from: 0; to: 24; step: 2; suffix: " px" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Shrink icons on overflow"
+                                settingKey: "dock.shrinkIcons"
+                                SettingsSwitch {}
+                            }
+                        }
+
+                        SettingsSection {
                             title: "System tray"
                             subtitle: "The shell acts as the StatusNotifierWatcher of the session: "
                                       + "applications register their tray icons with it. Left click "
@@ -910,6 +1099,77 @@ Window {
                         }
 
                         SettingsSection {
+                            title: "Wallpaper"
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Wallpaper mode"
+                                settingKey: "desktop.wallpaperMode"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "fill", label: "Fill" },
+                                        { value: "fit", label: "Fit" },
+                                        { value: "stretch", label: "Stretch" },
+                                        { value: "tile", label: "Tile" },
+                                        { value: "center", label: "Center" }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Wallpaper blur"
+                                settingKey: "desktop.wallpaperBlur"
+                                SettingsSlider { from: 0; to: 50; step: 1; suffix: " px" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Wallpaper darken"
+                                settingKey: "desktop.wallpaperDarken"
+                                SettingsSlider { from: 0; to: 100; step: 5; suffix: " %" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Per-monitor wallpapers"
+                                settingKey: "desktop.perMonitorWallpaper"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Wallpaper slideshow"
+                                settingKey: "desktop.wallpaperSlideshow"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Slideshow interval"
+                                settingKey: "desktop.wallpaperSlideshowInterval"
+                                SettingsStepper { from: 10; to: 3600; step: 10; suffix: " s" }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Desktop background"
+                            subtitle: "Custom background color when no wallpaper is set."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Use gradient background"
+                                settingKey: "desktop.backgroundGradient"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Background color"
+                                visible: !Settings.values["desktop.backgroundGradient"]
+                                settingKey: "desktop.backgroundColor"
+                                SettingsColorField {
+                                    onEdited: (hex) => Settings.setValue("desktop.backgroundColor", hex)
+                                    onPaletteRequested: settingsWindow.openPalette(this)
+                                }
+                            }
+                        }
+
+                        SettingsSection {
                             title: "Icons"
 
                             SettingsRow {
@@ -940,6 +1200,39 @@ Window {
                                 width: parent.width
                                 title: "Right-click menu"
                                 settingKey: "desktop.contextMenu"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Icon color"
+                                settingKey: "desktop.iconColor"
+                                SettingsColorField {
+                                    onEdited: (hex) => Settings.setValue("desktop.iconColor", hex)
+                                    onPaletteRequested: settingsWindow.openPalette(this)
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Icon shadow"
+                                settingKey: "desktop.iconShadow"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Icon glow"
+                                settingKey: "desktop.iconGlow"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Show hidden files"
+                                settingKey: "desktop.showHiddenFiles"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Auto-arrange icons"
+                                settingKey: "desktop.autoArrangeIcons"
                                 SettingsSwitch {}
                             }
                         }
@@ -1054,6 +1347,104 @@ Window {
                                 }
                             }
                         }
+
+                        SettingsSection {
+                            title: "Startup applications"
+                            subtitle: "Applications to launch automatically when NewTeller starts."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Startup delay (seconds)"
+                                settingKey: "startup.delay"
+                                SettingsStepper { from: 0; to: 60; step: 1; suffix: " s" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Startup applications list"
+
+                                Column {
+                                    width: 420
+                                    spacing: 6
+
+                                    Repeater {
+                                        model: Settings.value("startup.apps", []) || []
+
+                                        delegate: Row {
+                                            required property var modelData
+                                            required property int index
+                                            spacing: 6
+
+                                            Text {
+                                                width: 330
+                                                text: modelData
+                                                color: Theme.foreground
+                                                font.family: Theme.fontFamily
+                                                font.pointSize: Theme.fontSize - 1
+                                                elide: Text.ElideMiddle
+                                                anchors.verticalCenter: parent.verticalCenter
+                                            }
+                                            TaskButton {
+                                                width: 28
+                                                height: 28
+                                                iconName: "x"
+                                                onClicked: {
+                                                    const list = (Settings.value("startup.apps", []) || []).slice();
+                                                    list.splice(index, 1);
+                                                    Settings.setValue("startup.apps", list);
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    Row {
+                                        spacing: 6
+                                        SettingsTextField {
+                                            id: startupField
+                                            width: 300
+                                            placeholder: "Application name or .desktop file"
+                                        }
+                                        TaskButton {
+                                            iconName: "plus"
+                                            label: "Add"
+                                            onClicked: {
+                                                const id = startupField.text.trim();
+                                                if (id.length === 0)
+                                                    return;
+                                                const list = (Settings.value("startup.apps", []) || []).slice();
+                                                if (list.indexOf(id) < 0)
+                                                    list.push(id);
+                                                Settings.setValue("startup.apps", list);
+                                                startupField.text = "";
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Search"
+                            subtitle: "Application search behavior."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Max search results"
+                                settingKey: "search.maxResults"
+                                SettingsStepper { from: 10; to: 500; step: 10 }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Show category chips"
+                                settingKey: "search.showCategories"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Show category icons"
+                                settingKey: "search.categoryIcons"
+                                SettingsSwitch {}
+                            }
+                        }
                     }
                 }
             }
@@ -1092,6 +1483,24 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: "Show CPU temperature"
+                                settingKey: "system.showCpuTemp"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Show GPU info"
+                                settingKey: "system.showGpu"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Show fan speed"
+                                settingKey: "system.showFanSpeed"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: "Battery"
                                 settingKey: "system.battery"
                                 SettingsSwitch {}
@@ -1114,6 +1523,64 @@ Window {
                                 title: "Config file watching"
                                 settingKey: "watch.debounce"
                                 SettingsStepper { from: 0; to: 10000; step: 50; suffix: " ms" }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Caching"
+                            subtitle: "Improve performance by caching frequently used data."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Icon cache"
+                                settingKey: "cache.iconCache"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Max icon cache size"
+                                visible: Settings.values["cache.iconCache"] === true
+                                settingKey: "cache.maxIconCacheSize"
+                                SettingsStepper { from: 100; to: 5000; step: 100 }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Search cache"
+                                settingKey: "cache.searchCache"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Max search cache size"
+                                visible: Settings.values["cache.searchCache"] === true
+                                settingKey: "cache.maxSearchCacheSize"
+                                SettingsStepper { from: 100; to: 2000; step: 100 }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Clipboard"
+                            subtitle: "Clipboard history and management."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Enable clipboard history"
+                                settingKey: "clipboard.historyEnabled"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "History size"
+                                visible: Settings.values["clipboard.historyEnabled"] === true
+                                settingKey: "clipboard.historySize"
+                                SettingsStepper { from: 10; to: 1000; step: 10 }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Persist history across restarts"
+                                visible: Settings.values["clipboard.historyEnabled"] === true
+                                settingKey: "clipboard.persistHistory"
+                                SettingsSwitch {}
                             }
                         }
                     }
@@ -1196,6 +1663,100 @@ Window {
                         }
 
                         SettingsSection {
+                            title: "Appearance"
+                            subtitle: "Customize the look of notifications."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Notification theme"
+                                settingKey: "notifications.theme"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "system", label: "System theme" },
+                                        { value: "light", label: "Light" },
+                                        { value: "dark", label: "Dark" },
+                                        { value: "custom", label: "Custom colors" }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Custom background"
+                                visible: Settings.values["notifications.theme"] === "custom"
+                                settingKey: "notifications.customBackground"
+                                SettingsColorField {
+                                    onEdited: (hex) => Settings.setValue("notifications.customBackground", hex)
+                                    onPaletteRequested: settingsWindow.openPalette(this)
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Custom foreground"
+                                visible: Settings.values["notifications.theme"] === "custom"
+                                settingKey: "notifications.customForeground"
+                                SettingsColorField {
+                                    onEdited: (hex) => Settings.setValue("notifications.customForeground", hex)
+                                    onPaletteRequested: settingsWindow.openPalette(this)
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Group notifications by app"
+                                settingKey: "notifications.groupByApp"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Show app icon"
+                                settingKey: "notifications.showAppIcon"
+                                SettingsSwitch {}
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Sounds"
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Enable notification sounds"
+                                settingKey: "notifications.soundEnabled"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Sound file"
+                                visible: Settings.values["notifications.soundEnabled"] === true
+                                settingKey: "notifications.soundFile"
+                                SettingsTextField { width: 260; placeholder: "Leave empty for default" }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Do Not Disturb scheduling"
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Enable scheduled DND"
+                                settingKey: "notifications.doNotDisturbSchedule"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Start time"
+                                visible: Settings.values["notifications.doNotDisturbSchedule"] === true
+                                settingKey: "notifications.dndStartTime"
+                                SettingsTextField { width: 120; placeholder: "HH:mm (24h)" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "End time"
+                                visible: Settings.values["notifications.doNotDisturbSchedule"] === true
+                                settingKey: "notifications.dndEndTime"
+                                SettingsTextField { width: 120; placeholder: "HH:mm (24h)" }
+                            }
+                        }
+
+                        SettingsSection {
                             title: "Daemon"
                             subtitle: "When another notification daemon owns the session, NewTeller "
                                       + "only shows the notifications that arrive on its own socket."
@@ -1274,6 +1835,12 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: "Show plugin descriptions"
+                                settingKey: "plugins.showDescriptions"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: "Rescan"
                                 TaskButton {
                                     iconName: "rotate-cw"
@@ -1289,7 +1856,9 @@ Window {
                                     required property var modelData
                                     width: parent.width
                                     title: modelData.name
-                                    subtitle: modelData.id + "  ·  " + modelData.type
+                                    subtitle: (Settings.values["plugins.showDescriptions"] === true && modelData.description 
+                                              ? modelData.description + "  ·  " : "") +
+                                             modelData.id + "  ·  " + modelData.type
                                               + "  ·  version "
                                               + (modelData.version || "1.0.0")
 
@@ -1300,13 +1869,288 @@ Window {
                                 }
                             }
                         }
+
+                        SettingsSection {
+                            title: "Plugin marketplace"
+                            subtitle: "Online plugin discovery (experimental)."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Enable online plugins"
+                                settingKey: "plugins.onlineEnabled"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Auto-update plugins"
+                                settingKey: "plugins.autoUpdate"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Browse plugins"
+                                TaskButton {
+                                    iconName: "globe"
+                                    label: "Open plugin marketplace"
+                                    visible: Settings.values["plugins.onlineEnabled"] === true
+                                    onClicked: Shell.openUrl("https://github.com/fourtexec/newteller-plugins")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---- Hotkeys ----------------------------------------------------
+            Item {
+                Flickable {
+                    id: hotkeysScroll
+                    anchors.fill: parent
+                    contentHeight: hotkeysColumn.implicitHeight + 24
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Column {
+                        id: hotkeysColumn
+                        x: 16
+                        y: 12
+                        width: hotkeysScroll.width - 32
+                        spacing: 16
+
+                        SettingsSection {
+                            title: "Keyboard shortcuts"
+                            subtitle: "Global hotkeys for shell actions. Multiple keys can be separated by commas."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Enable hotkeys"
+                                settingKey: "hotkeys.enabled"
+                                SettingsSwitch {}
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Shell actions"
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Open start menu"
+                                settingKey: "hotkeys.startMenu"
+                                SettingsTextField { width: 180; placeholder: "Meta (Windows key)" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Run dialog"
+                                settingKey: "hotkeys.runDialog"
+                                SettingsTextField { width: 180; placeholder: "Alt+F2" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Open settings"
+                                settingKey: "hotkeys.settings"
+                                SettingsTextField { width: 180; placeholder: "Meta+, or Meta+S" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Open notification centre"
+                                settingKey: "hotkeys.notificationCenter"
+                                SettingsTextField { width: 180; placeholder: "Meta+N" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Open quick settings"
+                                settingKey: "hotkeys.quickSettings"
+                                SettingsTextField { width: 180; placeholder: "Meta+Q" }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "System actions"
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Lock screen"
+                                settingKey: "hotkeys.lockScreen"
+                                SettingsTextField { width: 180; placeholder: "Meta+L" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Log out"
+                                settingKey: "hotkeys.logout"
+                                SettingsTextField { width: 180; placeholder: "Meta+Shift+Q" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Sleep"
+                                settingKey: "hotkeys.sleep"
+                                SettingsTextField { width: 180; placeholder: "Meta+Shift+S" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Reboot"
+                                settingKey: "hotkeys.reboot"
+                                SettingsTextField { width: 180; placeholder: "Meta+Shift+R" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Shut down"
+                                settingKey: "hotkeys.shutdown"
+                                SettingsTextField { width: 180; placeholder: "Meta+Shift+P" }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Application launchers"
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Open terminal"
+                                settingKey: "hotkeys.terminal"
+                                SettingsTextField { width: 180; placeholder: "Meta+T" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Open file manager"
+                                settingKey: "hotkeys.fileManager"
+                                SettingsTextField { width: 180; placeholder: "Meta+E" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Application switcher"
+                                settingKey: "hotkeys.switcher"
+                                SettingsTextField { width: 180; placeholder: "Alt+Tab" }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Hotkey reference"
+                            subtitle: "Modifier keys: Meta (Windows), Ctrl, Alt, Shift. Combine with +. Example: Ctrl+Alt+T"
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Available keys"
+                                subtitle: "Letters (A-Z), numbers (0-9), F1-F12, arrow keys, Enter, Space, Tab, Escape, Backspace, Delete, Insert, Home, End, PageUp, PageDown"
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---- Animations ------------------------------------------------
+            Item {
+                Flickable {
+                    id: animationsScroll
+                    anchors.fill: parent
+                    contentHeight: animationsColumn.implicitHeight + 24
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Column {
+                        id: animationsColumn
+                        x: 16
+                        y: 12
+                        width: animationsScroll.width - 32
+                        spacing: 16
+
+                        SettingsSection {
+                            title: "Animation controls"
+                            subtitle: "Enable or disable animations and adjust their speed."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Enable animations globally"
+                                settingKey: "animations.enabled"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Animation speed multiplier"
+                                subtitle: "1.0 = normal speed, 0.5 = half speed, 2.0 = double speed"
+                                settingKey: "animations.speed"
+                                SettingsSlider { from: 0.1; to: 3.0; step: 0.1; onChanged: (v) => Settings.setValue("animations.speed", Math.round(v * 10) / 10) }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Panel animations"
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Panel hide/show animation"
+                                settingKey: "animations.panelHide"
+                                SettingsSwitch {}
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Window animations"
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Window open/close animations"
+                                settingKey: "windows.enableAnimations"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Window animation speed"
+                                settingKey: "windows.animationSpeed"
+                                SettingsSlider { from: 0.1; to: 3.0; step: 0.1; onChanged: (v) => Settings.setValue("windows.animationSpeed", Math.round(v * 10) / 10) }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Preview"
+                            subtitle: "Test animation speed with this demo"
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Animation demo"
+                                TaskButton {
+                                    iconName: "play"
+                                    label: "Test animation"
+                                    onClicked: {
+                                        // Create a simple animation demo
+                                        demoBox.color = Theme.accent
+                                        demoBox.opacity = 0
+                                        demoBox.visible = true
+                                        demoFade.restart()
+                                    }
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                Item {
+                                    width: 200
+                                    height: 60
+                                    Rectangle {
+                                        id: demoBox
+                                        visible: false
+                                        width: 40
+                                        height: 40
+                                        radius: 8
+                                        color: Theme.surface
+                                        anchors.centerIn: parent
+                                        
+                                        NumberAnimation {
+                                            id: demoFade
+                                            target: demoBox
+                                            property: "opacity"
+                                            from: 0
+                                            to: 1
+                                            duration: 500 * (Settings.values["animations.speed"] || 1.0)
+                                            easing.type: Easing.OutQuad
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
 
             // ---- About ------------------------------------------------------
             Item {
-                Flickable {
                     id: aboutScroll
                     anchors.fill: parent
                     contentHeight: aboutColumn.implicitHeight + 24

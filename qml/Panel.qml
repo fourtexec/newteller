@@ -55,7 +55,24 @@ Window {
                                      && Tray.count > 0
     // Icon size after the adaptive shrink pass (recomputed in rebuildDock).
     property int effectiveIconSize: dockIconSize
-    property bool showDockLabels: false
+    readonly property bool showDockLabels: Settings.values["dock.showLabels"] === true
+    readonly property string dockLabelPosition: Settings.values["dock.labelPosition"] || "bottom"
+    readonly property string dockIconColorMode: Settings.values["dock.iconColorMode"] || "theme"
+    readonly property string dockCustomIconColor: Settings.values["dock.customIconColor"] || "#ffffff"
+    readonly property bool useCustomPanelColors: Settings.values["panel.customColors"] === true
+    readonly property string panelBackgroundColor: Settings.values["panel.backgroundColor"] || ""
+    readonly property real panelBackgroundOpacity: Settings.values["panel.backgroundOpacity"] || 0.92
+    readonly property string panelForegroundColor: Settings.values["panel.foregroundColor"] || ""
+    readonly property int panelSpacing: Settings.values["panel.spacing"] || 8
+    readonly property int panelLeftSpacing: Settings.values["panel.leftSpacing"] || 8
+    readonly property int panelRightSpacing: Settings.values["panel.rightSpacing"] || 8
+    readonly property int panelZoneSpacing: Settings.values["panel.zoneSpacing"] || 8
+    readonly property string dockPositionInPanel: Settings.values["dock.position"] || "left"
+    readonly property bool centerDock: Settings.values["panel.centerDock"] === true
+    readonly property bool dockMultiRow: Settings.values["dock.multiRow"] === true
+    readonly property int dockRows: Settings.values["dock.rows"] || 1
+    readonly property bool dockScrollable: Settings.values["dock.scrollable"] === true
+    readonly property int dockIconSpacing: Settings.values["dock.iconSpacing"] || 4
     // One entry per dock button:
     //   { appId, app, windows: [], running, active, badge, title, pinned, background }
     // `dockEntries` is the combined list (main zone first), so the dock menu
@@ -363,7 +380,12 @@ Window {
                     : (entry.appId.length > 0 ? "square" : "app-window")
             label: panel.showDockLabels && entry.title && entry.title.length > 0
                    ? entry.title : ""
+            dockLabel: panel.showDockLabels && entry.title && entry.title.length > 0
+                      ? entry.title : ""
             iconSize: panel.effectiveIconSize
+            showDockLabels: panel.showDockLabels
+            dockIconColorMode: panel.dockIconColorMode
+            dockCustomIconColor: panel.dockCustomIconColor
             running: entry.running
             active: entry.active
             dimmed: entry.background === true
@@ -776,7 +798,12 @@ Window {
 
         Rectangle {
             radius: Theme.radius
-            color: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, Theme.opacity)
+            color: panel.useCustomPanelColors && panel.panelBackgroundColor.length > 0
+                   ? Qt.rgba(Qt.color(panel.panelBackgroundColor).r, 
+                             Qt.color(panel.panelBackgroundColor).g, 
+                             Qt.color(panel.panelBackgroundColor).b, 
+                             panel.panelBackgroundOpacity)
+                   : Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, Theme.opacity)
             border.width: 1
             border.color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.6)
 

@@ -1,0 +1,17 @@
+{
+  "id": "desktop-calendar",
+  "name": "Desktop Calendar",
+  "version": "1.0.0",
+  "type": "desktop",
+  "entry": "Widget.qml",
+  "x": 60,
+  "y": 300,
+  "order": 40,
+  "description": "Monthly calendar widget with current date highlighting.",
+  "settings": {
+    "showWeekNumbers": false,
+    "firstDayOfWeek": 0,
+    "showHeader": true,
+    "showTodayMarker": true
+  }
+}

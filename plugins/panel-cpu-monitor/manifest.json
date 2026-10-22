@@ -1,0 +1,15 @@
+{
+  "id": "panel-cpu-monitor",
+  "name": "CPU Monitor",
+  "version": "1.0.0",
+  "type": "panel",
+  "entry": "Widget.qml",
+  "order": 5,
+  "description": "Shows CPU usage as a bar graph in the panel.",
+  "settings": {
+    "showPercentage": true,
+    "barColor": "accent",
+    "width": 80,
+    "showPerCore": false
+  }
+}
