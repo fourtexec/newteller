@@ -358,11 +358,22 @@ pub const SCHEMA: &[KeySchema] = &[
     KeySchema { key: "dock.separateBackground", kind: "bool", default_json: "true", doc: "Show applications that only have minimised windows in a separate zone at the end of the dock." },
     KeySchema { key: "dock.shrinkIcons", kind: "bool", default_json: "true", doc: "Shrink dock icons automatically when many applications run at once." },
     KeySchema { key: "dock.thumbnails", kind: "bool", default_json: "true", doc: "Show a live preview of every window in the dock menu (X11; Wayland toplevels have no preview protocol)." },
+    KeySchema { key: "dock.material", kind: "string", default_json: "\"none\"", doc: "Dock button surface: none, opaque, translucent, frosted or liquid." },
+    KeySchema { key: "dock.backgroundColor", kind: "string", default_json: "\"\"", doc: "Dock button background colour as hex; empty follows the theme." },
+    KeySchema { key: "dock.backgroundOpacity", kind: "number", default_json: "0.5", doc: "Dock button surface opacity from 0 to 1." },
+    KeySchema { key: "dock.hoverOpacity", kind: "number", default_json: "0.15", doc: "Dock button hover tint opacity." },
+    KeySchema { key: "dock.activeOpacity", kind: "number", default_json: "0.30", doc: "Dock button active tint opacity." },
     KeySchema { key: "tray.enabled", kind: "bool", default_json: "true", doc: "Act as the session's StatusNotifierWatcher and show the tray icons of the applications that register with it." },
     KeySchema { key: "tray.menus", kind: "bool", default_json: "true", doc: "Render the DBusMenu of tray items instead of asking the application to pop up its own context menu." },
+    KeySchema { key: "panel.material", kind: "string", default_json: "\"theme\"", doc: "Panel surface: theme, opaque, translucent, frosted or liquid." },
+    KeySchema { key: "panel.customColors", kind: "bool", default_json: "false", doc: "Use custom panel background and foreground colours." },
+    KeySchema { key: "panel.backgroundColor", kind: "string", default_json: "\"\"", doc: "Custom panel background colour as hex." },
+    KeySchema { key: "panel.backgroundOpacity", kind: "number", default_json: "0.92", doc: "Panel background opacity when using custom theme colours." },
+    KeySchema { key: "panel.foregroundColor", kind: "string", default_json: "\"\"", doc: "Custom panel foreground colour as hex." },
     KeySchema { key: "windows.style", kind: "string", default_json: "\"card\"", doc: "Frame style of the shell windows: card, glass, flat or outline." },
+    KeySchema { key: "windows.material", kind: "string", default_json: "\"theme\"", doc: "Shell window surface: theme, opaque, translucent, frosted or liquid." },
     KeySchema { key: "windows.radius", kind: "int", default_json: "-1", doc: "Corner radius of the shell windows in pixels; -1 follows the theme." },
-    KeySchema { key: "windows.opacityPercent", kind: "int", default_json: "0", doc: "Window background opacity in percent; 0 follows the theme." },
+    KeySchema { key: "windows.opacityPercent", kind: "int", default_json: "0", doc: "Window background opacity in percent; 0 uses the selected material preset." },
     KeySchema { key: "windows.borderWidth", kind: "int", default_json: "-1", doc: "Window border width in pixels; -1 follows the theme." },
     KeySchema { key: "windows.borderColor", kind: "string", default_json: "\"\"", doc: "Window border colour as hex; empty follows the theme." },
     KeySchema { key: "windows.shadow", kind: "int", default_json: "1", doc: "Window shadow strength, 0 (none) to 3 (strong)." },
@@ -371,6 +382,12 @@ pub const SCHEMA: &[KeySchema] = &[
     KeySchema { key: "notifications.position", kind: "string", default_json: "\"top-right\"", doc: "Popup corner: top-left, top-center, top-right, bottom-left, bottom-center or bottom-right." },
     KeySchema { key: "notifications.duration", kind: "int", default_json: "6", doc: "Seconds a popup stays up; 0 keeps it until it is clicked." },
     KeySchema { key: "notifications.historyLimit", kind: "int", default_json: "20", doc: "How many recent notifications the daemon keeps." },
+    KeySchema { key: "notifications.theme", kind: "string", default_json: "\"system\"", doc: "Notification colours: system, light, dark or custom." },
+    KeySchema { key: "notifications.material", kind: "string", default_json: "\"theme\"", doc: "Notification surface: theme, opaque, translucent, frosted or liquid." },
+    KeySchema { key: "notifications.opacityPercent", kind: "int", default_json: "0", doc: "Notification opacity in percent; 0 uses the material preset." },
+    KeySchema { key: "notifications.cornerRadius", kind: "int", default_json: "-1", doc: "Notification corner radius in pixels; -1 follows the shell window radius." },
+    KeySchema { key: "notifications.customBackground", kind: "string", default_json: "\"\"", doc: "Custom notification background colour as hex." },
+    KeySchema { key: "notifications.customForeground", kind: "string", default_json: "\"\"", doc: "Custom notification foreground colour as hex." },
     KeySchema { key: "startmenu.width", kind: "int", default_json: "440", doc: "Start menu width." },
     KeySchema { key: "startmenu.height", kind: "int", default_json: "580", doc: "Start menu height." },
     KeySchema { key: "startmenu.limit", kind: "int", default_json: "200", doc: "Maximum number of search results." },
@@ -633,6 +650,8 @@ fn range_problem(key: &str, value: &Value) -> Option<String> {
         "windows.shadow" => (0, 3),
         "notifications.duration" => (0, 3600),
         "notifications.historyLimit" => (5, 200),
+        "notifications.opacityPercent" => (0, 100),
+        "notifications.cornerRadius" => (-1, 32),
         "run.historyLimit" => (1, 100),
         "startmenu.width" => (200, 4096),
         "startmenu.height" => (200, 4096),
@@ -873,6 +892,37 @@ mod tests {
         assert!(schema_for("panel.height").is_some());
         assert!(schema_for("nope").is_none());
         assert!(!defaults().is_empty());
+    }
+
+    #[test]
+    fn surface_material_settings_are_known_and_have_matching_defaults() {
+        let default_values = defaults();
+        assert_eq!(default_values.get("panel.material").unwrap(), &Value::from("theme"));
+        assert_eq!(default_values.get("dock.material").unwrap(), &Value::from("none"));
+        assert_eq!(default_values.get("windows.material").unwrap(), &Value::from("theme"));
+        assert_eq!(default_values.get("notifications.material").unwrap(), &Value::from("theme"));
+
+        let mut config = Map::new();
+        config.insert("panel.material".to_string(), Value::from("frosted"));
+        config.insert("dock.material".to_string(), Value::from("liquid"));
+        config.insert("windows.material".to_string(), Value::from("translucent"));
+        config.insert("notifications.material".to_string(), Value::from("opaque"));
+        config.insert("notifications.opacityPercent".to_string(), Value::from(50));
+        config.insert("notifications.cornerRadius".to_string(), Value::from(12));
+        let issues = validate(&Value::Object(config));
+        for key in [
+            "panel.material",
+            "dock.material",
+            "windows.material",
+            "notifications.material",
+            "notifications.opacityPercent",
+            "notifications.cornerRadius",
+        ] {
+            assert!(
+                !issues.iter().any(|issue| issue.key == key && issue.level != "info"),
+                "{key} should be a valid surface setting"
+            );
+        }
     }
 
     #[test]

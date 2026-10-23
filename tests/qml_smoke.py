@@ -197,6 +197,27 @@ class Settings(QObject):
             "desktop.wallpaper": "",
             "run.history": ["cmatrix", "htop"],
             "run.historyLimit": 25,
+            # Surfaces: the same defaults as src/settings.cpp, so the material
+            # bindings take their real code paths in the test.
+            "panel.material": "theme",
+            "panel.customColors": False,
+            "panel.backgroundColor": "",
+            "panel.backgroundOpacity": 0.92,
+            "panel.foregroundColor": "",
+            "dock.material": "none",
+            "dock.backgroundColor": "",
+            "dock.backgroundOpacity": 0.5,
+            "dock.hoverOpacity": 0.15,
+            "dock.activeOpacity": 0.30,
+            "windows.style": "card",
+            "windows.material": "theme",
+            "windows.radius": -1,
+            "windows.opacityPercent": 0,
+            "windows.shadow": 1,
+            "notifications.theme": "system",
+            "notifications.material": "theme",
+            "notifications.opacityPercent": 0,
+            "notifications.cornerRadius": -1,
         }
 
     @Property("QVariantMap", notify=valuesChanged)
@@ -268,6 +289,14 @@ class Theme(QObject):
     radius = _const(8, int)
     fontSize = _const(10, int)
     fontFamily = _const("Sans", str)
+
+    @Slot(QColor, QColor, float, result=QColor)
+    def mix(self, a, b, t):
+        t = max(0.0, min(1.0, t))
+        return QColor.fromRgbF(a.redF() + (b.redF() - a.redF()) * t,
+                               a.greenF() + (b.greenF() - a.greenF()) * t,
+                               a.blueF() + (b.blueF() - a.blueF()) * t,
+                               a.alphaF() + (b.alphaF() - a.alphaF()) * t)
 
     @Slot(result="QVariantList")
     def availableThemes(self):
@@ -893,6 +922,32 @@ def main():
     on_disk = {os.path.basename(p) for p in glob.glob(os.path.join(icon_dir, "*.svg"))}
     unlisted = sorted(on_disk - qrc_icons)
     check(not unlisted, f"every icons/ file is listed in resources.qrc (unlisted: {unlisted})")
+
+    # Every key the QML reads or the settings pages edit has to exist in the
+    # C++ defaults (or the Rust schema): a typo would silently read as
+    # undefined and the control would look broken instead of failing loudly.
+    cpp_defaults = set(re.findall(r'm_defaults\.insert\(QStringLiteral\("([^"]+)"\)',
+                                  open(os.path.join(ROOT, "src", "settings.cpp"),
+                                       encoding="utf-8").read()))
+    rust_schema = set(re.findall(r'KeySchema \{ key: "([^"]+)"',
+                                 open(os.path.join(ROOT, "rust", "crates", "newteller-core",
+                                                   "src", "config", "mod.rs"),
+                                      encoding="utf-8").read()))
+    known_keys = cpp_defaults | rust_schema
+    used_keys = set()
+    for qml in glob.glob(os.path.join(ROOT, "qml", "*.qml")) + \
+               glob.glob(os.path.join(ROOT, "plugins", "*", "Widget.qml")):
+        text = open(qml, encoding="utf-8").read()
+        used_keys.update(re.findall(r'Settings\.values\[\s*"([^"]+)"\s*\]', text))
+        used_keys.update(re.findall(r'(?:Settings\.value|Settings\.setValue|Settings\.reset)\(\s*"([^"]+)"',
+                                    text))
+        used_keys.update(re.findall(r'settingKey:\s*"([^"]+)"', text))
+        used_keys.update(re.findall(r'Settings\.defaults\(\)\["([^"]+)"\]', text))
+    unknown_keys = sorted(used_keys - known_keys)
+    check(not unknown_keys,
+          f"every Settings key used in QML has a default (missing: {unknown_keys})")
+    check({"panel.material", "dock.material", "windows.material", "notifications.material"}
+          <= known_keys, "the surface material keys are known to the settings core")
 
     engine.load(QUrl("qrc:/qml/Main.qml"))
     if not engine.rootObjects():

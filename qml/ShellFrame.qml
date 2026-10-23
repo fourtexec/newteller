@@ -8,8 +8,9 @@ import QtQuick
 // follow-the-theme fallback so the frame always looks complete:
 //
 //   windows.style           card | glass | flat | outline
+//   windows.material        theme | opaque | translucent | frosted | liquid
 //   windows.radius          corner radius in px; -1 follows the theme
-//   windows.opacityPercent  window background opacity; 0 follows the theme
+//   windows.opacityPercent  window background opacity; 0 uses the material preset
 //   windows.borderWidth     border width in px; -1 follows the theme
 //   windows.borderColor     hex colour; empty follows the theme
 //   windows.shadow          0 (none) .. 3 (strong)
@@ -35,6 +36,13 @@ Rectangle {
 
     // The point the card scales from while opening (Item.Center by default).
     property int openOrigin: Item.Center
+    // Per-surface overrides let notifications and their history window use
+    // their own material without changing the rest of the shell.
+    property string materialOverride: ""
+    property color backgroundColorOverride: Theme.background
+    property bool useBackgroundColorOverride: false
+    property int opacityPercentOverride: -1
+    property int cornerRadiusOverride: -1
     // Set between playClose() and the moment the card has faded away.
     property bool closing: false
     // The hide callback handed to playClose().
@@ -121,17 +129,42 @@ Rectangle {
     transformOrigin: frame.openOrigin
 
     readonly property string style: Settings.values["windows.style"] || "card"
+    readonly property string surfaceMaterial: {
+        const configured = frame.materialOverride.length > 0
+                           ? frame.materialOverride : Settings.values["windows.material"];
+        if (!configured || configured === "theme")
+            return frame.style === "glass" ? "frosted" : "theme";
+        return ["opaque", "translucent", "frosted", "liquid", "none"].indexOf(configured) >= 0
+               ? configured : "theme";
+    }
     readonly property int shadow: style === "flat" || style === "outline"
                                   ? 0 : Math.max(0, Math.min(3, Settings.values["windows.shadow"] ?? 1))
     // Room between the window edge and the card; the shadow lives there.
     readonly property int inset: shadow > 0 ? 2 + 2 * shadow : 2
     readonly property int effRadius: {
+        if (frame.cornerRadiusOverride >= 0)
+            return Math.min(32, frame.cornerRadiusOverride);
         const r = Settings.values["windows.radius"];
         return (r === undefined || r < 0) ? Theme.radius + 2 : Math.min(32, r);
     }
     readonly property real effOpacity: {
-        const p = Settings.values["windows.opacityPercent"];
-        return (!p || p <= 0) ? Theme.opacity : Math.max(0.15, Math.min(1, p / 100));
+        const configured = frame.opacityPercentOverride >= 0
+                           ? frame.opacityPercentOverride : Settings.values["windows.opacityPercent"];
+        if (configured > 0)
+            return Math.max(0.15, Math.min(1, configured / 100));
+        const materialSetting = frame.materialOverride.length > 0
+                                ? frame.materialOverride : Settings.values["windows.material"];
+        if (!materialSetting || materialSetting === "theme") {
+            if (frame.style === "flat") return Math.max(Theme.opacity, 0.97);
+            if (frame.style === "outline") return Theme.opacity * 0.45;
+            if (frame.style === "glass") return Theme.opacity * 0.72;
+        }
+        if (frame.surfaceMaterial === "opaque") return 1;
+        if (frame.surfaceMaterial === "translucent") return 0.5;
+        if (frame.surfaceMaterial === "frosted") return 0.68;
+        if (frame.surfaceMaterial === "liquid") return 0.5;
+        if (frame.surfaceMaterial === "none") return 0;
+        return Theme.opacity;
     }
     readonly property int effBorderWidth: {
         const w = Settings.values["windows.borderWidth"];
@@ -171,41 +204,19 @@ Rectangle {
         anchors.fill: parent
         anchors.margins: frame.inset
         radius: frame.effRadius
-        border.width: frame.style === "flat" ? 0 : frame.effBorderWidth
-        border.color: {
-            const base = Qt.rgba(frame.effBorderColor.r, frame.effBorderColor.g,
-                                 frame.effBorderColor.b, 0.6);
-            if (frame.style === "outline")
-                return Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.85);
-            if (frame.style === "glass")
-                return Qt.rgba(frame.effBorderColor.r, frame.effBorderColor.g,
-                               frame.effBorderColor.b, 0.75);
-            return base;
-        }
-        color: {
-            const bg = Theme.background;
-            if (frame.style === "flat")
-                return Qt.rgba(bg.r, bg.g, bg.b, Math.max(frame.effOpacity, 0.97));
-            if (frame.style === "outline")
-                return Qt.rgba(bg.r, bg.g, bg.b, frame.effOpacity * 0.45);
-            if (frame.style === "glass")
-                return Qt.rgba(bg.r, bg.g, bg.b, frame.effOpacity * 0.72);
-            return Qt.rgba(bg.r, bg.g, bg.b, frame.effOpacity);
-        }
+        color: "transparent"
+        border.width: 0
 
-        // Glass: a soft light from the top, under the content.
-        Rectangle {
-            visible: frame.style === "glass"
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.top: parent.top
-            height: parent.height / 2
-            radius: parent.radius
-            z: -1
-            gradient: Gradient {
-                GradientStop { position: 0.0; color: Qt.rgba(1, 1, 1, 0.10) }
-                GradientStop { position: 1.0; color: "transparent" }
-            }
+        SurfaceStyle {
+            anchors.fill: parent
+            material: frame.surfaceMaterial
+            materialOpacity: frame.effOpacity
+            baseColor: frame.useBackgroundColorOverride ? frame.backgroundColorOverride : Theme.background
+            cornerRadius: card.radius
+            borderWidth: frame.style === "flat" ? 0 : frame.effBorderWidth
+            borderColor: frame.style === "outline" ? Theme.accent : frame.effBorderColor
+            borderOpacity: frame.style === "outline" ? 0.9 : frame.style === "glass" ? 0.78 : 0.6
+            effectStrength: frame.style === "glass" ? 1.0 : 0.85
         }
     }
 }

@@ -18,6 +18,7 @@ Window {
     readonly property int cardWidth: 344
     // Newest at the bottom, at most four cards on screen.
     readonly property var shown: (Notifications.active || []).slice(-4)
+    readonly property NotificationAppearance appearance: NotificationAppearance {}
     readonly property int framePad: 8
     // Cards slide in from, and back out towards, the screen edge they are
     // pinned to.
@@ -218,6 +219,11 @@ Window {
             id: card
             width: stack.width
             height: cardColumn.implicitHeight + 26
+            materialOverride: notif.appearance.material
+            backgroundColorOverride: notif.appearance.background
+            useBackgroundColorOverride: true
+            opacityPercentOverride: notif.appearance.opacityPercent
+            cornerRadiusOverride: notif.appearance.cornerRadius
 
             readonly property var entry: ({
                 id: model.id,
@@ -267,7 +273,7 @@ Window {
                     Layout.fillHeight: true
                     Layout.alignment: Qt.AlignLeft
                     radius: 1.5
-                    color: Theme.accent
+                    color: notif.appearance.accent
                 }
 
                 Item {
@@ -277,9 +283,11 @@ Window {
                     Rectangle {
                         anchors.fill: parent
                         radius: 12
-                        color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
+                        color: Qt.rgba(notif.appearance.accent.r, notif.appearance.accent.g,
+                                      notif.appearance.accent.b, 0.18)
                         border.width: 1
-                        border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35)
+                        border.color: Qt.rgba(notif.appearance.accent.r, notif.appearance.accent.g,
+                                              notif.appearance.accent.b, 0.35)
                         Image {
                             anchors.centerIn: parent
                             width: 22
@@ -289,7 +297,7 @@ Window {
                             fillMode: Image.PreserveAspectFit
                             smooth: true
                             source: Shell.tintedIcon(card.entry.icon && card.entry.icon.length > 0
-                                                     ? card.entry.icon : "bell", Theme.foreground)
+                                                     ? card.entry.icon : "bell", notif.appearance.foreground)
                         }
                     }
                 }
@@ -303,7 +311,7 @@ Window {
                         Layout.fillWidth: true
                         visible: (card.entry.app || "").length > 0
                         text: (card.entry.app || "").toUpperCase()
-                        color: Theme.muted
+                        color: notif.appearance.muted
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSize - 3
                         font.letterSpacing: 0.8
@@ -313,7 +321,7 @@ Window {
                         Layout.fillWidth: true
                         visible: (card.entry.summary || "").length > 0
                         text: card.entry.summary || ""
-                        color: Theme.foreground
+                        color: notif.appearance.foreground
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSize + 1
                         font.bold: true
@@ -323,8 +331,8 @@ Window {
                         Layout.fillWidth: true
                         visible: (card.entry.body || "").length > 0
                         text: card.entry.body || ""
-                        color: Qt.rgba(Theme.foreground.r, Theme.foreground.g,
-                                       Theme.foreground.b, 0.85)
+                        color: Qt.rgba(notif.appearance.foreground.r, notif.appearance.foreground.g,
+                                       notif.appearance.foreground.b, 0.88)
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSize
                         wrapMode: Text.Wrap
@@ -385,7 +393,7 @@ Window {
                     anchors.bottom: parent.bottom
                     width: parent.width * card.progress
                     radius: 1.5
-                    color: Theme.accent
+                    color: notif.appearance.accent
                 }
             }
 

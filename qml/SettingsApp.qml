@@ -528,8 +528,23 @@ Window {
 
                         SettingsSection {
                             title: "Panel styling"
-                            subtitle: "Custom colors for the panel, independent from the theme."
+                            subtitle: "Choose panel material and optional custom colors. Frosted/liquid highlights are lightweight; real backdrop blur depends on the compositor."
 
+                            SettingsRow {
+                                width: parent.width
+                                title: "Panel surface"
+                                subtitle: "Theme, opaque, half-transparent, frosted or liquid glass."
+                                settingKey: "panel.material"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "theme", label: "Theme" },
+                                        { value: "opaque", label: "Opaque" },
+                                        { value: "translucent", label: "Half transparent" },
+                                        { value: "frosted", label: "Frosted glass" },
+                                        { value: "liquid", label: "Liquid glass" }
+                                    ]
+                                }
+                            }
                             SettingsRow {
                                 width: parent.width
                                 title: "Use custom panel colors"
@@ -562,6 +577,7 @@ Window {
                                 width: parent.width
                                 title: "Panel opacity"
                                 visible: Settings.values["panel.customColors"] === true
+                                         && (Settings.values["panel.material"] || "theme") === "theme"
                                 settingKey: "panel.backgroundOpacity"
                                 SettingsSlider { from: 0.3; to: 1.0; step: 0.01 }
                             }
@@ -571,6 +587,39 @@ Window {
                             title: "Dock styling"
                             subtitle: "Custom appearance for dock buttons."
 
+                            SettingsRow {
+                                width: parent.width
+                                title: "Dock surface"
+                                subtitle: "Choose a lightweight material for the icon backgrounds."
+                                settingKey: "dock.material"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "none", label: "No background" },
+                                        { value: "opaque", label: "Opaque" },
+                                        { value: "translucent", label: "Half transparent" },
+                                        { value: "frosted", label: "Frosted glass" },
+                                        { value: "liquid", label: "Liquid glass" }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Dock background color"
+                                visible: Settings.values["dock.material"] !== "none"
+                                settingKey: "dock.backgroundColor"
+                                SettingsColorField {
+                                    id: dockBgColorField
+                                    onEdited: (hex) => Settings.setValue("dock.backgroundColor", hex)
+                                    onPaletteRequested: settingsWindow.openPalette(dockBgColorField)
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Dock surface opacity"
+                                visible: Settings.values["dock.material"] !== "none"
+                                settingKey: "dock.backgroundOpacity"
+                                SettingsSlider { from: 0.2; to: 1.0; step: 0.05 }
+                            }
                             SettingsRow {
                                 width: parent.width
                                 title: "Show labels"
@@ -617,8 +666,7 @@ Window {
 
                         SettingsSection {
                             title: "Window style"
-                            subtitle: "The frame of the shell windows — start menu, run dialog, "
-                                      + "dock menu, clock and notifications. Values of -1 or 0 follow the theme."
+                            subtitle: "The frame of shell popups — start menu, run dialog, dock menu and clock. Radius/border -1 and opacity 0 use the selected material defaults."
 
                             SettingsRow {
                                 width: parent.width
@@ -635,6 +683,70 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: "Surface material"
+                                subtitle: "Opaque, half-transparent, frosted or liquid glass. Frosted and liquid styles use low-cost Qt Quick highlights."
+                                settingKey: "windows.material"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "theme", label: "Theme" },
+                                        { value: "opaque", label: "Opaque" },
+                                        { value: "translucent", label: "Half transparent" },
+                                        { value: "frosted", label: "Frosted glass" },
+                                        { value: "liquid", label: "Liquid glass" }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Material preview"
+                                subtitle: "Click a swatch to apply it to the shell popups."
+                                Row {
+                                    spacing: 6
+                                    Repeater {
+                                        model: [
+                                            { value: "opaque", label: "Opaque" },
+                                            { value: "translucent", label: "Half" },
+                                            { value: "frosted", label: "Frosted" },
+                                            { value: "liquid", label: "Liquid" }
+                                        ]
+                                        delegate: Item {
+                                            required property var modelData
+                                            width: 54
+                                            height: 44
+                                            Rectangle {
+                                                anchors.fill: parent
+                                                radius: Theme.radius
+                                                color: Qt.lighter(Theme.surface, 1.15)
+                                            }
+                                            SurfaceStyle {
+                                                anchors.fill: parent
+                                                material: modelData.value
+                                                baseColor: Theme.background
+                                                cornerRadius: Theme.radius
+                                                effectStrength: 0.9
+                                                opacity: (Settings.values["windows.material"] || "theme") === modelData.value
+                                                         ? 1 : 0.55
+                                            }
+                                            Text {
+                                                anchors.horizontalCenter: parent.horizontalCenter
+                                                anchors.bottom: parent.bottom
+                                                anchors.bottomMargin: 2
+                                                text: modelData.label
+                                                color: Theme.foreground
+                                                font.family: Theme.fontFamily
+                                                font.pointSize: Theme.fontSize - 3
+                                            }
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: Settings.setValue("windows.material", modelData.value)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: "Corner radius"
                                 subtitle: "-1 follows the theme radius."
                                 settingKey: "windows.radius"
@@ -643,7 +755,7 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: "Background opacity"
-                                subtitle: "0 follows the theme."
+                                subtitle: "0 uses the selected material's preset opacity."
                                 settingKey: "windows.opacityPercent"
                                 SettingsSlider { from: 0; to: 100; step: 5; suffix: " %" }
                             }
@@ -1717,6 +1829,34 @@ Window {
                                         { value: "custom", label: "Custom colors" }
                                     ]
                                 }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Notification surface"
+                                subtitle: "Used by popups and the notification centre."
+                                settingKey: "notifications.material"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "theme", label: "Theme" },
+                                        { value: "opaque", label: "Opaque" },
+                                        { value: "translucent", label: "Half transparent" },
+                                        { value: "frosted", label: "Frosted glass" },
+                                        { value: "liquid", label: "Liquid glass" }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Surface opacity"
+                                subtitle: "0 uses the selected material's preset opacity."
+                                settingKey: "notifications.opacityPercent"
+                                SettingsSlider { from: 0; to: 100; step: 5; suffix: " %" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Corner radius"
+                                settingKey: "notifications.cornerRadius"
+                                SettingsStepper { from: -1; to: 32; suffix: " px" }
                             }
                             SettingsRow {
                                 width: parent.width

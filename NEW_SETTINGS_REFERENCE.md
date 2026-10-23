@@ -20,6 +20,7 @@ Each setting is documented with:
 ### Panel Styling
 | Key | Type | Default | Description | Page |
 |-----|------|---------|-------------|------|
+| `panel.material` | string | `"theme"` | Surface: theme, opaque, translucent (50%), frosted or liquid glass | Appearance |
 | `panel.customColors` | boolean | `false` | Enable custom panel colors independent from theme | Appearance |
 | `panel.backgroundColor` | color | `""` | Custom panel background color (hex) | Appearance |
 | `panel.backgroundOpacity` | number | `0.92` | Panel background opacity (0.3-1.0) | Appearance |
@@ -28,8 +29,9 @@ Each setting is documented with:
 ### Dock Styling
 | Key | Type | Default | Description | Page |
 |-----|------|---------|-------------|------|
-| `dock.backgroundColor` | color | `""` | Custom dock background color (hex) | Appearance |
-| `dock.backgroundOpacity` | number | `-1` | Dock background opacity (-1 = use theme) | Appearance |
+| `dock.material` | string | `"none"` | Idle dock button material: none, opaque, translucent (50%), frosted or liquid glass | Appearance |
+| `dock.backgroundColor` | color | `""` | Custom dock button surface color (hex) | Appearance |
+| `dock.backgroundOpacity` | number | `0.5` | Dock surface opacity from 0 to 1 | Appearance |
 | `dock.hoverOpacity` | number | `0.15` | Dock button hover opacity | Appearance |
 | `dock.activeOpacity` | number | `0.30` | Dock button active opacity | Appearance |
 | `dock.showLabels` | boolean | `false` | Show application names below dock icons | Appearance |
@@ -55,6 +57,13 @@ Each setting is documented with:
 ### Window Styling
 | Key | Type | Default | Description | Page |
 |-----|------|---------|-------------|------|
+| `windows.material` | string | `"theme"` | Shell popup material: theme, opaque, translucent (50%), frosted or liquid glass | Appearance |
+| `windows.style` | string | `"card"` | Popup frame: card, glass, flat or outline | Appearance |
+| `windows.radius` | integer | `-1` | Corner radius in pixels; -1 follows the theme | Appearance |
+| `windows.opacityPercent` | integer | `0` | Opacity override; 0 uses the selected material preset | Appearance |
+| `windows.borderWidth` | integer | `-1` | Border width in pixels; -1 follows the theme | Appearance |
+| `windows.borderColor` | color | `""` | Border color; empty follows the theme | Appearance |
+| `windows.shadow` | integer | `1` | Shadow strength from 0 (off) to 3 | Appearance |
 | `windows.enableAnimations` | boolean | `true` | Enable window animations | Appearance |
 | `windows.animationSpeed` | number | `1.0` | Window animation speed multiplier | Appearance |
 
@@ -132,6 +141,9 @@ Each setting is documented with:
 ### Appearance
 | Key | Type | Default | Description | Page |
 |-----|------|---------|-------------|------|
+| `notifications.material` | string | `"theme"` | Surface material shared by notification popups and the notification centre | Notifications |
+| `notifications.opacityPercent` | integer | `0` | Opacity override from 0 to 100; 0 uses the material preset | Notifications |
+| `notifications.cornerRadius` | integer | `-1` | Card radius in pixels; -1 follows the shell window radius | Notifications |
 | `notifications.theme` | string | `"system"` | Notification theme: system, light, dark, custom | Notifications |
 | `notifications.customBackground` | color | `""` | Custom notification background color | Notifications |
 | `notifications.customForeground` | color | `""` | Custom notification text color | Notifications |

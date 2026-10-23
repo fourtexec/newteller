@@ -19,6 +19,7 @@
     <file>qml/SettingsTextField.qml</file>
     <file>qml/SettingsColorField.qml</file>
     <file>qml/ShellFrame.qml</file>
+    <file>qml/SurfaceStyle.qml</file>
     <file>qml/Motion.qml</file>
     <file>qml/ShellTitleBar.qml</file>
     <file>qml/ClockPopup.qml</file>
@@ -29,6 +30,7 @@
     <file>qml/ShellToolTip.qml</file>
     <file>qml/PanelToolTip.qml</file>
     <file>qml/NotificationCenter.qml</file>
+    <file>qml/NotificationAppearance.qml</file>
     <file>qml/QuickSettingsPopup.qml</file>
     <file>themes/default.json</file>
     <file>themes/light.json</file>

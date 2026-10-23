@@ -6,7 +6,7 @@ bottom panel, a start menu, desktop icons and widgets, with themes and plugins f
 customization. All UI text is in English.
 
 - **Core:** C++20 + Qt 6 (settings, themes, application catalogue, session actions, plugin loader)
-- **UI:** QML with JavaScript logic (panel, start menu, desktop, widgets, plugins)
+- **UI:** QML components with JavaScript logic, rendered by Qt Quick's scene graph (panel, start menu, desktop, widgets, plugins). The shell does not embed Chromium/WebEngine; a literal HTML/CSS UI would need a browser engine or a separate, much larger custom renderer.
 - **Layer:** wlr-layer-shell via LayerShellQt on Wayland compositors that support it; X11 dock and
   desktop windows elsewhere (X11 sessions, and XWayland on GNOME). The panel reserves screen space
   either way; see [Display servers](#display-servers)
@@ -77,6 +77,7 @@ real desktop:
   settings)
 - System monitor (`System` object, on a shared ticker) with bundled panel and
   desktop widgets
+- **Surface materials:** configure panel, dock buttons, floating shell windows and notifications independently as theme, opaque, half-transparent, frosted glass or liquid glass. These are lightweight Qt Quick layers; real backdrop blur is compositor-specific and is not required.
 - Themes (JSON, including `nord`, `ocean` and `highcontrast`) and a settings file
   with live reload
 - Plugin system (manifest + QML) with enable/disable and auto-rescan
@@ -230,17 +231,29 @@ All keys, with their defaults:
 | `panel.centered` | `false` | reserved |
 | `panel.width` | `0` | reserved (0 = full edge) |
 | `panel.autoHide` | `false` | collapse the panel to a hover strip at the edge |
-| `panel.autoHideDelay` | `400` | delay in ms before auto-hide applies |
+| `panel.autoHideDelay` | `400` | delay in ms before an auto-hidden panel slides away |
 | `panel.clockFormat` | `"HH:mm"` | `Qt.formatDateTime` time format |
 | `panel.dateFormat` | `"ddd d MMM"` | date format, shown before the time |
 | `panel.showDate` | `false` | show the date next to the clock |
 | `panel.showRunning` | `true` | dot badge for running applications |
 | `panel.pinned` | `[]` | desktop file IDs pinned to the panel |
+| `panel.material` | `"theme"` | `theme`, `opaque`, `translucent`, `frosted` or `liquid` panel surface |
 | `dock.showWindows` | `true` | show running applications/windows in the dock |
 | `dock.group` | `true` | merge all windows of one application into one dock button |
 | `dock.iconSize` | `28` | dock button icon size in pixels |
+| `dock.material` | `"none"` | idle dock button surface: `none`, `opaque`, `translucent`, `frosted` or `liquid` |
+| `dock.backgroundColor` / `dock.backgroundOpacity` | `""` / `0.5` | dock idle surface tint and opacity |
 | `dock.thumbnails` | `true` | live window previews in the dock menu (X11/XWayland) |
+| `dock.multiRow` / `dock.rows` | `false` / `1` | wrap the dock into up to three rows (horizontal panels) |
+| `dock.scrollable` | `true` | let the dock scroll when its buttons do not fit |
+| `dock.iconSpacing` | `4` | gap between dock buttons in pixels |
+| `dock.position` / `panel.centerDock` | `"left"` / `false` | align the dock at the start, centre or end of the bar |
+| `panel.spacing` / `panel.leftSpacing` / `panel.rightSpacing` / `panel.zoneSpacing` | `8` | bar padding and gaps between the panel zones |
+| `windows.material` | `"theme"` | surface for shell popups: `theme`, `opaque`, `translucent`, `frosted` or `liquid` |
 | `panel.indicators` | `true` | bell (notification centre) and quick settings button at the end of the bar |
+| `notifications.material` | `"theme"` | notification popup and centre surface material |
+| `notifications.opacityPercent` | `0` | notification surface opacity; `0` uses the material preset |
+| `notifications.cornerRadius` | `-1` | notification card radius; `-1` follows the window radius |
 | `tray.enabled` | `true` | act as the session's StatusNotifierWatcher and show the registered tray icons |
 | `tray.menus` | `true` | render tray item DBusMenus on right click |
 | `startmenu.width` / `startmenu.height` | `440` / `580` | menu size |
@@ -282,6 +295,32 @@ All keys, with their defaults:
   colourful application logos keep their own colours.
 
 `newteller-ctl schema` prints the same table in machine-readable form.
+
+### Surface materials
+
+The panel, the dock buttons, every floating shell window (start menu, run
+dialog, clock, dock menu) and the notifications each take a `*material` key:
+
+| Value | Look |
+| --- | --- |
+| `theme` | the theme background at the theme opacity (default) |
+| `opaque` | fully opaque theme/background colour |
+| `translucent` | half-transparent |
+| `frosted` | translucent with a soft satin highlight and a brighter border |
+| `liquid` | translucent with a specular top edge and a subtle accent bloom |
+| `none` | no surface at all (dock only) |
+
+`windows.material` covers all shell popups; notifications can be customised
+separately with `notifications.material`, `notifications.opacityPercent` and
+`notifications.cornerRadius`, and the panel and dock have their own keys. All of
+them are live: the settings window and `newteller-ctl set` apply them without a
+restart.
+
+The materials are drawn by the Qt Quick scene graph with a handful of static
+rectangles, so they cost about as much as a plain background — no layered blur
+pass and no browser engine. Real backdrop blur is compositor specific (KWin can
+blur layer surfaces through a window rule); NewTeller does not require it, so
+the same look works on X11, GNOME/XWayland, sway, Hyprland and KDE.
 
 ## Settings application
 
