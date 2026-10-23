@@ -15,12 +15,22 @@ Window {
     property var anchorItem: null
     readonly property int framePad: 8
 
+    // The folder shown right now, as a plain path (also used by the tests).
+    property string currentPath: ""
+    // Bumped on every open: a close that was queued before the dialog was
+    // reopened must not close it again.
+    property int openGeneration: 0
+
     function openFor(startFolder, imagesOnlyMode) {
         imagesOnly = imagesOnlyMode !== false;
-        // Start where the user's files usually live.
-        folderModel.folder = "file://" + startFolder;
-        pathInput.text = startFolder;
         selectedPath = "";
+        openGeneration += 1;
+        // The caller may hand over a plain path, "~/Pictures", a file:// URL or
+        // an already percent-encoded path; folderPath() turns all of it into an
+        // existing directory (home when the folder is gone). Passing a broken
+        // URL straight to FolderListModel is what used to leave the dialog
+        // showing an unreadable folder.
+        enter(startFolder);
         // Snap first so the first frame is the small, transparent card.
         pickerCard.prepareOpen();
         visible = true;
@@ -28,15 +38,21 @@ Window {
         pickerCard.playOpen();
     }
 
-    function hide() {
-        if (!visible || pickerCard.closing)
-            return;
-        pickerCard.playClose(function() { visible = false; });
+    // A path as a properly encoded file URL: every segment is encoded, so
+    // names containing "#", "%" or spaces cannot turn into a fragment or a
+    // malformed escape that FolderListModel cannot open.
+    function fileUrlFor(path) {
+        return "file://" + String(path).split("/").map(function(part) {
+            return encodeURIComponent(part);
+        }).join("/");
     }
 
     function enter(folder) {
-        folderModel.folder = folder;
-        pathInput.text = decodeURIComponent(folder.toString().replace(/^file:\/\//, ""));
+        const path = Shell.folderPath(folder === undefined || folder === null ? "" : String(folder));
+        currentPath = path;
+        folderModel.folder = fileUrlFor(path);
+        if (pathInput.text !== path)
+            pathInput.text = path;
         selectedPath = "";
     }
 
@@ -46,9 +62,39 @@ Window {
             enter(parent);
     }
 
+    // Accepts a file. Only real files are accepted, and with the image filter
+    // on only files Qt can actually load as an image - the desktop never gets
+    // a wallpaper that would fail to render.
     function choose(filePath) {
-        accepted(filePath);
+        let path = filePath === undefined || filePath === null ? "" : String(filePath);
+        if (path.indexOf("file:") === 0) {
+            const encoded = path.substring(7);
+            try {
+                path = decodeURIComponent(encoded);
+            } catch (error) {
+                path = encoded;   // a stray "%" is not a fatal error
+            }
+        }
+        if (!Shell.fileExists(path))
+            return;
+        if (imagesOnly && !Shell.isImageFile(path))
+            return;
+        accepted(path);
         hide();
+    }
+
+    // Closing happens one event-loop turn later: hiding a window from inside
+    // the input event that opened or activated it is a known crash source on
+    // some platform plugins, and the target may already be gone by then.
+    function hide() {
+        if (!visible || pickerCard.closing)
+            return;
+        const generation = openGeneration;
+        Qt.callLater(function() {
+            if (!picker.visible || pickerCard.closing || picker.openGeneration !== generation)
+                return;   // reopened in the meantime
+            pickerCard.playClose(function() { picker.visible = false; });
+        });
     }
 
     property string selectedPath: ""
@@ -59,9 +105,19 @@ Window {
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint
 
-    onActiveChanged: {
-        if (!active)
-            hide();
+    // A file dialog stays open when it loses the keyboard focus: the old
+    // "hide as soon as it is not active" made the window close itself the
+    // instant the compositor granted (or refused) activation, which looked
+    // exactly like the picker crashing.
+    Shortcut {
+        sequence: "Esc"
+        enabled: picker.visible
+        onActivated: picker.hide()
+    }
+
+    onClosing: (close) => {
+        close.accepted = true;
+        picker.hide();
     }
 
     FolderListModel {
@@ -70,8 +126,12 @@ Window {
         showDirsFirst: true
         showDotAndDotDot: false
         showHidden: false
-        nameFilters: picker.imagesOnly ? ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp", "*.gif",
-                                          "*.svg", "*.xpm"] : []
+        // The same list the system chooser filters with (src/fileportal.cpp);
+        // whether a file really is an image is checked with Shell.isImageFile()
+        // before it is accepted.
+        nameFilters: picker.imagesOnly
+                     ? ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp", "*.gif", "*.svg", "*.xpm",
+                        "*.tif", "*.tiff", "*.avif", "*.heic", "*.jxl"] : []
     }
 
     ShellFrame {
@@ -125,7 +185,7 @@ Window {
                                 return;
                             const expanded = trimmed.indexOf("~") === 0
                                     ? Shell.home + trimmed.substring(1) : trimmed;
-                            picker.enter("file://" + expanded);
+                            picker.enter(expanded);
                         }
                     }
                 }
@@ -162,7 +222,8 @@ Window {
                         picker.imagesOnly = !picker.imagesOnly;
                         folderModel.nameFilters = picker.imagesOnly
                                 ? ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp", "*.gif",
-                                   "*.svg", "*.xpm"] : [];
+                                   "*.svg", "*.xpm", "*.tif", "*.tiff", "*.avif", "*.heic",
+                                   "*.jxl"] : [];
                     }
                 }
             }
@@ -264,6 +325,9 @@ Window {
                         anchors.margins: 6
                         fillMode: Image.PreserveAspectFit
                         asynchronous: true
+                        // Decode at preview size, not at the photo's size.
+                        sourceSize.width: 300
+                        sourceSize.height: 400
                         visible: picker.selectedPath.length > 0
                         source: picker.selectedPath.length > 0
                                 ? "file://" + picker.selectedPath : ""
@@ -318,7 +382,9 @@ Window {
         const n = name.toLowerCase();
         if (n.endsWith(".png") || n.endsWith(".jpg") || n.endsWith(".jpeg")
             || n.endsWith(".webp") || n.endsWith(".bmp") || n.endsWith(".gif")
-            || n.endsWith(".svg") || n.endsWith(".xpm"))
+            || n.endsWith(".svg") || n.endsWith(".xpm") || n.endsWith(".tif")
+            || n.endsWith(".tiff") || n.endsWith(".avif") || n.endsWith(".heic")
+            || n.endsWith(".jxl"))
             return "image";
         if (n.endsWith(".txt") || n.endsWith(".md"))
             return "file-text";

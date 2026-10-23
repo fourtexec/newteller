@@ -345,8 +345,15 @@ It manages the whole configuration of the shell:
   "Choose from file manager" opens the file chooser that is already installed in
   the system (the freedesktop FileChooser portal — the GTK dialog on GNOME, the
   KDE dialog on Plasma); the integrated browser is only a fallback for systems
-  without the portal service. The colour palette of the theme editor opens as a
-  full-height panel on the left edge of the screen.
+  without the portal service, and it opens automatically when the portal cannot
+  be used (not running, no permission, no answer after two minutes).
+  Both pickers start in the folder of the current wallpaper, silently fall back
+  to `~/Pictures` or the home directory when that folder is gone, and only
+  accept a path that is a readable image — the desktop never receives a file it
+  cannot draw. The integrated picker is an ordinary dialog: it stays open when
+  it loses the keyboard focus and closes on Esc, Cancel or the title-bar button.
+  The colour palette of the theme editor opens as a full-height panel on the
+  left edge of the screen.
 - **Start menu** — size, typo-tolerant search, recent row and limits.
 - **Applications** — terminal command, catalogue cap, clear the usage history.
 - **System** — metrics sampling interval and the per-core/battery/thermal/disk
