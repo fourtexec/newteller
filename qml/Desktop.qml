@@ -120,85 +120,190 @@ Window {
         showDotAndDotDot: false
     }
 
-    GridView {
+    // Desktop icons. Auto-arrange lays them out on the configured grid; once
+    // an icon is dragged its position is stored in desktop.iconPositions and
+    // restored on the next start. Dragging the first icon also turns
+    // auto-arrange off, so the layout the user made stays put.
+    Item {
+        id: iconLayer
         anchors.fill: parent
         anchors.margins: 12
         visible: desk.showIcons
-        cellWidth: desk.cellWidth
-        cellHeight: desk.cellHeight
-        model: desktopFiles
+        clip: true
 
-        delegate: Item {
-            width: desk.cellWidth
-            height: desk.cellHeight
+        readonly property var savedPositions: Settings.values["desktop.iconPositions"] || ({})
+        readonly property bool autoArrange: Settings.values["desktop.autoArrangeIcons"] !== false
+        readonly property int columns: Math.max(1, Math.floor(width / Math.max(1, desk.cellWidth)))
 
-            required property string fileName
-            required property string fileBaseName
-            required property url fileUrl
-            required property bool fileIsDir
+        function gridX(index) {
+            return (index % columns) * desk.cellWidth;
+        }
+        function gridY(index) {
+            return Math.floor(index / columns) * desk.cellHeight;
+        }
+        function savedX(name, fallback) {
+            const entry = savedPositions[name];
+            return (autoArrange || !entry || entry.x === undefined) ? fallback : Number(entry.x);
+        }
+        function savedY(name, fallback) {
+            const entry = savedPositions[name];
+            return (autoArrange || !entry || entry.y === undefined) ? fallback : Number(entry.y);
+        }
 
-            readonly property string resolvedIconName: fileIsDir ? "folder" : "file-text"
+        function savePosition(name, x, y) {
+            const old = savedPositions || ({});
+            const copy = {};
+            for (const key in old)
+                copy[key] = old[key];
+            copy[name] = { "x": Math.round(x), "y": Math.round(y) };
+            if (autoArrange)
+                Settings.setValues({ "desktop.autoArrangeIcons": false,
+                                     "desktop.iconPositions": copy });
+            else
+                Settings.setValue("desktop.iconPositions", copy);
+        }
 
-            Rectangle {
-                visible: desk.iconGlow
-                anchors.centerIn: icon
-                width: desk.iconSize + 8
-                height: desk.iconSize + 8
-                radius: (desk.iconSize + 8) / 2
-                color: desk.iconColor && desk.iconColor.length > 0 ? desk.iconColor : Theme.foreground
-                opacity: 0.18
-            }
+        function resetPositions() {
+            Settings.setValues({ "desktop.iconPositions": ({}),
+                                 "desktop.autoArrangeIcons": true });
+        }
 
-            Image {
-                visible: desk.iconShadow
-                x: icon.x + 1
-                y: icon.y + 2
-                width: desk.iconSize
-                height: desk.iconSize
-                sourceSize.width: desk.iconSize
-                sourceSize.height: desk.iconSize
-                fillMode: Image.PreserveAspectFit
-                source: Shell.tintedIcon(resolvedIconName, "#000000")
-                opacity: 0.35
-            }
+        Repeater {
+            model: desktopFiles
 
-            Image {
-                id: icon
-                anchors.top: parent.top
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: desk.iconSize
-                height: desk.iconSize
-                sourceSize.width: desk.iconSize
-                sourceSize.height: desk.iconSize
-                fillMode: Image.PreserveAspectFit
-                source: {
-                    if (desk.iconColor && desk.iconColor.length > 0) {
-                        return Shell.tintedIcon(resolvedIconName, desk.iconColor)
-                    }
-                    return Shell.tintedIcon(resolvedIconName, Theme.foreground)
+            delegate: Item {
+                id: iconDelegate
+                width: desk.cellWidth
+                height: desk.cellHeight
+
+                required property int index
+                required property string fileName
+                required property string fileBaseName
+                required property url fileUrl
+                required property bool fileIsDir
+
+                readonly property string resolvedIconName: fileIsDir ? "folder" : "file-text"
+                // While dragging, x/y follow the pointer; otherwise they are a
+                // pure binding to the saved position or the auto-arrange grid.
+                property real dragX: 0
+                property real dragY: 0
+                property bool dragging: false
+                property real pressSceneX: 0
+                property real pressSceneY: 0
+                property real startIconX: 0
+                property real startIconY: 0
+
+                x: dragging ? dragX : iconLayer.savedX(fileName, iconLayer.gridX(index))
+                y: dragging ? dragY : iconLayer.savedY(fileName, iconLayer.gridY(index))
+                z: dragging ? 20 : 0
+                opacity: dragging ? 0.85 : 1.0
+
+                Behavior on opacity {
+                    NumberAnimation { duration: motion.fast }
                 }
-            }
 
-            Text {
-                anchors.top: icon.bottom
-                anchors.topMargin: 4
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: desk.cellWidth - 6
-                horizontalAlignment: Text.AlignHCenter
-                wrapMode: Text.Wrap
-                elide: Text.ElideRight
-                maximumLineCount: 2
-                text: fileBaseName
-                color: desk.iconColor && desk.iconColor.length > 0 ? desk.iconColor : "white"
-                font.family: Theme.fontFamily
-                font.pointSize: Theme.fontSize
-                style: desk.iconShadow ? Text.Outline : Text.Plain
-                styleColor: "#80000000"
-            }
+                Rectangle {
+                    visible: desk.iconGlow
+                    anchors.centerIn: icon
+                    width: desk.iconSize + 8
+                    height: desk.iconSize + 8
+                    radius: (desk.iconSize + 8) / 2
+                    color: desk.iconColor && desk.iconColor.length > 0 ? desk.iconColor : Theme.foreground
+                    opacity: 0.18
+                }
 
-            MouseArea {
-                anchors.fill: parent
-                onDoubleClicked: Shell.openUrl(fileUrl.toString())
+                Image {
+                    visible: desk.iconShadow
+                    x: icon.x + 1
+                    y: icon.y + 2
+                    width: desk.iconSize
+                    height: desk.iconSize
+                    sourceSize.width: desk.iconSize
+                    sourceSize.height: desk.iconSize
+                    fillMode: Image.PreserveAspectFit
+                    source: Shell.tintedIcon(resolvedIconName, "#000000")
+                    opacity: 0.35
+                }
+
+                Image {
+                    id: icon
+                    anchors.top: parent.top
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: desk.iconSize
+                    height: desk.iconSize
+                    sourceSize.width: desk.iconSize
+                    sourceSize.height: desk.iconSize
+                    fillMode: Image.PreserveAspectFit
+                    source: {
+                        if (desk.iconColor && desk.iconColor.length > 0) {
+                            return Shell.tintedIcon(resolvedIconName, desk.iconColor)
+                        }
+                        return Shell.tintedIcon(resolvedIconName, Theme.foreground)
+                    }
+                }
+
+                Text {
+                    anchors.top: icon.bottom
+                    anchors.topMargin: 4
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: desk.cellWidth - 6
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.Wrap
+                    elide: Text.ElideRight
+                    maximumLineCount: 2
+                    text: fileBaseName
+                    color: desk.iconColor && desk.iconColor.length > 0 ? desk.iconColor : "white"
+                    font.family: Theme.fontFamily
+                    font.pointSize: Theme.fontSize
+                    style: desk.iconShadow ? Text.Outline : Text.Plain
+                    styleColor: "#80000000"
+                }
+
+                MouseArea {
+                    id: iconMouse
+                    anchors.fill: parent
+                    cursorShape: iconDelegate.dragging ? Qt.ClosedHandCursor : Qt.PointingHandCursor
+
+                    onPressed: (mouse) => {
+                        iconDelegate.dragging = false;
+                        const scene = iconDelegate.mapToItem(null, mouse.x, mouse.y);
+                        iconDelegate.pressSceneX = scene.x;
+                        iconDelegate.pressSceneY = scene.y;
+                        iconDelegate.startIconX = iconDelegate.x;
+                        iconDelegate.startIconY = iconDelegate.y;
+                        iconDelegate.dragX = iconDelegate.x;
+                        iconDelegate.dragY = iconDelegate.y;
+                    }
+                    onPositionChanged: (mouse) => {
+                        if (!pressed)
+                            return;
+                        const scene = iconDelegate.mapToItem(null, mouse.x, mouse.y);
+                        const dx = scene.x - iconDelegate.pressSceneX;
+                        const dy = scene.y - iconDelegate.pressSceneY;
+                        if (!iconDelegate.dragging
+                            && Math.sqrt(dx * dx + dy * dy) > 5) {
+                            iconDelegate.dragging = true;
+                        }
+                        if (!iconDelegate.dragging)
+                            return;
+                        iconDelegate.dragX = Math.max(0, Math.min(iconLayer.width - iconDelegate.width,
+                                                                   iconDelegate.startIconX + dx));
+                        iconDelegate.dragY = Math.max(0, Math.min(iconLayer.height - iconDelegate.height,
+                                                                   iconDelegate.startIconY + dy));
+                    }
+                    onReleased: {
+                        if (iconDelegate.dragging) {
+                            iconLayer.savePosition(iconDelegate.fileName,
+                                                   iconDelegate.dragX,
+                                                   iconDelegate.dragY);
+                        }
+                        iconDelegate.dragging = false;
+                    }
+                    onDoubleClicked: {
+                        if (!iconDelegate.dragging)
+                            Shell.openUrl(iconDelegate.fileUrl.toString());
+                    }
+                }
             }
         }
     }
@@ -308,6 +413,29 @@ Window {
                 onClicked: {
                     contextMenu.visible = false;
                     Shell.openSettings();
+                }
+            }
+            TaskButton {
+                width: parent.width
+                fillWidth: true
+                iconName: "layout-grid"
+                label: iconLayer.autoArrange ? "Free icon placement" : "Auto-arrange icons"
+                onClicked: {
+                    contextMenu.visible = false;
+                    if (iconLayer.autoArrange)
+                        Settings.setValue("desktop.autoArrangeIcons", false);
+                    else
+                        iconLayer.resetPositions();
+                }
+            }
+            TaskButton {
+                width: parent.width
+                fillWidth: true
+                iconName: "rotate-ccw"
+                label: "Reset icon layout"
+                onClicked: {
+                    contextMenu.visible = false;
+                    iconLayer.resetPositions();
                 }
             }
             TaskButton {

@@ -32,11 +32,22 @@ Rectangle {
     property bool showDockLabels: false
     property string dockIconColorMode: "theme"
     property string dockCustomIconColor: ""
+    // Dock buttons: drag a pinned button to reorder the pinned list.
+    property bool reorderable: false
+    property bool reordering: false
     readonly property bool hovered: hoverHandler.hovered
 
     signal clicked()
     // Middle click closes windows (dock behaviour); optional.
     signal middleClicked()
+    signal reorderStarted()
+    signal reorderMoved(real sceneX, real sceneY)
+    signal reorderFinished(real sceneX, real sceneY)
+
+    property real pressSceneX: 0
+    property real pressSceneY: 0
+    property bool reorderActive: false
+    property bool suppressClick: false
 
     radius: Theme.radius
     implicitWidth: row.implicitWidth + 16
@@ -47,7 +58,8 @@ Rectangle {
         id: hoverHandler
     }
     // Background-zone buttons fade until the pointer reaches them.
-    opacity: (dimmed && !hoverHandler.hovered && !area.pressed) ? 0.55 : 1.0
+    opacity: reordering ? 0.8
+             : (dimmed && !hoverHandler.hovered && !area.pressed) ? 0.55 : 1.0
     Behavior on opacity {
         NumberAnimation { duration: motion.fast }
     }
@@ -98,8 +110,9 @@ Rectangle {
                     }
                     return Shell.tintedIcon(btn.iconName, iconColor)
                 }
-                // Tiny press dip and hover lift
-                scale: area.pressed ? 0.88 : hoverHandler.hovered ? 1.08 : 1.0
+                // Tiny press dip, hover lift and a lift while reordering.
+                scale: btn.reordering ? 1.12
+                       : area.pressed ? 0.88 : hoverHandler.hovered ? 1.08 : 1.0
                 Behavior on scale {
                     NumberAnimation { duration: motion.micro; easing.type: motion.easeEnter }
                 }
@@ -162,8 +175,44 @@ Rectangle {
         anchors.fill: parent
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton | Qt.MiddleButton
-        cursorShape: Qt.PointingHandCursor
+        cursorShape: btn.reorderable && btn.hovered && !btn.reordering
+                     ? Qt.OpenHandCursor : Qt.PointingHandCursor
+
+        onPressed: (mouse) => {
+            btn.suppressClick = false;
+            btn.reorderActive = false;
+            if (mouse.button !== Qt.LeftButton || !btn.reorderable)
+                return;
+            const scene = btn.mapToItem(null, mouse.x, mouse.y);
+            btn.pressSceneX = scene.x;
+            btn.pressSceneY = scene.y;
+        }
+        onPositionChanged: (mouse) => {
+            if (!btn.reorderable || !pressed || (mouse.buttons & Qt.LeftButton) === 0)
+                return;
+            const scene = btn.mapToItem(null, mouse.x, mouse.y);
+            const dx = scene.x - btn.pressSceneX;
+            const dy = scene.y - btn.pressSceneY;
+            if (!btn.reorderActive && Math.sqrt(dx * dx + dy * dy) > 5) {
+                btn.reorderActive = true;
+                btn.reorderStarted();
+            }
+            if (btn.reorderActive)
+                btn.reorderMoved(scene.x, scene.y);
+        }
+        onReleased: (mouse) => {
+            if (btn.reorderActive) {
+                btn.reorderActive = false;
+                btn.suppressClick = true;
+                const scene = btn.mapToItem(null, mouse.x, mouse.y);
+                btn.reorderFinished(scene.x, scene.y);
+            }
+        }
         onClicked: (mouse) => {
+            if (btn.suppressClick) {
+                btn.suppressClick = false;
+                return;
+            }
             if (mouse.button === Qt.MiddleButton)
                 btn.middleClicked();
             else

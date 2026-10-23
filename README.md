@@ -24,10 +24,13 @@ real desktop:
   that implement `org.kde.StatusNotifierItem` (Qt's QSystemTrayIcon, Electron
   apps, GTK applets, ...) register their icons with the shell and appear at the
   end of the panel: left click activates, middle click triggers the secondary
-  action, the wheel scrolls, and right click asks the application to open its
-  own context menu. Icons arrive either as pixmaps (IconPixmap) or through the
-  system icon theme, and the tray hides itself when another tray host owns the
-  session (`tray.enabled`).
+  action, the wheel scrolls, and right click renders the item's
+  `com.canonical.dbusmenu` menu (checkable items, submenus and separators
+  included) instead of popping up a native menu. Items without a menu object
+  keep the fallback that asks the application for its own popup. Icons arrive
+  either as pixmaps (IconPixmap) or through the system icon theme, and the
+  tray hides itself when another tray host owns the session (`tray.enabled`,
+  `tray.menus`).
 - **Quick settings: the indicators button at the end of the panel.** One card
   with the media player that is playing (MPRIS over D-Bus: title, artist,
   play/pause, next/previous), a volume slider (via `wpctl` or `pactl`, with a
@@ -44,10 +47,15 @@ real desktop:
   application list fills any remaining gap. Windows can be activated,
   minimised and closed from the dock (click, middle click and a right-click
   menu; read-only toplevels fall back to launching the application), and
-  windows of one application can be grouped into a single button.
+  windows of one application can be grouped into a single button. The dock
+  menu shows a live preview of every X11/XWayland window (`dock.thumbnails`),
+  and pinned buttons can be dragged to reorder them.
 - Start menu: highlighted fuzzy search, category chips, recently used row,
   Lock / Log out / Sleep / Restart / Shut down, Settings; right-click an
   application to pin or unpin it on the dock
+- Desktop icons can be dragged to any position; the layout is saved in
+  `desktop.iconPositions` and restored on the next start (right-click the
+  desktop to auto-arrange or reset it)
 - **Notification centre: the bell at the end of the panel.** The history of the
   built-in notification daemon, newest first, with per-entry removal, a clear-all
   button and the do-not-disturb switch; the bell counts what arrived while it
@@ -75,14 +83,6 @@ real desktop:
 - Multi-monitor: one desktop and one panel per screen
 - Rust core (application search index, metrics sampler, config, watcher) with a
   C++/Qt fallback, plus the `newteller-ctl` command line tool
-
-Not implemented yet (planned, in this order):
-
-1. DBusMenu for tray items that only ship a menu object (right click currently
-   asks the application to open its own menu, which KStatusNotifierItem and
-   libappindicator applications do)
-2. Drag-and-drop desktop icon layout
-3. Per-window thumbnails and drag-to-reorder dock buttons
 
 ## Build (Debian 13 / Ubuntu 26.04 LTS)
 
@@ -239,8 +239,10 @@ All keys, with their defaults:
 | `dock.showWindows` | `true` | show running applications/windows in the dock |
 | `dock.group` | `true` | merge all windows of one application into one dock button |
 | `dock.iconSize` | `28` | dock button icon size in pixels |
+| `dock.thumbnails` | `true` | live window previews in the dock menu (X11/XWayland) |
 | `panel.indicators` | `true` | bell (notification centre) and quick settings button at the end of the bar |
 | `tray.enabled` | `true` | act as the session's StatusNotifierWatcher and show the registered tray icons |
+| `tray.menus` | `true` | render tray item DBusMenus on right click |
 | `startmenu.width` / `startmenu.height` | `440` / `580` | menu size |
 | `startmenu.limit` | `200` | maximum search hits |
 | `startmenu.fuzzy` | `true` | typo-tolerant search |
@@ -253,6 +255,7 @@ All keys, with their defaults:
 | `desktop.iconSize` | `48` | icon size in pixels |
 | `desktop.cellWidth` / `desktop.cellHeight` | `96` / `110` | icon grid cell |
 | `desktop.contextMenu` | `true` | desktop right-click menu |
+| `desktop.iconPositions` | `{}` | saved drag-and-drop positions, keyed by file name |
 | `icons.path` / `icons.set` | `""` / `"lucide"` | extra IconKit checkout overriding the bundled icons / set folder inside it |
 | `icons.cache` | `true` | cache resolved icons |
 | `plugins.disabled` | `[]` | plugin IDs to disable |

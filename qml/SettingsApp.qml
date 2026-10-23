@@ -843,6 +843,15 @@ Window {
                                 settingKey: "dock.shrinkIcons"
                                 SettingsSwitch {}
                             }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Window previews"
+                                subtitle: "Show a live thumbnail of every window in the dock menu. "
+                                          + "Built from X11/XWayland windows; native Wayland "
+                                          + "windows show their application icon instead."
+                                settingKey: "dock.thumbnails"
+                                SettingsSwitch {}
+                            }
                         }
 
                         SettingsSection {
@@ -928,13 +937,21 @@ Window {
                             subtitle: "The shell acts as the StatusNotifierWatcher of the session: "
                                       + "applications register their tray icons with it. Left click "
                                       + "activates, middle click triggers the secondary action, and "
-                                      + "right click asks the application to open its own menu."
+                                      + "right click opens the item's menu."
 
                             SettingsRow {
                                 width: parent.width
                                 title: "Show the system tray"
                                 subtitle: "Hidden when another tray host owns the session."
                                 settingKey: "tray.enabled"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Render tray menus"
+                                subtitle: "Use the application's DBusMenu for right clicks instead "
+                                          + "of asking it to open its own context menu."
+                                settingKey: "tray.menus"
                                 SettingsSwitch {}
                             }
                         }
@@ -1239,8 +1256,23 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: "Auto-arrange icons"
+                                subtitle: "Drag an icon on the desktop to place it freely; "
+                                          + "auto-arrange then turns itself off."
                                 settingKey: "desktop.autoArrangeIcons"
                                 SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Icon layout"
+                                subtitle: "Forget every dragged position and return to the grid."
+                                TaskButton {
+                                    iconName: "rotate-ccw"
+                                    label: "Reset layout"
+                                    onClicked: Settings.setValues({
+                                        "desktop.iconPositions": ({}),
+                                        "desktop.autoArrangeIcons": true
+                                    })
+                                }
                             }
                         }
                     }

@@ -159,28 +159,96 @@ Window {
             Repeater {
                 model: dockMenu.entry ? dockMenu.entry.windows : []
 
-                delegate: Item {
+                delegate: Rectangle {
                     id: windowRow
                     required property var modelData
+                    readonly property bool thumbnailsEnabled: Settings.values["dock.thumbnails"] !== false
+                    readonly property bool hasThumbnail: thumbnailsEnabled
+                                                         && thumb.status === Image.Ready
                     width: menuColumn.width
-                    height: 34
+                    height: 72
+                    radius: Theme.radius
+                    color: modelData.active
+                           ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
+                           : windowHover.hovered
+                             ? Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.07)
+                             : "transparent"
 
-                    TaskButton {
-                        id: windowButton
+                    HoverHandler {
+                        id: windowHover
+                    }
+
+                    Rectangle {
+                        id: previewFrame
                         anchors.left: parent.left
+                        anchors.leftMargin: 4
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 100
+                        height: 60
+                        radius: 4
+                        clip: true
+                        color: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, 0.55)
+                        border.width: 1
+                        border.color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.8)
+
+                        // Live preview (X11/XWayland windows). Native Wayland
+                        // windows have no screenshot protocol, so the fallback
+                        // below stays visible for them.
+                        Image {
+                            id: thumb
+                            anchors.fill: parent
+                            asynchronous: true
+                            cache: false
+                            fillMode: Image.PreserveAspectCrop
+                            sourceSize.width: 200
+                            sourceSize.height: 120
+                            source: windowRow.thumbnailsEnabled
+                                    ? Windows.thumbnailUrl(modelData.id) : ""
+                        }
+
+                        Image {
+                            visible: !windowRow.hasThumbnail
+                            anchors.centerIn: parent
+                            width: 28
+                            height: 28
+                            sourceSize.width: 56
+                            sourceSize.height: 56
+                            fillMode: Image.PreserveAspectFit
+                            source: Shell.tintedIcon(dockMenu.entry && dockMenu.entry.app
+                                                     && dockMenu.entry.app.icon
+                                                     ? dockMenu.entry.app.icon : "app-window",
+                                                     Theme.foreground)
+                        }
+                    }
+
+                    Text {
+                        anchors.left: previewFrame.right
+                        anchors.leftMargin: 8
                         anchors.right: windowState.left
                         anchors.rightMargin: 4
-                        height: parent.height
-                        fillWidth: true
-                        iconName: dockMenu.entry && dockMenu.entry.app && dockMenu.entry.app.icon
-                                  ? dockMenu.entry.app.icon : "app-window"
-                        label: modelData.title && modelData.title.length > 0 ? modelData.title : "Window"
-                        active: !!modelData.active
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: modelData.title && modelData.title.length > 0
+                              ? modelData.title : "Window"
+                        color: Theme.foreground
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSize
+                        elide: Text.ElideRight
+                        maximumLineCount: 2
+                        wrapMode: Text.Wrap
+                    }
+
+                    MouseArea {
+                        anchors.left: parent.left
+                        anchors.right: windowState.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        cursorShape: Qt.PointingHandCursor
                         onClicked: {
                             Windows.activate(modelData.id);
                             dockMenu.close();
                         }
                     }
+
                     // Minimise or restore this window, matching its state.
                     // Read-only toplevels (ext_foreign_toplevel_list) can be
                     // neither minimised nor closed, so they get no buttons.
@@ -188,8 +256,9 @@ Window {
                         id: windowState
                         anchors.right: windowClose.left
                         anchors.rightMargin: 2
-                        width: 30
-                        height: parent.height
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 28
+                        height: 28
                         visible: !modelData.readOnly
                         iconName: modelData.minimized ? "maximize-2" : "minimize-2"
                         onClicked: {
@@ -203,8 +272,10 @@ Window {
                     TaskButton {
                         id: windowClose
                         anchors.right: parent.right
-                        width: 30
-                        height: parent.height
+                        anchors.rightMargin: 4
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 28
+                        height: 28
                         visible: !modelData.readOnly
                         iconName: "x"
                         onClicked: {

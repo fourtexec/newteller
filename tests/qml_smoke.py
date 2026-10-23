@@ -597,6 +597,11 @@ class Windows(QObject):
     def windowsOfApp(self, app_id):
         return [w["id"] for w in self._windows if w["appId"] == app_id]
 
+    @Slot(str, result=QUrl)
+    def thumbnailUrl(self, window_id):
+        # The offscreen test has no X server; the dock falls back to icons.
+        return QUrl()
+
 
 class Notifications(QObject):
     """Stand-in for the NotificationDaemon context property (src/notifications.h)."""
@@ -681,6 +686,22 @@ class Tray(QObject):
     @Slot(str, int, bool)
     def scroll(self, item_id, delta, horizontal):
         self.calls.append(("scroll", item_id, delta, horizontal))
+
+    @Slot(str, result=bool)
+    def hasMenu(self, item_id):
+        return False
+
+    @Slot(str, result="QVariantList")
+    def menu(self, item_id):
+        return []
+
+    @Slot(str, int)
+    def menuAboutToShow(self, item_id, menu_item_id):
+        self.calls.append(("menuAboutToShow", item_id, menu_item_id))
+
+    @Slot(str, int, str)
+    def menuEvent(self, item_id, menu_item_id, event):
+        self.calls.append(("menuEvent", item_id, menu_item_id, event))
 
 
 class Quick(QObject):

@@ -57,6 +57,34 @@ public:
     }
 };
 
+// Serves window previews as image://windowthumb/<id>?r=<epoch>. The actual
+// capture happens in WindowList::captureThumbnail on its own X11 connection,
+// so this provider stays safe on Qt's image loading thread.
+class WindowThumbnailProvider : public QQuickImageProvider {
+public:
+    WindowThumbnailProvider()
+        : QQuickImageProvider(QQuickImageProvider::Image)
+    {
+    }
+
+    QImage requestImage(const QString &id, QSize *size, const QSize &requestedSize) override
+    {
+        QString key = id;
+        const int query = key.indexOf(QLatin1Char('?'));
+        if (query >= 0)
+            key.truncate(query);
+        key = QUrl::fromPercentEncoding(key.toUtf8());
+
+        const QSize target = (requestedSize.width() > 0 && requestedSize.height() > 0)
+                                 ? requestedSize
+                                 : QSize(320, 180);
+        const QImage image = WindowList::captureThumbnail(key, target);
+        if (size)
+            *size = image.size();
+        return image;
+    }
+};
+
 namespace {
 
 // NewTeller's own flags. They are scanned by hand because QCommandLineParser
@@ -211,6 +239,7 @@ int main(int argc, char *argv[])
 
     QQmlApplicationEngine engine;
     engine.addImageProvider(QStringLiteral("theme"), new ThemeIconProvider);
+    engine.addImageProvider(QStringLiteral("windowthumb"), new WindowThumbnailProvider);
     engine.addImageProvider(QStringLiteral("tray"), createTrayImageProvider(&tray));
     engine.rootContext()->setContextProperty(QStringLiteral("Settings"), &settings);
     engine.rootContext()->setContextProperty(QStringLiteral("Theme"), &theme);

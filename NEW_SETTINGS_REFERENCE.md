@@ -87,6 +87,13 @@ Each setting is documented with:
 | `dock.iconSpacing` | integer | `4` | Spacing between dock icons (0-24px) | Panel & Dock |
 | `dock.shrinkIcons` | boolean | `true` | Shrink icons on overflow | Panel & Dock |
 | `dock.separateBackground` | boolean | `true` | Separate background/minimized apps | Panel & Dock |
+| `dock.thumbnails` | boolean | `true` | Live window previews in the dock menu | Panel & Dock |
+
+### System Tray
+| Key | Type | Default | Description | Page |
+|-----|------|---------|-------------|------|
+| `tray.enabled` | boolean | `true` | Act as the session's StatusNotifierWatcher and show tray icons | Panel & Dock |
+| `tray.menus` | boolean | `true` | Render the item's DBusMenu on right click instead of its own popup | Panel & Dock |
 
 ---
 
@@ -110,6 +117,7 @@ Each setting is documented with:
 | `desktop.iconGlow` | boolean | `false` | Enable icon glow effects | Desktop |
 | `desktop.showHiddenFiles` | boolean | `false` | Show hidden files on desktop | Desktop |
 | `desktop.autoArrangeIcons` | boolean | `true` | Auto-arrange desktop icons | Desktop |
+| `desktop.iconPositions` | object | `{}` | Saved icon positions keyed by file name | Desktop |
 
 ### Grid
 | Key | Type | Default | Description | Page |

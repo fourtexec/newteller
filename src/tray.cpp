@@ -6,7 +6,9 @@
 #include <QDBusConnectionInterface>
 #include <QDBusError>
 #include <QDBusMessage>
+#include <QDBusObjectPath>
 #include <QDBusServiceWatcher>
+#include <QDBusVariant>
 #include <QIcon>
 #include <QQuickImageProvider>
 #include <QtDebug>
@@ -17,6 +19,7 @@ constexpr auto kWatcherService = "org.kde.StatusNotifierWatcher";
 constexpr auto kWatcherPath = "/StatusNotifierWatcher";
 constexpr auto kItemInterface = "org.kde.StatusNotifierItem";
 constexpr auto kPropsInterface = "org.freedesktop.DBus.Properties";
+constexpr auto kMenuInterface = "com.canonical.dbusmenu";
 
 // Object paths items commonly use; the startup scan probes them when an item
 // registered before the shell appeared (items that start later call
@@ -55,7 +58,7 @@ QImage decodePixmap(const QVariant &value)
     QImage best;
     array.beginArray();
     while (!array.atEnd()) {
-        QDBusArgument entry = array;
+        const QDBusArgument entry = array;
         entry.beginStructure();
         qint32 width = 0;
         qint32 height = 0;
@@ -79,7 +82,7 @@ void decodeToolTip(const QVariant &value, QString *title, QString *body)
 {
     if (!value.isValid() || !value.canConvert<QDBusArgument>())
         return;
-    QDBusArgument structure = value.value<QDBusArgument>();
+    const QDBusArgument structure = value.value<QDBusArgument>();
     if (structure.currentType() != QDBusArgument::StructureType)
         return;
     structure.beginStructure();
@@ -96,6 +99,70 @@ void decodeToolTip(const QVariant &value, QString *title, QString *body)
         *title = tipTitle;
     if (body)
         *body = tipBody;
+}
+
+// --- com.canonical.dbusmenu layout parsing --------------------------------
+//
+// GetLayout returns a tree of (ia{sv}av) structs: item id, a map of
+// properties, and an array of child variants. The properties the panel
+// understands are the ones every toolkit exports (label, enabled, visible,
+// type, toggle-* and icon-name); unknown keys are ignored.
+
+QVariantList parseMenuChildren(const QDBusArgument &children);
+
+QVariantMap parseMenuNode(const QDBusArgument &node)
+{
+    QVariantMap out;
+    if (node.currentType() != QDBusArgument::StructureType)
+        return out;
+
+    node.beginStructure();
+    int id = 0;
+    QVariantMap props;
+    node >> id;
+    node >> props;
+    // The cursor now sits on the `av` of children.
+    const QVariantList childList = parseMenuChildren(node);
+    node.endStructure();
+
+    const QString type = props.value(QStringLiteral("type")).toString();
+    const QString toggle = props.value(QStringLiteral("toggle-type")).toString();
+
+    out.insert(QStringLiteral("id"), id);
+    out.insert(QStringLiteral("label"), props.value(QStringLiteral("label")).toString());
+    out.insert(QStringLiteral("enabled"), props.value(QStringLiteral("enabled"), true).toBool());
+    out.insert(QStringLiteral("visible"), props.value(QStringLiteral("visible"), true).toBool());
+    out.insert(QStringLiteral("separator"), type == QLatin1String("separator"));
+    out.insert(QStringLiteral("checkable"),
+               toggle == QLatin1String("checkmark") || toggle == QLatin1String("radio"));
+    out.insert(QStringLiteral("checked"),
+               props.value(QStringLiteral("toggle-state")).toInt() == 1);
+    out.insert(QStringLiteral("radio"), toggle == QLatin1String("radio"));
+    out.insert(QStringLiteral("iconName"), props.value(QStringLiteral("icon-name")).toString());
+    out.insert(QStringLiteral("hasChildren"), !childList.isEmpty()
+               || props.value(QStringLiteral("children-display")).toString()
+                      == QLatin1String("submenu"));
+    out.insert(QStringLiteral("children"), childList);
+    return out;
+}
+
+QVariantList parseMenuChildren(const QDBusArgument &children)
+{
+    QVariantList out;
+    if (children.currentType() != QDBusArgument::ArrayType)
+        return out;
+
+    const QDBusArgument array = children;
+    array.beginArray();
+    while (!array.atEnd()) {
+        QVariant entry;
+        array >> entry;
+        if (!entry.canConvert<QDBusArgument>())
+            continue;
+        out.append(parseMenuNode(entry.value<QDBusArgument>()));
+    }
+    array.endArray();
+    return out;
 }
 
 QString makeId(const QString &service, const QString &path)
@@ -377,6 +444,7 @@ void TrayWatcher::refreshItem(TrayItemData &item)
     const QVariant iconName = itemProperty(item.service, item.path, QStringLiteral("IconName"));
     const QVariant pixmap = itemProperty(item.service, item.path, QStringLiteral("IconPixmap"));
     const QVariant tooltip = itemProperty(item.service, item.path, QStringLiteral("ToolTip"));
+    const QVariant menu = itemProperty(item.service, item.path, QStringLiteral("Menu"));
 
     QString newId = id.toString();
     if (newId.isEmpty())
@@ -408,6 +476,21 @@ void TrayWatcher::refreshItem(TrayItemData &item)
         item.tooltipBody = tipBody;
         item.revision = ++m_revision;
     }
+
+    QString newMenuPath;
+    if (menu.isValid()) {
+        if (menu.metaType().id() == qMetaTypeId<QDBusObjectPath>())
+            newMenuPath = menu.value<QDBusObjectPath>().path();
+        else
+            newMenuPath = menu.toString();
+    }
+    // Some items use the well-known "no menu" sentinel.
+    if (newMenuPath == QLatin1String("/NO_DBUSMENU"))
+        newMenuPath.clear();
+    if (item.menuPath != newMenuPath) {
+        item.menuPath = newMenuPath;
+        item.revision = ++m_revision;
+    }
 }
 
 // Property changes arrive as (interface, changed, invalidated).
@@ -426,6 +509,7 @@ void TrayWatcher::handlePropertiesChanged(const QString &interface, const QVaria
                               || changed.contains(QStringLiteral("IconName"))
                               || changed.contains(QStringLiteral("IconPixmap"))
                               || changed.contains(QStringLiteral("ToolTip"))
+                              || changed.contains(QStringLiteral("Menu"))
                               || !invalidated.isEmpty();
         if (relevant)
             refreshItem(item);
@@ -482,6 +566,72 @@ void TrayWatcher::scroll(const QString &id, int delta, bool horizontal) const
     QDBusConnection::sessionBus().asyncCall(call);
 }
 
+bool TrayWatcher::hasMenu(const QString &id) const
+{
+    TrayItemData *item = const_cast<TrayWatcher *>(this)->find(id);
+    return item && !item->menuPath.isEmpty();
+}
+
+QVariantList TrayWatcher::menu(const QString &id) const
+{
+    TrayItemData *item = const_cast<TrayWatcher *>(this)->find(id);
+    if (!item || item->menuPath.isEmpty())
+        return {};
+
+    // Give the application a chance to update dynamic entries before the
+    // whole tree is fetched. Most toolkits answer immediately; the timeout
+    // only matters for a hung service.
+    QDBusMessage aboutCall = QDBusMessage::createMethodCall(item->service, item->menuPath,
+                                                            QString::fromLatin1(kMenuInterface),
+                                                            QStringLiteral("AboutToShow"));
+    aboutCall << 0;
+    QDBusConnection::sessionBus().call(aboutCall, QDBus::Block, 1000);
+
+    QDBusMessage call = QDBusMessage::createMethodCall(item->service, item->menuPath,
+                                                       QString::fromLatin1(kMenuInterface),
+                                                       QStringLiteral("GetLayout"));
+    // parent id 0 (the root), recursion depth -1 (the whole tree), no explicit
+    // property filter (so every toolkit sends the properties it has).
+    call << 0 << -1 << QStringList();
+    const QDBusMessage reply = QDBusConnection::sessionBus().call(call, QDBus::Block, 1200);
+    if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().size() < 2)
+        return {};
+    const QVariant layoutValue = reply.arguments().at(1);
+    if (!layoutValue.canConvert<QDBusArgument>())
+        return {};
+    const QDBusArgument layout = layoutValue.value<QDBusArgument>();
+    const QVariantMap root = parseMenuNode(layout);
+    return root.value(QStringLiteral("children")).toList();
+}
+
+void TrayWatcher::menuAboutToShow(const QString &id, int itemId) const
+{
+    TrayItemData *item = const_cast<TrayWatcher *>(this)->find(id);
+    if (!item || item->menuPath.isEmpty())
+        return;
+    QDBusMessage call = QDBusMessage::createMethodCall(item->service, item->menuPath,
+                                                       QString::fromLatin1(kMenuInterface),
+                                                       QStringLiteral("AboutToShow"));
+    call << itemId;
+    QDBusConnection::sessionBus().asyncCall(call);
+}
+
+void TrayWatcher::menuEvent(const QString &id, int itemId, const QString &event) const
+{
+    TrayItemData *item = const_cast<TrayWatcher *>(this)->find(id);
+    if (!item || item->menuPath.isEmpty())
+        return;
+    QDBusMessage call = QDBusMessage::createMethodCall(item->service, item->menuPath,
+                                                       QString::fromLatin1(kMenuInterface),
+                                                       QStringLiteral("Event"));
+    // Event(i id, s eventId, v data, u timestamp); the event data is unused
+    // for a plain click, but the variant still has to be on the wire.
+    call << itemId << event
+         << QVariant::fromValue(QDBusVariant(QVariant(0)))
+         << quint32(0);
+    QDBusConnection::sessionBus().asyncCall(call);
+}
+
 QUrl TrayWatcher::iconUrl(const QString &id) const
 {
     TrayItemData *item = const_cast<TrayWatcher *>(this)->find(id);
@@ -526,6 +676,8 @@ void TrayWatcher::emitItems()
         map.insert(QStringLiteral("status"), item.status);
         map.insert(QStringLiteral("tooltipTitle"), item.tooltipTitle);
         map.insert(QStringLiteral("tooltipBody"), item.tooltipBody);
+        map.insert(QStringLiteral("hasMenu"), !item.menuPath.isEmpty());
+        map.insert(QStringLiteral("menuPath"), item.menuPath);
         out.append(map);
     }
     m_itemsValue = out;

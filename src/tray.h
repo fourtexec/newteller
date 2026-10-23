@@ -26,6 +26,7 @@ struct TrayItemData {
     QImage iconImage;    // IconPixmap decoded (empty when only a name is set)
     QString tooltipTitle;
     QString tooltipBody;
+    QString menuPath;    // com.canonical.dbusmenu object, empty when none
     qlonglong revision = 0; // bumped whenever the icon or text changes
 };
 
@@ -86,6 +87,17 @@ public slots:
     Q_INVOKABLE void secondaryActivate(const QString &id) const;
     Q_INVOKABLE void contextMenu(const QString &id, int x, int y) const;
     Q_INVOKABLE void scroll(const QString &id, int delta, bool horizontal) const;
+    // --- com.canonical.dbusmenu --------------------------------------------
+    // True when the item exported a menu object (the `Menu` property); the
+    // panel then renders that menu itself instead of asking the application
+    // for a native popup.
+    Q_INVOKABLE bool hasMenu(const QString &id) const;
+    // The full menu tree, fetched live from the item's DBusMenu service:
+    // [{ id, label, enabled, visible, separator, checkable, checked,
+    //    iconName, hasChildren, children: [...] }, ...]
+    Q_INVOKABLE QVariantList menu(const QString &id) const;
+    Q_INVOKABLE void menuAboutToShow(const QString &id, int itemId) const;
+    Q_INVOKABLE void menuEvent(const QString &id, int itemId, const QString &event) const;
 
     // Stable rendering URL for the panel: image://tray/... served by
     // TrayImageProvider. The revision in the query makes QML reload whenever

@@ -82,6 +82,10 @@ Window {
     property var dockEntries: []
     property var dockMainEntries: []
     property var dockBackgroundEntries: []
+    // Pinned buttons are draggable: the app id being dragged and the insertion
+    // slot currently under the pointer (index into the main dock list).
+    property string dockDraggingAppId: ""
+    property int dockDropIndex: -1
 
     visible: true
     color: "transparent"
@@ -331,6 +335,69 @@ Window {
         dockMenu.openFor(entry, button.x + button.width / 2, button.y + button.height / 2);
     }
 
+    function openTrayMenu(button, itemId) {
+        const centre = button.mapToItem(null, button.width / 2, button.height / 2);
+        trayMenu.openFor(itemId, centre.x, centre.y);
+    }
+
+    // --- dock drag-to-reorder ---------------------------------------------
+    // Only pinned applications move; running applications that were never
+    // pinned keep following the window order.
+
+    function dockDropTarget(sceneX, sceneY, repeater) {
+        const pointer = vertical ? sceneY : sceneX;
+        var target = 0;
+        for (var i = 0; i < repeater.count; ++i) {
+            const item = repeater.itemAt(i);
+            if (!item)
+                continue;
+            const centre = item.mapToItem(null, item.width / 2, item.height / 2);
+            const centrePos = vertical ? centre.y : centre.x;
+            if (pointer > centrePos)
+                target = i + 1;
+        }
+        // Never drop past the pinned block: running entries follow it.
+        const pinned = Settings.values["panel.pinned"] || [];
+        var pinnedVisible = 0;
+        for (const id of pinned) {
+            if (Apps.byId(id).id !== undefined)
+                pinnedVisible += 1;
+        }
+        return Math.max(0, Math.min(target, pinnedVisible));
+    }
+
+    function dockReorderStarted(entry) {
+        if (!entry.pinned)
+            return;
+        dockDraggingAppId = entry.appId;
+        dockDropIndex = -1;
+    }
+
+    function dockReorderMoved(entry, sceneX, sceneY, repeater) {
+        if (!entry.pinned)
+            return;
+        dockDropIndex = dockDropTarget(sceneX, sceneY, repeater);
+    }
+
+    function dockReorderFinished(entry, sceneX, sceneY, repeater) {
+        if (!entry.pinned) {
+            dockDraggingAppId = "";
+            dockDropIndex = -1;
+            return;
+        }
+        const target = dockDropTarget(sceneX, sceneY, repeater);
+        const list = (Settings.values["panel.pinned"] || []).slice();
+        const from = list.indexOf(entry.appId);
+        if (from >= 0) {
+            list.splice(from, 1);
+            const to = Math.max(0, Math.min(target > from ? target - 1 : target, list.length));
+            list.splice(to, 0, entry.appId);
+            Settings.setValue("panel.pinned", list);
+        }
+        dockDraggingAppId = "";
+        dockDropIndex = -1;
+    }
+
     Component.onCompleted: rebuildDock()
     Connections {
         target: Windows
@@ -354,6 +421,15 @@ Window {
         position: panel.panelPosition
     }
 
+    // Menus exported over com.canonical.dbusmenu by tray items. Items without
+    // one keep the old behaviour (ask the application for its own popup).
+    TrayMenu {
+        id: trayMenu
+        screen: panel.screen
+        panelThickness: panel.barThickness
+        position: panel.panelPosition
+    }
+
     // Shared pieces of the bar, used by both layouts below.
     component StartButton: TaskButton {
         objectName: "startButton"
@@ -367,17 +443,22 @@ Window {
     }
 
     component DockApps: Repeater {
+        id: dockAppsRepeater
         property bool backgroundZone: false
         model: backgroundZone ? panel.dockBackgroundEntries : panel.dockMainEntries
 
         delegate: TaskButton {
             id: dockButton
             required property var modelData
+            required property int index
             readonly property var entry: modelData
             readonly property string appName: entry.app && entry.app.name ? entry.app.name
                                                                           : (entry.title || "Application")
 
             height: dockStrip.height
+            reorderable: entry.pinned === true
+            reordering: panel.dockDraggingAppId.length > 0
+                        && panel.dockDraggingAppId === entry.appId
             iconName: entry.app && entry.app.icon ? entry.app.icon
                     : (entry.appId.length > 0 ? "square" : "app-window")
             label: panel.showDockLabels && entry.title && entry.title.length > 0
@@ -393,6 +474,27 @@ Window {
             badge: entry.badge
             onClicked: panel.dockClicked(entry)
             onMiddleClicked: panel.closeEntry(entry)
+            onReorderStarted: panel.dockReorderStarted(entry)
+            onReorderMoved: (x, y) => panel.dockReorderMoved(entry, x, y, dockAppsRepeater)
+            onReorderFinished: (x, y) => panel.dockReorderFinished(entry, x, y, dockAppsRepeater)
+
+            // Insertion marker while a pinned button is dragged.
+            Rectangle {
+                readonly property bool before: panel.dockDropIndex === index
+                readonly property bool atEnd: panel.dockDropIndex === dockAppsRepeater.count
+                                              && index === dockAppsRepeater.count - 1
+                visible: entry.pinned && (before || atEnd)
+                width: panel.vertical ? parent.width : 2
+                height: panel.vertical ? 2 : parent.height
+                radius: 1
+                color: Theme.accent
+                z: 30
+                anchors.left: panel.vertical ? parent.left : undefined
+                anchors.right: !panel.vertical && atEnd && !before ? parent.right : undefined
+                anchors.top: panel.vertical && !atEnd ? parent.top : undefined
+                anchors.bottom: panel.vertical && atEnd && !before ? parent.bottom : undefined
+            }
+
             HoverHandler {
                 onHoveredChanged: {
                     if (hovered)
@@ -562,14 +664,21 @@ Window {
                     cursorShape: Qt.PointingHandCursor
                     onClicked: (mouse) => {
                         panel.hideToolTip();
-                        if (mouse.button === Qt.RightButton)
-                            Tray.contextMenu(trayIcon.entryId,
-                                             Math.round(mouse.globalX || 0),
-                                             Math.round(mouse.globalY || 0));
-                        else if (mouse.button === Qt.MiddleButton)
+                        if (mouse.button === Qt.RightButton) {
+                            if (Settings.values["tray.menus"] !== false
+                                && Tray.hasMenu(trayIcon.entryId)) {
+                                panel.openTrayMenu(trayIcon, trayIcon.entryId);
+                            } else {
+                                const global = trayIcon.mapToGlobal(mouse.x, mouse.y);
+                                Tray.contextMenu(trayIcon.entryId,
+                                                 Math.round(global.x),
+                                                 Math.round(global.y));
+                            }
+                        } else if (mouse.button === Qt.MiddleButton) {
                             Tray.secondaryActivate(trayIcon.entryId);
-                        else
+                        } else {
                             Tray.activate(trayIcon.entryId);
+                        }
                     }
                     onWheel: (wheel) => {
                         Tray.scroll(trayIcon.entryId,

@@ -1,11 +1,14 @@
 #pragma once
 
 #include <QHash>
+#include <QImage>
 #include <QObject>
+#include <QSize>
 #include <QSocketNotifier>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
+#include <QUrl>
 #include <QVariantList>
 
 struct wl_display;
@@ -77,6 +80,14 @@ public:
     Q_INVOKABLE QString activeWindow() const;
     // All window ids that belong to one application id (QML grouping).
     Q_INVOKABLE QStringList windowsOfApp(const QString &appId) const;
+    // Stable URL of a window preview for QML (image://windowthumb/...).
+    // Empty when the back end cannot produce a preview (Wayland toplevels
+    // have no screenshot protocol; X11 and XWayland windows do).
+    Q_INVOKABLE QUrl thumbnailUrl(const QString &id) const;
+    // Captures and scales one preview. Called by the image provider, possibly
+    // from an image-loading thread, so it opens its own X11 connection and
+    // only uses the window id encoded in `id` (never the shared maps).
+    static QImage captureThumbnail(const QString &id, const QSize &requestedSize);
 
     // Implementation detail of windowlist.cpp: the libwayland event callbacks.
     // They are public only so the file-scope listener tables can reference them.
@@ -141,6 +152,8 @@ private:
     QString m_backend = QStringLiteral("none");
     QTimer m_pollTimer;
     int m_nextWindowId = 1;
+    // Bumped whenever the window list changes so QML reloads its previews.
+    quint64 m_thumbEpoch = 1;
 
     // X11 state
     xcb_connection_t *m_xcb = nullptr;

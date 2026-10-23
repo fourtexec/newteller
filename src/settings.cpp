@@ -47,6 +47,7 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("dock.shrinkIcons"), true);
     m_defaults.insert(QStringLiteral("panel.indicators"), true);
     m_defaults.insert(QStringLiteral("tray.enabled"), true);
+    m_defaults.insert(QStringLiteral("tray.menus"), true);
     m_defaults.insert(QStringLiteral("windows.style"), QStringLiteral("card"));
     m_defaults.insert(QStringLiteral("windows.radius"), -1);
     m_defaults.insert(QStringLiteral("windows.opacityPercent"), 0);
@@ -139,6 +140,7 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("dock.rows"), 1);
     m_defaults.insert(QStringLiteral("dock.scrollable"), true);
     m_defaults.insert(QStringLiteral("dock.iconSpacing"), 4);
+    m_defaults.insert(QStringLiteral("dock.thumbnails"), true);
     m_defaults.insert(QStringLiteral("panel.zoneSpacing"), 8);
 
     // ===== Desktop Enhancements =====
@@ -153,6 +155,9 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("desktop.iconTextShadow"), true);
     m_defaults.insert(QStringLiteral("desktop.showHiddenFiles"), false);
     m_defaults.insert(QStringLiteral("desktop.doubleClickSpeed"), 500);
+    // Saved drag-and-drop positions, keyed by the file name in ~/Desktop:
+    // { "notes.txt": { "x": 120, "y": 48 }, ... }.
+    m_defaults.insert(QStringLiteral("desktop.iconPositions"), QVariantMap());
 
     // ===== Notifications =====
     m_defaults.insert(QStringLiteral("notifications.theme"), QStringLiteral("system"));

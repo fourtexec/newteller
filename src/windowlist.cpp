@@ -4,6 +4,7 @@
 #include <QVariantMap>
 #include <QtGlobal>
 
+#include <cstdlib>
 #include <cstring>
 
 #if QT_CONFIG(xcb)
@@ -387,6 +388,7 @@ void WindowList::setWindows(QVariantList windows)
     if (windows == m_windows)
         return;
     m_windows = std::move(windows);
+    ++m_thumbEpoch;
     emit windowsChanged();
 }
 
@@ -421,6 +423,79 @@ QStringList WindowList::windowsOfApp(const QString &appId) const
             ids << w.value(QStringLiteral("id")).toString();
     }
     return ids;
+}
+
+QUrl WindowList::thumbnailUrl(const QString &id) const
+{
+    // Only X11 ids ("x<hex>") can be captured: foreign-toplevel protocols do
+    // not expose the buffers of native Wayland windows.
+    if (!id.startsWith(QLatin1Char('x')))
+        return {};
+    bool ok = false;
+    id.mid(1).toULongLong(&ok, 16);
+    if (!ok)
+        return {};
+    return QUrl(QStringLiteral("image://windowthumb/%1?r=%2")
+                    .arg(QString::fromUtf8(QUrl::toPercentEncoding(id)),
+                         QString::number(m_thumbEpoch)));
+}
+
+QImage WindowList::captureThumbnail(const QString &id, const QSize &requestedSize)
+{
+#if QT_CONFIG(xcb)
+    if (!id.startsWith(QLatin1Char('x')))
+        return {};
+    bool ok = false;
+    const quint64 value = id.mid(1).toULongLong(&ok, 16);
+    if (!ok || value == 0)
+        return {};
+
+    // A private connection: QQuickImageProvider may call this from an image
+    // loading thread, and xcb connections are not safe for concurrent use.
+    xcb_connection_t *connection = xcb_connect(nullptr, nullptr);
+    if (!connection || xcb_connection_has_error(connection)) {
+        if (connection)
+            xcb_disconnect(connection);
+        return {};
+    }
+
+    QImage result;
+    const xcb_window_t window = xcb_window_t(value);
+    xcb_get_geometry_cookie_t geometryCookie = xcb_get_geometry(connection, window);
+    xcb_get_geometry_reply_t *geometry =
+        xcb_get_geometry_reply(connection, geometryCookie, nullptr);
+    if (geometry && geometry->width > 0 && geometry->height > 0) {
+        const int width = geometry->width;
+        const int height = geometry->height;
+        xcb_get_image_cookie_t imageCookie =
+            xcb_get_image(connection, XCB_IMAGE_FORMAT_Z_PIXMAP, window, 0, 0,
+                          uint16_t(width), uint16_t(height), ~0u);
+        xcb_get_image_reply_t *reply = xcb_get_image_reply(connection, imageCookie, nullptr);
+        if (reply && (reply->depth == 24 || reply->depth == 32)) {
+            const int length = xcb_get_image_data_length(reply);
+            const int stride = height > 0 ? length / height : 0;
+            if (stride >= width * 4) {
+                const auto *data = xcb_get_image_data(reply);
+                // X11 ZPixmap on a 24/32 bit visual is BGRX in memory, which
+                // is exactly QImage::Format_RGB32 on little endian hosts.
+                result = QImage(data, width, height, stride, QImage::Format_RGB32).copy();
+            }
+        }
+        std::free(reply);
+    }
+    std::free(geometry);
+    xcb_disconnect(connection);
+
+    if (result.isNull())
+        return {};
+    if (requestedSize.isValid() && requestedSize.width() > 0 && requestedSize.height() > 0)
+        result = result.scaled(requestedSize, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    return result;
+#else
+    Q_UNUSED(id);
+    Q_UNUSED(requestedSize);
+    return {};
+#endif
 }
 
 // ---------------------------------------------------------------------------
