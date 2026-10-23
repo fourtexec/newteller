@@ -87,12 +87,30 @@ Window {
             default: return Image.PreserveAspectCrop
             }
         }
-        sourceSize: desk.wallpaperBlur > 0 && width > 0 && height > 0
-                    ? Qt.size(Math.max(16, Math.round(width / (1 + desk.wallpaperBlur * 0.4))),
-                              Math.max(16, Math.round(height / (1 + desk.wallpaperBlur * 0.4))))
-                    : Qt.size(0, 0)
-        source: desk.wallpaper.length === 0 ? ""
-                : (desk.wallpaper.indexOf("://") > 0 ? desk.wallpaper : "file://" + desk.wallpaper)
+        // A corrupt, unsupported or deleted wallpaper leaves the themed
+        // gradient visible instead of a black (or half-loaded) screen.
+        visible: status === Image.Ready
+        // Never upload a full-resolution photo: a modern camera image is
+        // tens of megapixels, which exceeds GL_MAX_TEXTURE_SIZE on many
+        // drivers - the scene graph aborts there. The wallpaper is only drawn
+        // at the window size anyway, so the decode is capped to it (the blur
+        // setting shrinks it further). Tiling keeps the natural size.
+        readonly property real decodeScale: desk.wallpaperBlur > 0
+                                            ? 1 + desk.wallpaperBlur * 0.4 : 1
+        sourceSize: desk.wallpaperMode === "tile" || width <= 0 || height <= 0
+                    ? Qt.size(0, 0)
+                    : Qt.size(Math.max(16, Math.min(4096, Math.round(width / decodeScale))),
+                              Math.max(16, Math.min(4096, Math.round(height / decodeScale))))
+        source: {
+            const wp = desk.wallpaper;
+            if (wp.length === 0)
+                return "";
+            if (wp.indexOf("://") > 0)
+                return wp;
+            // Encode the path: a "#" or "%" in a file name must not become a
+            // URL fragment or an invalid escape.
+            return "file://" + wp.split("/").map(p => encodeURIComponent(p)).join("/");
+        }
     }
 
     Rectangle {
@@ -115,7 +133,8 @@ Window {
     FolderListModel {
         id: wallpaperFiles
         folder: Shell.home + "/Pictures"
-        nameFilters: ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp"]
+        nameFilters: ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp", "*.gif", "*.svg", "*.xpm",
+                      "*.tif", "*.tiff", "*.avif", "*.heic", "*.jxl"]
         showDirs: false
         showDotAndDotDot: false
     }

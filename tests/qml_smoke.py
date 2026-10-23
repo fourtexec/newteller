@@ -44,10 +44,10 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen:configfile=" + _config.name
 os.environ["QT_QUICK_BACKEND"] = "software"
 
 import PySide6  # noqa: E402
-from PySide6.QtCore import (Q_ARG, QDateTime, QEnum, QFile, QMargins, QMetaObject, QObject, QPoint,  # noqa: E402
-                            QtMsgType, QTimer, QUrl, Property, Qt, Signal, Slot,
-                            qInstallMessageHandler)
-from PySide6.QtGui import QColor, QGuiApplication  # noqa: E402
+from PySide6.QtCore import (Q_ARG, QDateTime, QDir, QEnum, QFile, QFileInfo, QMargins,  # noqa: E402
+                            QMetaObject, QObject, QPoint, QtMsgType, QTimer, QUrl, Property, Qt,
+                            Signal, Slot, qInstallMessageHandler)
+from PySide6.QtGui import QColor, QGuiApplication, QImage, QImageReader  # noqa: E402
 from PySide6.QtQml import (QmlAnonymous, QmlAttached, QmlNamedElement,  # noqa: E402
                            QmlUncreatable, QQmlApplicationEngine, QQmlComponent)
 from PySide6.QtQuick import QQuickItem  # noqa: E402
@@ -461,6 +461,44 @@ class Shell(QObject):
     def saveTextFile(self, path, text):
         self.calls.append(("saveTextFile", path))
         return True
+
+    # --- file helpers (src/shellcontroller.cpp) --------------------------
+    # Same normalisation as the real controller: the pickers hand over plain
+    # paths, "~/..." strings, file:// URLs and percent-encoded paths, and must
+    # always end up at an existing directory.
+    @Slot(str, result=str)
+    def folderPath(self, path):
+        p = (path or "").strip()
+        if not p:
+            return self._home
+        if p.startswith("file:"):
+            local = QUrl(p).toLocalFile()
+            p = local or p[7:]
+        elif "://" in p:
+            return self._home
+        if p == "~":
+            p = self._home
+        elif p.startswith("~/"):
+            p = self._home + p[1:]
+        if not QDir.isAbsolutePath(p):
+            p = self._home + "/" + p
+        p = QDir.cleanPath(p)
+        info = QFileInfo(p)
+        if info.isDir():
+            return info.absoluteFilePath()
+        return info.absolutePath() if info.isFile() else self._home
+
+    @Slot(str, result=bool)
+    def isImageFile(self, path):
+        p = (path or "").strip()
+        if not p or not QFileInfo(p).isFile():
+            return False
+        return QImageReader(p).canRead()
+
+    @Slot(str, result=bool)
+    def fileExists(self, path):
+        p = (path or "").strip()
+        return bool(p) and QFileInfo(p).isFile()
 
     @Slot(str)
     def terminal(self, command=""):
@@ -1370,6 +1408,142 @@ def main():
             check(settings_app.property("currentPage") == entry["id"],
                   f"settings page switching works ({entry['id']})")
         settings_app.setProperty("visible", False)
+        QTest.qWait(20)
+
+    # ------------------------------------------------------------------
+    # Settings -> Desktop -> "Choose from file manager"
+    #
+    # The button used to open the system chooser (or the integrated picker)
+    # with whatever folder the current wallpaper happened to imply, hand the
+    # raw path to FolderListModel and apply any path that came back. A missing
+    # folder, a "file://file:///..." URL or a non-image crashed the shell for
+    # some users, so the whole flow is exercised here: portal result, portal
+    # failure, dismissal, a non-image, odd folder names and paths that no
+    # longer exist.
+    # ------------------------------------------------------------------
+    pickers = windows_of_kind("SettingsFilePicker")
+    check(len(pickers) == 1, f"one integrated file picker window (got {len(pickers)})")
+    if pickers and settings_windows:
+        settings_app, picker = settings_windows[0], pickers[0]
+        # The picker is a transient child of the settings window, so the
+        # settings window has to be open (the previous section closed it).
+        shell.settingsRequested.emit()
+        QTest.qWait(60)
+        check(settings_app.isVisible(), "the settings window is open for the picker tests")
+        check(not picker.isVisible(), "the file picker starts hidden")
+
+        def call(window, method, *args):
+            return QMetaObject.invokeMethod(
+                window, method, *[Q_ARG("QVariant", a) for a in args])
+
+        shots = os.path.join(work, "Pictures")
+        wallpaper = os.path.join(shots, "wall.png")
+        image = QImage(48, 32, QImage.Format_RGB32)
+        image.fill(QColor("#204060"))
+        check(image.save(wallpaper), "the test wallpaper is a real PNG")
+        note = os.path.join(work, "wall-note.txt")
+        with open(note, "w") as fh:
+            fh.write("not an image")
+        # A folder name with a "%" and a "#" used to produce a broken URL.
+        odd_dir = os.path.join(shots, "50% #1")
+        os.makedirs(odd_dir, exist_ok=True)
+
+        settings._values["desktop.wallpaper"] = ""
+        settings.valuesChanged.emit()
+        QTest.qWait(20)
+
+        # 1. The system chooser is asked first and starts in a real folder.
+        file_portal.calls.clear()
+        call(settings_app, "pickWallpaper", shots)
+        QTest.qWait(20)
+        check(file_portal.calls and file_portal.calls[-1][0] == "pickFile",
+              f"the system file chooser is asked first ({file_portal.calls[-1:]})")
+        check(file_portal.calls[-1][2] == shots,
+              f"the chooser starts in the wallpaper folder ({file_portal.calls[-1][2]!r})")
+
+        # A start folder that does not exist (deleted picture, unmounted disk)
+        # is replaced by the home directory instead of a broken URL.
+        call(settings_app, "pickWallpaper", os.path.join(shots, "does-not-exist"))
+        QTest.qWait(20)
+        check(file_portal.calls[-1][2] == work,
+              f"a missing start folder falls back to home ({file_portal.calls[-1][2]!r})")
+
+        # 2. A picture chosen in the system dialog becomes the wallpaper.
+        file_portal.filePicked.emit(wallpaper)
+        QTest.qWait(40)
+        check(settings._values.get("desktop.wallpaper") == wallpaper,
+              f"the portal picture becomes the wallpaper ({settings._values.get('desktop.wallpaper')!r})")
+
+        # 3. Dismissing, a non-image and a deleted file leave it alone.
+        file_portal.filePicked.emit("")
+        file_portal.filePicked.emit(note)
+        file_portal.filePicked.emit(os.path.join(shots, "gone.png"))
+        QTest.qWait(40)
+        check(settings._values.get("desktop.wallpaper") == wallpaper,
+              "a dismissal or a non-image keeps the current wallpaper")
+
+        # 4. A portal failure opens the integrated picker, once.
+        settings_app.setProperty("filePortalDir", shots)
+        check(not picker.isVisible(), "the fallback picker is closed before the failure")
+        file_portal.pickFailed.emit()
+        QTest.qWait(60)
+        check(picker.isVisible(), "a portal failure opens the integrated picker")
+        check(picker.property("currentPath") == shots,
+              f"the fallback picker starts where the chooser did ({picker.property('currentPath')!r})")
+
+        # 5. Navigation: a URL, a "~" path and a folder with "%"/"#" in its name.
+        call(picker, "enter", QUrl.fromLocalFile(odd_dir).toString())
+        QTest.qWait(40)
+        check(picker.property("currentPath") == odd_dir,
+              f"the picker decodes folder URLs ({picker.property('currentPath')!r})")
+        call(picker, "enter", "~/Pictures/../Pictures")
+        QTest.qWait(40)
+        check(picker.property("currentPath") == shots,
+              f"the picker expands ~ and cleans the path ({picker.property('currentPath')!r})")
+        call(picker, "goUp")
+        QTest.qWait(40)
+        check(picker.property("currentPath") == work, "goUp() goes to the parent folder")
+
+        # 6. Only real images can be picked.
+        call(picker, "choose", note)
+        QTest.qWait(40)
+        check(picker.isVisible(), "choosing a non-image keeps the dialog open")
+        check(settings._values.get("desktop.wallpaper") == wallpaper,
+              "choosing a non-image does not touch the wallpaper")
+        call(picker, "choose", os.path.join(shots, "gone.png"))
+        QTest.qWait(40)
+        check(picker.isVisible(), f"choosing a deleted file keeps the dialog open")
+
+        call(picker, "choose", wallpaper)
+        QTest.qWait(400)  # the close animation has to finish
+        check(not picker.isVisible(), "choosing an image closes the dialog")
+        check(settings._values.get("desktop.wallpaper") == wallpaper,
+              "choosing an image applies the wallpaper")
+
+        # 7. A dialog that lost (or never got) the keyboard focus must stay
+        #    open: it is a file chooser, not a popup menu. It also has to
+        #    survive being reopened while the close animation is running.
+        settings._values["desktop.wallpaper"] = ""
+        settings.valuesChanged.emit()
+        call(picker, "openFor", shots, True)
+        QTest.qWait(30)
+        check(picker.isVisible(), "openFor() shows the picker")
+        check(picker.property("imagesOnly") is True, "openFor() enables the image filter")
+        for _ in range(5):
+            call(picker, "hide")
+            call(picker, "openFor", shots, True)
+            QTest.qWait(40)
+        check(picker.isVisible(), "reopening during the close animation keeps the picker open")
+        call(picker, "openFor", "", True)
+        QTest.qWait(40)
+        check(picker.property("currentPath") == work,
+              f"an empty start folder falls back to home ({picker.property('currentPath')!r})")
+        call(picker, "hide")
+        QTest.qWait(400)
+        check(not picker.isVisible(), "hide() closes the picker")
+
+        settings._values["desktop.wallpaper"] = ""
+        settings.valuesChanged.emit()
         QTest.qWait(20)
 
     QTest.qWait(100)

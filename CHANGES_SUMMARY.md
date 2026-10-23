@@ -20,6 +20,20 @@ This comprehensive update adds **100+ new settings** across all aspects of NewTe
 
 ## 🔧 Fixed behaviour
 
+- Settings → Desktop → “Choose from file manager” no longer takes the shell
+  down. The wallpaper image was decoded at the photo's full resolution
+  (`sourceSize` was only set when the blur option was on), so a big camera
+  photo exceeded the GPU's maximum texture size and the scene graph aborted;
+  the desktop and both pickers now decode wallpapers/thumbnails at the size
+  they are drawn. The dialog itself also closed the instant it was not the
+  active window (which reads as "it crashed the picker"), could be handed a
+  `file://file:///…` URL or a folder that no longer exists, and could throw on
+  a file name containing `%`; it now normalises every path, falls back to
+  `~/Pictures` or home, only accepts readable images, stays open on focus
+  changes and closes on Esc/Cancel. On the D-Bus side the FileChooser portal
+  request now uses the request object path the portal returns, has a timeout,
+  never wedges on a lost answer and always ends in exactly one
+  `filePicked`/`pickFailed`.
 - `panel.autoHideDelay` is honoured: an auto-hidden panel waits the configured
   delay after the pointer leaves before it slides away (it used to vanish
   immediately, despite the setting and the settings-UI row).

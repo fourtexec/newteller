@@ -218,6 +218,9 @@ int main(int argc, char *argv[])
     SystemMonitor system(&settings);
     TrayWatcher tray(&settings);
     QuickSettings quick(&settings);
+    // Declared before the engine: the engine owns the QML objects that hold
+    // connections to this object, and it must therefore be destroyed first.
+    FilePortal filePortal;
 
     if (cli.printConfig) {
         std::printf("%s", qUtf8Printable(printJson(settings.values())));
@@ -252,7 +255,6 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("Tray"), &tray);
     engine.rootContext()->setContextProperty(QStringLiteral("Quick"), &quick);
 
-    FilePortal filePortal;
     engine.rootContext()->setContextProperty(QStringLiteral("FilePortal"), &filePortal);
 
     engine.load(QUrl(QStringLiteral("qrc:/qml/Main.qml")));

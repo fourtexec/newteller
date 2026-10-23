@@ -1177,19 +1177,29 @@ Window {
                                         clip: true
 
                                         Image {
+                                            id: wallpaperPreview
                                             anchors.fill: parent
                                             fillMode: Image.PreserveAspectCrop
                                             asynchronous: true
+                                            sourceSize.width: 336
+                                            sourceSize.height: 192
+                                            // A wallpaper that no longer loads (deleted
+                                            // file, unreadable format) shows the text
+                                            // fallback instead of an empty frame.
+                                            visible: status === Image.Ready
                                             source: {
                                                 const wp = Settings.value("desktop.wallpaper", "");
-                                                return wp && wp.length > 0
-                                                        ? (wp.indexOf("://") > 0 ? wp : "file://" + wp)
-                                                        : "";
+                                                if (!wp || wp.length === 0)
+                                                    return "";
+                                                if (wp.indexOf("://") > 0)
+                                                    return wp;
+                                                return "file://" + wp.split("/").map(p => encodeURIComponent(p)).join("/");
                                             }
                                         }
                                         Text {
                                             anchors.centerIn: parent
                                             visible: !Settings.value("desktop.wallpaper", "")
+                                                     || wallpaperPreview.status === Image.Error
                                             text: "Solid colour"
                                             color: Theme.muted
                                             font.family: Theme.fontFamily
@@ -1209,13 +1219,8 @@ Window {
                                         TaskButton {
                                             iconName: "folder"
                                             label: "Choose from file manager"
-                                            onClicked: {
-                                                const wp = Settings.value("desktop.wallpaper", "") || "";
-                                                const dir = wp.length > 0 && wp.indexOf("/") >= 0
-                                                        ? wp.substring(0, wp.lastIndexOf("/"))
-                                                        : Shell.home + "/Pictures";
-                                                settingsWindow.pickWallpaper(dir);
-                                            }
+                                            onClicked: settingsWindow.pickWallpaper(
+                                                           settingsWindow.wallpaperFolder())
                                         }
                                         TaskButton {
                                             iconName: "shuffle"
@@ -2534,12 +2539,46 @@ Window {
     // installed in the system (the freedesktop FileChooser portal; on GNOME
     // that is the GTK file dialog). The integrated browser is only a fallback
     // for systems without the portal service.
+    // The folder the file-manager dialog should start in. Always a real
+    // directory: the wallpaper may be a URL, a path in a folder that was
+    // deleted since, or empty (solid colour).
+    function wallpaperFolder() {
+        const wp = Settings.value("desktop.wallpaper", "") || "";
+        let dir = "";
+        if (typeof wp === "string" && wp.length > 0) {
+            let path = wp;
+            if (path.indexOf("file:") === 0) {
+                try { path = decodeURIComponent(path.substring(7)); } catch (error) { /* keep */ }
+            }
+            const slash = path.lastIndexOf("/");
+            if (slash > 0)
+                dir = path.substring(0, slash);
+        }
+        return Shell.folderPath(dir.length > 0 ? dir : (Shell.home + "/Pictures"));
+    }
+
+    // Never store anything the desktop cannot render as a wallpaper: the
+    // portal and the integrated picker both can return a path the shell was
+    // not told to expect (a folder, a deleted file, a non-image).
+    function applyWallpaper(path) {
+        if (typeof path !== "string")
+            return false;
+        const file = path.trim();
+        if (file.length === 0)
+            return false;                 // dismissed: keep the current one
+        if (!Shell.isImageFile(file))
+            return false;
+        Settings.setValue("desktop.wallpaper", file);
+        return true;
+    }
+
     function pickWallpaper(startDir) {
+        const dir = Shell.folderPath(startDir === undefined || startDir === null ? "" : startDir);
+        filePortalDir = dir;
         if (FilePortal.available) {
-            filePortalDir = startDir;
-            FilePortal.pickFile("Choose a wallpaper", startDir, true);
+            FilePortal.pickFile("Choose a wallpaper", dir, true);
         } else {
-            filePicker.openFor(startDir, true);
+            filePicker.openFor(dir, true);
         }
     }
 
@@ -2548,10 +2587,11 @@ Window {
     Connections {
         target: FilePortal
         function onFilePicked(path) {
-            if (path.length > 0)
-                Settings.setValue("desktop.wallpaper", path);
+            settingsWindow.applyWallpaper(path);
         }
         function onPickFailed() {
+            // The portal is installed but unusable (not running, no permission,
+            // no answer). Fall back to the integrated picker exactly once.
             filePicker.openFor(settingsWindow.filePortalDir.length > 0
                                ? settingsWindow.filePortalDir : Shell.home, true);
         }
@@ -2575,7 +2615,7 @@ Window {
     }
     SettingsFilePicker {
         id: filePicker
-        onAccepted: (path) => Settings.setValue("desktop.wallpaper", path)
+        onAccepted: (path) => settingsWindow.applyWallpaper(path)
     }
 
     // ------------------------------------------------------------------
@@ -2658,7 +2698,12 @@ Window {
                             anchors.margins: 3
                             fillMode: Image.PreserveAspectCrop
                             asynchronous: true
-                            source: "file://" + filePath
+                            // Decode at thumbnail size: a 50-megapixel photo
+                            // per cell would need gigabytes of textures and
+                            // can exceed the driver's maximum texture size.
+                            sourceSize.width: 400
+                            sourceSize.height: 260
+                            source: "file://" + filePath.split("/").map(p => encodeURIComponent(p)).join("/")
                         }
                         MouseArea {
                             anchors.fill: parent

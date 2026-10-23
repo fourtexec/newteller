@@ -73,6 +73,17 @@ public:
     // Machine and configuration diagnostics, same shape as `newteller-ctl doctor`.
     Q_INVOKABLE QVariantMap diagnostics() const;
 
+    // --- file helpers used by the wallpaper pickers ------------------------
+    // Expands "~", strips file:// URLs and percent escapes, and returns an
+    // absolute path. Paths that are not existing directories (a deleted
+    // folder, a file, a non-local URL) fall back to home, so the caller always
+    // gets a folder it can open.
+    Q_INVOKABLE QString folderPath(const QString &path) const;
+    // Whether `path` is a readable image in a format Qt can load. The desktop
+    // only ever receives wallpapers that pass this check.
+    Q_INVOKABLE bool isImageFile(const QString &path) const;
+    Q_INVOKABLE bool fileExists(const QString &path) const;
+
     Q_INVOKABLE void lock() const;
     Q_INVOKABLE void logout() const;
     Q_INVOKABLE void suspend() const;

@@ -10,6 +10,7 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QGuiApplication>
+#include <QImageReader>
 #include <QProcess>
 #include <QStandardPaths>
 #include <QSysInfo>
@@ -43,6 +44,52 @@ ShellController::ShellController(Settings *settings, NotificationDaemon *notific
 QString ShellController::home() const
 {
     return QDir::homePath();
+}
+
+QString ShellController::folderPath(const QString &path) const
+{
+    QString p = path.trimmed();
+    if (p.isEmpty())
+        return QDir::homePath();
+    // A URL (file:///..., or already percent-encoded) is decoded first; other
+    // schemes have no local path to browse.
+    if (p.startsWith(QLatin1String("file:"))) {
+        const QString local = QUrl(p).toLocalFile();
+        p = local.isEmpty() ? p.mid(7) : local;
+    } else if (p.contains(QLatin1String("://"))) {
+        return QDir::homePath();
+    }
+    if (p == QLatin1String("~"))
+        p = QDir::homePath();
+    else if (p.startsWith(QLatin1String("~/")))
+        p = QDir::homePath() + p.mid(1);
+    if (!QDir::isAbsolutePath(p))
+        p = QDir::homePath() + QLatin1Char('/') + p;
+    p = QDir::cleanPath(p);
+    const QFileInfo info(p);
+    if (info.isDir())
+        return info.absoluteFilePath();
+    if (info.isFile())
+        return info.absolutePath();   // a file: browse the folder it is in
+    // The folder is gone (unmounted stick, deleted pictures): start at home
+    // instead of handing an unreadable URL to the folder model.
+    return QDir::homePath();
+}
+
+bool ShellController::isImageFile(const QString &path) const
+{
+    const QString p = path.trimmed();
+    if (p.isEmpty() || !QFileInfo(p).isFile())
+        return false;
+    QImageReader reader(p);
+    // canRead() only parses the header, so even a huge photo is cheap here.
+    return reader.canRead();
+}
+
+bool ShellController::fileExists(const QString &path) const
+{
+    const QString p = path.trimmed();
+    return !p.isEmpty() && QFileInfo(p).isFile();
 }
 
 QString ShellController::desktopUrl() const
