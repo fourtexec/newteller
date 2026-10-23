@@ -18,9 +18,42 @@ This comprehensive update adds **100+ new settings** across all aspects of NewTe
 
 ---
 
+## 🔧 Fixed behaviour
+
+- `panel.autoHideDelay` is honoured: an auto-hidden panel waits the configured
+  delay after the pointer leaves before it slides away (it used to vanish
+  immediately, despite the setting and the settings-UI row).
+- `panel.showRunning` now controls the running badge on dock buttons.
+- `dock.position` and `panel.centerDock` align the dock at the start, centre or
+  end of the bar; `panel.spacing`, `panel.leftSpacing`, `panel.rightSpacing` and
+  `panel.zoneSpacing` are applied to the bar layout.
+- `dock.iconSpacing`, `dock.scrollable`, `dock.multiRow` and `dock.rows` are
+  implemented: the dock can wrap into up to three rows and only scrolls when the
+  setting allows it. A vertical panel now lays the dock out as a column instead
+  of a clipped horizontal row.
+- The divider between the running and the minimised dock zone no longer
+  collapses to zero pixels (it only had Layout hints, which a Row ignores).
+- Panel text and icons follow `panel.foregroundColor` when custom panel colours
+  are enabled.
+- The QML smoke test now verifies that every `Settings` key used in QML exists
+  in the C++ defaults or the Rust schema, so a typo cannot silently turn a
+  control into a no-op.
+
+---
+
 ## 📋 New Settings Categories
 
 ### 1. Appearance & Theming (`settings.cpp`)
+
+#### Surface materials (panel, dock, popups, notifications)
+- `panel.material` - Panel surface: theme, opaque, translucent, frosted, liquid
+- `dock.material` - Idle dock button surface: none, opaque, translucent, frosted, liquid
+- `windows.material` - Surface of the floating shell windows (start menu, run dialog, clock, dock menu)
+- `notifications.material` / `notifications.opacityPercent` / `notifications.cornerRadius` -
+  notification popups and the notification centre have their own surface settings
+- `qml/SurfaceStyle.qml` draws all four looks with static Qt Quick rectangles (no
+  Chromium, no per-frame blur shader); `qml/NotificationAppearance.qml` maps the
+  notification colour theme onto those surfaces
 
 #### Panel Styling
 - `panel.customColors` - Enable custom panel colors
@@ -30,7 +63,7 @@ This comprehensive update adds **100+ new settings** across all aspects of NewTe
 
 #### Dock Styling
 - `dock.backgroundColor` - Custom dock background color
-- `dock.backgroundOpacity` - Dock background opacity (-1 = use theme)
+- `dock.backgroundOpacity` - Dock surface opacity (0.5 by default)
 - `dock.hoverOpacity` - Dock button hover opacity
 - `dock.activeOpacity` - Dock button active opacity
 - `dock.showLabels` - Show application names below dock icons

@@ -28,7 +28,12 @@ Window {
     readonly property bool autoHide: Settings.values["panel.autoHide"] === true
     readonly property int barThickness: Settings.values["panel.height"] || 48
     readonly property int edgeMargin: Settings.values["panel.margin"] || 0
-    readonly property bool revealed: !autoHide || hoverArea.containsMouse || menuWanted
+    readonly property int autoHideDelay: Math.max(0, Number(Settings.values["panel.autoHideDelay"] ?? 400))
+    // Kept true for autoHideDelay after the pointer leaves, so the bar does
+    // not vanish while the pointer crosses it.
+    property bool autoHideHold: false
+    readonly property bool revealed: !autoHide || hoverArea.containsMouse
+                                     || autoHideHold || menuWanted
     // Set while the start menu is open, so the panel stays up next to it.
     property bool menuWanted: false
     readonly property var panelPlugins: Plugins.plugins.filter(p => p.type === "panel" && p.enabled)
@@ -41,6 +46,7 @@ Window {
     // Every started application is shown: windows come from the `Windows`
     // object (EWMH on X11, wlr-foreign-toplevel on Wayland), with the /proc
     // based application list of `Apps` as the fallback on other compositors.
+    readonly property bool showRunning: Settings.values["panel.showRunning"] !== false
     readonly property bool dockShowWindows: Settings.values["dock.showWindows"] !== false
     readonly property bool dockGroup: Settings.values["dock.group"] !== false
     readonly property bool separateBackground: Settings.values["dock.separateBackground"] !== false
@@ -63,18 +69,59 @@ Window {
     readonly property string dockCustomIconColor: Settings.values["dock.customIconColor"] || "#ffffff"
     readonly property bool useCustomPanelColors: Settings.values["panel.customColors"] === true
     readonly property string panelBackgroundColor: Settings.values["panel.backgroundColor"] || ""
-    readonly property real panelBackgroundOpacity: Settings.values["panel.backgroundOpacity"] || 0.92
+    readonly property real panelBackgroundOpacity: Settings.values["panel.backgroundOpacity"] ?? 0.92
     readonly property string panelForegroundColor: Settings.values["panel.foregroundColor"] || ""
+    readonly property string panelMaterial: Settings.values["panel.material"] || "theme"
+    readonly property color panelSurfaceColor: useCustomPanelColors && panelBackgroundColor.length > 0
+                                               ? Qt.color(panelBackgroundColor) : Theme.background
+    readonly property real panelSurfaceOpacity: {
+        if (panel.panelMaterial === "opaque") return 1;
+        if (panel.panelMaterial === "translucent") return 0.5;
+        if (panel.panelMaterial === "frosted") return 0.68;
+        if (panel.panelMaterial === "liquid") return 0.5;
+        return useCustomPanelColors && panelBackgroundColor.length > 0
+               ? Math.max(0, Math.min(1, panel.panelBackgroundOpacity)) : Theme.opacity;
+    }
+    readonly property color panelTextColor: useCustomPanelColors && panelForegroundColor.length > 0
+                                           ? Qt.color(panelForegroundColor) : Theme.foreground
+    readonly property string dockMaterial: Settings.values["dock.material"] || "none"
+    readonly property color dockSurfaceColor: Settings.values["dock.backgroundColor"]
+                                              && Settings.values["dock.backgroundColor"].length > 0
+                                              ? Qt.color(Settings.values["dock.backgroundColor"])
+                                              : Theme.surface
+    readonly property real dockSurfaceOpacity: {
+        const custom = Number(Settings.values["dock.backgroundOpacity"] ?? -1);
+        if (custom >= 0) return Math.max(0, Math.min(1, custom));
+        if (panel.dockMaterial === "opaque") return 1;
+        if (panel.dockMaterial === "translucent") return 0.5;
+        if (panel.dockMaterial === "frosted") return 0.68;
+        if (panel.dockMaterial === "liquid") return 0.5;
+        return 0;
+    }
+    readonly property real dockHoverOpacity: Math.max(0, Math.min(1, Number(Settings.values["dock.hoverOpacity"] ?? 0.15)))
+    readonly property real dockActiveOpacity: Math.max(0, Math.min(1, Number(Settings.values["dock.activeOpacity"] ?? 0.30)))
     readonly property int panelSpacing: Settings.values["panel.spacing"] || 8
     readonly property int panelLeftSpacing: Settings.values["panel.leftSpacing"] || 8
     readonly property int panelRightSpacing: Settings.values["panel.rightSpacing"] || 8
     readonly property int panelZoneSpacing: Settings.values["panel.zoneSpacing"] || 8
     readonly property string dockPositionInPanel: Settings.values["dock.position"] || "left"
     readonly property bool centerDock: Settings.values["panel.centerDock"] === true
-    readonly property bool dockMultiRow: Settings.values["dock.multiRow"] === true
-    readonly property int dockRows: Settings.values["dock.rows"] || 1
-    readonly property bool dockScrollable: Settings.values["dock.scrollable"] === true
-    readonly property int dockIconSpacing: Settings.values["dock.iconSpacing"] || 4
+    readonly property int dockRows: Math.max(1, Math.min(3, Number(Settings.values["dock.rows"] ?? 1)))
+    // Wrapped rows only make sense on a horizontal bar; a vertical bar keeps
+    // the single column.
+    readonly property bool dockMultiRow: Settings.values["dock.multiRow"] === true && !vertical
+    readonly property bool dockScrollable: Settings.values["dock.scrollable"] !== false
+    readonly property int dockIconSpacing: Math.max(0, Number(Settings.values["dock.iconSpacing"] ?? 4))
+    // Button height of a wrapped dock; -1 means "fill the strip".
+    readonly property int dockButtonHeight: dockMultiRow
+        ? Math.max(24, Math.floor((barThickness - 8 - dockIconSpacing * (dockRows - 1)) / dockRows))
+        : -1
+    // 0 = start of the strip, 1 = centred, 2 = end (dock.position/panel.centerDock).
+    readonly property int dockAlign: {
+        if (centerDock || dockPositionInPanel === "center")
+            return 1;
+        return dockPositionInPanel === "right" ? 2 : 0;
+    }
     // One entry per dock button:
     //   { appId, app, windows: [], running, active, badge, title, pinned, background }
     // `dockEntries` is the combined list (main zone first), so the dock menu
@@ -436,6 +483,7 @@ Window {
         Layout.alignment: Qt.AlignVCenter | Qt.AlignHCenter
         iconName: "layout-grid"
         label: "Start"
+        foregroundColor: panel.panelTextColor
         onClicked: {
             panel.menuWanted = true;
             panel.startMenu.toggle();
@@ -455,7 +503,7 @@ Window {
             readonly property string appName: entry.app && entry.app.name ? entry.app.name
                                                                           : (entry.title || "Application")
 
-            height: dockStrip.height
+            height: panel.dockButtonHeight > 0 ? panel.dockButtonHeight : dockStrip.height
             reorderable: entry.pinned === true
             reordering: panel.dockDraggingAppId.length > 0
                         && panel.dockDraggingAppId === entry.appId
@@ -464,11 +512,19 @@ Window {
             label: panel.showDockLabels && entry.title && entry.title.length > 0
                    ? entry.title : ""
             dockLabel: panel.dockShowAppLabels ? dockButton.appName : ""
-            iconSize: panel.effectiveIconSize
+            iconSize: panel.dockMultiRow
+                       ? Math.min(panel.effectiveIconSize, Math.max(14, panel.dockButtonHeight - 14))
+                       : panel.effectiveIconSize
             showDockLabels: panel.dockShowAppLabels
             dockIconColorMode: panel.dockIconColorMode
             dockCustomIconColor: panel.dockCustomIconColor
-            running: entry.running
+            foregroundColor: panel.panelTextColor
+            surfaceMaterial: panel.dockMaterial
+            surfaceColor: panel.dockSurfaceColor
+            surfaceOpacity: panel.dockSurfaceOpacity
+            hoverOpacity: panel.dockHoverOpacity
+            activeOpacity: panel.dockActiveOpacity
+            running: entry.running && panel.showRunning
             active: entry.active
             dimmed: entry.background === true
             badge: entry.badge
@@ -517,9 +573,13 @@ Window {
 
     // Divider between the running zone and the minimised/background zone.
     component BackgroundSeparator: Rectangle {
+        // Explicit size: the strip uses a Row/Column/Flow, where Layout hints
+        // are ignored and the divider would collapse to zero pixels.
         visible: panel.separateBackground && panel.dockBackgroundEntries.length > 0
-        Layout.preferredWidth: panel.vertical ? 24 : 1
-        Layout.preferredHeight: panel.vertical ? 1 : 24
+        width: panel.vertical ? panel.dockIconSize + 8 : 1
+        height: panel.vertical ? 1 : Math.min(24, panel.dockIconSize + 4)
+        Layout.preferredWidth: width
+        Layout.preferredHeight: height
         Layout.alignment: Qt.AlignVCenter
         color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.55)
     }
@@ -539,7 +599,7 @@ Window {
                ? Qt.formatDateTime(Shell.now, Settings.values["panel.dateFormat"] || "ddd d MMM") + "  "
                : "")
               + Qt.formatDateTime(Shell.now, Settings.values["panel.clockFormat"] || "HH:mm")
-        color: Theme.foreground
+        color: panel.panelTextColor
         font.family: Theme.fontFamily
         font.pointSize: Theme.fontSize
     }
@@ -553,7 +613,7 @@ Window {
         implicitHeight: Math.min(panel.barThickness - 10, clockLabel.implicitHeight + 10)
         radius: Theme.radius
         color: clockHover.hovered
-               ? Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.08)
+               ? Qt.rgba(panel.panelTextColor.r, panel.panelTextColor.g, panel.panelTextColor.b, 0.08)
                : "transparent"
         Behavior on color {
             ColorAnimation {
@@ -701,7 +761,7 @@ Window {
         height: Math.min(panel.barThickness - 10, 34)
         radius: Theme.radius
         color: bellHover.hovered
-               ? Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.08)
+               ? Qt.rgba(panel.panelTextColor.r, panel.panelTextColor.g, panel.panelTextColor.b, 0.08)
                : "transparent"
         Behavior on color {
             ColorAnimation { duration: motion.micro }
@@ -737,7 +797,7 @@ Window {
             sourceSize.width: 36
             sourceSize.height: 36
             fillMode: Image.PreserveAspectFit
-            source: Shell.tintedIcon(bellButton.dnd ? "bell-off" : "bell", Theme.foreground)
+            source: Shell.tintedIcon(bellButton.dnd ? "bell-off" : "bell", panel.panelTextColor)
         }
 
         // Unread badge: a count up to nine, a dot beyond that.
@@ -786,7 +846,7 @@ Window {
         height: Math.min(panel.barThickness - 10, 34)
         radius: Theme.radius
         color: indicatorsHover.hovered
-               ? Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.08)
+               ? Qt.rgba(panel.panelTextColor.r, panel.panelTextColor.g, panel.panelTextColor.b, 0.08)
                : "transparent"
         Behavior on color {
             ColorAnimation { duration: motion.micro }
@@ -833,13 +893,13 @@ Window {
                 sourceSize.height: 36
                 fillMode: Image.PreserveAspectFit
                 source: Shell.tintedIcon(indicatorsButton.glyph,
-                                         System.batteryCritical ? Theme.accent : Theme.foreground)
+                                         System.batteryCritical ? Theme.accent : panel.panelTextColor)
             }
             Text {
                 visible: System.batteryPresent
                 anchors.verticalCenter: parent.verticalCenter
                 text: Math.round(System.batteryPercent) + "%"
-                color: Theme.foreground
+                color: panel.panelTextColor
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSize - 1
             }
@@ -880,10 +940,19 @@ Window {
         Layout.fillWidth: !panel.vertical
         Layout.fillHeight: true
         Layout.alignment: Qt.AlignVCenter
+        Layout.leftMargin: Math.max(0, panel.panelSpacing - 4)
+        Layout.rightMargin: Math.max(0, panel.panelSpacing - 4)
         clip: true
-        contentWidth: stripRow.width
-        contentHeight: stripRow.height
-        interactive: panel.vertical ? contentHeight > height : contentWidth > width
+        contentWidth: panel.dockMultiRow ? width : (panel.vertical ? stripColumn.width : stripRow.width)
+        contentHeight: panel.dockMultiRow ? stripFlow.height
+                                          : (panel.vertical ? stripColumn.height : stripRow.height)
+        // Only scroll when the setting allows it; when the buttons fit, the
+        // wheel belongs to the application underneath.
+        readonly property bool overflowing: panel.vertical
+                                            ? contentHeight > height
+                                            : (panel.dockMultiRow ? contentHeight > height
+                                                                  : contentWidth > width)
+        interactive: panel.dockScrollable && overflowing
 
         WheelHandler {
             enabled: dockStrip.interactive
@@ -891,11 +960,40 @@ Window {
             acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
         }
 
+        // One row, aligned at the start, centre or end of the strip.
         Row {
             id: stripRow
-            spacing: 2
+            visible: !panel.vertical && !panel.dockMultiRow
+            spacing: panel.dockIconSpacing
             y: (dockStrip.height - height) / 2
-            x: 0
+            x: panel.dockAlign === 1 ? Math.max(0, (dockStrip.width - width) / 2)
+               : panel.dockAlign === 2 ? Math.max(0, dockStrip.width - width) : 0
+
+            DockApps {}
+            BackgroundSeparator {}
+            DockApps { backgroundZone: true }
+        }
+
+        // Vertical panel: the dock runs down the edge.
+        Column {
+            id: stripColumn
+            visible: panel.vertical
+            spacing: panel.dockIconSpacing
+            x: (dockStrip.width - width) / 2
+            y: panel.dockAlign === 1 ? Math.max(0, (dockStrip.height - height) / 2)
+               : panel.dockAlign === 2 ? Math.max(0, dockStrip.height - height) : 0
+
+            DockApps {}
+            BackgroundSeparator {}
+            DockApps { backgroundZone: true }
+        }
+
+        // Multi-row dock: the buttons wrap inside the bar height.
+        Flow {
+            id: stripFlow
+            visible: panel.dockMultiRow
+            width: dockStrip.width
+            spacing: panel.dockIconSpacing
 
             DockApps {}
             BackgroundSeparator {}
@@ -908,21 +1006,28 @@ Window {
 
         Rectangle {
             radius: Theme.radius
-            color: panel.useCustomPanelColors && panel.panelBackgroundColor.length > 0
-                   ? Qt.rgba(Qt.color(panel.panelBackgroundColor).r, 
-                             Qt.color(panel.panelBackgroundColor).g, 
-                             Qt.color(panel.panelBackgroundColor).b, 
-                             panel.panelBackgroundOpacity)
-                   : Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, Theme.opacity)
-            border.width: 1
-            border.color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.6)
+            color: "transparent"
+            border.width: 0
+
+            SurfaceStyle {
+                anchors.fill: parent
+                material: panel.panelMaterial
+                materialOpacity: panel.panelSurfaceOpacity
+                baseColor: panel.panelSurfaceColor
+                cornerRadius: parent.radius
+                borderColor: Theme.border
+                borderOpacity: 0.6
+                borderWidth: 1
+            }
 
             RowLayout {
                 anchors.fill: parent
                 anchors.margins: 4
-                spacing: 4
+                spacing: Math.max(0, panel.panelZoneSpacing - 4)
 
-                StartButton {}
+                StartButton {
+                    Layout.leftMargin: Math.max(0, panel.panelLeftSpacing - 4)
+                }
                 Separator {}
                 DockStrip {}
                 PluginSlot {}
@@ -939,7 +1044,7 @@ Window {
                 }
 
                 ClockButton {
-                    Layout.rightMargin: 6
+                    Layout.rightMargin: Math.max(6, panel.panelRightSpacing)
                     Layout.leftMargin: 4
                 }
             }
@@ -951,14 +1056,24 @@ Window {
 
         Rectangle {
             radius: Theme.radius
-            color: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, Theme.opacity)
-            border.width: 1
-            border.color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.6)
+            color: "transparent"
+            border.width: 0
+
+            SurfaceStyle {
+                anchors.fill: parent
+                material: panel.panelMaterial
+                materialOpacity: panel.panelSurfaceOpacity
+                baseColor: panel.panelSurfaceColor
+                cornerRadius: parent.radius
+                borderColor: Theme.border
+                borderOpacity: 0.6
+                borderWidth: 1
+            }
 
             ColumnLayout {
                 anchors.fill: parent
                 anchors.margins: 4
-                spacing: 4
+                spacing: Math.max(0, panel.panelZoneSpacing - 4)
 
                 StartButton {}
                 Separator {}
@@ -984,6 +1099,14 @@ Window {
         }
     }
 
+    // Auto-hide: the pointer leaving starts the configured delay, so the bar
+    // stays put while the pointer travels towards it (and does not flicker).
+    Timer {
+        id: autoHideTimer
+        interval: panel.autoHideDelay
+        onTriggered: panel.autoHideHold = false
+    }
+
     // Invisible hover surface over the whole panel; it keeps auto-hide from
     // flickering while the pointer travels across the bar.
     MouseArea {
@@ -991,5 +1114,15 @@ Window {
         anchors.fill: parent
         hoverEnabled: true
         acceptedButtons: Qt.NoButton
+
+        onContainsMouseChanged: {
+            if (containsMouse) {
+                autoHideTimer.stop();
+                panel.autoHideHold = false;
+            } else if (panel.autoHide) {
+                panel.autoHideHold = true;
+                autoHideTimer.restart();
+            }
+        }
     }
 }

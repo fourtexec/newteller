@@ -11,6 +11,7 @@ Window {
 
     property int panelHeight: Settings.values["panel.height"] || 48
     property int panelMargin: Settings.values["panel.margin"] || 0
+    readonly property NotificationAppearance appearance: NotificationAppearance {}
 
     readonly property var entries: {
         var list = (Notifications.history || []).slice();
@@ -97,6 +98,11 @@ Window {
     ShellFrame {
         id: centerCard
         anchors.fill: parent
+        materialOverride: center.appearance.material
+        backgroundColorOverride: center.appearance.background
+        useBackgroundColorOverride: true
+        opacityPercentOverride: center.appearance.opacityPercent
+        cornerRadiusOverride: center.appearance.cornerRadius
         // The card grows out of the bell at the panel's end.
         openOrigin: Item.BottomRight
 
@@ -126,12 +132,12 @@ Window {
                     fillMode: Image.PreserveAspectFit
                     source: Shell.tintedIcon(
                                 Settings.values["notifications.doNotDisturb"] ? "bell-off" : "bell",
-                                Theme.foreground)
+                                center.appearance.foreground)
                 }
                 Text {
                     Layout.fillWidth: true
                     text: "Do not disturb"
-                    color: Theme.foreground
+                    color: center.appearance.foreground
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize
                 }
@@ -143,7 +149,8 @@ Window {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 1
-                color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.6)
+                color: Qt.rgba(center.appearance.muted.r, center.appearance.muted.g,
+                               center.appearance.muted.b, 0.42)
             }
 
             ListView {
@@ -160,12 +167,16 @@ Window {
                     required property var modelData
                     width: list.width
                     height: rowBody.implicitHeight + 18
-                    radius: Theme.radius
+                    radius: center.appearance.cornerRadius >= 0
+                            ? center.appearance.cornerRadius : Theme.radius
                     color: rowHover.hovered
-                           ? Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.06)
-                           : Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.6)
+                           ? Qt.rgba(center.appearance.foreground.r, center.appearance.foreground.g,
+                                     center.appearance.foreground.b, 0.07)
+                           : Qt.rgba(center.appearance.background.r, center.appearance.background.g,
+                                     center.appearance.background.b, 0.46)
                     border.width: 1
-                    border.color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.5)
+                    border.color: Qt.rgba(center.appearance.muted.r, center.appearance.muted.g,
+                                          center.appearance.muted.b, 0.48)
 
                     readonly property bool isActive: {
                         const id = modelData.id;
@@ -187,7 +198,7 @@ Window {
                         anchors.margins: 4
                         width: 3
                         radius: 1.5
-                        color: Theme.accent
+                        color: center.appearance.accent
                     }
 
                     ColumnLayout {
@@ -204,7 +215,7 @@ Window {
 
                             Text {
                                 text: row.modelData.app || ""
-                                color: Theme.accent
+                                color: center.appearance.accent
                                 font.family: Theme.fontFamily
                                 font.pointSize: Theme.fontSize - 1
                                 elide: Text.ElideRight
@@ -215,7 +226,7 @@ Window {
                                 text: row.modelData.time > 0
                                       ? Qt.formatDateTime(new Date(row.modelData.time), "HH:mm")
                                       : ""
-                                color: Theme.muted
+                                color: center.appearance.muted
                                 font.family: Theme.fontFamily
                                 font.pointSize: Theme.fontSize - 1
                             }
@@ -224,7 +235,7 @@ Window {
                         Text {
                             Layout.fillWidth: true
                             text: row.modelData.summary || ""
-                            color: Theme.foreground
+                            color: center.appearance.foreground
                             font.family: Theme.fontFamily
                             font.pointSize: Theme.fontSize + 1
                             elide: Text.ElideRight
@@ -234,7 +245,7 @@ Window {
                             Layout.fillWidth: true
                             visible: (row.modelData.body || "").length > 0
                             text: row.modelData.body || ""
-                            color: Theme.muted
+                            color: center.appearance.muted
                             font.family: Theme.fontFamily
                             font.pointSize: Theme.fontSize
                             wrapMode: Text.Wrap
@@ -292,12 +303,12 @@ Window {
                         sourceSize.width: 56
                         sourceSize.height: 56
                         fillMode: Image.PreserveAspectFit
-                        source: Shell.tintedIcon("bell", Theme.muted)
+                        source: Shell.tintedIcon("bell", center.appearance.muted)
                     }
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
                         text: "No notifications"
-                        color: Theme.muted
+                        color: center.appearance.muted
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSize
                     }
@@ -306,7 +317,8 @@ Window {
                         width: parent.width
                         horizontalAlignment: Text.AlignHCenter
                         text: "Application notifications appear here\nand stay in the history."
-                        color: Qt.rgba(Theme.muted.r, Theme.muted.g, Theme.muted.b, 0.7)
+                        color: Qt.rgba(center.appearance.muted.r, center.appearance.muted.g,
+                                       center.appearance.muted.b, 0.72)
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSize - 1
                     }
@@ -316,7 +328,8 @@ Window {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 1
-                color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.6)
+                color: Qt.rgba(center.appearance.muted.r, center.appearance.muted.g,
+                               center.appearance.muted.b, 0.42)
             }
 
             RowLayout {

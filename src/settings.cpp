@@ -49,6 +49,7 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("tray.enabled"), true);
     m_defaults.insert(QStringLiteral("tray.menus"), true);
     m_defaults.insert(QStringLiteral("windows.style"), QStringLiteral("card"));
+    m_defaults.insert(QStringLiteral("windows.material"), QStringLiteral("theme"));
     m_defaults.insert(QStringLiteral("windows.radius"), -1);
     m_defaults.insert(QStringLiteral("windows.opacityPercent"), 0);
     m_defaults.insert(QStringLiteral("windows.borderWidth"), -1);
@@ -100,11 +101,13 @@ Settings::Settings(QObject *parent)
     // Panel styling
     m_defaults.insert(QStringLiteral("panel.backgroundColor"), QString());
     m_defaults.insert(QStringLiteral("panel.backgroundOpacity"), 0.92);
+    m_defaults.insert(QStringLiteral("panel.material"), QStringLiteral("theme"));
     m_defaults.insert(QStringLiteral("panel.foregroundColor"), QString());
     m_defaults.insert(QStringLiteral("panel.customColors"), false);
     // Dock styling
     m_defaults.insert(QStringLiteral("dock.backgroundColor"), QString());
-    m_defaults.insert(QStringLiteral("dock.backgroundOpacity"), -1);
+    m_defaults.insert(QStringLiteral("dock.backgroundOpacity"), 0.5);
+    m_defaults.insert(QStringLiteral("dock.material"), QStringLiteral("none"));
     m_defaults.insert(QStringLiteral("dock.hoverOpacity"), 0.15);
     m_defaults.insert(QStringLiteral("dock.activeOpacity"), 0.30);
     m_defaults.insert(QStringLiteral("dock.showLabels"), false);
@@ -161,6 +164,9 @@ Settings::Settings(QObject *parent)
 
     // ===== Notifications =====
     m_defaults.insert(QStringLiteral("notifications.theme"), QStringLiteral("system"));
+    m_defaults.insert(QStringLiteral("notifications.material"), QStringLiteral("theme"));
+    m_defaults.insert(QStringLiteral("notifications.opacityPercent"), 0);
+    m_defaults.insert(QStringLiteral("notifications.cornerRadius"), -1);
     m_defaults.insert(QStringLiteral("notifications.customBackground"), QString());
     m_defaults.insert(QStringLiteral("notifications.customForeground"), QString());
     m_defaults.insert(QStringLiteral("notifications.groupByApp"), false);

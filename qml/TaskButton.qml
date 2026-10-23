@@ -32,6 +32,15 @@ Rectangle {
     property bool showDockLabels: false
     property string dockIconColorMode: "theme"
     property string dockCustomIconColor: ""
+    property color foregroundColor: Theme.foreground
+    // Optional idle material, used by dock icons. Normal buttons remain flat.
+    property string surfaceMaterial: "none"
+    property color surfaceColor: Theme.surface
+    property real surfaceOpacity: -1
+    property real hoverOpacity: 0.08
+    property real activeOpacity: 0.30
+    property color hoverTint: foregroundColor
+    property color activeTint: Theme.accent
     // Dock buttons: drag a pinned button to reorder the pinned list.
     property bool reorderable: false
     property bool reordering: false
@@ -64,15 +73,29 @@ Rectangle {
         NumberAnimation { duration: motion.fast }
     }
     color: area.pressed
-           ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.45)
+           ? Qt.rgba(btn.activeTint.r, btn.activeTint.g, btn.activeTint.b, 0.45)
            : btn.active
-             ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.30)
+             ? Qt.rgba(btn.activeTint.r, btn.activeTint.g, btn.activeTint.b,
+                       Math.max(0, Math.min(1, btn.activeOpacity)))
              : hoverHandler.hovered
-               ? Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.08)
+               ? Qt.rgba(btn.hoverTint.r, btn.hoverTint.g, btn.hoverTint.b,
+                         Math.max(0, Math.min(1, btn.hoverOpacity)))
                : "transparent"
 
     Behavior on color {
         ColorAnimation { duration: motion.micro }
+    }
+
+    SurfaceStyle {
+        anchors.fill: parent
+        z: -1
+        visible: btn.surfaceMaterial !== "none"
+        material: btn.surfaceMaterial
+        baseColor: btn.surfaceColor
+        materialOpacity: btn.surfaceOpacity
+        cornerRadius: btn.radius
+        borderWidth: 0
+        effectStrength: 0.8
     }
 
     Row {
@@ -100,7 +123,7 @@ Rectangle {
                 smooth: true
                 // Use custom icon color if specified
                 source: {
-                    var iconColor = Theme.foreground
+                    var iconColor = btn.foregroundColor
                     // Check if dock icon color mode is custom
                     if (btn.dockIconColorMode === "custom" && btn.dockCustomIconColor.length > 0) {
                         iconColor = btn.dockCustomIconColor
@@ -124,7 +147,7 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             text: btn.label
             textFormat: btn.richLabel ? Text.StyledText : Text.PlainText
-            color: Theme.foreground
+            color: btn.foregroundColor
             font.family: Theme.fontFamily
             font.pointSize: Theme.fontSize
             elide: Text.ElideRight
@@ -148,7 +171,7 @@ Rectangle {
     Text {
         visible: btn.dockLabel.length > 0 && btn.showDockLabels
         text: btn.dockLabel
-        color: Theme.foreground
+        color: btn.foregroundColor
         font.family: Theme.fontFamily
         font.pointSize: Theme.fontSize - 2
         elide: Text.ElideRight
