@@ -1394,6 +1394,8 @@ def main():
             center = centres[0]
             check(center.isVisible(), "the bell opens the notification centre")
             check(not quicks[0].isVisible(), "opening the centre closes quick settings")
+            check(panel.property("dropdownOpen") is True,
+                  "the panel knows one of its dropdowns is open")
             card = on_screen(center, "the notification centre")
             check((card[2], card[3]) == (400, 520), f"the centre keeps its size ({card})")
             check(card[0] <= bell.x() <= card[0] + card[2],
@@ -1562,6 +1564,8 @@ def main():
         QTest.qWait(300)
         check(len(apps.launched) == launched_before + 1, "Enter launches the highlighted row")
         check(not menu.isVisible(), "launching from the keyboard closes the menu")
+        check(panel.property("dropdownOpen") is False,
+              "the panel lets go once every dropdown is closed")
 
     # One notification window per screen, hidden until something arrives.
     notification_windows = windows_of_kind("NotificationPopups")
