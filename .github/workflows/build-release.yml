@@ -89,8 +89,8 @@ jobs:
           status=0
           WLR_RENDERER=pixman PYTHON=/tmp/newteller-venv/bin/python \
             bash -x tests/session_smoke.sh >"$log" 2>&1 || status=$?
-          cat "$log"
           if [[ $status -ne 0 ]]; then
+            cat "$log"
             set +e
             set +o pipefail
             summary=$(awk '!/^\+ /' "$log" | tail -n 12 | tr '\n' '|' \
@@ -125,6 +125,9 @@ jobs:
           PY
             exit "$status"
           fi
+          # Keep the successful log readable: the trace is only interesting
+          # when something failed.
+          awk '!/^\+ /' "$log"
       - name: Preserve release archive
         uses: actions/upload-artifact@v4
         with:
