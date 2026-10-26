@@ -83,8 +83,16 @@ jobs:
             bash -x tests/session_smoke.sh >"$log" 2>&1 || status=$?
           cat "$log"
           if [[ $status -ne 0 ]]; then
-            # Escape for a workflow command: % -> %25, line breaks -> %0A.
-            body=$(tail -n 30 "$log" | sed -e 's/%/%25/g' -e 's/\r//g' -e 's/$/%0A/')
+            # A check-run annotation keeps only the last line of a multi-line
+            # message, so fold the interesting tail into a single line: drop
+            # the `bash -x` trace, keep program output, the compositor log and
+            # the script's own "session smoke: FAILED at line ..." report.
+            body=$(grep -v '^+ ' "$log" | tail -n 12 | tr '\n' '|')
+            if [[ -z ${body//|/} ]]; then
+              body=$(tail -n 12 "$log" | tr '\n' '|')
+            fi
+            body=$(printf '%s' "$body" | sed -e 's/%/%25/g' -e 's/\r//g' -e 's/|/ | /g')
+            body=${body: -900}
             echo "::error title=Session smoke test (exit $status)::${body}"
             exit "$status"
           fi

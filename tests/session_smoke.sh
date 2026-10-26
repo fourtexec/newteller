@@ -2,6 +2,11 @@
 # Start a real NewTeller compositor without a display, run the shell and a
 # native client in it, and capture the result through wlr-screencopy.
 set -euo pipefail
+# Name the command that failed. Without this, a `bash -x` trace of a failed run
+# ends inside the EXIT trap (the cleanup kills the compositor) and the actual
+# error is buried far above it.
+set -E
+trap 'status=$?; echo "session smoke: FAILED (exit $status) at ${BASH_SOURCE[0]}:${LINENO}: ${BASH_COMMAND}" >&2' ERR
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 build=${NEWTELLER_BUILD_DIR:-$root/build}
 compositor="$build/newteller-compositor"
