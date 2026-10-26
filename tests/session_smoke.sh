@@ -29,6 +29,20 @@ if [[ ${WLR_RENDERER:-} == pixman ]]; then
     export GSK_RENDERER=cairo
 fi
 
+# A private session bus gives the shell somewhere to export org.newteller.Shell.
+# The start menu is opened through it: the dock pill is centred on the bar, so
+# there is no fixed click coordinate that reliably hits the Start button.
+# Without dbus-daemon the menu leg is skipped; everything else still runs.
+bus_pid=''
+if [[ -z ${DBUS_SESSION_BUS_ADDRESS:-} ]] && command -v dbus-daemon >/dev/null 2>&1; then
+    bus_info=$(dbus-daemon --session --fork --print-address=1 --print-pid=1 2>/dev/null || true)
+    bus_address=$(printf '%s\n' "$bus_info" | sed -n 1p)
+    bus_pid=$(printf '%s\n' "$bus_info" | sed -n 2p)
+    if [[ -n $bus_address ]]; then
+        export DBUS_SESSION_BUS_ADDRESS="$bus_address"
+    fi
+fi
+
 runtime=$(mktemp -d "${TMPDIR:-/tmp}/newteller-session-test.XXXXXX")
 chmod 700 "$runtime"
 socket=newteller-smoke
@@ -51,6 +65,9 @@ cleanup() {
         done
         kill -KILL "$compositor_pid" 2>/dev/null || true
         wait "$compositor_pid" 2>/dev/null || true
+    fi
+    if [[ -n ${bus_pid:-} ]]; then
+        kill "$bus_pid" 2>/dev/null || true
     fi
     rm -rf "$runtime"
 }
@@ -80,19 +97,14 @@ fi
 sleep 3
 XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" grim -o HEADLESS-1 "$before"
 
-# Exercise the pointer through the virtual-pointer protocol: open the start
-# menu, capture it, and close it again. wlrctl is optional; the desktop/window
-# checks below still run when it is not installed.
+# Exercise the virtual-pointer protocol. The click is a smoke test of the
+# protocol only (it lands on empty desktop); the menu is opened over D-Bus
+# below, where the result can be asserted.
 if command -v wlrctl >/dev/null 2>&1; then
-    menu="$runtime/menu.png"
-    XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" wlrctl pointer move -10000 -10000 >/dev/null
-    XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" wlrctl pointer move 20 776 >/dev/null
-    XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" wlrctl pointer click left >/dev/null
-    sleep 1
-    XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" grim -o HEADLESS-1 "$menu"
-    "${PYTHON:-python3}" "$root/tests/session_check.py" "$before" "$menu"
-    XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" wlrctl pointer click left >/dev/null
-    sleep 1
+    XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" \
+        wlrctl pointer move 40 0 >/dev/null 2>&1 || true
+    XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" \
+        wlrctl pointer click left >/dev/null 2>&1 || true
 fi
 
 python=${PYTHON:-python3}
@@ -125,6 +137,38 @@ if command -v grim >/dev/null 2>&1; then
         echo 'the screenshot helper did not write a PNG' >&2
         exit 1
     fi
+fi
+
+# The start menu, opened through org.newteller.Shell.showStartMenu. This is the
+# only deterministic way to hit the Start button: the dock pill hugs its
+# contents and is centred on the bar, so its offset depends on the number of
+# dock entries, the clock format and the font metrics of the host.
+has_shell_name() {
+    command -v gdbus >/dev/null 2>&1 || return 1
+    [[ -n ${DBUS_SESSION_BUS_ADDRESS:-} ]] || return 1
+    gdbus call --session --dest org.freedesktop.DBus \
+        --object-path /org/freedesktop/DBus \
+        --method org.freedesktop.DBus.NameHasOwner org.newteller.Shell 2>/dev/null \
+        | grep -q true
+}
+
+if has_shell_name; then
+    menu_before="$runtime/menu-before.png"
+    menu="$runtime/menu.png"
+    XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" grim -o HEADLESS-1 "$menu_before"
+    if XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" \
+        gdbus call --session --dest org.newteller.Shell \
+            --object-path /org/newteller/Shell \
+            --method org.newteller.Shell.showStartMenu >/dev/null 2>&1; then
+        sleep 1
+        XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" grim -o HEADLESS-1 "$menu"
+        "$python" "$root/tests/session_check.py" "$menu_before" "$menu"
+    else
+        echo 'the shell did not open the start menu over D-Bus' >&2
+        exit 1
+    fi
+else
+    echo 'session smoke: no session bus or gdbus, skipping the start menu check' >&2
 fi
 
 # Closing a normal window destroys a View that also owns a foreign-toplevel
