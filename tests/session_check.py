@@ -24,6 +24,22 @@ def load(path):
         return None
 
 
+def dimensions(image):
+    """(width, height) of a Pillow image or a QImage.
+
+    Pillow exposes ``.size`` as a tuple, QImage as the ``size()`` *method*
+    returning a ``QSize``. Returning that QSize unchanged made the caller fail
+    to unpack it ("cannot unpack non-iterable QSize"), which is what kept the
+    CI session test red whenever Pillow was not installed.
+    """
+    size = image.size
+    if callable(size):
+        size = size()
+    if hasattr(size, "width") and hasattr(size, "height"):
+        return size.width(), size.height()
+    return tuple(size)
+
+
 def rgb_at(image, x, y):
     if hasattr(image, "getpixel"):
         return image.getpixel((x, y))
@@ -50,10 +66,6 @@ def main():
             raise SystemExit(f"unexpected frame sizes: {sizes}")
         print("session smoke: captured two PNG frames")
         return
-
-    def dimensions(image):
-        size = image.size
-        return size() if callable(size) else tuple(size)
 
     if dimensions(before) != dimensions(after):
         raise SystemExit("frames have different sizes")

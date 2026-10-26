@@ -17,6 +17,11 @@ jobs:
   build:
     name: ${{ matrix.target }}
     runs-on: ubuntu-24.04
+    # The session test reports its own failure as a PR comment (see below);
+    # that is how a failure stays readable when the raw job log is not.
+    permissions:
+      contents: read
+      pull-requests: write
     # Debian 12 / Ubuntu 24.04 ship Qt5 LayerShellQt; this project needs Qt6.
     strategy:
       fail-fast: false
@@ -68,10 +73,61 @@ jobs:
         env:
           NEWTELLER_ICONS_DIR: ${{ github.workspace }}/iconkit/icons
         run: bash scripts/build-release.sh "$GITHUB_SHA"
+      # The compositor test is the only step that needs a "display", and when
+      # it fails the exit code says nothing. The raw job log is served from
+      # Azure blob storage, which not every environment can read, so the
+      # interesting tail is also published as an annotation and as a PR
+      # comment: both are available through the regular REST API.
       - name: Session smoke test
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
         run: |
+          log=/tmp/session-smoke.log
+          status=0
           WLR_RENDERER=pixman PYTHON=/tmp/newteller-venv/bin/python \
-            bash tests/session_smoke.sh
+            bash -x tests/session_smoke.sh >"$log" 2>&1 || status=$?
+          if [[ $status -ne 0 ]]; then
+            cat "$log"
+            set +e
+            set +o pipefail
+            summary=$(awk '!/^\+ /' "$log" | tail -n 12 | tr '\n' '|' \
+                      | sed -e 's/%/%25/g' -e 's/\r//g' -e 's/|/ | /g')
+            # ${var: -900} is empty when the string is shorter than 900.
+            if [[ ${#summary} -gt 900 ]]; then
+              summary="...${summary: -900}"
+            fi
+            echo "::error title=Session smoke test (exit $status)::${summary}"
+            python3 - "$log" "$status" <<'PY' || true
+          import json, os, sys, urllib.request
+
+          with open(sys.argv[1], encoding="utf-8", errors="replace") as handle:
+              lines = handle.read().splitlines()
+          repo = os.environ.get("GITHUB_REPOSITORY", "")
+          pr = os.environ.get("PR_NUMBER", "")
+          token = os.environ.get("GH_TOKEN", "")
+          body = ("**Session smoke test failed (exit %s)**\n\n```\n%s\n```"
+                  % (sys.argv[2], "\n".join(lines[-120:])))
+          print(body)
+          if pr and token and os.environ.get("HEAD_REPO") == repo:
+              request = urllib.request.Request(
+                  "https://api.github.com/repos/%s/issues/%s/comments" % (repo, pr),
+                  data=json.dumps({"body": body}).encode(),
+                  headers={"Authorization": "token " + token,
+                           "Accept": "application/vnd.github+json",
+                           "User-Agent": "newteller-ci"})
+              try:
+                  urllib.request.urlopen(request, timeout=20)
+              except Exception as error:  # reporting must never mask the failure
+                  print("could not post the failure comment:", error)
+          PY
+            exit "$status"
+          fi
+          # Keep the successful log readable: the trace is only interesting
+          # when something failed.
+          awk '!/^\+ /' "$log"
       - name: Preserve release archive
         uses: actions/upload-artifact@v4
         with:
