@@ -68,10 +68,26 @@ jobs:
         env:
           NEWTELLER_ICONS_DIR: ${{ github.workspace }}/iconkit/icons
         run: bash scripts/build-release.sh "$GITHUB_SHA"
+      # The compositor test is the only step that needs a "display"; when it
+      # fails, the useful part is the compositor/log tail, not the exit code.
+      # Job logs are served from Azure blob storage, which some environments
+      # (and agents) cannot read, so the tail is repeated as an annotation:
+      # annotations are available through the regular REST API.
       - name: Session smoke test
+        shell: bash
         run: |
+          set -o pipefail
+          log=/tmp/session-smoke.log
+          status=0
           WLR_RENDERER=pixman PYTHON=/tmp/newteller-venv/bin/python \
-            bash tests/session_smoke.sh
+            bash -x tests/session_smoke.sh >"$log" 2>&1 || status=$?
+          cat "$log"
+          if [[ $status -ne 0 ]]; then
+            # Escape for a workflow command: % -> %25, line breaks -> %0A.
+            body=$(tail -n 30 "$log" | sed -e 's/%/%25/g' -e 's/\r//g' -e 's/$/%0A/')
+            echo "::error title=Session smoke test (exit $status)::${body}"
+            exit "$status"
+          fi
       - name: Preserve release archive
         uses: actions/upload-artifact@v4
         with:
