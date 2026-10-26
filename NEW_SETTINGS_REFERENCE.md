@@ -29,9 +29,9 @@ Each setting is documented with:
 ### Dock Styling
 | Key | Type | Default | Description | Page |
 |-----|------|---------|-------------|------|
-| `dock.material` | string | `"none"` | Idle dock button material: none, opaque, translucent (50%), frosted or liquid glass | Appearance |
-| `dock.backgroundColor` | color | `""` | Custom dock button surface color (hex) | Appearance |
-| `dock.backgroundOpacity` | number | `0.5` | Dock surface opacity from 0 to 1 | Appearance |
+| `dock.material` | string | `"none"` | Floating dock pill: none, opaque (non transparent), translucent (half transparent), frosted or liquid glass | Appearance |
+| `dock.backgroundColor` | color | `""` | Custom dock pill tint as hex (empty follows the theme) | Appearance |
+| `dock.backgroundOpacity` | number | `0.5` | Bias around the material's preset dock opacity: 0.5 keeps the preset, lower is clearer, higher is more solid | Appearance |
 | `dock.hoverOpacity` | number | `0.15` | Dock button hover opacity | Appearance |
 | `dock.activeOpacity` | number | `0.30` | Dock button active opacity | Appearance |
 | `dock.showLabels` | boolean | `false` | Show application names below dock icons | Appearance |
