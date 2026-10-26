@@ -1,21 +1,30 @@
 # NewTeller
 
-A customizable desktop shell layer for Debian-based systems. NewTeller runs **on top of** an
-existing session (GNOME, KDE Plasma, Openbox, ...) and provides a Windows-style desktop: a
-bottom panel, a start menu, desktop icons and widgets, with themes and plugins for deep
-customization. All UI text is in English.
+A complete Wayland desktop session for Debian 13 and Ubuntu 26.04. NewTeller owns the
+display: `newteller-compositor` takes over DRM/KMS (or a nested window for development),
+starts the QML desktop as its first client, and runs Wayland and X11 applications inside
+it. No GNOME, KDE or other desktop environment is needed.
 
+The desktop itself is the NewTeller shell: a Windows-style bottom panel, start menu,
+desktop icons and widgets, with themes and plugins for deep customization. It still runs
+inside another Wayland or X11 session for development, but that is now the fallback, not
+the product.
+
+- **Session:** a small wlroots 0.18/0.19 compositor (`newteller-compositor`)
+  with layer-shell, xdg-shell, XWayland, foreign-toplevel, screenshots, clipboard,
+  idle-inhibit and the usual input protocols. `newteller-session` is the login-session
+  entry point.
 - **Core:** C++20 + Qt 6 (settings, themes, application catalogue, session actions, plugin loader)
 - **UI:** QML components with JavaScript logic, rendered by Qt Quick's scene graph (panel, start menu, desktop, widgets, plugins). The shell does not embed Chromium/WebEngine; a literal HTML/CSS UI would need a browser engine or a separate, much larger custom renderer.
-- **Layer:** wlr-layer-shell via LayerShellQt on Wayland compositors that support it; X11 dock and
-  desktop windows elsewhere (X11 sessions, and XWayland on GNOME). The panel reserves screen space
-  either way; see [Display servers](#display-servers)
+- **Layer:** the shell uses wlr-layer-shell; the compositor implements the protocol itself.
+  The panel reserves screen space, the desktop is a background layer and menus are top layers.
 - **Icons:** [IconKit](https://github.com/fourtexec/iconkit), with the system icon theme as fallback
 
 ## Status: early alpha
 
-Implemented and covered by the tests (see [Tests](#tests)); not yet verified on a
-real desktop:
+Implemented and covered by the tests (see [Tests](#tests)); verified in headless and
+nested compositor sessions. It has not yet been exercised on physical DRM/KMS hardware or
+inside VirtualBox. The implemented pieces are:
 
 - Panel: Start button, pinned apps with a running badge, plugin slots, clock with
   optional date, on any edge (`panel.position`: bottom/top/left/right), optional
@@ -81,15 +90,25 @@ real desktop:
 - Themes (JSON, including `nord`, `ocean` and `highcontrast`) and a settings file
   with live reload
 - Plugin system (manifest + QML) with enable/disable and auto-rescan
+- Window management: snap a window to the left/right half with `Super+Left`/`Super+Right`,
+  maximise with `Super+Up`, restore with `Super+Down`, drag a window to an edge to snap it,
+  move it between outputs with `Super+Shift+Left`/`Super+Shift+Right`, and show/hide the
+  desktop with `Super+D`
+- Screenshots: `Print` captures the whole output to `~/Pictures/Screenshots` and announces
+  the saved path through the notification daemon
 - Multi-monitor: one desktop and one panel per screen
 - Rust core (application search index, metrics sampler, config, watcher) with a
   C++/Qt fallback, plus the `newteller-ctl` command line tool
 
 ## Build (Debian 13 / Ubuntu 26.04 LTS)
 
-Release builds support Debian 13 and Ubuntu 26.04 LTS, with Qt 6 development packages, not just the
-runtime libraries. Debian 12 / Ubuntu 24.04 ship Qt5 LayerShellQt and are not
-supported by the release scripts.
+Release builds support Debian 13 and Ubuntu 26.04 LTS, with Qt 6 and wlroots development
+packages, not just the runtime libraries. Debian 12 / Ubuntu 24.04 ship Qt5 LayerShellQt
+and an older wlroots and are not supported by the release scripts.
+
+`newteller-compositor` needs `libwlroots-0.18-dev` on Debian 13 or
+`libwlroots-0.19-dev` on Ubuntu 26.04. `scripts/install-build-deps.sh` picks the right
+package for the detected distribution.
 
 From the repository root:
 
@@ -109,8 +128,8 @@ with the shell. Rust sources live in `rust/` (`cargo test --workspace` there).
 
 If CMake reports `Qt6Config.cmake`, wayland-client or xcb is missing, run the dependency
 installer above. It installs `qt6-base-dev`, `qt6-declarative-dev`, `qt6-svg-dev`, the Qt6
-LayerShellQt development package, `libwayland-dev`, `libxcb1-dev`, build tools, and runtime
-QML modules.
+LayerShellQt development package, the distribution's wlroots development package,
+`libwayland-dev`, `libxcb1-dev`, XWayland, build tools, and runtime QML modules.
 For a custom Qt SDK (6.4 or newer), export `CMAKE_PREFIX_PATH` pointing to its
 installation prefix, or `Qt6_DIR` pointing to the directory containing
 `Qt6Config.cmake`. LayerShellQt must also be built against that Qt version.
@@ -118,36 +137,63 @@ installation prefix, or `Qt6_DIR` pointing to the directory containing
 IconKit is optional: clone https://github.com/fourtexec/iconkit to `~/iconkit`
 for additional icons, or use the system icon theme.
 
-Run it from a terminal inside your current session:
+### Log in to NewTeller
+
+The installer registers `newteller.desktop` in `/usr/share/wayland-sessions`. Log out,
+choose **NewTeller** in the display manager's session menu, and log in. The compositor
+owns the screen from that point; the shell is started automatically inside it.
+
+To try it from a spare virtual console, run the same entry point as the greeter would:
 
 ```sh
-newteller
+newteller-session
 ```
 
-To start it on login, copy the autostart entry:
+Do not start `newteller-session` from an existing graphical session, because the DRM
+device is already in use.
+
+### Run it as a window for development
+
+These modes do not take over the screen and are what the automated tests use:
 
 ```sh
-mkdir -p ~/.config/autostart
-cp /usr/share/newteller/newteller-autostart.desktop ~/.config/autostart/newteller.desktop
+# A 1280x800 NewTeller session inside the current Wayland/X11 session.
+newteller-compositor --nested=1280x800 --shell ./build/newteller
+
+# No display at all; useful with grim/Wayland clients in CI.
+newteller-compositor --headless=1280x800 --shell ./build/newteller
 ```
 
-> **Note:** NewTeller draws its own panel. Turn off the panel of your current desktop
-> (for example, remove the Plasma panel or disable the GNOME dock extension) so the two
-> don't overlap.
+`--no-xwayland` skips XWayland, `--no-shell` starts only the compositor, and
+`--socket <name>` selects an explicit `WAYLAND_DISPLAY`. `--nested` needs a working
+parent Wayland compositor.
 
-### Display servers
+### Session modes
 
-NewTeller picks the windowing system when it starts:
-
-| Session | How NewTeller runs |
+| Mode | What receives the graphics |
 | --- | --- |
-| Wayland with wlr-layer-shell (KDE Plasma, sway, Hyprland, labwc, Wayfire, niri, ...) | Native Wayland. Desktop, panel and start menu are layer surfaces, and the panel reserves its height. |
-| Wayland without wlr-layer-shell (GNOME) | Through XWayland, printing `using XWayland instead`. Applications started from NewTeller still use native Wayland. |
-| X11 (Openbox, Xfce, ...) | X11. The desktop is a desktop-type window below all others; the panel is a dock that reserves the bottom edge of each screen. |
+| Login session (`newteller-session`) | The NewTeller compositor owns DRM/KMS and libinput directly. Wayland applications are native clients; X11 applications go through XWayland. |
+| Nested (`--nested`) | The compositor is one window on the current desktop. Used for development and screenshots. |
+| Headless (`--headless`) | No output window. Used for automated tests and CI. |
+| Existing session (optional) | Running plain `newteller` still installs the shell as a layer-shell client on KDE Plasma, sway, Hyprland, labwc, Wayfire or niri, and through XWayland on GNOME. This is the development fallback. |
 
-GNOME Shell's top bar keeps running next to NewTeller. Setting `QT_QPA_PLATFORM` (or passing
-`-platform`) overrides the automatic choice; with `QT_QPA_PLATFORM=wayland` on GNOME the shell
-windows are ordinary windows.
+Setting `QT_QPA_PLATFORM` (or passing `-platform`) overrides the shell's automatic choice
+when it runs inside another session. The compositor always selects its own backend.
+
+The login greeter is the system display manager; NewTeller does not ship its own greeter.
+A dedicated lock screen is not included yet, so the Lock action relies on a session
+locker installed separately.
+
+Windows use client-side decorations (title bars drawn by the toolkit), so every application
+gets a usable frame without a separate window-decorator process. The compositor handles
+these shortcuts globally, even when an application has focus:
+`Alt+F2` (run dialog), `Super+Return` (terminal), `Super+S` (settings), `Super+Q`
+(close the focused window), `Alt+F4` (close), `Super+Left`/`Super+Right` (snap to a half),
+`Super+Up`/`Super+Down` (maximise/restore), `Super+Shift+Left`/`Super+Shift+Right`
+(move to another output), `Super+D` (show desktop), `Super+M` (maximise),
+`Super+F` (fullscreen), `Print` (screenshot), and `Alt+Tab` (switch windows). The running shell exports `org.newteller.Shell` on the session bus;
+scripts can call `showStartMenu`, `showRunDialog`, `openSettings`, `lock`, `logout`
+and the other session methods with `gdbus call`.
 
 ## Automated builds and commit releases
 
@@ -164,12 +210,15 @@ Each release contains:
 - `newteller-commit-<full SHA>-ubuntu26.04-x86_64.zip`;
 - a `.zip.sha256` checksum file.
 
-The ZIP contains `usr/bin/newteller`, the example plugins, application/autostart
-entries, this README, `BUILDINFO` with the full commit SHA, and installation scripts.
-QML and the default/light themes are embedded in the executable. Qt6 and
-LayerShellQt libraries/modules are **system dependencies**, installed by the included
-installer; this is not a portable archive for Debian 12 or Ubuntu 24.04.
-IconKit is optional (system icons are used if it is absent).
+The ZIP contains `usr/bin/newteller`, `usr/bin/newteller-compositor`,
+`usr/bin/newteller-session`, `usr/bin/newteller-screenshot`, `usr/bin/newteller-ctl`,
+the example plugins, application and
+`wayland-sessions/newteller.desktop` entries, this README, `BUILDINFO` with the
+full commit SHA, and installation scripts. QML and the default/light themes are
+embedded in the executable. Qt6, LayerShellQt, wlroots and XWayland are **system
+dependencies**, installed by the included installer; this is not a portable
+archive for Debian 12 or Ubuntu 24.04. IconKit is optional (system icons are used
+if it is absent).
 
 Download the ZIP **matching your distribution** and its checksum into the same
 directory. The installer rejects archives built for a different distribution.
@@ -180,12 +229,12 @@ sha256sum -c newteller-commit-<full SHA>-debian13-x86_64.zip.sha256
 unzip newteller-commit-<full SHA>-debian13-x86_64.zip
 cd newteller-commit-<full SHA>-debian13-x86_64
 sudo bash install.sh
-newteller # run as your normal user inside a desktop session
+# Log out, then choose "NewTeller" in the display manager's session menu.
 ```
 
 The installer needs an internet connection to install dependencies with `apt`.
-Autostart is opt-in: copy `/usr/share/newteller/newteller-autostart.desktop` to
-`~/.config/autostart/newteller.desktop` as described above.
+It does not create an autostart entry: NewTeller is a session, not an
+application that should start on top of another desktop.
 
 On Ubuntu 26.04, use the same commands with `ubuntu26.04` in place of `debian13`
 in the archive and directory names.
@@ -241,8 +290,8 @@ All keys, with their defaults:
 | `dock.showWindows` | `true` | show running applications/windows in the dock |
 | `dock.group` | `true` | merge all windows of one application into one dock button |
 | `dock.iconSize` | `28` | dock button icon size in pixels |
-| `dock.material` | `"none"` | idle dock button surface: `none`, `opaque`, `translucent`, `frosted` or `liquid` |
-| `dock.backgroundColor` / `dock.backgroundOpacity` | `""` / `0.5` | dock idle surface tint and opacity |
+| `dock.material` | `"translucent"` | floating dock surface: `none`, `opaque` (non-transparent), `translucent` (half transparent), `frosted` or `liquid` |
+| `dock.backgroundColor` / `dock.backgroundOpacity` | `""` / `0.5` | dock surface tint and opacity (opacity is clamped per material) |
 | `dock.thumbnails` | `true` | live window previews in the dock menu (X11/XWayland) |
 | `dock.multiRow` / `dock.rows` | `false` / `1` | wrap the dock into up to three rows (horizontal panels) |
 | `dock.scrollable` | `true` | let the dock scroll when its buttons do not fit |
@@ -349,7 +398,8 @@ It manages the whole configuration of the shell:
   be used (not running, no permission, no answer after two minutes).
   Both pickers start in the folder of the current wallpaper, silently fall back
   to `~/Pictures` or the home directory when that folder is gone, and only
-  accept a path that is a readable image — the desktop never receives a file it
+  accept a path that is a readable image. Set `NEWTELLER_NO_PORTAL=1` to skip
+  a broken portal and always use the integrated picker. — the desktop never receives a file it
   cannot draw. The integrated picker is an ordinary dialog: it stays open when
   it loses the keyboard focus and closes on Esc, Cancel or the title-bar button.
   The colour palette of the theme editor opens as a full-height panel on the
@@ -472,7 +522,16 @@ bash tests/platform.sh            # distribution detection used by the scripts
 cd rust && cargo test --workspace # the Rust core and CLI
 pip install PySide6-Essentials
 python3 tests/qml_smoke.py        # loads the QML offscreen, no compositor needed
+bash tests/session_smoke.sh       # starts a real headless compositor and captures a frame
 ```
+
+`tests/session_smoke.sh` starts `newteller-compositor --headless`, waits for the shell's
+desktop and panel layers, opens the start menu with a virtual pointer (`wlrctl`), launches
+a native Wayland test window, captures the output through the compositor's own screencopy
+implementation (using `grim`), and checks that the frames contain the panel, the menu and
+the window. It also runs `newteller-screenshot` and checks that a PNG was written.
+`scripts/install-build-deps.sh` installs `grim` and `wlrctl`; set
+`WLR_RENDERER=pixman` for a GPU-less CI container.
 
 `tests/qml_smoke.py` loads `qrc:/qml/Main.qml` from `resources.qrc` on two
 simulated screens, with stand-ins for the C++ objects and the layer-shell and
@@ -490,13 +549,16 @@ test the C++ code; the C++ and QML together are built by CI on every push.
 ```
 src/            C++ core (settings, theme, appmodel, shellcontroller, plugins, systemmonitor,
                 windowlist, rustbridge, windowsystem, shellwindow, main)
+src/session/    newteller-compositor: wlroots session, outputs, layer-shell, xdg-shell,
+                XWayland, input, and screencopy
+protocols/      wlr-layer-shell and xdg-shell XML used to generate compositor headers
 qml/            Main.qml, Panel.qml, DockMenu.qml, StartMenu.qml, Desktop.qml, TaskButton.qml,
                 RunDialog.qml, SettingsApp.qml and the Settings* row controls
 rust/           Rust workspace: newteller-core (static lib + C ABI) and newteller-ctl
-tests/          shell and QML smoke tests
+tests/          QML, shell and headless compositor smoke tests
 themes/         built-in theme JSON files (compiled into the binary)
 plugins/        example plugins installed to /usr/share/newteller/plugins
-data/           .desktop files (application entry and autostart)
+data/           .desktop files (session entry, optional shell entry and autostart)
 ```
 
 ## License

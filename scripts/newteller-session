@@ -1,0 +1,29 @@
+#!/bin/sh
+# Start the NewTeller Wayland session.
+#
+# Display managers run this from /usr/share/wayland-sessions/newteller.desktop.
+# The compositor owns the DRM/KMS output, starts the NewTeller shell as its
+# first client and brings up XWayland for X11 applications.
+set -eu
+
+export XDG_CURRENT_DESKTOP=NewTeller
+export XDG_SESSION_DESKTOP=newteller
+export XDG_SESSION_TYPE=wayland
+export DESKTOP_SESSION=newteller
+
+# A login session owns the DRM device. Clear a stale DISPLAY/WAYLAND_DISPLAY
+# from the display manager so wlroots does not silently become a nested X11 or
+# Wayland client. The development --nested mode keeps the parent display.
+case " $* " in
+    *" --nested"*|*" --nested="*) ;;
+    *) unset DISPLAY WAYLAND_DISPLAY ;;
+esac
+
+# On a real login the display manager already provides a session bus. When the
+# compositor is started from a bare VT, give it one so portals, notifications
+# and application launching work.
+if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && command -v dbus-run-session >/dev/null 2>&1; then
+    exec dbus-run-session -- newteller-compositor "$@"
+fi
+
+exec newteller-compositor "$@"

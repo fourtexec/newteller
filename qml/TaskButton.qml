@@ -157,13 +157,19 @@ Rectangle {
     // Running indicator
     Rectangle {
         visible: btn.running
-        width: Math.min(btn.badge > 1 ? 22 : 12, btn.width - 12)
-        height: 3
-        radius: 1.5
-        color: btn.active ? Theme.accent : btn.dimmed ? Theme.muted : Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.75)
+        width: Math.min(btn.badge > 1 ? 10 : 4, btn.width - 8)
+        height: 4
+        radius: 2
+        color: btn.active
+               ? btn.foregroundColor
+               : btn.dimmed
+                 ? Qt.rgba(btn.foregroundColor.r, btn.foregroundColor.g,
+                           btn.foregroundColor.b, 0.28)
+                 : Qt.rgba(btn.foregroundColor.r, btn.foregroundColor.g,
+                           btn.foregroundColor.b, 0.55)
         anchors.horizontalCenter: parent.horizontalCenter
         anchors.bottom: parent.bottom
-        anchors.bottomMargin: 3
+        anchors.bottomMargin: 4
         Behavior on width { NumberAnimation { duration: motion.fast; easing.type: motion.easeEnter } }
         Behavior on color { ColorAnimation { duration: motion.fast } }
     }

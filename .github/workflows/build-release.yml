@@ -68,6 +68,10 @@ jobs:
         env:
           NEWTELLER_ICONS_DIR: ${{ github.workspace }}/iconkit/icons
         run: bash scripts/build-release.sh "$GITHUB_SHA"
+      - name: Session smoke test
+        run: |
+          WLR_RENDERER=pixman PYTHON=/tmp/newteller-venv/bin/python \
+            bash tests/session_smoke.sh
       - name: Preserve release archive
         uses: actions/upload-artifact@v4
         with:
@@ -108,7 +112,8 @@ jobs:
           Targets: Debian 13 (trixie) and Ubuntu 26.04 LTS, Linux x86_64.
           Download the archive matching your distribution.
           Extract the ZIP and run \`sudo bash install.sh\` from the extracted directory.
-          The installer installs system Qt6 / LayerShellQt runtime dependencies.
+          The installer installs system Qt6, LayerShellQt, wlroots and XWayland runtime dependencies.
+          The archive contains newteller-compositor and newteller-session; choose NewTeller at the login screen after installing.
           QML and built-in themes are embedded in the executable; example plugins and desktop entries are included.
           The archive is not a statically linked or cross-distribution portable build.
           EOF_NOTES

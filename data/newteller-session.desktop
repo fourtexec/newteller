@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=NewTeller
+Comment=NewTeller Wayland desktop session
+Exec=newteller-session
+TryExec=newteller-session
+DesktopNames=NewTeller
+Icon=preferences-desktop
+Keywords=desktop;session;wayland;

@@ -1,0 +1,32 @@
+#!/bin/sh
+# Save a full-screen PNG through the compositor's wlr-screencopy support.
+set -eu
+
+pictures="${XDG_PICTURES_DIR:-$HOME/Pictures}"
+dir="$pictures/Screenshots"
+mkdir -p "$dir"
+file="$dir/Screenshot_$(date +%Y%m%d-%H%M%S)-$$.png"
+
+notify() {
+    if command -v gdbus >/dev/null 2>&1; then
+        gdbus call --session --dest org.newteller.Shell \
+            --object-path /org/newteller/Shell \
+            --method org.newteller.Shell.notify "$1" "$2" >/dev/null 2>&1 && return 0
+    fi
+    if command -v notify-send >/dev/null 2>&1; then
+        notify-send "$1" "$2" >/dev/null 2>&1 && return 0
+    fi
+    printf '%s: %s\n' "$1" "$2" >&2
+}
+
+if ! command -v grim >/dev/null 2>&1; then
+    notify "Screenshot failed" "grim is not installed"
+    exit 1
+fi
+if grim "$file"; then
+    notify "Screenshot saved" "$file"
+    printf '%s\n' "$file"
+else
+    notify "Screenshot failed" "The compositor did not return an image"
+    exit 1
+fi

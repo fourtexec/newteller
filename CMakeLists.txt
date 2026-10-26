@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project(newteller VERSION 0.3.0 LANGUAGES CXX)
+project(newteller VERSION 0.3.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -8,6 +8,12 @@ set(CMAKE_AUTOMOC ON)
 include(GNUInstallDirs)
 
 find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Qml Quick Svg DBus)
+
+# The compositor is what turns NewTeller from a panel that runs inside somebody
+# else's desktop into a real Wayland session. It only needs C libraries, not Qt.
+find_package(PkgConfig REQUIRED)
+pkg_search_module(WLROOTS REQUIRED IMPORTED_TARGET wlroots-0.19 wlroots-0.18)
+find_program(WAYLAND_SCANNER_EXECUTABLE wayland-scanner REQUIRED)
 
 # wlr-layer-shell support (panel, desktop, menu). Package names differ per distro,
 # so we try both the Qt6 and the generic CMake package names.
@@ -110,7 +116,55 @@ if(NEWTELLER_RUST_ENABLED)
     install(PROGRAMS ${CMAKE_BINARY_DIR}/rust-target/release/newteller-ctl DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
 
-install(TARGETS newteller RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+# ---------------------------------------------------------------------------
+# newteller-compositor: the small wlroots compositor that owns the DRM/KMS (or
+# nested/headless) outputs and runs the shell as its first client.
+# ---------------------------------------------------------------------------
+set(NEWTELLER_LAYER_SHELL_HEADER ${CMAKE_BINARY_DIR}/wlr-layer-shell-unstable-v1-protocol.h)
+set(NEWTELLER_XDG_SHELL_HEADER ${CMAKE_BINARY_DIR}/xdg-shell-protocol.h)
+add_custom_command(
+    OUTPUT ${NEWTELLER_LAYER_SHELL_HEADER}
+    COMMAND ${WAYLAND_SCANNER_EXECUTABLE} server-header
+            ${CMAKE_SOURCE_DIR}/protocols/wlr-layer-shell-unstable-v1.xml
+            ${NEWTELLER_LAYER_SHELL_HEADER}
+    DEPENDS ${CMAKE_SOURCE_DIR}/protocols/wlr-layer-shell-unstable-v1.xml
+    COMMENT "Generating wlr-layer-shell protocol header")
+add_custom_command(
+    OUTPUT ${NEWTELLER_XDG_SHELL_HEADER}
+    COMMAND ${WAYLAND_SCANNER_EXECUTABLE} server-header
+            ${CMAKE_SOURCE_DIR}/protocols/xdg-shell.xml
+            ${NEWTELLER_XDG_SHELL_HEADER}
+    DEPENDS ${CMAKE_SOURCE_DIR}/protocols/xdg-shell.xml
+    COMMENT "Generating xdg-shell protocol header")
+
+add_executable(newteller-compositor
+    src/session/main.c
+    ${NEWTELLER_LAYER_SHELL_HEADER}
+    ${NEWTELLER_XDG_SHELL_HEADER}
+)
+target_compile_definitions(newteller-compositor PRIVATE
+    WLR_USE_UNSTABLE
+    NEWTELLER_VERSION="${PROJECT_VERSION}")
+set_target_properties(newteller-compositor PROPERTIES
+    C_STANDARD 11
+    C_STANDARD_REQUIRED ON
+    LINKER_LANGUAGE C
+    AUTOMOC OFF)
+target_include_directories(newteller-compositor PRIVATE
+    ${CMAKE_BINARY_DIR}
+    ${CMAKE_SOURCE_DIR}/src/session
+    ${WLROOTS_INCLUDE_DIRS}
+)
+target_link_directories(newteller-compositor PRIVATE ${WLROOTS_LIBRARY_DIRS})
+target_link_libraries(newteller-compositor PRIVATE
+    PkgConfig::WLROOTS
+    wayland-server
+    xkbcommon
+)
+
+install(TARGETS newteller newteller-compositor RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(PROGRAMS scripts/newteller-session scripts/newteller-screenshot DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(DIRECTORY plugins/ DESTINATION ${CMAKE_INSTALL_DATADIR}/newteller/plugins)
 install(FILES data/org.newteller.Shell.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+install(FILES data/newteller-session.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/wayland-sessions RENAME newteller.desktop)
 install(FILES data/newteller-autostart.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/newteller)

@@ -1,7 +1,7 @@
 [Desktop Entry]
 Type=Application
 Name=NewTeller
-Comment=Customizable desktop shell layer
+Comment=Run the NewTeller shell inside an existing desktop (development)
 Exec=newteller
 Icon=preferences-desktop
 Categories=System;

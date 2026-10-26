@@ -73,7 +73,10 @@ QtObject {
     // Alt+F2 opens the run dialog anywhere in the session.
     readonly property Shortcut runShortcut: Shortcut {
         sequence: "Alt+F2"
-        onActivated: root.runDialog.toggle()
+        onActivated: {
+            root.startMenu.hide();
+            root.runDialog.toggle();
+        }
     }
 
     // The start menu, the desktop menu and `newteller --settings` all open the
@@ -81,7 +84,15 @@ QtObject {
     readonly property Connections shellConnections: Connections {
         target: Shell
         function onSettingsRequested() {
+            root.startMenu.hide();
             root.settingsApp.showFromShell();
+        }
+        function onStartMenuRequested() {
+            root.startMenu.show();
+        }
+        function onRunDialogRequested() {
+            root.startMenu.hide();
+            root.runDialog.show();
         }
     }
 }

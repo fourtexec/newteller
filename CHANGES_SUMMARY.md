@@ -2,6 +2,25 @@
 
 This document summarizes all the new customization settings and improvements added to NewTeller.
 
+## Standalone Wayland session
+
+NewTeller is now a desktop session, not only a shell that runs inside another desktop:
+
+- `newteller-compositor` is a wlroots compositor that owns DRM/KMS, libinput, outputs,
+  layer-shell, xdg-shell, XWayland, foreign-toplevel, screencopy, virtual input and the
+  usual clipboard/idle protocols.
+- `newteller-session` is installed as `/usr/share/wayland-sessions/newteller.desktop`
+  and starts the compositor from the display manager.
+- The existing QML shell runs unchanged as the compositor's first Wayland client. The
+  panel still reserves screen space through layer-shell; the desktop is a background layer.
+- X11 applications run through XWayland and are tracked by the existing dock.
+- `tests/session_smoke.sh` starts a headless session, opens the start menu with a virtual
+  pointer, launches a native Wayland client, and captures/verifies frames through the
+  compositor's own screencopy support.
+- The compositor adds window snapping (`Super+Left/Right/Up/Down` and drag-to-edge),
+  moving windows between outputs (`Super+Shift+Left/Right`), show-desktop (`Super+D`),
+  `Alt+F4`, and `Print` screenshots saved to `~/Pictures/Screenshots`.
+
 ## Overview
 
 This comprehensive update adds **100+ new settings** across all aspects of NewTeller, including:
@@ -20,6 +39,15 @@ This comprehensive update adds **100+ new settings** across all aspects of NewTe
 
 ## 🔧 Fixed behaviour
 
+- Choosing a wallpaper through the file-manager dialog no longer crashes. The
+  FileChooser portal's image filter uses nested D-Bus structures; those types
+  (and their lists) are now registered before the first picker request, so the
+  D-Bus call cannot abort the shell while serialising it. `NEWTELLER_NO_PORTAL=1`
+  forces the integrated picker for systems with a broken portal.
+- Closing a window (including the file picker or the settings window) no longer
+  tears the compositor down. Native xdg/XWayland requests and foreign-toplevel
+  requests now use separate `wl_listener` objects; sharing one listener between
+  two signals corrupted Wayland's listener lists when the view was destroyed.
 - Settings → Desktop → “Choose from file manager” no longer takes the shell
   down. The wallpaper image was decoded at the photo's full resolution
   (`sourceSize` was only set when the blur option was on), so a big camera

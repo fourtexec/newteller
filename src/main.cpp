@@ -194,8 +194,13 @@ int main(int argc, char *argv[])
     lock.setStaleLockTime(0);
     const bool readOnly = cli.printConfig || cli.diagnostics;
     if (!readOnly && !lock.tryLock(0)) {
-        std::fputs("NewTeller is already running.\n", stderr);
-        return 1;
+        // A crashed shell can leave its lock file behind. removeStaleLockFile()
+        // only deletes it when the owning process is really gone; a second
+        // NewTeller in the same session still fails below.
+        if (!lock.removeStaleLockFile() || !lock.tryLock(0)) {
+            std::fputs("NewTeller is already running.\n", stderr);
+            return 1;
+        }
     }
 
     // Declared before the engine so they outlive it.

@@ -107,7 +107,7 @@ Settings::Settings(QObject *parent)
     // Dock styling
     m_defaults.insert(QStringLiteral("dock.backgroundColor"), QString());
     m_defaults.insert(QStringLiteral("dock.backgroundOpacity"), 0.5);
-    m_defaults.insert(QStringLiteral("dock.material"), QStringLiteral("none"));
+    m_defaults.insert(QStringLiteral("dock.material"), QStringLiteral("translucent"));
     m_defaults.insert(QStringLiteral("dock.hoverOpacity"), 0.15);
     m_defaults.insert(QStringLiteral("dock.activeOpacity"), 0.30);
     m_defaults.insert(QStringLiteral("dock.showLabels"), false);

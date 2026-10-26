@@ -5,6 +5,8 @@
 #include <QClipboard>
 #include <QColor>
 #include <QCoreApplication>
+#include <QDBusConnection>
+#include <QDBusError>
 #include <QDesktopServices>
 #include <QDir>
 #include <QFile>
@@ -31,6 +33,21 @@ ShellController::ShellController(Settings *settings, NotificationDaemon *notific
         emit nowChanged();
     });
     m_clock.start();
+
+    // A stable session endpoint for the compositor and for scripts. Failure is
+    // normal when a second shell runs in a nested test session.
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (bus.isConnected()) {
+        if (!bus.registerObject(QStringLiteral("/org/newteller/Shell"), this,
+                                QDBusConnection::ExportAllContents)) {
+            qWarning("NewTeller: could not export the shell D-Bus object: %s",
+                     qUtf8Printable(bus.lastError().message()));
+        }
+        if (!bus.registerService(QStringLiteral("org.newteller.Shell"))) {
+            qWarning("NewTeller: could not own org.newteller.Shell: %s",
+                     qUtf8Printable(bus.lastError().message()));
+        }
+    }
 
     // The icon cache follows the icon settings.
     connect(settings, &Settings::changed, this, [this](const QString &key) {
@@ -289,6 +306,16 @@ void ShellController::openUrl(const QString &url) const
 void ShellController::openSettings()
 {
     emit settingsRequested();
+}
+
+void ShellController::showStartMenu()
+{
+    emit startMenuRequested();
+}
+
+void ShellController::showRunDialog()
+{
+    emit runDialogRequested();
 }
 
 void ShellController::openConfig() const

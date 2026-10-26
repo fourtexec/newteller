@@ -16,6 +16,7 @@ class Settings;
 // the context property `Shell`.
 class ShellController : public QObject {
     Q_OBJECT
+    Q_CLASSINFO("D-Bus Interface", "org.newteller.Shell")
     Q_PROPERTY(QString version READ version CONSTANT)
     Q_PROPERTY(QString home READ home CONSTANT)
     Q_PROPERTY(QString desktopUrl READ desktopUrl CONSTANT)
@@ -57,6 +58,10 @@ public:
     // Opens the built-in settings application. The QML lives in the executable's
     // resources, so it is always available and cannot be deleted like a plugin.
     Q_INVOKABLE void openSettings();
+    // Session-level entry points used by newteller-compositor keybindings and
+    // by `gdbus call` from scripts. The QML root listens to the signals.
+    Q_INVOKABLE void showStartMenu();
+    Q_INVOKABLE void showRunDialog();
     Q_INVOKABLE void openConfig() const;
     // Opens the path in the file manager (or its handler for directories).
     Q_INVOKABLE void openPath(const QString &path) const;
@@ -94,6 +99,8 @@ signals:
     void nowChanged();
     // Emitted by openSettings(); Main.qml shows the embedded settings window.
     void settingsRequested();
+    void startMenuRequested();
+    void runDialogRequested();
 
 private:
     QString expandHome(const QString &path) const;

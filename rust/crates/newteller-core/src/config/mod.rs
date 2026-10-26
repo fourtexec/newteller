@@ -358,7 +358,7 @@ pub const SCHEMA: &[KeySchema] = &[
     KeySchema { key: "dock.separateBackground", kind: "bool", default_json: "true", doc: "Show applications that only have minimised windows in a separate zone at the end of the dock." },
     KeySchema { key: "dock.shrinkIcons", kind: "bool", default_json: "true", doc: "Shrink dock icons automatically when many applications run at once." },
     KeySchema { key: "dock.thumbnails", kind: "bool", default_json: "true", doc: "Show a live preview of every window in the dock menu (X11; Wayland toplevels have no preview protocol)." },
-    KeySchema { key: "dock.material", kind: "string", default_json: "\"none\"", doc: "Dock button surface: none, opaque, translucent, frosted or liquid." },
+    KeySchema { key: "dock.material", kind: "string", default_json: "\"translucent\"", doc: "Floating dock surface: none, opaque, translucent, frosted or liquid." },
     KeySchema { key: "dock.backgroundColor", kind: "string", default_json: "\"\"", doc: "Dock button background colour as hex; empty follows the theme." },
     KeySchema { key: "dock.backgroundOpacity", kind: "number", default_json: "0.5", doc: "Dock button surface opacity from 0 to 1." },
     KeySchema { key: "dock.hoverOpacity", kind: "number", default_json: "0.15", doc: "Dock button hover tint opacity." },
@@ -898,7 +898,7 @@ mod tests {
     fn surface_material_settings_are_known_and_have_matching_defaults() {
         let default_values = defaults();
         assert_eq!(default_values.get("panel.material").unwrap(), &Value::from("theme"));
-        assert_eq!(default_values.get("dock.material").unwrap(), &Value::from("none"));
+        assert_eq!(default_values.get("dock.material").unwrap(), &Value::from("translucent"));
         assert_eq!(default_values.get("windows.material").unwrap(), &Value::from("theme"));
         assert_eq!(default_values.get("notifications.material").unwrap(), &Value::from("theme"));
 

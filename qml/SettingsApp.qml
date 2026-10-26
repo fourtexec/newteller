@@ -585,17 +585,18 @@ Window {
 
                         SettingsSection {
                             title: "Dock styling"
-                            subtitle: "Custom appearance for dock buttons."
+                            subtitle: "The floating glass dock. The material controls the pill behind "
+                                      + "the icons, not each icon separately."
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Dock surface"
-                                subtitle: "Choose a lightweight material for the icon backgrounds."
+                                title: "Dock material"
+                                subtitle: "Half transparent, non transparent, frosted glass or liquid glass."
                                 settingKey: "dock.material"
                                 SettingsChoice {
                                     model: [
-                                        { value: "none", label: "No background" },
-                                        { value: "opaque", label: "Opaque" },
+                                        { value: "none", label: "No glass" },
+                                        { value: "opaque", label: "Non transparent" },
                                         { value: "translucent", label: "Half transparent" },
                                         { value: "frosted", label: "Frosted glass" },
                                         { value: "liquid", label: "Liquid glass" }
@@ -604,7 +605,7 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Dock background color"
+                                title: "Dock tint"
                                 visible: Settings.values["dock.material"] !== "none"
                                 settingKey: "dock.backgroundColor"
                                 SettingsColorField {
@@ -615,7 +616,8 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Dock surface opacity"
+                                title: "Dock opacity"
+                                subtitle: "Per-material minimums keep the glass readable."
                                 visible: Settings.values["dock.material"] !== "none"
                                 settingKey: "dock.backgroundOpacity"
                                 SettingsSlider { from: 0.2; to: 1.0; step: 0.05 }

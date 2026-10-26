@@ -39,6 +39,8 @@ struct FilterSet {
 
 Q_DECLARE_METATYPE(FilterPattern)
 Q_DECLARE_METATYPE(FilterSet)
+Q_DECLARE_METATYPE(QList<FilterPattern>)
+Q_DECLARE_METATYPE(QList<FilterSet>)
 
 QDBusArgument &operator<<(QDBusArgument &arg, const FilterPattern &p)
 {
@@ -79,6 +81,10 @@ FilePortal::FilePortal(QObject *parent)
     qDBusRegisterMetaType<FilterPattern>();
     qRegisterMetaType<FilterSet>("FilterSet");
     qDBusRegisterMetaType<FilterSet>();
+    qRegisterMetaType<QList<FilterPattern>>("QList<FilterPattern>");
+    qDBusRegisterMetaType<QList<FilterPattern>>();
+    qRegisterMetaType<QList<FilterSet>>("QList<FilterSet>");
+    qDBusRegisterMetaType<QList<FilterSet>>();
 
     m_timeout.setSingleShot(true);
     m_timeout.setInterval(kResponseTimeoutMs);
@@ -116,6 +122,11 @@ bool FilePortal::serviceFileInstalled()
 
 bool FilePortal::available() const
 {
+    // Escape hatch for sessions with a broken/partial portal installation and
+    // for the UI test suite, which needs the integrated picker deterministically.
+    if (qEnvironmentVariableIsSet("NEWTELLER_NO_PORTAL"))
+        return false;
+
     QDBusConnection bus = QDBusConnection::sessionBus();
     if (!bus.isConnected() || !bus.interface())
         return false;

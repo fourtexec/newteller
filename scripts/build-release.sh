@@ -44,8 +44,10 @@ Then rerun scripts/build-release.sh as your normal user.
 
 Qt runtime packages alone do not provide Qt6Config.cmake: qt6-base-dev,
 qt6-declarative-dev and qt6-svg-dev are required, along with Qt6 LayerShellQt,
-libwayland-dev and libxcb1-dev. Releases also require the Rust toolchain
-(rustc and cargo) for the newteller-core library and newteller-ctl.
+libwayland-dev, libxcb1-dev and the distribution's wlroots development package
+(libwlroots-0.18-dev on Debian 13, libwlroots-0.19-dev on Ubuntu 26.04).
+Releases also require the Rust toolchain (rustc and cargo) for the
+newteller-core library and newteller-ctl.
 For a custom Qt SDK (6.4 or newer), set CMAKE_PREFIX_PATH to its install prefix
 or Qt6_DIR to the directory containing Qt6Config.cmake, and ensure LayerShellQt
 was built against the same Qt version. See the CMake error above for details.
@@ -77,12 +79,16 @@ fi
 
 # QML and built-in themes are compiled into newteller via resources.qrc.
 test -x "$stage/usr/bin/newteller"
+test -x "$stage/usr/bin/newteller-compositor"
+test -x "$stage/usr/bin/newteller-session"
+test -x "$stage/usr/bin/newteller-screenshot"
 test -x "$stage/usr/bin/newteller-ctl"
 for plugin in desktop-clock desktop-sysinfo panel-system-monitor; do
     test -f "$stage/usr/share/newteller/plugins/$plugin/manifest.json"
     test -f "$stage/usr/share/newteller/plugins/$plugin/Widget.qml"
 done
 test -f "$stage/usr/share/applications/org.newteller.Shell.desktop"
+test -f "$stage/usr/share/wayland-sessions/newteller.desktop"
 test -f "$stage/usr/share/newteller/newteller-autostart.desktop"
 archive="$root/dist/$name.zip"
 rm -f -- "$archive"

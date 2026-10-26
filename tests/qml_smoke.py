@@ -45,8 +45,8 @@ os.environ["QT_QUICK_BACKEND"] = "software"
 
 import PySide6  # noqa: E402
 from PySide6.QtCore import (Q_ARG, QDateTime, QDir, QEnum, QFile, QFileInfo, QMargins,  # noqa: E402
-                            QMetaObject, QObject, QPoint, QtMsgType, QTimer, QUrl, Property, Qt,
-                            Signal, Slot, qInstallMessageHandler)
+                            QMetaObject, QObject, QPoint, QPointF, QtMsgType, QTimer, QUrl,
+                            Property, Qt, Signal, Slot, qInstallMessageHandler)
 from PySide6.QtGui import QColor, QGuiApplication, QImage, QImageReader  # noqa: E402
 from PySide6.QtQml import (QmlAnonymous, QmlAttached, QmlNamedElement,  # noqa: E402
                            QmlUncreatable, QQmlApplicationEngine, QQmlComponent)
@@ -403,6 +403,8 @@ class Apps(QObject):
 class Shell(QObject):
     nowChanged = Signal()
     settingsRequested = Signal()
+    startMenuRequested = Signal()
+    runDialogRequested = Signal()
 
     def __init__(self, desktop_dir, home_dir):
         super().__init__()
@@ -1045,7 +1047,14 @@ def main():
         check(not menu.isVisible(), "start menu starts hidden")
 
         panel = next(w for w in panels if w.screen() is screens[0])
-        start_button = QPoint(24, panel.height() // 2)  # first item in the panel
+        start_item = panel.findChild(QObject, "startButton")
+        check(start_item is not None, "the panel exposes its Start button")
+        if start_item is not None:
+            centre = start_item.mapToScene(QPointF(start_item.width() / 2,
+                                                  start_item.height() / 2)).toPoint()
+            start_button = QPoint(centre.x(), centre.y())
+        else:
+            start_button = QPoint(panel.width() // 2, panel.height() // 2)
         QTest.mouseClick(panel, Qt.LeftButton, Qt.NoModifier, start_button)
         QTest.qWait(50)
         check(menu.isVisible(), "clicking Start opens the start menu")

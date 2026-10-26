@@ -91,13 +91,19 @@ Window {
                                               : Theme.surface
     readonly property real dockSurfaceOpacity: {
         const custom = Number(Settings.values["dock.backgroundOpacity"] ?? -1);
-        if (custom >= 0) return Math.max(0, Math.min(1, custom));
         if (panel.dockMaterial === "opaque") return 1;
-        if (panel.dockMaterial === "translucent") return 0.5;
-        if (panel.dockMaterial === "frosted") return 0.68;
-        if (panel.dockMaterial === "liquid") return 0.5;
-        return 0;
+        if (panel.dockMaterial === "none") return 0;
+        if (panel.dockMaterial === "translucent")
+            return custom >= 0 ? Math.max(0.35, Math.min(1, custom)) : 0.52;
+        if (panel.dockMaterial === "frosted")
+            return custom >= 0 ? Math.max(0.55, Math.min(1, custom)) : 0.70;
+        if (panel.dockMaterial === "liquid")
+            return custom >= 0 ? Math.max(0.42, Math.min(1, custom)) : 0.52;
+        return custom >= 0 ? Math.max(0, Math.min(1, custom)) : 0.88;
     }
+    // Room for the floating dock itself; it never becomes a full-width bar.
+    readonly property int dockMaxWidth: Math.max(220, Math.min(1200, panel.width - 380))
+    readonly property int dockPadding: 8
     readonly property real dockHoverOpacity: Math.max(0, Math.min(1, Number(Settings.values["dock.hoverOpacity"] ?? 0.15)))
     readonly property real dockActiveOpacity: Math.max(0, Math.min(1, Number(Settings.values["dock.activeOpacity"] ?? 0.30)))
     readonly property int panelSpacing: Settings.values["panel.spacing"] || 8
@@ -519,9 +525,9 @@ Window {
             dockIconColorMode: panel.dockIconColorMode
             dockCustomIconColor: panel.dockCustomIconColor
             foregroundColor: panel.panelTextColor
-            surfaceMaterial: panel.dockMaterial
-            surfaceColor: panel.dockSurfaceColor
-            surfaceOpacity: panel.dockSurfaceOpacity
+            // The material belongs to the floating dock pill, not to every
+            // icon. Icons keep only the subtle hover/press tint.
+            surfaceMaterial: "none"
             hoverOpacity: panel.dockHoverOpacity
             activeOpacity: panel.dockActiveOpacity
             running: entry.running && panel.showRunning
@@ -577,11 +583,11 @@ Window {
         // are ignored and the divider would collapse to zero pixels.
         visible: panel.separateBackground && panel.dockBackgroundEntries.length > 0
         width: panel.vertical ? panel.dockIconSize + 8 : 1
-        height: panel.vertical ? 1 : Math.min(24, panel.dockIconSize + 4)
+        height: panel.vertical ? 1 : Math.min(30, panel.dockIconSize + 8)
         Layout.preferredWidth: width
         Layout.preferredHeight: height
         Layout.alignment: Qt.AlignVCenter
-        color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.55)
+        color: Qt.rgba(1, 1, 1, 0.20)
     }
 
     component PluginSlot: Repeater {
@@ -909,7 +915,7 @@ Window {
     Loader {
         id: barLoader
         anchors.fill: parent
-        anchors.margins: 4
+        anchors.margins: 0
         sourceComponent: panel.vertical ? verticalBar : horizontalBar
         // Slide the bar content in and out of the reserved strip.
         opacity: panel.revealed ? 1.0 : 0.0
@@ -937,11 +943,19 @@ Window {
     // whole dock once collapsed to zero-height, invisible buttons.
     component DockStrip: Flickable {
         id: dockStrip
-        Layout.fillWidth: !panel.vertical
-        Layout.fillHeight: true
+        Layout.fillWidth: false
+        Layout.fillHeight: !panel.vertical
         Layout.alignment: Qt.AlignVCenter
         Layout.leftMargin: Math.max(0, panel.panelSpacing - 4)
         Layout.rightMargin: Math.max(0, panel.panelSpacing - 4)
+        Layout.preferredWidth: panel.vertical
+                               ? Math.max(24, panel.barThickness - 24)
+                               : (panel.dockMultiRow
+                                  ? panel.dockMaxWidth
+                                  : Math.min(contentWidth, panel.dockMaxWidth))
+        Layout.preferredHeight: panel.vertical ? Math.min(contentHeight, panel.height - 180) : -1
+        Layout.minimumWidth: 0
+        Layout.maximumWidth: panel.dockMaxWidth
         clip: true
         contentWidth: panel.dockMultiRow ? width : (panel.vertical ? stripColumn.width : stripRow.width)
         contentHeight: panel.dockMultiRow ? stripFlow.height
@@ -1004,48 +1018,57 @@ Window {
     Component {
         id: horizontalBar
 
-        Rectangle {
-            radius: Theme.radius
-            color: "transparent"
-            border.width: 0
+        Item {
+            id: horizontalRoot
 
-            SurfaceStyle {
-                anchors.fill: parent
-                material: panel.panelMaterial
-                materialOpacity: panel.panelSurfaceOpacity
-                baseColor: panel.panelSurfaceColor
-                cornerRadius: parent.radius
-                borderColor: Theme.border
-                borderOpacity: 0.6
-                borderWidth: 1
-            }
+            // The pill hugs its contents and is centred on the output. The
+            // panel window itself is transparent; only this pill carries the
+            // dock material and the reserved edge strip remains full-width.
+            Item {
+                id: dockCluster
+                anchors.centerIn: parent
+                width: Math.min(horizontalRoot.width - 8,
+                                dockLayout.implicitWidth + panel.dockPadding * 2)
+                height: Math.max(34, panel.barThickness - 4)
 
-            RowLayout {
-                anchors.fill: parent
-                anchors.margins: 4
-                spacing: Math.max(0, panel.panelZoneSpacing - 4)
-
-                StartButton {
-                    Layout.leftMargin: Math.max(0, panel.panelLeftSpacing - 4)
-                }
-                Separator {}
-                DockStrip {}
-                PluginSlot {}
-
-                TrayBox {}
-                BellButton {
-                    visible: panel.showIndicators
-                }
-                IndicatorsButton {
-                    visible: panel.showIndicators
-                }
-                Separator {
-                    visible: panel.showTray || panel.showIndicators
+                DockSurface {
+                    anchors.fill: parent
+                    material: panel.dockMaterial
+                    materialOpacity: panel.dockSurfaceOpacity
+                    baseColor: panel.dockSurfaceColor
+                    accentColor: Theme.accent
+                    cornerRadius: height / 2
+                    effectStrength: 1
                 }
 
-                ClockButton {
-                    Layout.rightMargin: Math.max(6, panel.panelRightSpacing)
-                    Layout.leftMargin: 4
+                RowLayout {
+                    id: dockLayout
+                    anchors.fill: parent
+                    anchors.margins: panel.dockPadding
+                    spacing: Math.max(2, panel.panelZoneSpacing - 4)
+
+                    StartButton {
+                        Layout.leftMargin: Math.max(0, panel.panelLeftSpacing - 4)
+                    }
+                    Separator {}
+                    DockStrip {}
+                    PluginSlot {}
+
+                    TrayBox {}
+                    BellButton {
+                        visible: panel.showIndicators
+                    }
+                    IndicatorsButton {
+                        visible: panel.showIndicators
+                    }
+                    Separator {
+                        visible: panel.showTray || panel.showIndicators
+                    }
+
+                    ClockButton {
+                        Layout.rightMargin: Math.max(4, panel.panelRightSpacing)
+                        Layout.leftMargin: 4
+                    }
                 }
             }
         }
@@ -1054,46 +1077,52 @@ Window {
     Component {
         id: verticalBar
 
-        Rectangle {
-            radius: Theme.radius
-            color: "transparent"
-            border.width: 0
+        Item {
+            id: verticalRoot
 
-            SurfaceStyle {
-                anchors.fill: parent
-                material: panel.panelMaterial
-                materialOpacity: panel.panelSurfaceOpacity
-                baseColor: panel.panelSurfaceColor
-                cornerRadius: parent.radius
-                borderColor: Theme.border
-                borderOpacity: 0.6
-                borderWidth: 1
-            }
+            Item {
+                id: verticalDockCluster
+                anchors.centerIn: parent
+                width: Math.max(34, panel.barThickness - 4)
+                height: Math.min(verticalRoot.height - 8,
+                                 verticalLayout.implicitHeight + panel.dockPadding * 2)
 
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 4
-                spacing: Math.max(0, panel.panelZoneSpacing - 4)
-
-                StartButton {}
-                Separator {}
-                DockStrip {}
-                PluginSlot {}
-
-                TrayBox {}
-                BellButton {
-                    visible: panel.showIndicators
-                }
-                IndicatorsButton {
-                    visible: panel.showIndicators
-                }
-                Separator {
-                    visible: panel.showTray || panel.showIndicators
+                DockSurface {
+                    anchors.fill: parent
+                    material: panel.dockMaterial
+                    materialOpacity: panel.dockSurfaceOpacity
+                    baseColor: panel.dockSurfaceColor
+                    accentColor: Theme.accent
+                    cornerRadius: width / 2
+                    effectStrength: 1
                 }
 
-                ClockButton {
-                    Layout.bottomMargin: 6
-                    Layout.topMargin: 4
+                ColumnLayout {
+                    id: verticalLayout
+                    anchors.fill: parent
+                    anchors.margins: panel.dockPadding
+                    spacing: Math.max(2, panel.panelZoneSpacing - 4)
+
+                    StartButton {}
+                    Separator {}
+                    DockStrip {}
+                    PluginSlot {}
+
+                    TrayBox {}
+                    BellButton {
+                        visible: panel.showIndicators
+                    }
+                    IndicatorsButton {
+                        visible: panel.showIndicators
+                    }
+                    Separator {
+                        visible: panel.showTray || panel.showIndicators
+                    }
+
+                    ClockButton {
+                        Layout.bottomMargin: 4
+                        Layout.topMargin: 4
+                    }
                 }
             }
         }
