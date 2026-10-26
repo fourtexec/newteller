@@ -291,7 +291,7 @@ All keys, with their defaults:
 | `dock.group` | `true` | merge all windows of one application into one dock button |
 | `dock.iconSize` | `28` | dock button icon size in pixels |
 | `dock.material` | `"translucent"` | floating dock surface: `none`, `opaque` (non-transparent), `translucent` (half transparent), `frosted` or `liquid` |
-| `dock.backgroundColor` / `dock.backgroundOpacity` | `""` / `0.5` | dock surface tint and opacity (opacity is clamped per material) |
+| `dock.backgroundColor` / `dock.backgroundOpacity` | `""` / `0.5` | dock surface tint, and an opacity bias around the material preset (`0.5` = the material's own transparency, lower is clearer, higher is more solid) |
 | `dock.thumbnails` | `true` | live window previews in the dock menu (X11/XWayland) |
 | `dock.multiRow` / `dock.rows` | `false` / `1` | wrap the dock into up to three rows (horizontal panels) |
 | `dock.scrollable` | `true` | let the dock scroll when its buttons do not fit |
@@ -355,9 +355,19 @@ dialog, clock, dock menu) and the notifications each take a `*material` key:
 | `theme` | the theme background at the theme opacity (default) |
 | `opaque` | fully opaque theme/background colour |
 | `translucent` | half-transparent |
-| `frosted` | translucent with a soft satin highlight and a brighter border |
-| `liquid` | translucent with a specular top edge and a subtle accent bloom |
+| `frosted` | milk-glass: a matte haze with a broad soft highlight and a light rim |
+| `liquid` | clear, glossy glass: a bright top rim, a diagonal sheen and a lit foot |
 | `none` | no surface at all (dock only) |
+
+The dock's four looks follow the classic macOS dock comparison — *half
+transparent*, *non transparent*, *frosted glass* and *liquid glass* — and are
+drawn by `qml/DockSurface.qml`: a tinted body with a top-to-bottom sheen, a
+dark outer hairline plus a lit inner rim, slightly darker "thicker glass" ends
+and a soft drop shadow. The frosted pill is milked towards white with no sharp
+specular, and the liquid pill is the most transparent one, carrying a diagonal
+gloss band, an inner refraction ring and an accent-tinted foot. The settings
+window shows all four as clickable swatches (Appearance → Dock styling →
+Material preview).
 
 `windows.material` covers all shell popups; notifications can be customised
 separately with `notifications.material`, `notifications.opacityPercent` and

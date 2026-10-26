@@ -89,17 +89,20 @@ Window {
                                               && Settings.values["dock.backgroundColor"].length > 0
                                               ? Qt.color(Settings.values["dock.backgroundColor"])
                                               : Theme.surface
+    // `dock.backgroundOpacity` (0..1, 0.5 = neutral) biases the material's own
+    // preset: sliding up makes the pill more solid, sliding down clears it.
+    // The presets themselves live in DockSurface, so each material keeps the
+    // transparency that makes it recognisable.
     readonly property real dockSurfaceOpacity: {
-        const custom = Number(Settings.values["dock.backgroundOpacity"] ?? -1);
         if (panel.dockMaterial === "opaque") return 1;
         if (panel.dockMaterial === "none") return 0;
-        if (panel.dockMaterial === "translucent")
-            return custom >= 0 ? Math.max(0.35, Math.min(1, custom)) : 0.52;
-        if (panel.dockMaterial === "frosted")
-            return custom >= 0 ? Math.max(0.55, Math.min(1, custom)) : 0.70;
-        if (panel.dockMaterial === "liquid")
-            return custom >= 0 ? Math.max(0.42, Math.min(1, custom)) : 0.52;
-        return custom >= 0 ? Math.max(0, Math.min(1, custom)) : 0.88;
+        const bias = Math.max(0, Math.min(1, Number(Settings.values["dock.backgroundOpacity"] ?? 0.5)));
+        const preset = panel.dockMaterial === "frosted" ? 0.50
+                     : panel.dockMaterial === "liquid" ? 0.30
+                     : panel.dockMaterial === "translucent" ? 0.42
+                     : 0.88;
+        // 0.2 -> 0.85x (clearer), 0.5 -> 1x (preset), 1.0 -> 1.4x (more solid).
+        return Math.max(0.12, Math.min(1, preset * (0.75 + bias * 0.5)));
     }
     // Room for the floating dock itself; it never becomes a full-width bar.
     readonly property int dockMaxWidth: Math.max(220, Math.min(1200, panel.width - 380))

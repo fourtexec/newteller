@@ -603,6 +603,117 @@ Window {
                                     ]
                                 }
                             }
+                            // The four dock looks side by side, the way the
+                            // classic macOS comparison shows them: the same
+                            // icon row on the same wallpaper, only the pill
+                            // behind it changes. Clicking one applies it.
+                            SettingsRow {
+                                width: parent.width
+                                title: "Material preview"
+                                subtitle: "Click a pill to apply it to the dock."
+
+                                Row {
+                                    spacing: 6
+
+                                    Repeater {
+                                        model: [
+                                            { value: "translucent", label: "Half" },
+                                            { value: "opaque", label: "Solid" },
+                                            { value: "frosted", label: "Frosted" },
+                                            { value: "liquid", label: "Liquid" }
+                                        ]
+
+                                        delegate: Item {
+                                            id: dockPreviewSwatch
+                                            required property var modelData
+                                            readonly property bool current: (Settings.values["dock.material"] || "none") === modelData.value
+                                            width: 104
+                                            height: 62
+                                            opacity: current ? 1 : 0.72
+
+                                            // Wallpaper stand-in: a dark blue
+                                            // to violet wash with a diagonal
+                                            // light band, so transparencies
+                                            // are actually visible.
+                                            Rectangle {
+                                                anchors.fill: parent
+                                                radius: 6
+                                                gradient: Gradient {
+                                                    GradientStop { position: 0.0; color: "#0d1330" }
+                                                    GradientStop { position: 0.55; color: "#1b2150" }
+                                                    GradientStop { position: 1.0; color: "#2b1636" }
+                                                }
+                                            }
+                                            Rectangle {
+                                                anchors.fill: parent
+                                                radius: 6
+                                                gradient: Gradient {
+                                                    GradientStop { position: 0.0; color: "#00000000" }
+                                                    GradientStop { position: 0.45; color: "#3877a8ff" }
+                                                    GradientStop { position: 0.62; color: "#00000000" }
+                                                    GradientStop { position: 1.0; color: "#00000000" }
+                                                }
+                                                rotation: 18
+                                            }
+                                            Rectangle {
+                                                anchors.fill: parent
+                                                radius: 6
+                                                color: "transparent"
+                                                border.width: current ? 2 : 1
+                                                border.color: current ? Theme.accent
+                                                                      : Qt.rgba(Theme.border.r, Theme.border.g,
+                                                                                Theme.border.b, 0.55)
+                                            }
+
+                                            DockSurface {
+                                                anchors.centerIn: parent
+                                                width: 92
+                                                height: 30
+                                                material: dockPreviewSwatch.modelData.value
+                                                baseColor: Theme.surface
+                                                accentColor: Theme.accent
+                                                cornerRadius: height / 2
+                                                effectStrength: 0.9
+                                            }
+
+                                            // A hint of the icon row behind
+                                            // the pill.
+                                            Row {
+                                                anchors.centerIn: parent
+                                                spacing: 5
+                                                Repeater {
+                                                    model: ["#5b9bfd", "#fb7185", "#4ade80", "#fbbf24", "#c084fc"]
+                                                    delegate: Rectangle {
+                                                        required property string modelData
+                                                        width: 12
+                                                        height: 12
+                                                        radius: 3.5
+                                                        color: modelData
+                                                    }
+                                                }
+                                            }
+
+                                            Text {
+                                                anchors.horizontalCenter: parent.horizontalCenter
+                                                anchors.bottom: parent.bottom
+                                                anchors.bottomMargin: 3
+                                                text: dockPreviewSwatch.modelData.label
+                                                color: Theme.foreground
+                                                style: Text.Outline
+                                                styleColor: Qt.rgba(0, 0, 0, 0.65)
+                                                font.family: Theme.fontFamily
+                                                font.pointSize: Theme.fontSize - 3
+                                            }
+
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: Settings.setValue("dock.material", dockPreviewSwatch.modelData.value)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                             SettingsRow {
                                 width: parent.width
                                 title: "Dock tint"
@@ -617,7 +728,7 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: "Dock opacity"
-                                subtitle: "Per-material minimums keep the glass readable."
+                                subtitle: "Biases the material: left is clearer, right is more solid."
                                 visible: Settings.values["dock.material"] !== "none"
                                 settingKey: "dock.backgroundOpacity"
                                 SettingsSlider { from: 0.2; to: 1.0; step: 0.05 }
