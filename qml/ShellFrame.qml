@@ -25,6 +25,11 @@ import QtQuick
 // out before the callback hides the window. Windows can point openOrigin at
 // the edge they grow from (the start menu out of its button, the clock out of
 // the panel) instead of the default centre.
+//
+// Set nubEdge/nubOffset to draw the little pointer that links a dropdown to
+// the panel button that toggles it. The frame keeps `nubRoom` pixels free on
+// that side, so the window must be that much bigger than it would be without
+// a pointer (see qml/Anchoring.js for the placement maths).
 Rectangle {
     id: frame
 
@@ -36,6 +41,21 @@ Rectangle {
 
     // The point the card scales from while opening (Item.Center by default).
     property int openOrigin: Item.Center
+
+    // The little pointer that links the card to the button that opened it.
+    // "top" | "bottom" | "left" | "right": the card edge facing the button,
+    // "" for none. nubOffset is the nub's centre along that edge, in card
+    // coordinates. The pointer lives in the room the frame keeps outside the
+    // card, so a window that uses it must be `nubRoom` pixels bigger on both
+    // sides of the pointer's axis (that strip is transparent).
+    property string nubEdge: ""
+    property real nubOffset: -1
+    property int nubSize: 13
+    readonly property bool nubVertical: nubEdge === "top" || nubEdge === "bottom"
+    readonly property bool nubHorizontal: nubEdge === "left" || nubEdge === "right"
+    readonly property int nubRoom: nubEdge.length > 0 ? Math.round(nubSize / Math.SQRT2) : 0
+    readonly property bool nubVisible: nubEdge.length > 0 && effOpacity > 0.02
+                                       && surfaceMaterial !== "none" && style !== "outline"
     // Per-surface overrides let notifications and their history window use
     // their own material without changing the rest of the shell.
     property string materialOverride: ""
@@ -178,6 +198,47 @@ Rectangle {
     color: "transparent"
     clip: false
 
+    // --- the pointer --------------------------------------------------------
+    // A rounded diamond centred on the card edge: the half that sticks out
+    // lands in the strip the card left free, the half under the card is
+    // hidden by it, so the visible shape is a soft triangle pointing at the
+    // button. Drawn before the card, in the card's own fill colour, so it
+    // reads as part of the same surface.
+    Item {
+        id: nub
+        visible: frame.nubVisible
+        width: frame.nubSize * 1.42
+        height: width
+
+        readonly property real along: frame.nubOffset >= 0
+                                      ? frame.nubOffset
+                                      : (frame.nubEdge === "top" || frame.nubEdge === "bottom"
+                                         ? card.width / 2 : card.height / 2)
+
+        x: frame.nubEdge === "left" ? card.x - width / 2
+           : frame.nubEdge === "right" ? card.x + card.width - width / 2
+           : card.x + along - width / 2
+        y: frame.nubEdge === "top" ? card.y - height / 2
+           : frame.nubEdge === "bottom" ? card.y + card.height - height / 2
+           : card.y + along - height / 2
+
+        Rectangle {
+            anchors.centerIn: parent
+            width: frame.nubSize
+            height: width
+            radius: Math.max(1, frame.nubSize * 0.16)
+            rotation: 45
+            antialiasing: true
+            color: Qt.rgba((frame.useBackgroundColorOverride ? frame.backgroundColorOverride
+                                                             : Theme.background).r,
+                           (frame.useBackgroundColorOverride ? frame.backgroundColorOverride
+                                                             : Theme.background).g,
+                           (frame.useBackgroundColorOverride ? frame.backgroundColorOverride
+                                                             : Theme.background).b,
+                           Math.min(1, frame.effOpacity + 0.12))
+        }
+    }
+
     // --- shadow: two wide, translucent borders fake a soft blur ------------
     Rectangle {
         visible: frame.shadow > 0
@@ -202,7 +263,13 @@ Rectangle {
     Rectangle {
         id: card
         anchors.fill: parent
-        anchors.margins: frame.inset
+        // The pointer's strip is reserved on both sides of its axis, so the
+        // card stays centred in the window and the pointer can point either
+        // way after the card flipped to the other side of the bar.
+        anchors.topMargin: frame.inset + (frame.nubVertical ? frame.nubRoom : 0)
+        anchors.bottomMargin: frame.inset + (frame.nubVertical ? frame.nubRoom : 0)
+        anchors.leftMargin: frame.inset + (frame.nubHorizontal ? frame.nubRoom : 0)
+        anchors.rightMargin: frame.inset + (frame.nubHorizontal ? frame.nubRoom : 0)
         radius: frame.effRadius
         color: "transparent"
         border.width: 0
@@ -219,4 +286,5 @@ Rectangle {
             effectStrength: frame.style === "glass" ? 1.0 : 0.85
         }
     }
+
 }

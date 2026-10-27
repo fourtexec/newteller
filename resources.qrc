@@ -2,6 +2,8 @@
 <RCC version="1.0">
   <qresource prefix="/">
     <file>qml/Main.qml</file>
+    <file>qml/Anchoring.js</file>
+    <file>qml/DropdownWindow.qml</file>
     <file>qml/DockSurface.qml</file>
     <file>qml/Panel.qml</file>
     <file>qml/DockMenu.qml</file>

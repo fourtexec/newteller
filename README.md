@@ -77,6 +77,18 @@ inside VirtualBox. The implemented pieces are:
 - Run dialog (`Alt+F2`): run a shell command or search applications; bare
   commands are remembered (`run.history`, capped by `run.historyLimit`) and
   Up/Down walks the history
+- **Dropdowns linked to their buttons.** Every floating surface — start menu,
+  quick settings, notification centre, clock, dock menu and tray menu — opens
+  anchored to the widget that toggled it: centred on the button, clamped into
+  the screen, on the side of the bar away from the panel, with a small pointer
+  on the edge that faces the button, and the open animation growing out of it.
+  Clicking another button of the same kind slides the open card over; only one
+  card is open at a time; Escape or a click elsewhere closes it. See
+  [Dropdowns](#dropdowns).
+- **Panel shortcuts without opening anything.** Scroll over the indicators to
+  change the volume 5% a notch, middle-click them to mute, and right-click the
+  bell to toggle do-not-disturb. The start menu answers to Up/Down/Enter while
+  typing.
 - **Tooltips.** Panel buttons (dock icons, tray icons, bell, indicators, clock)
   describe themselves in a small layer surface above the hovered button; buttons
   inside the menus (start menu session actions, quick settings, notification
@@ -380,6 +392,37 @@ rectangles, so they cost about as much as a plain background — no layered blur
 pass and no browser engine. Real backdrop blur is compositor specific (KWin can
 blur layer surfaces through a window rule); NewTeller does not require it, so
 the same look works on X11, GNOME/XWayland, sway, Hyprland and KDE.
+
+## Dropdowns
+
+All six floating surfaces share `qml/DropdownWindow.qml`, and the placement
+maths lives in `qml/Anchoring.js`:
+
+- **`panelButtonRect()`** turns a button's rect in panel coordinates into a
+  global one. Panel coordinates are used on purpose: a layer-shell surface does
+  not know where it is on Wayland, but the panel always spans its screen edge,
+  so the edge, the bar thickness, the panel's margin and the screen rect place
+  the button exactly.
+- **`place()`** puts the card next to that rect: centred on the button and
+  clamped into the screen, above the bar for a bottom panel, below it for a top
+  one, beside it for a vertical one. When the card would not fit on the
+  preferred side it flips to the other side of the bar. It also reports which
+  card edge faces the button and where along that edge the pointer belongs.
+- **`layerMargins()`** converts the placement into the two layer-shell anchors
+  and margins each edge needs (left+bottom for a bottom bar, left+top for a top
+  bar, and so on).
+
+A panel passes the rect to the dropdown it toggles (`Panel.toggleDropdown()`),
+and the dropdown keeps following it: a new anchor — another screen's button, a
+dock that reordered, a bar that moved — slides the open card there. Panels
+without a button (the `newteller-ctl` / D-Bus entry points, a keyboard
+shortcut) fall back to a fixed corner, and the start menu keeps its old
+bottom-left position.
+
+The pointer is drawn by `qml/ShellFrame.qml` (`nubEdge` / `nubOffset`): the
+frame keeps a small transparent strip around the card for it, so the card can
+point at its button without clipping. A card that loses the keyboard focus
+closes after a short delay, and Escape closes it from anywhere inside.
 
 ## Settings application
 

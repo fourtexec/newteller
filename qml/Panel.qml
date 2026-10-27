@@ -3,6 +3,7 @@ import QtQuick.Window
 import QtQuick.Layouts
 import org.kde.layershell 1.0 as LayerShell
 import NewTeller 1.0
+import "Anchoring.js" as Anchoring
 
 // Panel: start button, the dock (pinned applications + every running window),
 // plugin slots and the clock. The position is configurable (bottom by default,
@@ -32,9 +33,14 @@ Window {
     // Kept true for autoHideDelay after the pointer leaves, so the bar does
     // not vanish while the pointer crosses it.
     property bool autoHideHold: false
+    // Set while a dropdown of this panel is open, so the bar does not slide
+    // away from under it.
+    readonly property bool dropdownOpen: panel.hasAnyOpen([panel.startMenu, panel.notificationCenter,
+                                                           panel.quickSettings, clockPopup,
+                                                           dockMenu, trayMenu])
     readonly property bool revealed: !autoHide || hoverArea.containsMouse
-                                     || autoHideHold || menuWanted
-    // Set while the start menu is open, so the panel stays up next to it.
+                                     || autoHideHold || dropdownOpen
+    // Set while the start menu is opening, before its window is visible yet.
     property bool menuWanted: false
     readonly property var panelPlugins: Plugins.plugins.filter(p => p.type === "panel" && p.enabled)
 
@@ -194,8 +200,7 @@ Window {
     ClockPopup {
         id: clockPopup
         panelPosition: panel.panelPosition
-        panelThickness: panel.barThickness
-        edgeMargin: panel.edgeMargin
+        screenRect: panel.screenRect
     }
 
     // One tooltip window per panel; hovering a panel button points it at the
@@ -217,12 +222,88 @@ Window {
         panelToolTip.hide();
     }
 
-    // Kept in sync with the start menu so the panel does not slide away
-    // underneath it.
+    // --- dropdowns --------------------------------------------------------
+    // Every floating surface hangs off the panel button that toggles it. The
+    // button's rect is turned into a global one here (the panel knows where it
+    // sits on its screen) and handed to the dropdown, which keeps following
+    // it: click another button of the same kind and the open card slides over.
+
+    readonly property rect screenRect: Qt.rect(Screen.virtualX, Screen.virtualY,
+                                               Screen.width, Screen.height)
+
+    // The global rect of a panel item.
+    function anchorRect(item) {
+        if (!item)
+            return Qt.rect(0, 0, 0, 0);
+        const local = item.mapToItem(null, 0, 0);
+        return Anchoring.panelButtonRect(Qt.rect(local.x, local.y, item.width, item.height),
+                                         panelPosition, barThickness, edgeMargin,
+                                         panel.screenRect);
+    }
+
+    function hasAnyOpen(list) {
+        for (let i = 0; i < list.length; ++i) {
+            const d = list[i];
+            if (d && d.visible)
+                return true;
+        }
+        return false;
+    }
+
+    // Only one dropdown is open at a time: the start menu closes when quick
+    // settings opens, a dock menu closes when the clock card opens, and so on.
+    function closeDropdowns(except) {
+        const all = [panel.startMenu, panel.notificationCenter, panel.quickSettings,
+                     clockPopup, dockMenu, trayMenu];
+        for (let i = 0; i < all.length; ++i) {
+            const d = all[i];
+            if (d && d !== except && d.visible)
+                d.hide();
+        }
+    }
+
+    // Open the dropdown next to `item`, or close it when it is already open.
+    function toggleDropdown(dropdown, item) {
+        if (!dropdown)
+            return;
+        if (dropdown.visible && !dropdown.closing) {
+            dropdown.hide();
+            return;
+        }
+        panel.closeDropdowns(dropdown);
+        if (item)
+            dropdown.anchor = panel.anchorRect(item);
+        // Shared windows follow the panel they were opened from, so a
+        // secondary screen gets its cards next to its own buttons.
+        dropdown.screenRect = panel.screenRect;
+        dropdown.panelPosition = panel.panelPosition;
+        if (dropdown.screen !== panel.screen)
+            dropdown.screen = panel.screen;
+        dropdown.show();
+    }
+
+    // A dropdown opened from elsewhere (another panel, the run dialog, D-Bus)
+    // still closes the ones this panel owns.
     Connections {
         target: panel.startMenu
         function onVisibleChanged() {
             panel.menuWanted = panel.startMenu.visible;
+            if (panel.startMenu.visible)
+                panel.closeDropdowns(panel.startMenu);
+        }
+    }
+    Connections {
+        target: panel.notificationCenter
+        function onVisibleChanged() {
+            if (panel.notificationCenter.visible)
+                panel.closeDropdowns(panel.notificationCenter);
+        }
+    }
+    Connections {
+        target: panel.quickSettings
+        function onVisibleChanged() {
+            if (panel.quickSettings.visible)
+                panel.closeDropdowns(panel.quickSettings);
         }
     }
 
@@ -388,12 +469,13 @@ Window {
     }
 
     function openDockMenu(entry, button) {
-        dockMenu.openFor(entry, button.x + button.width / 2, button.y + button.height / 2);
+        panel.closeDropdowns(dockMenu);
+        dockMenu.openFor(entry, panel.anchorRect(button));
     }
 
     function openTrayMenu(button, itemId) {
-        const centre = button.mapToItem(null, button.width / 2, button.height / 2);
-        trayMenu.openFor(itemId, centre.x, centre.y);
+        panel.closeDropdowns(trayMenu);
+        trayMenu.openFor(itemId, panel.anchorRect(button));
     }
 
     // --- dock drag-to-reorder ---------------------------------------------
@@ -473,8 +555,8 @@ Window {
         id: dockMenu
         screen: panel.screen
         entriesProvider: panel
-        panelThickness: panel.barThickness
-        position: panel.panelPosition
+        panelPosition: panel.panelPosition
+        screenRect: panel.screenRect
     }
 
     // Menus exported over com.canonical.dbusmenu by tray items. Items without
@@ -482,12 +564,13 @@ Window {
     TrayMenu {
         id: trayMenu
         screen: panel.screen
-        panelThickness: panel.barThickness
-        position: panel.panelPosition
+        panelPosition: panel.panelPosition
+        screenRect: panel.screenRect
     }
 
     // Shared pieces of the bar, used by both layouts below.
     component StartButton: TaskButton {
+        id: startButton
         objectName: "startButton"
         Layout.alignment: Qt.AlignVCenter | Qt.AlignHCenter
         iconName: "layout-grid"
@@ -495,7 +578,7 @@ Window {
         foregroundColor: panel.panelTextColor
         onClicked: {
             panel.menuWanted = true;
-            panel.startMenu.toggle();
+            panel.toggleDropdown(panel.startMenu, startButton);
         }
     }
 
@@ -617,6 +700,7 @@ Window {
     // analogue dial and the month calendar.
     component ClockButton: Rectangle {
         id: clockButton
+        objectName: "clockButton"
         Layout.alignment: Qt.AlignVCenter | Qt.AlignHCenter
         implicitWidth: clockLabel.implicitWidth + 18
         implicitHeight: Math.min(panel.barThickness - 10, clockLabel.implicitHeight + 10)
@@ -643,7 +727,7 @@ Window {
         MouseArea {
             anchors.fill: parent
             cursorShape: Qt.PointingHandCursor
-            onClicked: clockPopup.toggle()
+            onClicked: panel.toggleDropdown(clockPopup, clockButton)
         }
         ClockText {
             id: clockLabel
@@ -761,6 +845,7 @@ Window {
     // --- bell: the notification centre --------------------------------------
     component BellButton: Rectangle {
         id: bellButton
+        objectName: "bellButton"
         readonly property bool dnd: Settings.values["notifications.doNotDisturb"] === true
         readonly property int unread: panel.notificationCenter
                                       ? panel.notificationCenter.unreadCount : 0
@@ -791,11 +876,19 @@ Window {
         }
         MouseArea {
             anchors.fill: parent
+            acceptedButtons: Qt.LeftButton | Qt.RightButton
             cursorShape: Qt.PointingHandCursor
-            onClicked: {
+            onClicked: (mouse) => {
                 panel.hideToolTip();
-                if (panel.notificationCenter)
-                    panel.notificationCenter.toggle();
+                // Right click is the do-not-disturb shortcut, the same switch
+                // the centre and the quick settings card show.
+                if (mouse.button === Qt.RightButton) {
+                    Settings.setValue("notifications.doNotDisturb", !bellButton.dnd);
+                    panel.showToolTip(bellButton, bellButton.dnd ? "Do not disturb off"
+                                                                 : "Do not disturb on");
+                    return;
+                }
+                panel.toggleDropdown(panel.notificationCenter, bellButton);
             }
         }
 
@@ -842,6 +935,7 @@ Window {
     // quick settings card.
     component IndicatorsButton: Rectangle {
         id: indicatorsButton
+        objectName: "indicatorsButton"
         readonly property bool playing: Quick.mediaAvailable && Quick.mediaPlaying
         readonly property string glyph: Quick.volumeMuted ? "volume-x"
                                         : System.batteryCharging ? "battery-charging"
@@ -881,11 +975,28 @@ Window {
         }
         MouseArea {
             anchors.fill: parent
+            acceptedButtons: Qt.LeftButton | Qt.MiddleButton
             cursorShape: Qt.PointingHandCursor
-            onClicked: {
+            onClicked: (mouse) => {
                 panel.hideToolTip();
-                if (panel.quickSettings)
-                    panel.quickSettings.toggle();
+                if (mouse.button === Qt.MiddleButton) {
+                    if (Quick.volumeAvailable)
+                        Quick.toggleMuted();
+                    return;
+                }
+                panel.toggleDropdown(panel.quickSettings, indicatorsButton);
+            }
+            // Scrolling over the indicators changes the volume by 5% a notch,
+            // so it can be set without opening the card.
+            onWheel: (wheel) => {
+                if (!Quick.volumeAvailable)
+                    return;
+                wheel.accepted = true;
+                const notches = wheel.angleDelta.y / 120;
+                const value = Math.round(Quick.volume) + Math.round(notches * 5);
+                Quick.setVolume(Math.max(0, Math.min(100, value)));
+                panel.showToolTip(indicatorsButton,
+                                  Quick.volumeMuted ? "Muted" : "Volume " + Quick.volume + "%");
             }
         }
 

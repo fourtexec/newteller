@@ -10,7 +10,11 @@ fails on any QML warning or error and then checks that:
   * every screen gets a desktop and a panel covering the right area,
   * the windows carry the expected layer-shell and ShellWindow settings,
   * clicking Start opens the start menu with the application list, and
-    clicking it again closes the menu.
+    clicking it again closes the menu,
+  * every dropdown opens anchored to the panel button that toggled it, keeps
+    its pointer on the edge facing the bar, follows a new anchor, flips to the
+    other side of a top or left bar, stays inside the screen and closes with
+    Escape.
 
 Usage (no compositor or X server needed):
 
@@ -45,8 +49,8 @@ os.environ["QT_QUICK_BACKEND"] = "software"
 
 import PySide6  # noqa: E402
 from PySide6.QtCore import (Q_ARG, QDateTime, QDir, QEnum, QFile, QFileInfo, QMargins,  # noqa: E402
-                            QMetaObject, QObject, QPoint, QPointF, QtMsgType, QTimer, QUrl,
-                            Property, Qt, Signal, Slot, qInstallMessageHandler)
+                            QMetaObject, QObject, QPoint, QPointF, QRectF, QtMsgType, QTimer,
+                            QUrl, Property, Qt, Signal, Slot, qInstallMessageHandler)
 from PySide6.QtGui import QColor, QGuiApplication, QImage, QImageReader  # noqa: E402
 from PySide6.QtQml import (QmlAnonymous, QmlAttached, QmlNamedElement,  # noqa: E402
                            QmlUncreatable, QQmlApplicationEngine, QQmlComponent)
@@ -851,6 +855,21 @@ def compile_resources():
 _RESOURCE_MODULE = {}
 
 
+def card_rect(window):
+    """The visible card inside a DropdownWindow, in global coordinates.
+
+    The window is bigger than the card: the frame keeps room for its shadow
+    around it, and a strip for the pointer on both sides of the pointer's
+    axis. Everything a user sees is the card, so the checks look at this rect.
+    """
+    inset = int(window.property("frameInset") or 0)
+    room = int(window.property("nubRoom") or 0) if window.property("nubEdge") else 0
+    vertical = window.property("panelPosition") in ("top", "bottom")
+    return (window.x() + inset + (0 if vertical else room),
+            window.y() + inset + (room if vertical else 0),
+            int(window.property("cardWidth")), int(window.property("cardHeight")))
+
+
 def main():
     messages = []
 
@@ -1042,8 +1061,8 @@ def main():
     if menu is not None and panels:
         primary = screens[0].geometry()
         ls = attached("layershell", menu)
-        check(ls is not None and ls.anchors == 6 and ls.keyboardInteractivity == 1
-              and ls.margins == QMargins(8, 0, 0, 60), "start menu layer-shell settings")
+        check(ls is not None and ls.anchors == 6 and ls.keyboardInteractivity == 1,
+              f"start menu layer-shell settings ({ls and (ls.anchors, ls.keyboardInteractivity, ls.margins)})")
         check(not menu.isVisible(), "start menu starts hidden")
 
         panel = next(w for w in panels if w.screen() is screens[0])
@@ -1062,9 +1081,23 @@ def main():
         if hasattr(results, "toVariant"):  # QJSValue
             results = results.toVariant()
         check(len(results or []) == len(APPS), "start menu lists the applications")
-        want = (primary.x() + 8, primary.y() + primary.height() - 580 - 48 - 12, 440, 580)
-        got = (menu.x(), menu.y(), menu.width(), menu.height())
-        check(got == want, f"start menu sits above the panel ({got} vs {want})")
+        # The menu is linked to the Start button that opened it: same card size
+        # as before, centred on the button and sitting just above the bar, with
+        # the pointer on the edge that faces it.
+        bar_top = primary.y() + primary.height() - 48
+        card = card_rect(menu)
+        check((card[2], card[3]) == (440, 580), f"start menu keeps its card size ({card})")
+        check(card[0] <= start_button.x() <= card[0] + card[2],
+              f"start menu hangs off the Start button ({card} vs {start_button.x()})")
+        check(0 <= bar_top - (menu.y() + menu.height()) <= 8,
+              f"start menu sits just above the bar ({bar_top - (menu.y() + menu.height())})")
+        check(menu.property("anchored") is True, "the start menu knows its anchor")
+        check(menu.property("nubEdge") == "bottom", "the start menu points at the bar")
+        ls = attached("layershell", menu)
+        check(ls is not None and ls.anchors == 6 and ls.keyboardInteractivity == 1
+              and ls.margins.left() == menu.x() - primary.x()
+              and ls.margins.bottom() == primary.y() + primary.height() - (menu.y() + menu.height()),
+              f"start menu layer-shell margins follow the anchor ({ls and ls.margins} vs x={menu.x()} y={menu.y()} h={menu.height()})")
 
         QTest.mouseClick(panel, Qt.LeftButton, Qt.NoModifier, start_button)
         QTest.qWait(300)  # the close animation plays before the window hides
@@ -1317,6 +1350,222 @@ def main():
         QMetaObject.invokeMethod(quick_popup, "hide")
         QTest.qWait(300)
         check(not quick_popup.isVisible(), "closing the quick settings popup")
+
+    # --- dropdowns are linked to the widget that toggles them --------------
+    # Every panel button hands its own rect to the card it opens: the card
+    # opens next to that button (on whichever screen edge the bar sits), keeps
+    # its pointer on the edge facing the bar, follows the button when the
+    # anchor changes and closes again with Escape. Only one card is open at a
+    # time, so opening the bell closes the start menu and so on.
+    if panels and menus:
+        panel = next(w for w in panels if w.screen() is screens[0])
+        geometry = screens[0].geometry()
+        bar_top = geometry.y() + geometry.height() - 48
+        menu = menus[0]
+        centres = windows_of_kind("NotificationCenter")
+        quicks = windows_of_kind("QuickSettingsPopup")
+        clocks = [c for c in windows_of_kind("ClockPopup") if c.screen() is screens[0]]
+        dock_menus = [m for m in windows_of_kind("DockMenu") if m.screen() is screens[0]]
+        tray_menus = [m for m in windows_of_kind("TrayMenu") if m.screen() is screens[0]]
+
+        def press(name, button=Qt.LeftButton):
+            """Click a panel button by its objectName; returns its centre."""
+            item = panel.findChild(QObject, name)
+            check(item is not None, f"the panel exposes {name}")
+            if item is None:
+                return None
+            centre = item.mapToScene(QPointF(item.width() / 2, item.height() / 2))
+            QTest.mouseClick(panel, button, Qt.NoModifier,
+                             QPoint(int(centre.x()), int(centre.y())))
+            QTest.qWait(300)
+            return centre
+
+        def on_screen(win, label):
+            card = card_rect(win)
+            check(card[0] >= geometry.x() and card[1] >= geometry.y()
+                  and card[0] + card[2] <= geometry.x() + geometry.width()
+                  and card[1] + card[3] <= geometry.y() + geometry.height(),
+                  f"{label} stays on the screen ({card})")
+            return card
+
+        # The bell opens the notification centre right under itself.
+        bell = press("bellButton")
+        if bell is not None and centres and quicks:
+            center = centres[0]
+            check(center.isVisible(), "the bell opens the notification centre")
+            check(not quicks[0].isVisible(), "opening the centre closes quick settings")
+            check(panel.property("dropdownOpen") is True,
+                  "the panel knows one of its dropdowns is open")
+            card = on_screen(center, "the notification centre")
+            check((card[2], card[3]) == (400, 520), f"the centre keeps its size ({card})")
+            check(card[0] <= bell.x() <= card[0] + card[2],
+                  f"the centre hangs off its bell ({card} vs {bell.x():.0f})")
+            check(0 <= bar_top - (center.y() + center.height()) <= 8,
+                  f"the centre sits just above the bar ({bar_top - (center.y() + center.height())})")
+            check(center.property("nubEdge") == "bottom", "the centre points at the bar")
+            ls = attached("layershell", center)
+            check(ls is not None and ls.anchors == 6
+                  and ls.margins.left() == center.x() - geometry.x()
+                  and ls.margins.bottom() == geometry.y() + geometry.height() - (center.y() + center.height()),
+                  f"the centre's layer margins follow it ({ls and ls.margins})")
+
+            # Quick settings replaces it in place: never two cards at once.
+            indicators = press("indicatorsButton")
+            check(quicks[0].isVisible(), "the indicators button opens quick settings")
+            check(not center.isVisible(), "opening quick settings closes the centre")
+            if indicators is not None:
+                card = on_screen(quicks[0], "quick settings")
+                check(card[0] <= indicators.x() <= card[0] + card[2],
+                      f"quick settings hangs off its button ({card} vs {indicators.x():.0f})")
+                check(0 <= bar_top - (quicks[0].y() + quicks[0].height()) <= 8,
+                      "quick settings sits just above the bar")
+
+        # The clock card, and Escape.
+        clock_button = press("clockButton")
+        if clock_button is not None and clocks:
+            clock = clocks[0]
+            check(clock.isVisible(), "the clock button opens the clock card")
+            card = on_screen(clock, "the clock card")
+            check(card[0] <= clock_button.x() <= card[0] + card[2],
+                  f"the clock card hangs off its button ({card} vs {clock_button.x():.0f})")
+            check(clock.property("nubEdge") == "bottom", "the clock card points at the bar")
+            check(clock.isActive(), "an open dropdown takes the keyboard focus")
+            QTest.keyClick(clock, Qt.Key_Escape)
+            QTest.qWait(300)
+            check(not clock.isVisible(), "Escape closes the dropdown")
+
+            # An open card follows a new anchor (another button, another
+            # screen, a bar that changed edge) instead of staying put.
+            QMetaObject.invokeMethod(clock, "show")
+            QTest.qWait(300)
+            before = (clock.x(), clock.y())
+            clock.setProperty("anchor", QRectF(geometry.x() + 300, bar_top, 40, 48))
+            QTest.qWait(50)
+            card = card_rect(clock)
+            check((clock.x(), clock.y()) != before, "an open card follows a new anchor")
+            check(abs((card[0] + card[2] / 2) - (geometry.x() + 320)) <= 2,
+                  f"the card centres on the new anchor ({card[0] + card[2] / 2:.0f} vs 320)")
+
+            # A left bar puts the card beside the bar, pointer on its left.
+            clock.setProperty("panelPosition", "left")
+            clock.setProperty("anchor", QRectF(geometry.x(), 500, 48, 40))
+            QTest.qWait(50)
+            card = on_screen(clock, "a card on a left bar")
+            check(clock.property("nubEdge") == "left",
+                  f"a left bar points the card sideways ({clock.property('nubEdge')})")
+            check(clock.x() == geometry.x() + 48 + 2,
+                  f"the card opens beside a left bar ({clock.x()})")
+            check(abs((card[1] + card[3] / 2) - 520) <= 2,
+                  f"and is centred on its button ({card[1] + card[3] / 2:.0f})")
+
+            # A top bar opens the card below the bar.
+            clock.setProperty("panelPosition", "top")
+            clock.setProperty("anchor", QRectF(geometry.x() + 900, geometry.y(), 60, 48))
+            QTest.qWait(50)
+            card = on_screen(clock, "a card on a top bar")
+            check(clock.property("nubEdge") == "top",
+                  f"a top bar points the card down ({clock.property('nubEdge')})")
+            check(clock.y() == geometry.y() + 48 + 2,
+                  f"the card opens below a top bar ({clock.y()})")
+
+            # Near a screen corner the card is clamped, and the pointer slides
+            # along the card edge to stay in front of the button.
+            clock.setProperty("panelPosition", "bottom")
+            clock.setProperty("anchor", QRectF(geometry.x() + geometry.width() - 10, bar_top, 20, 48))
+            QTest.qWait(50)
+            card = on_screen(clock, "a card near the screen corner")
+            check(card[0] + card[2] <= geometry.x() + geometry.width(),
+                  f"the card is clamped into the screen ({card})")
+            offset = float(clock.property("nubOffset"))
+            check(0 <= offset <= card[2], f"the pointer stays on the card ({offset})")
+
+            QMetaObject.invokeMethod(clock, "hide")
+            QTest.qWait(300)
+            check(not clock.isVisible(), "the clock card closes again")
+
+        # A menu opened without a button (keyboard shortcut, D-Bus) falls back
+        # to the start of the bar instead of a stray corner.
+        menu.setProperty("anchor", QRectF())
+        QMetaObject.invokeMethod(menu, "show")
+        QTest.qWait(300)
+        card = on_screen(menu, "a start menu without a button")
+        check(menu.x() == geometry.x() + 6,
+              f"an unanchored menu falls back to the bar's start ({menu.x()})")
+        check(menu.property("nubEdge") == "", "an unanchored menu draws no pointer")
+        QMetaObject.invokeMethod(menu, "hide")
+        QTest.qWait(300)
+
+        # The dock menu and the tray menu take the same rect from their icons.
+        if dock_menus:
+            entries = panel.property("dockMainEntries")
+            if hasattr(entries, "toVariant"):  # QJSValue
+                entries = entries.toVariant()
+            if entries:
+                rect = QRectF(geometry.x() + 500, bar_top, 40, 48)
+                QMetaObject.invokeMethod(dock_menus[0], "openFor",
+                                         Q_ARG("QVariant", entries[0]), Q_ARG("QVariant", rect))
+                QTest.qWait(300)
+                check(dock_menus[0].isVisible(), "opening a dock menu for an application")
+                card = on_screen(dock_menus[0], "the dock menu")
+                check(card[0] <= 520 <= card[0] + card[2],
+                      f"the dock menu hangs off its icon ({card})")
+                check(0 <= bar_top - (dock_menus[0].y() + dock_menus[0].height()) <= 8,
+                      "the dock menu sits just above the bar")
+                check(dock_menus[0].property("nubEdge") == "bottom",
+                      "the dock menu points at the icon")
+                QMetaObject.invokeMethod(dock_menus[0], "close")
+                QTest.qWait(300)
+                check(not dock_menus[0].isVisible(), "the dock menu closes again")
+
+        if tray_menus:
+            rect = QRectF(geometry.x() + 700, bar_top, 26, 48)
+            QMetaObject.invokeMethod(tray_menus[0], "openFor",
+                                     Q_ARG("QVariant", "item-1"), Q_ARG("QVariant", rect))
+            QTest.qWait(300)
+            check(tray_menus[0].isVisible(), "opening the tray menu for an item")
+            card = on_screen(tray_menus[0], "the tray menu")
+            check(card[0] <= 713 <= card[0] + card[2],
+                  f"the tray menu hangs off its icon ({card})")
+            QMetaObject.invokeMethod(tray_menus[0], "close")
+            QTest.qWait(300)
+            check(not tray_menus[0].isVisible(), "the tray menu closes again")
+
+        # Panel shortcuts that never open a card: the middle click mutes, the
+        # bell's right click flips do-not-disturb.
+        if quicks and centres:
+            quick.calls.clear()
+            press("indicatorsButton", Qt.MiddleButton)
+            check(("toggleMuted",) in quick.calls, "middle-clicking the indicators mutes")
+            check(not quicks[0].isVisible(), "muting does not open the quick settings card")
+
+            dnd = bool(settings._values.get("notifications.doNotDisturb"))
+            press("bellButton", Qt.RightButton)
+            check(bool(settings._values.get("notifications.doNotDisturb")) != dnd,
+                  "right-clicking the bell toggles do-not-disturb")
+            check(not centres[0].isVisible(), "and does not open the notification centre")
+            settings._values["notifications.doNotDisturb"] = dnd
+            settings.valuesChanged.emit()
+            QTest.qWait(50)
+
+        # Keyboard: Up/Down walk the result list, Enter runs the highlighted
+        # row (and closes the menu).
+        menu.setProperty("anchor", QRectF(geometry.x() + 300, bar_top, 60, 48))
+        QMetaObject.invokeMethod(menu, "show")
+        QTest.qWait(300)
+        check(int(menu.property("selectedIndex")) == 0, "the first row is highlighted")
+        QMetaObject.invokeMethod(menu, "moveSelection", Q_ARG("QVariant", 1))
+        check(int(menu.property("selectedIndex")) == 1, "Down moves the highlight")
+        QMetaObject.invokeMethod(menu, "moveSelection", Q_ARG("QVariant", -1))
+        check(int(menu.property("selectedIndex")) == 0, "Up moves it back")
+        QMetaObject.invokeMethod(menu, "moveSelection", Q_ARG("QVariant", -1))
+        check(int(menu.property("selectedIndex")) == 0, "the highlight stops at the top")
+        launched_before = len(apps.launched)
+        QMetaObject.invokeMethod(menu, "launchSelected")
+        QTest.qWait(300)
+        check(len(apps.launched) == launched_before + 1, "Enter launches the highlighted row")
+        check(not menu.isVisible(), "launching from the keyboard closes the menu")
+        check(panel.property("dropdownOpen") is False,
+              "the panel lets go once every dropdown is closed")
 
     # One notification window per screen, hidden until something arrives.
     notification_windows = windows_of_kind("NotificationPopups")
