@@ -128,7 +128,7 @@ Window {
             Settings.reset(keys[i]);
         Settings.flush();
         confirmBox.visible = false;
-        Shell.notify("NewTeller", "All settings were reset to their defaults.");
+        Shell.notify("NewTeller", qsTr("All settings were reset to their defaults."));
     }
 
     function exportSettings() {
@@ -136,9 +136,9 @@ Window {
         const path = Shell.home + "/newteller-settings-" + stamp + ".json";
         const body = JSON.stringify(Settings.values, null, 2);
         if (Shell.saveTextFile(path, body))
-            Shell.notify("NewTeller", "A copy of the settings was saved to " + path);
+            Shell.notify("NewTeller", qsTr("A copy of the settings was saved to %1").arg(path));
         else
-            Shell.notify("NewTeller", "The settings copy could not be written.");
+            Shell.notify("NewTeller", qsTr("The settings copy could not be written."));
     }
 
     function setPinned(list) {
@@ -374,7 +374,7 @@ Window {
                                 title: qsTr("Selected theme")
                                 settingKey: "theme.name"
                                 subtitle: Theme.hasUserTheme(settingsWindow.themeEditorName)
-                                          ? "This theme has user customisations on disk."
+                                          ? qsTr("This theme has user customisations on disk.")
                                           : ""
 
                                 Flow {
@@ -1688,7 +1688,7 @@ Window {
                                     label: qsTr("Clear recent list")
                                     onClicked: {
                                         Apps.forgetRecent();
-                                        Shell.notify("NewTeller", "The recent applications list was cleared.");
+                                        Shell.notify("NewTeller", qsTr("The recent applications list was cleared."));
                                     }
                                 }
                             }
@@ -1747,7 +1747,7 @@ Window {
                                         SettingsTextField {
                                             id: startupField
                                             width: 300
-                                            placeholder: "Application name or .desktop file"
+                                            placeholder: qsTr("Application name or .desktop file")
                                         }
                                         TaskButton {
                                             iconName: "plus"
@@ -2024,7 +2024,7 @@ Window {
                                     iconName: "bell-ring"
                                     label: qsTr("Send a test notification")
                                     onClicked: Shell.notify("NewTeller",
-                                                            "This is what a notification looks like.")
+                                                            qsTr("This is what a notification looks like."))
                                 }
                             }
                         }
@@ -2124,7 +2124,7 @@ Window {
                                 title: qsTr("Sound file")
                                 visible: Settings.values["notifications.soundEnabled"] === true
                                 settingKey: "notifications.soundFile"
-                                SettingsTextField { width: 260; placeholder: "Leave empty for default" }
+                                SettingsTextField { width: 260; placeholder: qsTr("Leave empty for default") }
                             }
                         }
 
@@ -2166,8 +2166,8 @@ Window {
                                     font.pointSize: Theme.fontSize
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: Notifications.ownsDBus
-                                          ? "This shell serves org.freedesktop.Notifications"
-                                          : "Another daemon owns org.freedesktop.Notifications"
+                                          ? qsTr("This shell serves org.freedesktop.Notifications")
+                                          : qsTr("Another daemon owns org.freedesktop.Notifications")
                                 }
                             }
                             SettingsRow {
@@ -2332,7 +2332,7 @@ Window {
                                 width: parent.width
                                 title: qsTr("Open start menu")
                                 settingKey: "hotkeys.startMenu"
-                                SettingsTextField { width: 180; placeholder: "Meta (Windows key)" }
+                                SettingsTextField { width: 180; placeholder: qsTr("Meta (Windows key)") }
                             }
                             SettingsRow {
                                 width: parent.width
@@ -2795,7 +2795,7 @@ Window {
                                     SettingsTextField {
                                         id: shortcutKeys
                                         width: 140
-                                        placeholder: "Super+T"
+                                        placeholder: qsTr("Super+T")
                                     }
                                     SettingsTextField {
                                         id: shortcutCommand
@@ -2872,8 +2872,8 @@ Window {
                         SettingsSection {
                             title: qsTr("Input languages")
                             subtitle: keyboardColumn.layouts.length === 0
-                                      ? "Following the system keyboard settings (/etc/default/keyboard). Add a layout to choose your own."
-                                      : "Super+Space or the switch keys below cycle through them; the panel shows the current one."
+                                      ? qsTr("Following the system keyboard settings (/etc/default/keyboard). Add a layout to choose your own.")
+                                      : qsTr("Super+Space or the switch keys below cycle through them; the panel shows the current one.")
 
                             SettingsRow {
                                 width: parent.width
@@ -3381,7 +3381,7 @@ Window {
                                 width: parent.width
                                 title: qsTr("Advanced arrangement")
                                 subtitle: Session.displaySettingsTool.length > 0
-                                          ? "Drag screens freely in wdisplays."
+                                          ? qsTr("Drag screens freely in wdisplays.")
                                           : "wlr-randr and kanshi also work with NewTeller."
                                 TaskButton {
                                     iconName: "monitor"
@@ -3419,8 +3419,8 @@ Window {
                         SettingsSection {
                             title: qsTr("Night light")
                             subtitle: Session.nightLightAvailable
-                                      ? "Warmer colours in the evening are easier on the eyes."
-                                      : "Needs wlsunset (sudo apt install wlsunset)."
+                                      ? qsTr("Warmer colours in the evening are easier on the eyes.")
+                                      : qsTr("Needs wlsunset (sudo apt install wlsunset).")
 
                             SettingsRow {
                                 width: parent.width
@@ -3485,17 +3485,17 @@ Window {
                         SettingsSection {
                             title: qsTr("Screen lock")
                             subtitle: Session.lockAvailable
-                                      ? "Super+L locks the screen. Your password unlocks it."
-                                      : "The screen locker is not installed: install gtklock (or swaylock)"
+                                      ? qsTr("Super+L locks the screen. Your password unlocks it.")
+                                      : qsTr("The screen locker is not installed: install gtklock (or swaylock)")
 
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Built-in administrator prompt")
                                 subtitle: Polkit.registered
-                                          ? "Active: NewTeller asks for the administrator password itself. Applies after logging in again."
-                                          : "Off or unavailable: " + (Session.polkitAgent.length > 0
-                                                                       ? Session.polkitAgent : "no polkit agent")
-                                            + " asks instead. Applies after logging in again."
+                                          ? qsTr("Active: NewTeller asks for the administrator password itself. Applies after logging in again.")
+                                          : qsTr("Off or unavailable: %1 asks instead. Applies after logging in again.")
+                                                .arg(Session.polkitAgent.length > 0 ? Session.polkitAgent
+                                                                                    : qsTr("no polkit agent"))
                                 settingKey: "security.builtinAgent"
                                 SettingsSwitch { settingKey: "security.builtinAgent" }
                             }
@@ -3552,8 +3552,8 @@ Window {
                         SettingsSection {
                             title: qsTr("Screen")
                             subtitle: Session.idleAvailable
-                                      ? "Video players keep the screen on while they play."
-                                      : "Idle timers need swayidle (sudo apt install swayidle)."
+                                      ? qsTr("Video players keep the screen on while they play.")
+                                      : qsTr("Idle timers need swayidle (sudo apt install swayidle).")
 
                             SettingsRow {
                                 width: parent.width
@@ -3567,8 +3567,8 @@ Window {
                         SettingsSection {
                             title: qsTr("Administrator prompts")
                             subtitle: Session.polkitAgent.length > 0
-                                      ? "Authentication agent: " + Session.polkitAgent
-                                      : "No polkit agent found; install lxpolkit so programs can ask for the administrator password."
+                                      ? qsTr("Authentication agent: %1").arg(Session.polkitAgent)
+                                      : qsTr("No polkit agent found; install lxpolkit so programs can ask for the administrator password.")
                         }
                     }
                 }
@@ -3814,7 +3814,7 @@ Window {
         const dir = Shell.folderPath(startDir === undefined || startDir === null ? "" : startDir);
         filePortalDir = dir;
         if (FilePortal.available) {
-            FilePortal.pickFile("Choose a wallpaper", dir, true);
+            FilePortal.pickFile(qsTr("Choose a wallpaper"), dir, true);
         } else {
             filePicker.openFor(dir, true);
         }

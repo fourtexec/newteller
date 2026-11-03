@@ -264,7 +264,7 @@ Window {
                     width: 28
                     height: 28
                     iconName: "x"
-                    tooltipText: "Close"
+                    tooltipText: qsTr("Close")
                     onClicked: {
                         Session.closeWindow(card.modelData.id);
                         closeLater.start();

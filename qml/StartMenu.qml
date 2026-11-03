@@ -383,27 +383,27 @@ DropdownWindow {
 
             TaskButton {
                 iconName: "lock"
-                tooltipText: "Lock"
+                tooltipText: qsTr("Lock")
                 onClicked: { Shell.lock(); menu.hide(); }
             }
             TaskButton {
                 iconName: "log-out"
-                tooltipText: "Log out"
+                tooltipText: qsTr("Log out")
                 onClicked: { Shell.logout(); menu.hide(); }
             }
             TaskButton {
                 iconName: "moon"
-                tooltipText: "Sleep"
+                tooltipText: qsTr("Sleep")
                 onClicked: { Shell.suspend(); menu.hide(); }
             }
             TaskButton {
                 iconName: "rotate-cw"
-                tooltipText: "Restart"
+                tooltipText: qsTr("Restart")
                 onClicked: { Shell.reboot(); menu.hide(); }
             }
             TaskButton {
                 iconName: "power"
-                tooltipText: "Shut down"
+                tooltipText: qsTr("Shut down")
                 onClicked: { Shell.powerOff(); menu.hide(); }
             }
             Item { Layout.fillWidth: true }

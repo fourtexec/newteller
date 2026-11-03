@@ -47,9 +47,9 @@ DropdownWindow {
         function onWifiConnectFinished(ok, ssid, message) {
             if (ok) {
                 popup.pendingSsid = "";
-                popup.statusText = "Connected to " + ssid;
+                popup.statusText = qsTr("Connected to %1").arg(ssid);
             } else if (ssid === popup.pendingSsid) {
-                popup.statusText = message.length > 0 ? message : "Enter the password for " + ssid;
+                popup.statusText = message.length > 0 ? message : qsTr("Enter the password for %1").arg(ssid);
                 passwordField.forceActiveFocus();
             } else {
                 popup.statusText = message;

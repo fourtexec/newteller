@@ -45,8 +45,8 @@ DropdownWindow {
             Text {
                 Layout.fillWidth: true
                 text: !Bluetooth.available ? qsTr("No Bluetooth adapter")
-                      : !Bluetooth.powered ? "Bluetooth is off"
-                      : Bluetooth.discovering ? "Looking for devices..." : "Bluetooth is on"
+                      : !Bluetooth.powered ? qsTr("Bluetooth is off")
+                      : Bluetooth.discovering ? qsTr("Looking for devices...") : qsTr("Bluetooth is on")
                 color: Theme.muted
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSize - 1
@@ -139,7 +139,7 @@ DropdownWindow {
                         visible: modelData.paired
                         width: 28
                         iconName: "trash"
-                        tooltipText: "Forget this device"
+                        tooltipText: qsTr("Forget this device")
                         onClicked: Bluetooth.forgetDevice(modelData.path)
                     }
                 }

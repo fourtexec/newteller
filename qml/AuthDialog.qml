@@ -134,7 +134,7 @@ Window {
                     Text {
                         text: dialog.requester.length > 0
                               ? "“" + dialog.requester + "” wants to make changes to the system"
-                              : "A program wants to make changes to the system"
+                              : qsTr("A program wants to make changes to the system")
                         color: Theme.muted
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSize
@@ -180,8 +180,8 @@ Window {
                     color: Theme.muted
                     font.family: "monospace"
                     font.pointSize: Theme.fontSize - 2
-                    text: qsTr("Action: ") + Polkit.actionId
-                          + (Polkit.program.length > 0 ? "\nCommand: " + Polkit.program : "")
+                    text: qsTr("Action: %1").arg(Polkit.actionId)
+                          + (Polkit.program.length > 0 ? "\n" + qsTr("Command: %1").arg(Polkit.program) : "")
                 }
             }
 
@@ -256,7 +256,7 @@ Window {
                         verticalAlignment: Text.AlignVCenter
                         visible: password.text.length === 0
                         text: Polkit.busy ? qsTr("Checking...")
-                              : "Password for " + (Polkit.identities[Polkit.identityIndex] || "the administrator")
+                              : qsTr("Password for %1").arg(Polkit.identities[Polkit.identityIndex] || qsTr("the administrator"))
                         color: Theme.muted
                         font: password.font
                         elide: Text.ElideRight

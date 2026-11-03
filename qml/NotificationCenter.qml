@@ -221,14 +221,14 @@ DropdownWindow {
                         height: 26
                         visible: row.isActive
                         iconName: "check"
-                        tooltipText: "Dismiss"
+                        tooltipText: qsTr("Dismiss")
                         onClicked: Notifications.dismiss(row.modelData.id)
                     }
                     TaskButton {
                         width: 26
                         height: 26
                         iconName: "x"
-                        tooltipText: "Remove"
+                        tooltipText: qsTr("Remove")
                         onClicked: Notifications.removeHistory(row.modelData.id)
                     }
                 }

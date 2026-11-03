@@ -960,8 +960,8 @@ Window {
             id: stripHover
             onHoveredChanged: {
                 if (hovered)
-                    panel.showToolTip(strip, "Desktop " + (Session.workspace + 1) + " of "
-                                      + Session.workspaceCount + " - Ctrl+Super+Left/Right");
+                    panel.showToolTip(strip, qsTr("Desktop %1 of %2 - Ctrl+Super+Left/Right")
+                                      .arg(Session.workspace + 1).arg(Session.workspaceCount));
                 else
                     panel.hideToolTip();
             }
@@ -1084,8 +1084,8 @@ Window {
                 if (hovered) {
                     const unread = bellButton.unread;
                     panel.showToolTip(bellButton,
-                                      unread > 0 ? "Notifications (" + unread + " new)"
-                                                 : "Notifications");
+                                      unread > 0 ? qsTr("Notifications (%1 new)").arg(unread)
+                                                 : qsTr("Notifications"));
                 } else {
                     panel.hideToolTip();
                 }
@@ -1101,8 +1101,8 @@ Window {
                 // the centre and the quick settings card show.
                 if (mouse.button === Qt.RightButton) {
                     Settings.setValue("notifications.doNotDisturb", !bellButton.dnd);
-                    panel.showToolTip(bellButton, bellButton.dnd ? "Do not disturb off"
-                                                                 : "Do not disturb on");
+                    panel.showToolTip(bellButton, bellButton.dnd ? qsTr("Do not disturb off")
+                                                                 : qsTr("Do not disturb on"));
                     return;
                 }
                 panel.toggleDropdown(panel.notificationCenter, bellButton);
@@ -1182,9 +1182,9 @@ Window {
                               + (System.batteryTimeText.length > 0
                                  ? System.batteryTimeText : System.batteryStatus);
                     else if (Quick.volumeAvailable)
-                        tip = (Quick.volumeMuted ? "Muted" : "Volume " + Quick.volume + "%")
+                        tip = (Quick.volumeMuted ? qsTr("Muted") : qsTr("Volume %1%").arg(Quick.volume))
                               + (tip.length > 0 ? " - " + tip : "");
-                    panel.showToolTip(indicatorsButton, tip.length > 0 ? tip : "Quick settings");
+                    panel.showToolTip(indicatorsButton, tip.length > 0 ? tip : qsTr("Quick settings"));
                 } else {
                     panel.hideToolTip();
                 }
@@ -1213,7 +1213,7 @@ Window {
                 const value = Math.round(Quick.volume) + Math.round(notches * 5);
                 Quick.setVolume(Math.max(0, Math.min(100, value)));
                 panel.showToolTip(indicatorsButton,
-                                  Quick.volumeMuted ? "Muted" : "Volume " + Quick.volume + "%");
+                                  Quick.volumeMuted ? qsTr("Muted") : qsTr("Volume %1%").arg(Quick.volume));
             }
         }
 

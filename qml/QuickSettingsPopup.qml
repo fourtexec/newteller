@@ -131,7 +131,7 @@ DropdownWindow {
                 width: 34
                 height: 34
                 iconName: Quick.volumeMuted ? "volume-x" : "volume-2"
-                tooltipText: Quick.volumeMuted ? "Unmute" : "Mute"
+                tooltipText: Quick.volumeMuted ? qsTr("Unmute") : qsTr("Mute")
                 onClicked: Quick.toggleMuted()
             }
             SettingsSlider {
@@ -151,7 +151,7 @@ DropdownWindow {
                 visible: Session.soundSettingsTool.length > 0
                 width: 30
                 iconName: "chevron-right"
-                tooltipText: "Sound devices"
+                tooltipText: qsTr("Sound devices")
                 onClicked: {
                     popup.hide();
                     Session.openSoundSettings();
@@ -235,7 +235,7 @@ DropdownWindow {
                 visible: Session.wifiAvailable && Quick.wifiEnabled && popup.wifiPopup !== null
                 width: 30
                 iconName: "chevron-right"
-                tooltipText: "Choose a network"
+                tooltipText: qsTr("Choose a network")
                 onClicked: {
                     popup.hide();
                     popup.wifiPopup.show();
@@ -307,7 +307,7 @@ DropdownWindow {
                 visible: popup.bluetoothPopup !== null && Bluetooth.powered
                 width: 30
                 iconName: "chevron-right"
-                tooltipText: "Devices"
+                tooltipText: qsTr("Devices")
                 onClicked: {
                     popup.hide();
                     popup.bluetoothPopup.show();
