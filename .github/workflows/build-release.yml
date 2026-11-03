@@ -38,7 +38,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends ca-certificates git
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install build and runtime dependencies
         run: bash scripts/install-build-deps.sh
       - name: Rust tests

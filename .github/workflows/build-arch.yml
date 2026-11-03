@@ -26,7 +26,7 @@ jobs:
     steps:
       - name: Install checkout prerequisites
         run: pacman -Syu --noconfirm --needed git ca-certificates
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install build and runtime dependencies
         run: bash scripts/install-build-deps.sh
       - name: Platform detection test

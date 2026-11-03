@@ -62,9 +62,10 @@ inside VirtualBox. The implemented pieces are:
 - Start menu: highlighted fuzzy search, category chips, recently used row,
   Lock / Log out / Sleep / Restart / Shut down, Settings; right-click an
   application to pin or unpin it on the dock
-- Desktop icons can be dragged to any position; the layout is saved in
-  `desktop.iconPositions` and restored on the next start (right-click the
-  desktop to auto-arrange or reset it)
+- Desktop icons and widgets share one invisible grid: an icon takes a cell,
+  a widget the cells its size needs, nothing overlaps, and dragging snaps to
+  the nearest free cells. The layout is saved in `desktop.gridPositions`
+  (right-click the desktop to auto-arrange or reset it)
 - **Notification centre: the bell at the end of the panel.** The history of the
   built-in notification daemon, newest first, with per-entry removal, a clear-all
   button and the do-not-disturb switch; the bell counts what arrived while it
@@ -126,6 +127,8 @@ inside VirtualBox. The implemented pieces are:
   password field, "Allow" and "Cancel"; a wrong password is reported and
   asked again. `security.builtinAgent` turns it off (an external agent such
   as lxpolkit is used then, as when the build has no libpolkit-agent-1).
+  The session runs exactly one agent: polkit agents from the
+  distribution's autostart (`*polkit*`, `*policykit*`) are skipped.
 - **Open with root.** The dock's right-click menu and the start menu's
   right-click menu start an application as root:
   `newteller-run-as-root` runs it through pkexec (the administrator prompt
@@ -420,7 +423,7 @@ All keys, with their defaults:
 | `panel.pinned` | `[]` | desktop file IDs pinned to the panel |
 | `panel.material` | `"theme"` | `theme`, `opaque`, `translucent`, `frosted` or `liquid` panel surface |
 | `dock.showWindows` | `true` | show running applications/windows in the dock |
-| `dock.group` | `true` | merge all windows of one application into one dock button |
+| `dock.group` | `false` | merge all windows of one application into one dock button (off: one button per window, windows of one application side by side) |
 | `dock.iconSize` | `28` | dock button icon size in pixels |
 | `dock.material` | `"translucent"` | floating dock surface: `none`, `opaque` (non-transparent), `translucent` (half transparent), `frosted` or `liquid` |
 | `dock.backgroundColor` / `dock.backgroundOpacity` | `""` / `0.5` | dock surface tint, and an opacity bias around the material preset (`0.5` = the material's own transparency, lower is clearer, higher is more solid) |
@@ -449,7 +452,7 @@ All keys, with their defaults:
 | `desktop.iconSize` | `48` | icon size in pixels |
 | `desktop.cellWidth` / `desktop.cellHeight` | `96` / `110` | icon grid cell |
 | `desktop.contextMenu` | `true` | desktop right-click menu |
-| `desktop.iconPositions` | `{}` | saved drag-and-drop positions, keyed by file name |
+| `desktop.gridPositions` | `{}` | saved grid cells: `"icon:<file name>"` / `"widget:<plugin id>"` -> `{col, row}` |
 | `icons.path` / `icons.set` | `""` / `"lucide"` | extra IconKit checkout overriding the bundled icons / set folder inside it |
 | `icons.cache` | `true` | cache resolved icons |
 | `plugins.disabled` | `[]` | plugin IDs to disable |

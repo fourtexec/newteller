@@ -1567,8 +1567,19 @@ void SessionServices::runAutostart()
         // or the first one installed): a second one from the distribution's
         // autostart fails to register and shows "An authentication agent
         // already exists for the given subject" on every login.
-        const QString base = QFileInfo(program).fileName().toLower();
-        if (base.contains(QLatin1String("polkit")) || base == QLatin1String("lxpolkit"))
+        // LXQt names its agent "policykit", and some entries start the agent
+        // through `env VAR=... /path/agent`, so look past an env prefix.
+        QString agent = program;
+        if (QFileInfo(program).fileName() == QLatin1String("env")) {
+            for (const QString &arg : std::as_const(args)) {
+                if (!arg.contains(QLatin1Char('=')) && !arg.startsWith(QLatin1Char('-'))) {
+                    agent = arg;
+                    break;
+                }
+            }
+        }
+        const QString base = QFileInfo(agent).fileName().toLower();
+        if (base.contains(QLatin1String("polkit")) || base.contains(QLatin1String("policykit")))
             continue;
         // nm-applet only shows up in a StatusNotifier tray in indicator mode;
         // its stock autostart entry asks for the old X11 tray icon.
@@ -1606,6 +1617,7 @@ void SessionServices::startPolkitAgent()
         QStringLiteral("/usr/lib/polkit-kde-authentication-agent-1"),
         QStringLiteral("/usr/libexec/kf6/polkit-kde-authentication-agent-1"),
         QStringLiteral("/usr/libexec/xfce-polkit"),
+        QStringLiteral("/usr/bin/lxqt-policykit-agent"),
     };
     for (const QString &candidate : candidates) {
         if (QFileInfo(candidate).isExecutable()) {

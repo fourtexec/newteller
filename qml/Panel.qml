@@ -386,9 +386,22 @@ Window {
                     slot.windows = [w];
                     slot.title = w.title || "";
                 } else {
-                    result.push({ appId: appId, app: appId.length > 0 ? Apps.byId(appId) : {},
-                                  windows: [w], running: true, active: !!w.active, badge: 1,
-                                  title: w.title || "", pinned: false, background: false });
+                    const entry = { appId: appId, app: appId.length > 0 ? Apps.byId(appId) : {},
+                                    windows: [w], running: true, active: !!w.active, badge: 1,
+                                    title: w.title || "", pinned: false, background: false };
+                    // Windows of one application sit side by side: right
+                    // after its last button, not at the far end of the dock.
+                    var after = -1;
+                    if (appId.length > 0) {
+                        for (var i = 0; i < result.length; ++i) {
+                            if (result[i].appId === appId)
+                                after = i;
+                        }
+                    }
+                    if (after >= 0)
+                        result.splice(after + 1, 0, entry);
+                    else
+                        result.push(entry);
                 }
             }
         }

@@ -1576,6 +1576,23 @@ def main():
               f"a read-only entry launches its application instead ({window_list.calls}, "
               f"{apps.launched})")
 
+        # One button per window: a second window of an application sits right
+        # after the first one, not at the far end of the dock.
+        window_list._windows.append(
+            {"id": "w3", "title": "Firefox — second", "appId": "firefox",
+             "active": False, "minimized": False, "maximized": False})
+        window_list.windowsChanged.emit()
+        QTest.qWait(20)
+        grown = panel.property("dockEntries")
+        if hasattr(grown, "toVariant"):
+            grown = grown.toVariant()
+        order = [e["windows"][0]["id"] if e.get("windows") else e["appId"] for e in (grown or [])]
+        check("w1" in order and "w3" in order and order.index("w3") == order.index("w1") + 1,
+              f"a second window of one application gets the button next to the first ({order})")
+        window_list._windows.pop()
+        window_list.windowsChanged.emit()
+        QTest.qWait(20)
+
         # The dock buttons must have real geometry, not zero-height items: a
         # Flickable without an explicit height once collapsed the whole strip
         # (the dock looked empty although the entries were all there).
