@@ -16,6 +16,8 @@ DropdownWindow {
     // The notification centre on the primary screen; set by Main.qml so the
     // History button can open it.
     property var notificationCenter: null
+    // The Wi-Fi network list, opened from the network row.
+    property var wifiPopup: null
     // Rows that are on right now, for the height computation.
     readonly property int visibleRows: {
         var rows = 0;
@@ -212,6 +214,17 @@ DropdownWindow {
                     color: Theme.muted
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize - 1
+                }
+            }
+            TaskButton {
+                objectName: "wifiNetworksButton"
+                visible: Session.wifiAvailable && Quick.wifiEnabled && popup.wifiPopup !== null
+                width: 30
+                iconName: "chevron-right"
+                tooltipText: "Choose a network"
+                onClicked: {
+                    popup.hide();
+                    popup.wifiPopup.show();
                 }
             }
             SettingsSwitch {

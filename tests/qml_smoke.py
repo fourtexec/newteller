@@ -816,6 +816,26 @@ class Session(QObject):
     powerProfiles = Property("QVariantList", lambda self: ["power-saver", "balanced", "performance"],
                              notify=powerProfileChanged)
 
+    wifiChanged = Signal()
+    wifiConnectFinished = Signal(bool, str, str)
+    wifiAvailable = Property(bool, lambda self: True, constant=True)
+    wifiBusy = Property(bool, lambda self: False, notify=wifiChanged)
+    wifiNetworks = Property("QVariantList", lambda self: [
+        {"ssid": "Home", "signal": 80, "secure": True, "active": True},
+        {"ssid": "Cafe", "signal": 40, "secure": False, "active": False}], notify=wifiChanged)
+
+    @Slot()
+    def scanWifi(self):
+        self.calls.append(("scanWifi",))
+
+    @Slot(str, str)
+    def connectWifi(self, ssid, password):
+        self.calls.append(("connectWifi", ssid))
+
+    @Slot()
+    def disconnectWifi(self):
+        self.calls.append(("disconnectWifi",))
+
     @Slot(result="QVariantList")
     def autostartEntries(self):
         return [{"name": "Network", "file": "/etc/xdg/autostart/nm-applet.desktop",
@@ -1692,6 +1712,20 @@ def main():
                 shell.clipboardToggleRequested.emit()
                 QTest.qWait(400)
                 check(not clips[0].isVisible(), "Super+V again closes it")
+
+            # The Wi-Fi list scans on the way in and lists the networks.
+            wifis = windows_of_kind("WifiPopup")
+            check(bool(wifis), "the Wi-Fi network list exists")
+            if wifis:
+                session.calls.clear()
+                QMetaObject.invokeMethod(wifis[0], "show")
+                QTest.qWait(300)
+                check(("scanWifi",) in session.calls, "opening the Wi-Fi list scans for networks")
+                wifi_list = wifis[0].findChild(QObject, "wifiList")
+                check(wifi_list is not None and wifi_list.property("count") == 2,
+                      "the Wi-Fi list shows the networks in range")
+                QMetaObject.invokeMethod(wifis[0], "hide")
+                QTest.qWait(400)
             settings._values["notifications.doNotDisturb"] = dnd
             settings.valuesChanged.emit()
             QTest.qWait(50)

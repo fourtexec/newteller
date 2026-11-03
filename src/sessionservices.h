@@ -45,6 +45,10 @@ class SessionServices : public QObject
     // when the daemon is not installed.
     Q_PROPERTY(QString powerProfile READ powerProfile NOTIFY powerProfileChanged)
     Q_PROPERTY(QStringList powerProfiles READ powerProfiles NOTIFY powerProfileChanged)
+    // Wi-Fi networks in range (nmcli): ssid, signal (0-100), secure, active.
+    Q_PROPERTY(bool wifiAvailable READ wifiAvailable CONSTANT)
+    Q_PROPERTY(QVariantList wifiNetworks READ wifiNetworks NOTIFY wifiChanged)
+    Q_PROPERTY(bool wifiBusy READ wifiBusy NOTIFY wifiChanged)
 
 public:
     explicit SessionServices(Settings *settings, QObject *parent = nullptr);
@@ -70,6 +74,13 @@ public:
     QString powerProfile() const { return m_powerProfile; }
     QStringList powerProfiles() const { return m_powerProfiles; }
     Q_INVOKABLE void setPowerProfile(const QString &profile);
+    bool wifiAvailable() const;
+    QVariantList wifiNetworks() const { return m_wifiNetworks; }
+    bool wifiBusy() const { return m_wifiBusy; }
+    Q_INVOKABLE void scanWifi();
+    // Joins a network; `password` may be empty for open or saved networks.
+    Q_INVOKABLE void connectWifi(const QString &ssid, const QString &password);
+    Q_INVOKABLE void disconnectWifi();
 
     Q_INVOKABLE void switchWorkspace(int index);
     // Moves the focused window to another desktop.
@@ -103,6 +114,9 @@ signals:
     // brightness-down, play-pause, next, previous.
     void mediaKey(const QString &name);
     void powerProfileChanged();
+    void wifiChanged();
+    // The outcome of connectWifi(); `message` is nmcli's explanation.
+    void wifiConnectFinished(bool ok, const QString &ssid, const QString &message);
 
 private:
     void connectCompositor();
@@ -137,6 +151,8 @@ private:
     int m_switcherIndex = -1;
     QString m_powerProfile;
     QStringList m_powerProfiles;
+    QVariantList m_wifiNetworks;
+    bool m_wifiBusy = false;
     QProcess m_idle;
     QProcess m_nightLight;
     QProcess m_polkit;

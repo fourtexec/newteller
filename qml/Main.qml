@@ -112,6 +112,11 @@ QtObject {
     readonly property QuickSettingsPopup quickSettings: QuickSettingsPopup {
         screen: Qt.application.screens[0]
         notificationCenter: root.notificationCenter
+        wifiPopup: root.wifiPopup
+    }
+
+    readonly property WifiPopup wifiPopup: WifiPopup {
+        screen: Qt.application.screens[0]
     }
 
     // The built-in settings application. Its QML is compiled into the

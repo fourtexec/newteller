@@ -131,6 +131,13 @@ inside VirtualBox. The implemented pieces are:
   wlr-randr, kanshi) change resolution, refresh rate, scale, rotation and
   arrangement; NewTeller remembers the settings per monitor
   (`~/.config/newteller/outputs.conf`) and starts high-density panels at 200%.
+- **Wi-Fi networks** from quick settings: scan, join (with the password asked
+  inline for new secured networks), disconnect; NetworkManager keeps them.
+- **Clipboard history** on `Super+V` (wl-clipboard): the texts copied in the
+  session, newest first; click one to copy it again. Kept in memory unless
+  `clipboard.persistHistory` is on.
+- **Power profiles** (power-profiles-daemon) in quick settings and low-battery
+  notifications at 10% and 5%.
 - **Night light** (wlsunset) on a schedule or always, from quick settings or
   Settings → Displays.
 - **Desktop services.** Screen sharing and screenshots through

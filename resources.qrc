@@ -38,6 +38,7 @@
     <file>qml/SwitcherOverlay.qml</file>
     <file>qml/OsdPopup.qml</file>
     <file>qml/ClipboardPopup.qml</file>
+    <file>qml/WifiPopup.qml</file>
     <file>themes/default.json</file>
     <file>themes/light.json</file>
     <file>themes/nord.json</file>

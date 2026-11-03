@@ -7,6 +7,9 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
+#include <QList>
+
+#include <algorithm>
 #include <QSet>
 #include <QSaveFile>
 #include <QStandardPaths>
@@ -744,6 +747,143 @@ void SessionServices::setPowerProfile(const QString &profile)
         readPowerProfile();
     });
     process->start(tool, {QStringLiteral("set"), profile});
+}
+
+// ---------------------------------------------------------------------------
+// Wi-Fi (nmcli)
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// nmcli -t escapes ':' and '\\' inside fields with a backslash.
+QStringList splitTerse(const QString &line)
+{
+    QStringList fields;
+    QString current;
+    for (int i = 0; i < line.size(); ++i) {
+        const QChar c = line.at(i);
+        if (c == QLatin1Char('\\') && i + 1 < line.size()) {
+            current += line.at(++i);
+        } else if (c == QLatin1Char(':')) {
+            fields << current;
+            current.clear();
+        } else {
+            current += c;
+        }
+    }
+    fields << current;
+    return fields;
+}
+
+} // namespace
+
+bool SessionServices::wifiAvailable() const
+{
+    return !findProgram(QStringLiteral("nmcli")).isEmpty();
+}
+
+void SessionServices::scanWifi()
+{
+    const QString nmcli = findProgram(QStringLiteral("nmcli"));
+    if (nmcli.isEmpty() || m_wifiBusy)
+        return;
+    m_wifiBusy = true;
+    emit wifiChanged();
+    auto *process = new QProcess(this);
+    connect(process, &QProcess::finished, this, [this, process] {
+        process->deleteLater();
+        QHash<QString, QVariantMap> best;
+        const QStringList lines = QString::fromUtf8(process->readAllStandardOutput())
+                                      .split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+        for (const QString &line : lines) {
+            const QStringList f = splitTerse(line);
+            if (f.size() < 4 || f.at(1).isEmpty())
+                continue;
+            QVariantMap network;
+            network.insert(QStringLiteral("active"), f.at(0) == QLatin1String("*"));
+            network.insert(QStringLiteral("ssid"), f.at(1));
+            network.insert(QStringLiteral("signal"), f.at(2).toInt());
+            const QString security = f.at(3).trimmed();
+            network.insert(QStringLiteral("secure"),
+                           !security.isEmpty() && security != QLatin1String("--"));
+            // One row per name: the active access point, else the strongest.
+            const QVariantMap seen = best.value(f.at(1));
+            if (seen.isEmpty() || network.value(QStringLiteral("active")).toBool()
+                || (!seen.value(QStringLiteral("active")).toBool()
+                    && network.value(QStringLiteral("signal")).toInt()
+                           > seen.value(QStringLiteral("signal")).toInt())) {
+                best.insert(f.at(1), network);
+            }
+        }
+        QList<QVariantMap> sorted = best.values();
+        std::sort(sorted.begin(), sorted.end(), [](const QVariantMap &a, const QVariantMap &b) {
+            if (a.value(QStringLiteral("active")).toBool() != b.value(QStringLiteral("active")).toBool())
+                return a.value(QStringLiteral("active")).toBool();
+            return a.value(QStringLiteral("signal")).toInt() > b.value(QStringLiteral("signal")).toInt();
+        });
+        m_wifiNetworks.clear();
+        for (const QVariantMap &network : sorted)
+            m_wifiNetworks.append(network);
+        m_wifiBusy = false;
+        emit wifiChanged();
+    });
+    process->start(nmcli, {QStringLiteral("-t"), QStringLiteral("-f"),
+                           QStringLiteral("IN-USE,SSID,SIGNAL,SECURITY"),
+                           QStringLiteral("device"), QStringLiteral("wifi"),
+                           QStringLiteral("list"), QStringLiteral("--rescan"),
+                           QStringLiteral("auto")});
+}
+
+void SessionServices::connectWifi(const QString &ssid, const QString &password)
+{
+    const QString nmcli = findProgram(QStringLiteral("nmcli"));
+    if (nmcli.isEmpty() || ssid.isEmpty())
+        return;
+    m_wifiBusy = true;
+    emit wifiChanged();
+    auto *process = new QProcess(this);
+    process->setProcessChannelMode(QProcess::MergedChannels);
+    connect(process, &QProcess::finished, this, [this, process, ssid](int code) {
+        const QString output = QString::fromUtf8(process->readAll()).trimmed();
+        process->deleteLater();
+        m_wifiBusy = false;
+        emit wifiChanged();
+        emit wifiConnectFinished(code == 0, ssid,
+                                 output.section(QLatin1Char('\n'), -1).trimmed());
+        scanWifi();
+    });
+    // --ask reads the password from stdin, so it never appears in the
+    // process list the way `password <secret>` on the command line would.
+    QStringList args;
+    if (!password.isEmpty())
+        args << QStringLiteral("--ask");
+    args << QStringLiteral("device") << QStringLiteral("wifi") << QStringLiteral("connect") << ssid;
+    process->start(nmcli, args);
+    if (!password.isEmpty()) {
+        process->write(password.toUtf8() + '\n');
+    }
+    process->closeWriteChannel();
+}
+
+void SessionServices::disconnectWifi()
+{
+    const QString nmcli = findProgram(QStringLiteral("nmcli"));
+    if (nmcli.isEmpty())
+        return;
+    for (const QVariant &item : std::as_const(m_wifiNetworks)) {
+        const QVariantMap network = item.toMap();
+        if (!network.value(QStringLiteral("active")).toBool())
+            continue;
+        auto *process = new QProcess(this);
+        connect(process, &QProcess::finished, this, [this, process] {
+            process->deleteLater();
+            scanWifi();
+        });
+        process->start(nmcli, {QStringLiteral("connection"), QStringLiteral("down"),
+                               QStringLiteral("id"),
+                               network.value(QStringLiteral("ssid")).toString()});
+        return;
+    }
 }
 
 void SessionServices::runAutostart()
