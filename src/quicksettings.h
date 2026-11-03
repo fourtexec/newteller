@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QHash>
 #include <QObject>
 #include <QProcess>
 #include <QStringList>
@@ -113,7 +114,7 @@ private:
     void setNetworkStatus(int state, bool wifiEnabled);
     void setupMedia();
     void scanMediaPlayers();
-    void addMediaPlayer(const QString &service);
+    void addMediaPlayer(const QString &service, const QString &owner = QString());
     void removeMediaPlayer(const QString &service);
     void readMediaPlayer(const QString &service);
     void pickMedia();
@@ -139,6 +140,9 @@ private:
     QString m_networkStatus;
     // Media
     QStringList m_mediaPlayers; // org.mpris.MediaPlayer2.* services
+    // Well-known name -> unique name of its owner: signals arrive from the
+    // unique name, never from org.mpris.MediaPlayer2.<player>.
+    QHash<QString, QString> m_mediaOwners;
     QString m_mediaTitle;
     QString m_mediaArtist;
     bool m_mediaPlaying = false;

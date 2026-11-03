@@ -7,6 +7,7 @@
 #include <QDBusMessage>
 #include <QDBusReply>
 #include <QDBusServiceWatcher>
+#include <QDBusVariant>
 #include <QDir>
 #include <QFile>
 #include <QRegularExpression>
@@ -35,14 +36,44 @@ QString networkStateText(int state, bool wifiEnabled)
     return QStringLiteral("Disconnected");
 }
 
+// MPRIS Metadata (a{sv}) as a map. qdbus_cast reads the dictionary itself;
+// the hand-written loop it replaces used the writing QDBusArgument API,
+// never advanced and froze the shell whenever a player changed tracks.
+QVariantMap metadataMap(const QVariant &metadata)
+{
+    if (metadata.userType() == qMetaTypeId<QDBusArgument>())
+        return qdbus_cast<QVariantMap>(metadata.value<QDBusArgument>());
+    return metadata.toMap();
+}
+
+// The value of a Properties.Get reply. Its out argument is a D-Bus variant,
+// which QtDBus hands over wrapped in QDBusVariant - plain numbers and
+// strings too - so toInt()/toString() on the raw argument give 0 and "".
+QVariant propertyValue(const QDBusMessage &reply)
+{
+    if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
+        return {};
+    const QVariant value = reply.arguments().constFirst();
+    if (value.userType() == qMetaTypeId<QDBusVariant>())
+        return qvariant_cast<QDBusVariant>(value).variant();
+    return value;
+}
+
 // Extracts a plain string from a D-Bus variant, looking through QDBusArgument
-// wrappers (Metadata arrives as a{sv} with nested types).
+// wrappers (Metadata arrives as a{sv} with nested types). The argument is
+// read through a const QDBusArgument: the non-const begin*() calls are the
+// writing API, do nothing on a received message, and a loop over them
+// never ends.
 QString variantString(const QVariant &value)
 {
-    if (value.canConvert<QString>())
+    if (value.userType() == QMetaType::QStringList)
+        return value.toStringList().join(QStringLiteral(", "));
+    if (value.userType() == qMetaTypeId<QDBusVariant>())
+        return variantString(qvariant_cast<QDBusVariant>(value).variant());
+    if (value.userType() != qMetaTypeId<QDBusArgument>() && value.canConvert<QString>())
         return value.toString();
-    if (value.canConvert<QDBusArgument>()) {
-        QDBusArgument argument = value.value<QDBusArgument>();
+    if (value.userType() == qMetaTypeId<QDBusArgument>()) {
+        const QDBusArgument argument = value.value<QDBusArgument>();
         if (argument.currentType() == QDBusArgument::ArrayType) {
             argument.beginArray();
             QString joined;
@@ -342,14 +373,9 @@ void QuickSettings::readNetwork()
             QString::fromLatin1(kNmService), QString::fromLatin1(kNmPath),
             QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
         call << QString::fromLatin1(kNmInterface) << property;
-        const QDBusMessage reply = bus.call(call, QDBus::BlockWithGui, 800);
-        if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
-            return {};
-        return reply.arguments().first();
+        return propertyValue(bus.call(call, QDBus::BlockWithGui, 800));
     };
 
-    // Properties::Get returns a variant; basic types demarshal to a plain
-    // QVariant, so read them directly.
     const QVariant stateVariant = readProperty(QStringLiteral("State"));
     const QVariant wifiVariant = readProperty(QStringLiteral("WirelessEnabled"));
     const int state = stateVariant.isValid() ? stateVariant.toInt() : -1;
@@ -417,7 +443,7 @@ void QuickSettings::dbusNameOwnerChanged(const QString &name, const QString &old
     if (!name.startsWith(QString::fromLatin1(kMprisPrefix)))
         return;
     if (!newOwner.isEmpty() && oldOwner.isEmpty())
-        addMediaPlayer(name);
+        addMediaPlayer(name, newOwner);
     else if (newOwner.isEmpty() && !oldOwner.isEmpty())
         removeMediaPlayer(name);
 }
@@ -434,11 +460,15 @@ void QuickSettings::scanMediaPlayers()
     }
 }
 
-void QuickSettings::addMediaPlayer(const QString &service)
+void QuickSettings::addMediaPlayer(const QString &service, const QString &owner)
 {
     if (m_mediaPlayers.contains(service))
         return;
     m_mediaPlayers.append(service);
+    QString unique = owner;
+    if (unique.isEmpty() && QDBusConnection::sessionBus().interface())
+        unique = QDBusConnection::sessionBus().interface()->serviceOwner(service).value();
+    m_mediaOwners.insert(service, unique);
     QDBusConnection::sessionBus().connect(service, QString::fromLatin1(kMprisPath),
                                           QStringLiteral("org.freedesktop.DBus.Properties"),
                                           QStringLiteral("PropertiesChanged"), this,
@@ -452,6 +482,7 @@ void QuickSettings::removeMediaPlayer(const QString &service)
 {
     if (!m_mediaPlayers.removeOne(service))
         return;
+    m_mediaOwners.remove(service);
     QDBusConnection::sessionBus().disconnect(service, QString::fromLatin1(kMprisPath),
                                              QStringLiteral("org.freedesktop.DBus.Properties"),
                                              QStringLiteral("PropertiesChanged"), this,
@@ -470,33 +501,16 @@ void QuickSettings::readMediaPlayer(const QString &service)
             service, QString::fromLatin1(kMprisPath),
             QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
         call << QStringLiteral("org.mpris.MediaPlayer2.Player") << property;
-        const QDBusMessage reply = bus.call(call, QDBus::BlockWithGui, 600);
-        if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
-            return {};
-        return reply.arguments().first();
+        return propertyValue(bus.call(call, QDBus::BlockWithGui, 600));
     };
 
     const QVariant metadata = read(QStringLiteral("Metadata"));
     if (metadata.isValid()) {
-        QVariantMap map;
-        if (metadata.canConvert<QDBusArgument>()) {
-            const QDBusArgument argument = metadata.value<QDBusArgument>();
-            argument.beginArray();
-            while (!argument.atEnd()) {
-                QDBusArgument entry = argument;
-                entry.beginStructure();
-                QString key;
-                QVariant value;
-                entry >> key >> value;
-                entry.endStructure();
-                map.insert(key, value);
-            }
-            argument.endArray();
-            if (map.contains(QStringLiteral("xesam:title")))
-                m_mediaTitle = variantString(map.value(QStringLiteral("xesam:title")));
-            if (map.contains(QStringLiteral("xesam:artist")))
-                m_mediaArtist = variantString(map.value(QStringLiteral("xesam:artist")));
-        }
+        const QVariantMap map = metadataMap(metadata);
+        if (map.contains(QStringLiteral("xesam:title")))
+            m_mediaTitle = variantString(map.value(QStringLiteral("xesam:title")));
+        if (map.contains(QStringLiteral("xesam:artist")))
+            m_mediaArtist = variantString(map.value(QStringLiteral("xesam:artist")));
     }
     const QVariant status = read(QStringLiteral("PlaybackStatus"));
     if (status.isValid())
@@ -508,31 +522,20 @@ void QuickSettings::mediaPropertiesChanged(const QString &interface, const QVari
 {
     if (interface != QLatin1String("org.mpris.MediaPlayer2.Player"))
         return;
-    const QString service = message().service();
-    if (!m_mediaPlayers.contains(service))
+    // The sender is the player's unique name (":1.42"), not its
+    // org.mpris.MediaPlayer2.<player> name; comparing the two ignored every
+    // change.
+    const QString sender = message().service();
+    if (!m_mediaPlayers.contains(sender) && m_mediaOwners.key(sender).isEmpty())
         return;
     if (changed.contains(QStringLiteral("Metadata"))) {
         // Cheap path: the change already carries the new values.
         const QVariant metadata = changed.value(QStringLiteral("Metadata"));
-        if (metadata.canConvert<QDBusArgument>()) {
-            const QDBusArgument argument = metadata.value<QDBusArgument>();
-            argument.beginArray();
-            QVariantMap map;
-            while (!argument.atEnd()) {
-                QDBusArgument entry = argument;
-                entry.beginStructure();
-                QString key;
-                QVariant value;
-                entry >> key >> value;
-                entry.endStructure();
-                map.insert(key, value);
-            }
-            argument.endArray();
-            if (map.contains(QStringLiteral("xesam:title")))
-                m_mediaTitle = variantString(map.value(QStringLiteral("xesam:title")));
-            if (map.contains(QStringLiteral("xesam:artist")))
-                m_mediaArtist = variantString(map.value(QStringLiteral("xesam:artist")));
-        }
+        const QVariantMap map = metadataMap(metadata);
+        if (map.contains(QStringLiteral("xesam:title")))
+            m_mediaTitle = variantString(map.value(QStringLiteral("xesam:title")));
+        if (map.contains(QStringLiteral("xesam:artist")))
+            m_mediaArtist = variantString(map.value(QStringLiteral("xesam:artist")));
     }
     if (changed.contains(QStringLiteral("PlaybackStatus")))
         m_mediaPlaying = variantString(changed.value(QStringLiteral("PlaybackStatus")))
@@ -569,8 +572,7 @@ void QuickSettings::pickMedia()
         call << QStringLiteral("org.mpris.MediaPlayer2.Player")
              << QStringLiteral("PlaybackStatus");
         const QDBusMessage reply = QDBusConnection::sessionBus().call(call, QDBus::BlockWithGui, 400);
-        if (reply.type() == QDBusMessage::ReplyMessage && !reply.arguments().isEmpty()
-            && reply.arguments().first().toString() == QLatin1String("Playing")) {
+        if (propertyValue(reply).toString() == QLatin1String("Playing")) {
             chosen = service;
             break;
         }
