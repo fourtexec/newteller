@@ -411,6 +411,7 @@ class Shell(QObject):
     startMenuToggleRequested = Signal()
     notificationsToggleRequested = Signal()
     quickSettingsToggleRequested = Signal()
+    clipboardToggleRequested = Signal()
     runDialogRequested = Signal()
 
     def __init__(self, desktop_dir, home_dir):
@@ -865,6 +866,32 @@ class Session(QObject):
         return {"us": "English (US)", "ru": "Russian"}.get(code, code)
 
 
+class ClipboardStub(QObject):
+    """Stand-in for the Clipboard context property (src/clipboardhistory.h)."""
+
+    itemsChanged = Signal()
+    available = Property(bool, lambda self: True, constant=True)
+
+    def __init__(self):
+        super().__init__()
+        self._items = ["first copied text", "second\nline"]
+        self.calls = []
+
+    items = Property("QVariantList", lambda self: self._items, notify=itemsChanged)
+
+    @Slot(int)
+    def copy(self, index):
+        self.calls.append(("copy", index))
+
+    @Slot(int)
+    def remove(self, index):
+        self.calls.append(("remove", index))
+
+    @Slot()
+    def clear(self):
+        self.calls.append(("clear",))
+
+
 class Quick(QObject):
     """Stand-in for the QuickSettings context property (src/quicksettings.h)."""
 
@@ -1007,11 +1034,13 @@ def main():
     system, window_list = System(), Windows()
     notifications, file_portal = Notifications(), FilePortal()
     tray, quick, session = Tray(), Quick(), Session()
+    clipboard = ClipboardStub()
     engine = QQmlApplicationEngine()
     for name, obj in (("Settings", settings), ("Theme", theme), ("Apps", apps), ("Shell", shell),
                       ("Plugins", plugin_manager), ("System", system), ("Windows", window_list),
                       ("Notifications", notifications), ("FilePortal", file_portal),
-                      ("Tray", tray), ("Quick", quick), ("Session", session)):
+                      ("Tray", tray), ("Quick", quick), ("Session", session),
+                      ("Clipboard", clipboard)):
         engine.rootContext().setContextProperty(name, obj)
 
     failures = []
@@ -1650,6 +1679,19 @@ def main():
                   f"the volume-up key raises the volume by 5% ({quick.calls})")
             osds = windows_of_kind("OsdPopup")
             check(bool(osds) and osds[0].isVisible(), "the volume key shows the on-screen level")
+
+            # Super+V reaches the shell over D-Bus and opens the history.
+            shell.clipboardToggleRequested.emit()
+            QTest.qWait(300)
+            clips = windows_of_kind("ClipboardPopup")
+            check(bool(clips) and clips[0].isVisible(), "Super+V opens the clipboard history")
+            if clips:
+                entries = clips[0].findChild(QObject, "clipboardList")
+                check(entries is not None and entries.property("count") == 2,
+                      "the clipboard history lists the copied texts")
+                shell.clipboardToggleRequested.emit()
+                QTest.qWait(400)
+                check(not clips[0].isVisible(), "Super+V again closes it")
             settings._values["notifications.doNotDisturb"] = dnd
             settings.valuesChanged.emit()
             QTest.qWait(50)

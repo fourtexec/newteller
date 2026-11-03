@@ -242,7 +242,8 @@ Settings::Settings(QObject *parent)
     // Clipboard
     m_defaults.insert(QStringLiteral("clipboard.historyEnabled"), true);
     m_defaults.insert(QStringLiteral("clipboard.historySize"), 100);
-    m_defaults.insert(QStringLiteral("clipboard.persistHistory"), true);
+    // Off by default: copied passwords should not end up on disk.
+    m_defaults.insert(QStringLiteral("clipboard.persistHistory"), false);
 
     // ===== Performance & Features =====
     // Animations

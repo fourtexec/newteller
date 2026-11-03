@@ -18,6 +18,11 @@ QtObject {
         screen: Qt.application.screens[0]
     }
 
+    // Super+V.
+    readonly property ClipboardPopup clipboard: ClipboardPopup {
+        screen: Qt.application.screens[0]
+    }
+
     // Volume / brightness / media level pill for the hardware keys.
     readonly property OsdPopup osd: OsdPopup {
         screen: Qt.application.screens[0]
@@ -196,6 +201,10 @@ QtObject {
         function onNotificationsToggleRequested() {
             root.startMenu.hide();
             root.notificationCenter.toggle();
+        }
+        function onClipboardToggleRequested() {
+            root.startMenu.hide();
+            root.clipboard.toggle();
         }
         function onQuickSettingsToggleRequested() {
             root.startMenu.hide();

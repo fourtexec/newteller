@@ -23,6 +23,7 @@
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
+#include <wlr/types/wlr_data_control_v1.h>
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_export_dmabuf_v1.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
@@ -2447,6 +2448,10 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
         shellAction("toggleQuickSettings");
         return true;
     }
+    if (logo && (sym == XKB_KEY_v || sym == XKB_KEY_V)) {
+        shellAction("toggleClipboard");
+        return true;
+    }
     if (logo && (sym == XKB_KEY_r || sym == XKB_KEY_R)) {
         shellAction("showRunDialog");
         return true;
@@ -4240,6 +4245,9 @@ static void setupProtocols(struct Server *server)
     wlr_subcompositor_create(server->display);
     wlr_data_device_manager_create(server->display);
     wlr_primary_selection_v1_device_manager_create(server->display);
+    // wlr-data-control: clipboard managers and wl-copy/wl-paste work without
+    // a focused window (clipboard history, screenshots to the clipboard).
+    wlr_data_control_manager_v1_create(server->display);
 
     server->outputLayout = wlr_output_layout_create(server->display);
     server->scene = wlr_scene_create();

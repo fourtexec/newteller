@@ -67,6 +67,8 @@ public:
     // Super+N and Super+A from the compositor.
     Q_INVOKABLE void toggleNotifications();
     Q_INVOKABLE void toggleQuickSettings();
+    // Super+V: the clipboard history.
+    Q_INVOKABLE void toggleClipboard();
     Q_INVOKABLE void openConfig() const;
     // Opens the path in the file manager (or its handler for directories).
     Q_INVOKABLE void openPath(const QString &path) const;
@@ -109,6 +111,7 @@ signals:
     void runDialogRequested();
     void notificationsToggleRequested();
     void quickSettingsToggleRequested();
+    void clipboardToggleRequested();
 
 private:
     QString expandHome(const QString &path) const;

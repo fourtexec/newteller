@@ -328,6 +328,11 @@ void ShellController::toggleQuickSettings()
     emit quickSettingsToggleRequested();
 }
 
+void ShellController::toggleClipboard()
+{
+    emit clipboardToggleRequested();
+}
+
 void ShellController::showRunDialog()
 {
     emit runDialogRequested();

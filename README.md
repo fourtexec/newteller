@@ -240,7 +240,7 @@ these shortcuts globally, even when an application has focus:
 `Super+Up`/`Super+Down` (maximise/restore), `Super+Shift+Left`/`Super+Shift+Right`
 (move to another output), `Super+D` (show desktop), `Super+M` (maximise),
 `Super+F` (fullscreen), `Super+L` (lock), `Super+Space` (next keyboard layout),
-`Super+N` (notifications), `Super+A` (quick settings), `Super+R` (run), `Super+E` (home
+`Super+V` (clipboard history), `Super+N` (notifications), `Super+A` (quick settings), `Super+R` (run), `Super+E` (home
 folder), `Super+I` (settings), `Super+Shift+S` (area screenshot),
 `Ctrl+Super+Left/Right` (switch desktop, with `Shift` to move the window),
 `Ctrl+Alt+F1…F12` (virtual terminals), `Print` (screenshot), a tap of `Super` on its own (open or close
