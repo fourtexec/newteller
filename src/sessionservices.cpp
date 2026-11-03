@@ -195,6 +195,9 @@ SessionServices::SessionServices(Settings *settings, QObject *parent)
         m_reconnect.stop();
         m_buffer.clear();
         sendCommand(QStringLiteral("watch"));
+        // A restarted compositor forgot the blur regions.
+        for (const QString &command : std::as_const(m_blurCommands))
+            sendCommand(command);
         emit compositorChanged();
     });
     connect(&m_socket, &QLocalSocket::disconnected, this, [this] {
@@ -531,7 +534,8 @@ void SessionServices::settingChanged(const QString &key)
     if (all || key.startsWith(QLatin1String("keyboard.")) || key.startsWith(QLatin1String("touchpad."))
         || key.startsWith(QLatin1String("workspaces.")) || key.startsWith(QLatin1String("decorations."))
         || key.startsWith(QLatin1String("shortcuts.")) || key.startsWith(QLatin1String("switcher."))
-        || key.startsWith(QLatin1String("lock.")) || key == QLatin1String("windows.focusFollowsMouse")
+        || key.startsWith(QLatin1String("lock.")) || key.startsWith(QLatin1String("effects."))
+        || key == QLatin1String("windows.focusFollowsMouse")
         || key == QLatin1String("windows.placement") || key == QLatin1String("windows.snapping")
         || key.startsWith(QLatin1String("mouse.")) || key.startsWith(QLatin1String("cursor."))
         || key == QLatin1String("desktop.wallpaper")) {
@@ -636,6 +640,17 @@ QString SessionServices::compositorConfigText() const
     text += confLine(QStringLiteral("windows.placement"), value("windows.placement").toString());
     text += confLine(QStringLiteral("windows.snapping"), boolText(value("windows.snapping")));
     text += confLine(QStringLiteral("switcher.allWorkspaces"), boolText(value("switcher.allWorkspaces")));
+
+    // Desktop effects.
+    text += confLine(QStringLiteral("effects.enabled"), boolText(value("effects.enabled")));
+    text += confLine(QStringLiteral("effects.cornerRadius"),
+                     QString::number(qBound(0, value("effects.cornerRadius").toInt(), 32)));
+    text += confLine(QStringLiteral("effects.blur"), boolText(value("effects.blur")));
+    text += confLine(QStringLiteral("effects.blurStrength"),
+                     QString::number(qBound(1, value("effects.blurStrength").toInt(), 4)));
+    text += confLine(QStringLiteral("effects.animations"), boolText(value("effects.animations")));
+    text += confLine(QStringLiteral("effects.animationSpeed"),
+                     QString::number(qBound(0.25, value("effects.animationSpeed").toDouble(), 4.0), 'f', 2));
 
     // The user's shortcuts: [{keys, command}].
     const QVariantList shortcuts = value("shortcuts.custom").toList();
@@ -1065,6 +1080,33 @@ QString SessionServices::cachedThumbnail(int id) const
         return QString();
     return QUrl::fromLocalFile(path).toString() + QStringLiteral("?v=")
            + QString::number(QFileInfo(path).lastModified().toMSecsSinceEpoch());
+}
+
+void SessionServices::setBlur(const QString &owner, const QString &scope, const QString &screen,
+                              int x, int y, int width, int height, int radius)
+{
+    if (scope.contains(QLatin1Char(' ')) || screen.contains(QLatin1Char(' ')) || scope.isEmpty()
+        || screen.isEmpty() || width <= 0 || height <= 0)
+        return;
+    const QString key = scope + QLatin1Char('|') + screen;
+    const QString command = QStringLiteral("blur %1 %2 %3 %4 %5 %6 %7")
+                                .arg(scope, screen).arg(x).arg(y).arg(width).arg(height)
+                                .arg(qMax(0, radius));
+    m_blurOwners.insert(key, owner);
+    if (m_blurCommands.value(key) == command)
+        return;
+    m_blurCommands.insert(key, command);
+    sendCommand(command);
+}
+
+void SessionServices::clearBlur(const QString &owner, const QString &scope, const QString &screen)
+{
+    const QString key = scope + QLatin1Char('|') + screen;
+    if (!m_blurOwners.contains(key) || m_blurOwners.value(key) != owner)
+        return;
+    m_blurOwners.remove(key);
+    m_blurCommands.remove(key);
+    sendCommand(QStringLiteral("blur-clear %1 %2").arg(scope, screen));
 }
 
 void SessionServices::activateWindow(int id)

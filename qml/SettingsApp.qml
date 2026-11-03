@@ -2439,6 +2439,60 @@ Window {
                         spacing: 16
 
                         SettingsSection {
+                            title: "Desktop effects"
+                            subtitle: "Drawn by the NewTeller compositor: rounded window corners, blur behind see-through panels and menus, and window animations."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Effects"
+                                subtitle: "Off: the plain, fastest drawing path."
+                                settingKey: "effects.enabled"
+                                SettingsSwitch { settingKey: "effects.enabled" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                visible: Settings.values["effects.enabled"] !== false
+                                title: "Window corner radius"
+                                subtitle: "0 = square corners."
+                                settingKey: "effects.cornerRadius"
+                                SettingsSlider { settingKey: "effects.cornerRadius"; from: 0; to: 24; step: 1; suffix: " px" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                visible: Settings.values["effects.enabled"] !== false
+                                title: "Blur behind panels and menus"
+                                subtitle: "Applies to frosted, liquid and translucent materials (Appearance)."
+                                settingKey: "effects.blur"
+                                SettingsSwitch { settingKey: "effects.blur" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                visible: Settings.values["effects.enabled"] !== false
+                                         && Settings.values["effects.blur"] !== false
+                                title: "Blur strength"
+                                settingKey: "effects.blurStrength"
+                                SettingsSlider { settingKey: "effects.blurStrength"; from: 1; to: 4; step: 1 }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                visible: Settings.values["effects.enabled"] !== false
+                                title: "Window animations"
+                                subtitle: "Open, close, minimize and desktop switching."
+                                settingKey: "effects.animations"
+                                SettingsSwitch { settingKey: "effects.animations" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                visible: Settings.values["effects.enabled"] !== false
+                                         && Settings.values["effects.animations"] !== false
+                                title: "Animation speed"
+                                subtitle: "1.0 = normal, 2.0 = twice as fast."
+                                settingKey: "effects.animationSpeed"
+                                SettingsSlider { settingKey: "effects.animationSpeed"; from: 0.5; to: 3.0; step: 0.1 }
+                            }
+                        }
+
+                        SettingsSection {
                             title: "Animation controls"
                             subtitle: "Enable or disable animations and adjust their speed."
 

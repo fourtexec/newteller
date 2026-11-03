@@ -65,6 +65,7 @@
 #include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
+#include <wlr/util/transform.h>
 #include <wlr/version.h>
 #include <wlr/xwayland/xwayland.h>
 
@@ -4868,7 +4869,11 @@ static bool renderEffectsFrame(struct Output *output)
 
     struct wlr_output_state state;
     wlr_output_state_init(&state);
+#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR >= 19
+    struct wlr_render_pass *pass = wlr_output_begin_render_pass(o, &state, NULL);
+#else
     struct wlr_render_pass *pass = wlr_output_begin_render_pass(o, &state, NULL, NULL);
+#endif
     if (!pass) {
         wlr_output_state_finish(&state);
         if (blurred)

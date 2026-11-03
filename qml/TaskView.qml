@@ -61,6 +61,15 @@ Window {
         visible = false;
     }
 
+    // The whole screen behind the overview is blurred.
+    onVisibleChanged: {
+        const screenName = view.screen ? view.screen.name : "";
+        if (visible)
+            Session.setBlur(String(view), "newteller-overview", screenName, 0, 0, width, height, 0);
+        else
+            Session.clearBlur(String(view), "newteller-overview", screenName);
+    }
+
     function toggle() {
         if (visible)
             hide();

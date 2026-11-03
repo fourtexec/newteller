@@ -271,6 +271,29 @@ Window {
         }
     }
 
+    // See-through cards ask the compositor to blur what is behind them.
+    function updateBlur() {
+        const owner = String(root);
+        const screenName = root.screen ? root.screen.name : "";
+        if (!root.visible || !card.wantsBlur || card.closing) {
+            Session.clearBlur(owner, root.scopeName, screenName);
+            return;
+        }
+        const r = card.cardRect;
+        Session.setBlur(owner, root.scopeName, screenName, Math.round(r.x), Math.round(r.y),
+                        Math.round(r.width), Math.round(r.height), card.effRadius);
+    }
+    Connections {
+        target: root
+        function onVisibleChanged() { Qt.callLater(root.updateBlur) }
+    }
+    Connections {
+        target: card
+        function onCardRectChanged() { Qt.callLater(root.updateBlur) }
+        function onWantsBlurChanged() { Qt.callLater(root.updateBlur) }
+        function onClosingChanged() { Qt.callLater(root.updateBlur) }
+    }
+
     ShellFrame {
         id: card
         anchors.fill: parent

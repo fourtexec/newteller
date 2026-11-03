@@ -184,6 +184,17 @@ if [[ $(msg output-set HEADLESS-1 off - 0 0 1 0 || true) == ok ]]; then
     exit 1
 fi
 
+# Effects: a blur region behind the panel is drawn without breaking the
+# frame (the renderer blurs the scene below the shell layers).
+if [[ $(msg blur newteller-panel HEADLESS-1 0 0 400 48 12 || true) != ok ]]; then
+    echo 'the compositor refused a blur region' >&2
+    exit 1
+fi
+sleep 0.5
+XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" grim -o HEADLESS-1 "$runtime/blur.png"
+"$python" "$root/tests/session_check.py" "$before" "$runtime/blur.png"
+msg blur-clear newteller-panel HEADLESS-1 >/dev/null
+
 # Blank and wake the screen the way the idle manager does.
 msg dpms off >/dev/null
 msg dpms on >/dev/null

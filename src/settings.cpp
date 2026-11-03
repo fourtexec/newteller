@@ -267,6 +267,13 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("apps.iconTheme"), QString());
     m_defaults.insert(QStringLiteral("apps.font"), QString());
     m_defaults.insert(QStringLiteral("apps.textScale"), 1.0);
+    // Desktop effects drawn by the compositor.
+    m_defaults.insert(QStringLiteral("effects.enabled"), true);
+    m_defaults.insert(QStringLiteral("effects.cornerRadius"), 10);
+    m_defaults.insert(QStringLiteral("effects.blur"), true);
+    m_defaults.insert(QStringLiteral("effects.blurStrength"), 2);
+    m_defaults.insert(QStringLiteral("effects.animations"), true);
+    m_defaults.insert(QStringLiteral("effects.animationSpeed"), 1.0);
     // Lock screen.
     m_defaults.insert(QStringLiteral("lock.color"), QStringLiteral("#1e1e2e"));
     m_defaults.insert(QStringLiteral("lock.useWallpaper"), true);

@@ -860,6 +860,14 @@ class Session(QObject):
     def cachedThumbnail(self, window_id):
         return ""
 
+    @Slot(str, str, str, int, int, int, int, int)
+    def setBlur(self, owner, scope, screen, x, y, width, height, radius):
+        self.calls.append(("setBlur", scope))
+
+    @Slot(str, str, str)
+    def clearBlur(self, owner, scope, screen):
+        self.calls.append(("clearBlur", scope))
+
     @Slot(int)
     def activateWindow(self, window_id):
         self.calls.append(("activateWindow", window_id))

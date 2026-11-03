@@ -34,6 +34,14 @@ Window {
         hideTimer.restart();
     }
 
+    onVisibleChanged: {
+        const screenName = osd.screen ? osd.screen.name : "";
+        if (visible)
+            Session.setBlur(String(osd), "newteller-osd", screenName, 0, 0, width, height, height / 2);
+        else
+            Session.clearBlur(String(osd), "newteller-osd", screenName);
+    }
+
     Timer {
         id: hideTimer
         interval: 1500

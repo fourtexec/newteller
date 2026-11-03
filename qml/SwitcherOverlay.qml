@@ -33,6 +33,18 @@ Window {
     LayerShell.Window.exclusionZone: -1
     LayerShell.Window.scope: "newteller-switcher"
 
+    onVisibleChanged: updateBlur()
+    onWidthChanged: updateBlur()
+    onHeightChanged: updateBlur()
+    function updateBlur() {
+        const screenName = overlay.screen ? overlay.screen.name : "";
+        if (visible)
+            Session.setBlur(String(overlay), "newteller-switcher", screenName, 0, 0, width, height,
+                            Theme.radius + 6);
+        else
+            Session.clearBlur(String(overlay), "newteller-switcher", screenName);
+    }
+
     function iconFor(entry) {
         const app = Apps.matchWindowApp(entry.appId || "", entry.title || "");
         return Shell.iconUrl(app && app.icon ? app.icon : "app-window");
