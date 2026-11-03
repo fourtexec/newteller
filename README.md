@@ -135,6 +135,9 @@ inside VirtualBox. The implemented pieces are:
   polkit refuses the built-in agent (no login session, no polkit daemon) no
   external one is started either - it would fail the same way and only show
   an "Error" window. The Security settings page shows the reason.
+- **Games and 3D views**: relative pointer motion and pointer locking or
+  confinement (pointer-constraints), so mouse look works in Wayland and
+  XWayland games, Blender and remote desktops.
 - **Drag and drop** between applications and inside them (files from the
   file manager into a browser or mail, text, tabs), with the dragged icon
   under the pointer.

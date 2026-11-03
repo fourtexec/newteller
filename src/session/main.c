@@ -48,6 +48,7 @@
 #include <wlr/types/wlr_presentation_time.h>
 #include <wlr/types/wlr_primary_selection.h>
 #include <wlr/types/wlr_primary_selection_v1.h>
+#include <wlr/types/wlr_pointer_constraints_v1.h>
 #include <wlr/types/wlr_relative_pointer_v1.h>
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_screencopy_v1.h>
@@ -66,6 +67,7 @@
 #include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
+#include <wlr/util/region.h>
 #include <wlr/util/transform.h>
 #include <wlr/version.h>
 #include <wlr/xwayland/xwayland.h>
@@ -197,6 +199,7 @@ static void destroyGhost(struct Ghost *ghost);
 static void viewRestoreGeometry(struct View *view, int x, int y, int width, int height);
 static pid_t viewPid(struct View *view);
 static void updateIdleInhibited(struct Server *server);
+static bool surfaceLayoutPosition(struct Server *server, struct wlr_surface *surface, int *x, int *y);
 struct Keyboard;
 static struct wlr_input_method_keyboard_grab_v2 *keyboardImGrab(struct Keyboard *keyboard);
 
@@ -640,6 +643,12 @@ struct Server {
     struct wl_listener requestStartDrag;
     struct wl_listener startDrag;
     struct wlr_scene_tree *dragIconTree;
+    // Relative motion and pointer locking/confinement (games, Blender,
+    // remote desktops; XWayland uses both for X11 games).
+    struct wlr_relative_pointer_manager_v1 *relativePointers;
+    struct wlr_pointer_constraints_v1 *pointerConstraints;
+    struct wlr_pointer_constraint_v1 *activeConstraint;
+    struct wl_listener newPointerConstraint;
     struct wl_listener newXdgToplevel;
     struct wl_listener newXdgPopup;
     struct wl_listener newLayerSurface;
@@ -2419,10 +2428,85 @@ static struct Hit hitTest(struct Server *server, double lx, double ly)
     return hit;
 }
 
+// ---------------------------------------------------------------------------
+// Pointer constraints (locked / confined pointer)
+// ---------------------------------------------------------------------------
+
+struct PointerConstraint {
+    struct Server *server;
+    struct wlr_pointer_constraint_v1 *constraint;
+    struct wl_listener destroy;
+};
+
+// A locked pointer reappears where the application hinted (the crosshair).
+static void constraintWarpToHint(struct Server *server, struct wlr_pointer_constraint_v1 *constraint)
+{
+    if (constraint->type != WLR_POINTER_CONSTRAINT_V1_LOCKED
+        || !(constraint->current.committed & WLR_POINTER_CONSTRAINT_V1_STATE_CURSOR_HINT))
+        return;
+    int x = 0;
+    int y = 0;
+    if (!surfaceLayoutPosition(server, constraint->surface, &x, &y))
+        return;
+    const double sx = constraint->current.cursor_hint.x;
+    const double sy = constraint->current.cursor_hint.y;
+    wlr_cursor_warp(server->cursor, NULL, x + sx, y + sy);
+    wlr_seat_pointer_warp(server->seat, sx, sy);
+}
+
+static void setActiveConstraint(struct Server *server, struct wlr_pointer_constraint_v1 *constraint)
+{
+    if (server->activeConstraint == constraint)
+        return;
+    if (server->activeConstraint) {
+        constraintWarpToHint(server, server->activeConstraint);
+        wlr_pointer_constraint_v1_send_deactivated(server->activeConstraint);
+    }
+    server->activeConstraint = constraint;
+    if (constraint)
+        wlr_pointer_constraint_v1_send_activated(constraint);
+}
+
+// The constraint of the surface under the pointer is the active one; none
+// while the session is locked.
+static void updateActiveConstraint(struct Server *server)
+{
+    struct wlr_surface *surface = server->seat->pointer_state.focused_surface;
+    struct wlr_pointer_constraint_v1 *constraint = NULL;
+    if (surface && !server->locked && server->pointerConstraints)
+        constraint = wlr_pointer_constraints_v1_constraint_for_surface(server->pointerConstraints,
+                                                                       surface, server->seat);
+    setActiveConstraint(server, constraint);
+}
+
+static void pointerConstraintDestroy(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct PointerConstraint *entry = wl_container_of(listener, entry, destroy);
+    if (entry->server->activeConstraint == entry->constraint)
+        entry->server->activeConstraint = NULL;
+    wl_list_remove(&entry->destroy.link);
+    free(entry);
+}
+
+static void handleNewPointerConstraint(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, newPointerConstraint);
+    struct wlr_pointer_constraint_v1 *constraint = data;
+    struct PointerConstraint *entry = xcalloc(1, sizeof(*entry));
+    entry->server = server;
+    entry->constraint = constraint;
+    entry->destroy.notify = pointerConstraintDestroy;
+    wl_signal_add(&constraint->events.destroy, &entry->destroy);
+    if (!server->locked && constraint->surface == server->seat->pointer_state.focused_surface)
+        setActiveConstraint(server, constraint);
+}
+
 static void pointerFocus(struct Server *server, const struct Hit *hit)
 {
     if (!hit->surface) {
         wlr_seat_pointer_clear_focus(server->seat);
+        updateActiveConstraint(server);
         return;
     }
     const char *role = "?";
@@ -2433,6 +2517,7 @@ static void pointerFocus(struct Server *server, const struct Hit *hit)
     wlr_log(WLR_DEBUG, "pointer enter %s at %.0f,%.0f", role,
             hit->sx, hit->sy);
     wlr_seat_pointer_notify_enter(server->seat, hit->surface, hit->sx, hit->sy);
+    updateActiveConstraint(server);
 }
 
 // Re-evaluates which surface is under the pointer after the scene changed
@@ -2565,8 +2650,33 @@ static void cursorMotion(struct wl_listener *listener, void *data)
     struct Server *server = wl_container_of(listener, server, cursorMotion);
     struct wlr_pointer_motion_event *event = data;
     notifyActivity(server);
-    wlr_cursor_move(server->cursor, &event->pointer->base,
-                    event->delta_x, event->delta_y);
+    // Raw movement for games and 3D views, whether or not the pointer moves.
+    wlr_relative_pointer_manager_v1_send_relative_motion(
+        server->relativePointers, server->seat, (uint64_t)event->time_msec * 1000,
+        event->delta_x, event->delta_y, event->unaccel_dx, event->unaccel_dy);
+    double dx = event->delta_x;
+    double dy = event->delta_y;
+    struct wlr_pointer_constraint_v1 *constraint = server->activeConstraint;
+    if (constraint && server->cursorMode == CURSOR_PASSTHROUGH) {
+        // Locked: the pointer stays put, the application gets the motion.
+        if (constraint->type == WLR_POINTER_CONSTRAINT_V1_LOCKED)
+            return;
+        // Confined: it stops at the edge of the allowed region.
+        int originX = 0;
+        int originY = 0;
+        if (surfaceLayoutPosition(server, constraint->surface, &originX, &originY)) {
+            const double sx = server->cursor->x - originX;
+            const double sy = server->cursor->y - originY;
+            double confinedX = 0;
+            double confinedY = 0;
+            if (wlr_region_confine(&constraint->region, sx, sy, sx + dx, sy + dy, &confinedX,
+                                   &confinedY)) {
+                dx = confinedX - sx;
+                dy = confinedY - sy;
+            }
+        }
+    }
+    wlr_cursor_move(server->cursor, &event->pointer->base, dx, dy);
     processCursorMotion(server, event->time_msec);
 }
 
@@ -7353,7 +7463,10 @@ static void setupProtocols(struct Server *server)
     server->lockManager = wlr_session_lock_manager_v1_create(server->display);
     server->newLock.notify = handleNewLock;
     wl_signal_add(&server->lockManager->events.new_lock, &server->newLock);
-    wlr_relative_pointer_manager_v1_create(server->display);
+    server->relativePointers = wlr_relative_pointer_manager_v1_create(server->display);
+    server->pointerConstraints = wlr_pointer_constraints_v1_create(server->display);
+    server->newPointerConstraint.notify = handleNewPointerConstraint;
+    wl_signal_add(&server->pointerConstraints->events.new_constraint, &server->newPointerConstraint);
     wlr_viewporter_create(server->display);
     wlr_fractional_scale_manager_v1_create(server->display, 1);
     wlr_single_pixel_buffer_manager_v1_create(server->display);
@@ -7716,6 +7829,7 @@ static int run(struct Server *server)
     wl_list_remove(&server->requestSetSelection.link);
     wl_list_remove(&server->requestSetPrimarySelection.link);
     wl_list_remove(&server->requestStartDrag.link);
+    wl_list_remove(&server->newPointerConstraint.link);
     wl_list_remove(&server->startDrag.link);
     detachLock(server);
     wl_list_remove(&server->newLock.link);

@@ -143,6 +143,8 @@ endif()
 # ---------------------------------------------------------------------------
 set(NEWTELLER_LAYER_SHELL_HEADER ${CMAKE_BINARY_DIR}/wlr-layer-shell-unstable-v1-protocol.h)
 set(NEWTELLER_XDG_SHELL_HEADER ${CMAKE_BINARY_DIR}/xdg-shell-protocol.h)
+# wlr_pointer_constraints_v1.h includes this generated header.
+set(NEWTELLER_POINTER_CONSTRAINTS_HEADER ${CMAKE_BINARY_DIR}/pointer-constraints-unstable-v1-protocol.h)
 add_custom_command(
     OUTPUT ${NEWTELLER_LAYER_SHELL_HEADER}
     COMMAND ${WAYLAND_SCANNER_EXECUTABLE} server-header
@@ -157,12 +159,20 @@ add_custom_command(
             ${NEWTELLER_XDG_SHELL_HEADER}
     DEPENDS ${CMAKE_SOURCE_DIR}/protocols/xdg-shell.xml
     COMMENT "Generating xdg-shell protocol header")
+add_custom_command(
+    OUTPUT ${NEWTELLER_POINTER_CONSTRAINTS_HEADER}
+    COMMAND ${WAYLAND_SCANNER_EXECUTABLE} server-header
+            ${CMAKE_SOURCE_DIR}/protocols/pointer-constraints-unstable-v1.xml
+            ${NEWTELLER_POINTER_CONSTRAINTS_HEADER}
+    DEPENDS ${CMAKE_SOURCE_DIR}/protocols/pointer-constraints-unstable-v1.xml
+    COMMENT "Generating pointer-constraints protocol header")
 
 add_executable(newteller-compositor
     src/session/main.c
     src/session/config.c
     ${NEWTELLER_LAYER_SHELL_HEADER}
     ${NEWTELLER_XDG_SHELL_HEADER}
+    ${NEWTELLER_POINTER_CONSTRAINTS_HEADER}
 )
 target_compile_definitions(newteller-compositor PRIVATE
     WLR_USE_UNSTABLE
