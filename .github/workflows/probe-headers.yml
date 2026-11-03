@@ -1,0 +1,32 @@
+# Temporary: prints wlroots headers so the compositor code can match them.
+name: Probe wlroots headers
+on:
+  push:
+    branches: ['claude/**']
+    paths: ['.github/workflows/probe-headers.yml']
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        include:
+          - image: debian:13
+            pkg: libwlroots-0.18-dev
+          - image: ubuntu:26.04
+            pkg: libwlroots-0.19-dev
+    container: ${{ matrix.image }}
+    steps:
+      - run: |
+          apt-get update >/dev/null
+          apt-get install -y --no-install-recommends ${{ matrix.pkg }} libinput-dev >/dev/null
+          inc=$(find /usr/include -maxdepth 2 -type d -name 'wlroots-0.1*' | head -1)
+          echo "INCLUDE=$inc"
+          for f in wlr_session_lock_v1 wlr_gamma_control_v1 wlr_output_power_management_v1 \
+                   wlr_idle_inhibit_v1 wlr_idle_notifier_v1 wlr_output_management_v1 wlr_scene; do
+            p="$inc/wlr/types/$f.h"
+            echo "=================== $f"
+            grep -v '^ \*\|^/\*\*\|^$' "$p" | grep -n '' | sed -n '1,400p' | grep -E 'include|struct|void|bool|uint|int |enum|wl_signal|;' | head -150
+          done
+          echo "=================== backend/libinput"
+          cat "$inc/wlr/backend/libinput.h"
+          ls "$inc/wlr/types/" | tr '\n' ' '
