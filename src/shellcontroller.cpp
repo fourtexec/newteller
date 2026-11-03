@@ -333,6 +333,11 @@ void ShellController::toggleClipboard()
     emit clipboardToggleRequested();
 }
 
+void ShellController::toggleTaskView()
+{
+    emit taskViewToggleRequested();
+}
+
 void ShellController::showRunDialog()
 {
     emit runDialogRequested();

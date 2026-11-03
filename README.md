@@ -98,7 +98,11 @@ inside VirtualBox. The implemented pieces are:
   settings)
 - System monitor (`System` object, on a shared ticker) with bundled panel and
   desktop widgets
-- **Surface materials:** configure panel, dock buttons, floating shell windows and notifications independently as theme, opaque, half-transparent, frosted glass or liquid glass. These are lightweight Qt Quick layers; real backdrop blur is compositor-specific and is not required.
+- **Surface materials:** configure panel, dock buttons, floating shell windows and notifications independently as theme, opaque, half-transparent, frosted glass or liquid glass. Inside a NewTeller session the compositor blurs what is behind see-through menus, the dock, the overview, Alt+Tab and the on-screen display.
+- **Desktop effects** (Settings → Animations → Desktop effects): rounded window
+  corners, backdrop blur, and window animations (open, close, minimize, restore,
+  sliding desktop switches), drawn by the compositor's own renderer; off falls
+  back to the plain wlroots scene renderer.
 - Themes (JSON, including `nord`, `ocean` and `highcontrast`) and a settings file
   with live reload
 - Plugin system (manifest + QML) with enable/disable and auto-rescan
@@ -131,6 +135,22 @@ inside VirtualBox. The implemented pieces are:
   wlr-randr, kanshi) change resolution, refresh rate, scale, rotation and
   arrangement; NewTeller remembers the settings per monitor
   (`~/.config/newteller/outputs.conf`) and starts high-density panels at 200%.
+- **Title bars for every window.** Applications that want the window manager
+  to draw their frame (Qt/KDE apps, X11 programs, terminals, Chromium with
+  "system title bar") get one: title, minimize/maximize/close, double click to
+  maximize, drag to move, edges to resize. Buttons left or right, height,
+  border, font and colours (or the theme's) in Settings → Windows.
+- **Overview** (`Super+Tab`): every window of a desktop as a live thumbnail,
+  desktops along the top; click to switch, close, or move a window to
+  another desktop. Alt+Tab shows thumbnails too.
+- **Displays page**: resolution, refresh rate, scale, rotation, position and
+  on/off for each screen, with a 15-second "keep these settings?" revert.
+- **Bluetooth** in quick settings: power, connect, disconnect, pair, forget.
+- **Window behaviour and shortcuts**: focus follows mouse, placement of new
+  windows, edge snapping, Alt+Tab across desktops, wrapping desktops, and
+  your own key combinations for any command.
+- **Application look**: dark/light preference, GTK theme, icon theme,
+  application font and text size, cursor theme; lock screen colour.
 - **Wi-Fi networks** from quick settings: scan, join (with the password asked
   inline for new secured networks), disconnect; NetworkManager keeps them.
 - **Clipboard history** on `Super+V` (wl-clipboard): the texts copied in the

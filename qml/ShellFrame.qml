@@ -161,6 +161,10 @@ Rectangle {
                                   ? 0 : Math.max(0, Math.min(3, Settings.values["windows.shadow"] ?? 1))
     // Room between the window edge and the card; the shadow lives there.
     readonly property int inset: shadow > 0 ? 2 + 2 * shadow : 2
+    // The visible card, for the compositor's blur behind it.
+    readonly property rect cardRect: Qt.rect(card.x, card.y, card.width, card.height)
+    readonly property bool wantsBlur: surfaceMaterial === "frosted" || surfaceMaterial === "liquid"
+                                      || surfaceMaterial === "translucent"
     readonly property int effRadius: {
         if (frame.cornerRadiusOverride >= 0)
             return Math.min(32, frame.cornerRadiusOverride);

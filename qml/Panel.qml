@@ -97,6 +97,25 @@ Window {
     readonly property color panelTextColor: useCustomPanelColors && panelForegroundColor.length > 0
                                            ? Qt.color(panelForegroundColor) : Theme.foreground
     readonly property string dockMaterial: Settings.values["dock.material"] || "none"
+    // The floating dock pill (set by the bar layouts) and whether the
+    // compositor should blur behind it.
+    property Item dockPill: null
+    readonly property bool dockBlurs: ["frosted", "liquid", "translucent"].indexOf(dockMaterial) >= 0
+    function updateBlur() {
+        const screenName = panel.screen ? panel.screen.name : "";
+        if (!panel.visible || !panel.dockPill || !panel.dockBlurs || !panel.revealed) {
+            Session.clearBlur(String(panel), "newteller-panel", screenName);
+            return;
+        }
+        const p = panel.dockPill.mapToItem(null, 0, 0);
+        Session.setBlur(String(panel), "newteller-panel", screenName, Math.round(p.x), Math.round(p.y),
+                        Math.round(panel.dockPill.width), Math.round(panel.dockPill.height),
+                        Math.round(Math.min(panel.dockPill.width, panel.dockPill.height) / 2));
+    }
+    onDockBlursChanged: Qt.callLater(panel.updateBlur)
+    onRevealedChanged: Qt.callLater(panel.updateBlur)
+    onWidthChanged: Qt.callLater(panel.updateBlur)
+    onHeightChanged: Qt.callLater(panel.updateBlur)
     readonly property color dockSurfaceColor: Settings.values["dock.backgroundColor"]
                                               && Settings.values["dock.backgroundColor"].length > 0
                                               ? Qt.color(Settings.values["dock.backgroundColor"])
@@ -1268,6 +1287,12 @@ Window {
                 width: Math.min(horizontalRoot.width - 8,
                                 dockLayout.implicitWidth + panel.dockPadding * 2)
                 height: Math.max(34, panel.barThickness - 4)
+                Component.onCompleted: {
+                    panel.dockPill = dockCluster;
+                    Qt.callLater(panel.updateBlur);
+                }
+                onWidthChanged: Qt.callLater(panel.updateBlur)
+                onXChanged: Qt.callLater(panel.updateBlur)
 
                 DockSurface {
                     anchors.fill: parent

@@ -147,6 +147,61 @@ if [[ $reply != 'ok 0' ]]; then
     echo "a fresh session reports itself locked ($reply)" >&2
     exit 1
 fi
+# The overview's data: the test window is listed and its thumbnail is read
+# back from the renderer into a PNG.
+reply=$(msg windows || true)
+window_id=$(printf '%s' "${reply#ok }" | cut -d $'\x1f' -f1 | cut -d $'\x1e' -f1)
+if [[ $reply != ok* || -z $window_id ]]; then
+    echo "the compositor lists no windows ($reply)" >&2
+    exit 1
+fi
+reply=$(msg thumbnail "$window_id" 200 || true)
+thumb=${reply#ok }
+if [[ $reply != ok* || ! -s $thumb ]]; then
+    echo "no thumbnail for window $window_id ($reply)" >&2
+    exit 1
+fi
+echo "session smoke: window $window_id has a thumbnail ($(stat -c %s "$thumb") bytes)"
+
+# Settings -> Displays goes through output-set.
+reply=$(msg outputs-detail || true)
+if [[ $reply != ok\ HEADLESS-1* ]]; then
+    echo "outputs-detail does not describe the headless output ($reply)" >&2
+    exit 1
+fi
+reply=$(msg output-set HEADLESS-1 on 1280x800@0 0 0 1.50 0 || true)
+if [[ $reply != ok ]]; then
+    echo "output-set was refused ($reply)" >&2
+    exit 1
+fi
+if [[ $(msg outputs || true) != *':1.50:on'* ]]; then
+    echo 'output-set did not change the scale' >&2
+    exit 1
+fi
+msg output-set HEADLESS-1 on 1280x800@0 0 0 1.00 0 >/dev/null
+if [[ $(msg output-set HEADLESS-1 off - 0 0 1 0 || true) == ok ]]; then
+    echo 'the last screen could be switched off' >&2
+    exit 1
+fi
+
+# Effects: a blur region behind the panel is drawn without breaking the
+# frame (the renderer blurs the scene below the shell layers).
+if [[ $(msg blur newteller-panel HEADLESS-1 0 0 400 48 12 || true) != ok ]]; then
+    echo 'the compositor refused a blur region' >&2
+    exit 1
+fi
+sleep 0.5
+XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" grim -o HEADLESS-1 "$runtime/blur.png"
+"$python" "$root/tests/session_check.py" "$before" "$runtime/blur.png"
+msg blur-clear newteller-panel HEADLESS-1 >/dev/null
+# The frames above came from the effects renderer, not the fallback.
+read -r _ effects_state effect_frames fallback_frames <<<"$(msg effects || true)"
+if [[ $effects_state != on || ${effect_frames:-0} -lt 10 ]]; then
+    echo "the effects renderer did not draw ($effects_state, $effect_frames frames, $fallback_frames fallbacks)" >&2
+    exit 1
+fi
+echo "session smoke: effects renderer drew $effect_frames frames ($fallback_frames fallbacks)"
+
 # Blank and wake the screen the way the idle manager does.
 msg dpms off >/dev/null
 msg dpms on >/dev/null

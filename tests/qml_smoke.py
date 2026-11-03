@@ -412,6 +412,7 @@ class Shell(QObject):
     notificationsToggleRequested = Signal()
     quickSettingsToggleRequested = Signal()
     clipboardToggleRequested = Signal()
+    taskViewToggleRequested = Signal()
     runDialogRequested = Signal()
 
     def __init__(self, desktop_dir, home_dir):
@@ -842,6 +843,70 @@ class Session(QObject):
         self.calls.append(("disconnectWifi",))
 
     @Slot(result="QVariantList")
+    def windows(self):
+        return [{"id": 1, "workspace": 0, "appId": "firefox", "title": "Web", "focused": True,
+                 "minimized": False, "maximized": False},
+                {"id": 2, "workspace": 0, "appId": "org.gnome.Terminal", "title": "Shell",
+                 "focused": False, "minimized": False, "maximized": False},
+                {"id": 3, "workspace": 1, "appId": "", "title": "Elsewhere", "focused": False,
+                 "minimized": True, "maximized": False}]
+
+    @Slot(int, int, result=str)
+    def thumbnail(self, window_id, size):
+        self.calls.append(("thumbnail", window_id))
+        return ""
+
+    @Slot(int, result=str)
+    def cachedThumbnail(self, window_id):
+        return ""
+
+    @Slot(str, str, str, int, int, int, int, int)
+    def setBlur(self, owner, scope, screen, x, y, width, height, radius):
+        self.calls.append(("setBlur", scope))
+
+    @Slot(str, str, str)
+    def clearBlur(self, owner, scope, screen):
+        self.calls.append(("clearBlur", scope))
+
+    @Slot(int)
+    def activateWindow(self, window_id):
+        self.calls.append(("activateWindow", window_id))
+
+    @Slot(int)
+    def closeWindow(self, window_id):
+        self.calls.append(("closeWindow", window_id))
+
+    @Slot(int, int)
+    def moveWindow(self, window_id, workspace):
+        self.calls.append(("moveWindow", window_id, workspace))
+
+    @Slot(result="QVariantList")
+    def outputs(self):
+        return [{"name": "HDMI-A-1", "description": "Test Monitor", "enabled": True,
+                 "width": 1920, "height": 1080, "refresh": 60000, "x": 0, "y": 0,
+                 "scale": 1.0, "transform": 0,
+                 "modes": [{"width": 1920, "height": 1080, "refresh": 60000},
+                           {"width": 1920, "height": 1080, "refresh": 144000},
+                           {"width": 1280, "height": 720, "refresh": 60000}]}]
+
+    @Slot(str, bool, int, int, int, int, int, float, int, result=str)
+    def setOutput(self, name, enabled, width, height, refresh, x, y, scale, transform):
+        self.calls.append(("setOutput", name, width, height))
+        return ""
+
+    @Slot(result="QVariantList")
+    def gtkThemes(self):
+        return ["Adwaita", "Adwaita-dark"]
+
+    @Slot(result="QVariantList")
+    def iconThemes(self):
+        return ["Adwaita", "hicolor"]
+
+    @Slot(result="QVariantList")
+    def cursorThemes(self):
+        return ["Adwaita", "DMZ-White"]
+
+    @Slot(result="QVariantList")
     def autostartEntries(self):
         return [{"name": "Network", "file": "/etc/xdg/autostart/nm-applet.desktop",
                  "exec": "nm-applet"}]
@@ -889,6 +954,55 @@ class Session(QObject):
     @Slot(str, result=str)
     def layoutDisplayName(self, code):
         return {"us": "English (US)", "ru": "Russian"}.get(code, code)
+
+
+class BluetoothStub(QObject):
+    """Stand-in for the Bluetooth context property (src/bluetooth.h)."""
+
+    changed = Signal()
+    operationFinished = Signal(str, str)
+    available = Property(bool, lambda self: True, notify=changed)
+    powered = Property(bool, lambda self: True, notify=changed)
+    discovering = Property(bool, lambda self: False, notify=changed)
+    busyDevice = Property(str, lambda self: "", notify=changed)
+    devices = Property("QVariantList", lambda self: [
+        {"path": "/org/bluez/hci0/dev_1", "address": "00:11", "name": "Headphones",
+         "icon": "audio-headset", "paired": True, "connected": True, "trusted": True, "rssi": -40},
+        {"path": "/org/bluez/hci0/dev_2", "address": "00:22", "name": "Mouse",
+         "icon": "input-mouse", "paired": False, "connected": False, "trusted": False, "rssi": -60}],
+        notify=changed)
+
+    def __init__(self):
+        super().__init__()
+        self.calls = []
+
+    @Slot(bool)
+    def setPowered(self, on):
+        self.calls.append(("setPowered", on))
+
+    @Slot()
+    def startDiscovery(self):
+        self.calls.append(("startDiscovery",))
+
+    @Slot()
+    def stopDiscovery(self):
+        self.calls.append(("stopDiscovery",))
+
+    @Slot(str)
+    def connectDevice(self, path):
+        self.calls.append(("connectDevice", path))
+
+    @Slot(str)
+    def disconnectDevice(self, path):
+        self.calls.append(("disconnectDevice", path))
+
+    @Slot(str)
+    def pairDevice(self, path):
+        self.calls.append(("pairDevice", path))
+
+    @Slot(str)
+    def forgetDevice(self, path):
+        self.calls.append(("forgetDevice", path))
 
 
 class ClipboardStub(QObject):
@@ -1060,12 +1174,13 @@ def main():
     notifications, file_portal = Notifications(), FilePortal()
     tray, quick, session = Tray(), Quick(), Session()
     clipboard = ClipboardStub()
+    bluetooth = BluetoothStub()
     engine = QQmlApplicationEngine()
     for name, obj in (("Settings", settings), ("Theme", theme), ("Apps", apps), ("Shell", shell),
                       ("Plugins", plugin_manager), ("System", system), ("Windows", window_list),
                       ("Notifications", notifications), ("FilePortal", file_portal),
                       ("Tray", tray), ("Quick", quick), ("Session", session),
-                      ("Clipboard", clipboard)):
+                      ("Clipboard", clipboard), ("Bluetooth", bluetooth)):
         engine.rootContext().setContextProperty(name, obj)
 
     failures = []
@@ -1717,6 +1832,37 @@ def main():
                 shell.clipboardToggleRequested.emit()
                 QTest.qWait(400)
                 check(not clips[0].isVisible(), "Super+V again closes it")
+
+            # Super+Tab: the overview lists the windows of the current desktop.
+            shell.taskViewToggleRequested.emit()
+            QTest.qWait(300)
+            views = windows_of_kind("TaskView")
+            check(bool(views) and views[0].isVisible(), "Super+Tab opens the window overview")
+            if views:
+                grid = views[0].findChild(QQuickItem, "taskViewGrid")
+                shown = [c for c in (grid.childItems() if grid else [])
+                         if c.metaObject().className().startswith("QQuickRectangle")]
+                check(len(shown) == 2, f"the overview shows the two windows of desktop 1 ({len(shown)})")
+                check(("thumbnail", 1) in session.calls, "the overview asks for thumbnails")
+                shell.taskViewToggleRequested.emit()
+                QTest.qWait(200)
+                check(not views[0].isVisible(), "Super+Tab again closes the overview")
+
+            # The Bluetooth list scans while open and shows the devices.
+            bts = windows_of_kind("BluetoothPopup")
+            if bts:
+                bluetooth.calls.clear()
+                QMetaObject.invokeMethod(bts[0], "show")
+                QTest.qWait(300)
+                check(("startDiscovery",) in bluetooth.calls, "opening the Bluetooth list scans")
+                bt_list = bts[0].findChild(QObject, "bluetoothList")
+                check(bt_list is not None and bt_list.property("count") == 2,
+                      "the Bluetooth list shows the devices")
+                QMetaObject.invokeMethod(bts[0], "hide")
+                QTest.qWait(400)
+                check(("stopDiscovery",) in bluetooth.calls, "closing the Bluetooth list stops scanning")
+            else:
+                check(False, "the Bluetooth device list exists")
 
             # The Wi-Fi list scans on the way in and lists the networks.
             wifis = windows_of_kind("WifiPopup")

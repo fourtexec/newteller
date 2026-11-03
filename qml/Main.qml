@@ -113,6 +113,16 @@ QtObject {
         screen: Qt.application.screens[0]
         notificationCenter: root.notificationCenter
         wifiPopup: root.wifiPopup
+        bluetoothPopup: root.bluetoothPopup
+    }
+
+    readonly property BluetoothPopup bluetoothPopup: BluetoothPopup {
+        screen: Qt.application.screens[0]
+    }
+
+    // Super+Tab: every window as a thumbnail, desktops on top.
+    readonly property TaskView taskView: TaskView {
+        screen: Qt.application.screens[0]
     }
 
     readonly property WifiPopup wifiPopup: WifiPopup {
@@ -206,6 +216,10 @@ QtObject {
         function onNotificationsToggleRequested() {
             root.startMenu.hide();
             root.notificationCenter.toggle();
+        }
+        function onTaskViewToggleRequested() {
+            root.startMenu.hide();
+            root.taskView.toggle();
         }
         function onClipboardToggleRequested() {
             root.startMenu.hide();

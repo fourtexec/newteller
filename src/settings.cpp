@@ -239,6 +239,44 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("workspaces.showOnPanel"), true);
     // The Alt+Tab overlay with the windows and their titles.
     m_defaults.insert(QStringLiteral("switcher.showOverlay"), true);
+    m_defaults.insert(QStringLiteral("switcher.allWorkspaces"), false);
+    m_defaults.insert(QStringLiteral("workspaces.wrap"), false);
+    // Title bars drawn by the compositor for windows that want them.
+    m_defaults.insert(QStringLiteral("decorations.server"), true);
+    m_defaults.insert(QStringLiteral("decorations.followTheme"), true);
+    m_defaults.insert(QStringLiteral("decorations.titleHeight"), 30);
+    m_defaults.insert(QStringLiteral("decorations.border"), 1);
+    m_defaults.insert(QStringLiteral("decorations.buttonsLeft"), false);
+    m_defaults.insert(QStringLiteral("decorations.titleCentered"), true);
+    m_defaults.insert(QStringLiteral("decorations.showMinimize"), true);
+    m_defaults.insert(QStringLiteral("decorations.showMaximize"), true);
+    m_defaults.insert(QStringLiteral("decorations.font"), QString());
+    m_defaults.insert(QStringLiteral("decorations.activeBackground"), QStringLiteral("#2b2e3b"));
+    m_defaults.insert(QStringLiteral("decorations.activeForeground"), QStringLiteral("#f2f2f5"));
+    m_defaults.insert(QStringLiteral("decorations.inactiveBackground"), QStringLiteral("#1f212b"));
+    m_defaults.insert(QStringLiteral("decorations.inactiveForeground"), QStringLiteral("#8c8f9c"));
+    m_defaults.insert(QStringLiteral("decorations.closeHover"), QStringLiteral("#e5484d"));
+    // Window behaviour (compositor).
+    m_defaults.insert(QStringLiteral("windows.focusFollowsMouse"), false);
+    m_defaults.insert(QStringLiteral("windows.placement"), QStringLiteral("cascade"));
+    m_defaults.insert(QStringLiteral("windows.snapping"), true);
+    // The user's own shortcuts: [{ "keys": "Super+T", "command": "..." }].
+    m_defaults.insert(QStringLiteral("shortcuts.custom"), QVariantList());
+    // Applications' look (GTK/GNOME settings).
+    m_defaults.insert(QStringLiteral("apps.gtkTheme"), QString());
+    m_defaults.insert(QStringLiteral("apps.iconTheme"), QString());
+    m_defaults.insert(QStringLiteral("apps.font"), QString());
+    m_defaults.insert(QStringLiteral("apps.textScale"), 1.0);
+    // Desktop effects drawn by the compositor.
+    m_defaults.insert(QStringLiteral("effects.enabled"), true);
+    m_defaults.insert(QStringLiteral("effects.cornerRadius"), 10);
+    m_defaults.insert(QStringLiteral("effects.blur"), true);
+    m_defaults.insert(QStringLiteral("effects.blurStrength"), 2);
+    m_defaults.insert(QStringLiteral("effects.animations"), true);
+    m_defaults.insert(QStringLiteral("effects.animationSpeed"), 1.0);
+    // Lock screen.
+    m_defaults.insert(QStringLiteral("lock.color"), QStringLiteral("#1e1e2e"));
+    m_defaults.insert(QStringLiteral("lock.useWallpaper"), true);
     // Clipboard
     m_defaults.insert(QStringLiteral("clipboard.historyEnabled"), true);
     m_defaults.insert(QStringLiteral("clipboard.historySize"), 100);

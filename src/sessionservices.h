@@ -5,6 +5,7 @@
 #include <QProcess>
 #include <QStringList>
 #include <QTimer>
+#include <QHash>
 #include <QVariant>
 
 class Settings;
@@ -54,6 +55,8 @@ class SessionServices : public QObject
 
 public:
     explicit SessionServices(Settings *settings, QObject *parent = nullptr);
+    // The shell theme: title bars can follow its colours and font.
+    void setTheme(QObject *theme);
     ~SessionServices() override;
 
     bool compositorConnected() const;
@@ -78,6 +81,38 @@ public:
     QString powerProfile() const { return m_powerProfile; }
     QStringList powerProfiles() const { return m_powerProfiles; }
     Q_INVOKABLE void setPowerProfile(const QString &profile);
+
+    // --- windows (overview) ---
+    // Every window, most recent first: id, workspace, appId, title,
+    // focused, minimized, maximized.
+    Q_INVOKABLE QVariantList windows() const;
+    // A fresh thumbnail of the window as a file:// URL ("" when the
+    // compositor could not read it back).
+    Q_INVOKABLE QString thumbnail(int id, int size = 320);
+    // file:// URL of the thumbnail the compositor wrote for Alt+Tab.
+    Q_INVOKABLE QString cachedThumbnail(int id) const;
+    // Blur behind a shell surface (layer namespace on a screen), in surface
+    // coordinates. `owner` identifies the QML window, so a window sharing
+    // the namespace cannot clear another one's region.
+    Q_INVOKABLE void setBlur(const QString &owner, const QString &scope, const QString &screen,
+                             int x, int y, int width, int height, int radius);
+    Q_INVOKABLE void clearBlur(const QString &owner, const QString &scope, const QString &screen);
+    Q_INVOKABLE void activateWindow(int id);
+    Q_INVOKABLE void closeWindow(int id);
+    Q_INVOKABLE void moveWindow(int id, int workspace);
+
+    // --- displays ---
+    // name, description, enabled, width, height, refresh (mHz), x, y,
+    // scale, transform, modes [{width, height, refresh}].
+    Q_INVOKABLE QVariantList outputs() const;
+    // Returns "" on success, else the reason.
+    Q_INVOKABLE QString setOutput(const QString &name, bool enabled, int width, int height,
+                                  int refresh, int x, int y, double scale, int transform);
+
+    // --- installed themes, for the appearance pickers ---
+    Q_INVOKABLE QStringList gtkThemes() const;
+    Q_INVOKABLE QStringList iconThemes() const;
+    Q_INVOKABLE QStringList cursorThemes() const;
     bool wifiAvailable() const;
     QVariantList wifiNetworks() const { return m_wifiNetworks; }
     bool wifiBusy() const { return m_wifiBusy; }
@@ -135,6 +170,7 @@ private:
     void startPolkitAgent();
     void runAutostart();
     void applyAppearance();
+    QString query(const QString &command) const;
     void readPowerProfile();
     static QString findProgram(const QString &name);
 
@@ -162,4 +198,10 @@ private:
     QProcess m_polkit;
     QString m_polkitAgent;
     QString m_lastCompositorConfig;
+    QObject *m_theme = nullptr;
+    int m_thumbnailSerial = 0;
+    // scope|screen -> owner and the last region sent, to skip repeats and to
+    // send them again after the compositor connection comes back.
+    QHash<QString, QString> m_blurOwners;
+    QHash<QString, QString> m_blurCommands;
 };

@@ -11,6 +11,13 @@
 #include <stddef.h>
 
 #define NT_CONFIG_TEXT 256
+#define NT_MAX_BINDINGS 32
+
+// A user shortcut: "Super+Shift+T" -> a shell command.
+struct NtBinding {
+    char keys[64];      // as written, parsed by the compositor (xkbcommon)
+    char command[NT_CONFIG_TEXT];
+};
 
 struct CompositorConfig {
     char keyboardLayout[NT_CONFIG_TEXT];   // "us,ru"
@@ -33,6 +40,39 @@ struct CompositorConfig {
     int cursorSize;
 
     int workspaceCount;                    // 1 .. 9
+    bool workspaceWrap;                    // last -> first when switching
+
+    // Title bars drawn by the compositor (for windows that ask for them).
+    bool decorationsServer;                // prefer server-side decorations
+    int titleHeight;                       // px
+    int borderWidth;                       // px
+    bool buttonsLeft;                      // close/min/max on the left (macOS)
+    bool titleCentered;
+    bool showMinimize;
+    bool showMaximize;
+    char titleFont[NT_CONFIG_TEXT];        // Pango description, "Sans Bold 10"
+    float activeBackground[4];
+    float activeForeground[4];
+    float inactiveBackground[4];
+    float inactiveForeground[4];
+    float closeHover[4];
+
+    // Window behaviour.
+    bool focusFollowsMouse;
+    bool snapping;                         // edge snapping while dragging
+    bool switcherAllWorkspaces;            // Alt+Tab over every desktop
+    char placement[16];                    // center | cascade | mouse
+
+    struct NtBinding bindings[NT_MAX_BINDINGS];
+    int bindingCount;
+
+    // Effects renderer: rounded corners, blur behind the shell, animations.
+    bool effects;
+    int cornerRadius;                      // px, 0 = square
+    bool blur;
+    int blurStrength;                      // 1 .. 4
+    bool animations;
+    double animationSpeed;                 // 0.25 .. 4, 1 = normal
 };
 
 void ntConfigDefaults(struct CompositorConfig *config);
@@ -47,6 +87,9 @@ bool ntConfigLoadFile(struct CompositorConfig *config, const char *path);
 
 // $XDG_CONFIG_HOME/newteller/<name> (or ~/.config/newteller/<name>).
 void ntConfigPath(char *buffer, size_t size, const char *name);
+
+// "#rrggbb" or "#aarrggbb" (Qt style) into premultiplied-free RGBA floats.
+bool ntConfigParseColor(const char *text, float out[4]);
 
 // Splits the comma separated layout list; returns how many were written.
 int ntConfigSplitList(const char *list, char out[][32], int max);

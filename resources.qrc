@@ -39,6 +39,8 @@
     <file>qml/OsdPopup.qml</file>
     <file>qml/ClipboardPopup.qml</file>
     <file>qml/WifiPopup.qml</file>
+    <file>qml/BluetoothPopup.qml</file>
+    <file>qml/TaskView.qml</file>
     <file>themes/default.json</file>
     <file>themes/light.json</file>
     <file>themes/nord.json</file>
@@ -59,6 +61,7 @@
     <file>icons/bell.svg</file>
     <file>icons/bell-off.svg</file>
     <file>icons/bell-ring.svg</file>
+    <file>icons/bluetooth.svg</file>
     <file>icons/check.svg</file>
     <file>icons/chevron-left.svg</file>
     <file>icons/chevron-right.svg</file>
