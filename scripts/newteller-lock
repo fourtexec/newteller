@@ -66,7 +66,11 @@ if gtklock_usable; then
     style="${XDG_RUNTIME_DIR:-/tmp}/newteller-gtklock.css"
     background=''
     if [ -n "$image" ]; then
-        background="background-image: url(\"file://$image\");"
+        # A plain path, not file://: GTK resolves it as a file, while as a
+        # URI a '%' in the name is invalid and a '#' cuts it off (no image).
+        # Quotes and backslashes are escaped for the CSS string.
+        css_image=$(printf '%s' "$image" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
+        background="background-image: url(\"$css_image\");"
     fi
     cat > "$style" <<EOF
 window {
