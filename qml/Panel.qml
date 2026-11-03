@@ -365,8 +365,36 @@ Window {
                           badge: 0, pinned: true, background: false });
         }
 
-        // Running top-level windows, grouped into one button per application.
-        if (dockShowWindows) {
+        // One button per window (the default, like a taskbar): a pinned
+        // application's first window takes the pinned slot, every further
+        // window gets its own button next to the others.
+        if (dockShowWindows && !dockGroup) {
+            for (const w of Windows.windows) {
+                const app = Apps.matchWindowApp(w.appId || "", w.title || "");
+                const appId = app.id || "";
+                var slot = null;
+                if (appId.length > 0) {
+                    seen[appId] = true;
+                    for (const e of result) {
+                        if (e.pinned && e.appId === appId && e.windows.length === 0) {
+                            slot = e;
+                            break;
+                        }
+                    }
+                }
+                if (slot) {
+                    slot.windows = [w];
+                    slot.title = w.title || "";
+                } else {
+                    result.push({ appId: appId, app: appId.length > 0 ? Apps.byId(appId) : {},
+                                  windows: [w], running: true, active: !!w.active, badge: 1,
+                                  title: w.title || "", pinned: false, background: false });
+                }
+            }
+        }
+
+        // Or grouped into one button per application.
+        if (dockShowWindows && dockGroup) {
             var loose = [];
             var groups = {};
             var order = [];
@@ -406,8 +434,11 @@ Window {
                 result.push(entry);
         }
 
-        // Compositors without a window list: the /proc based running ids.
-        for (const id of Apps.runningIds) {
+        // Only without any window list (an unsupported compositor) does the
+        // dock fall back to the /proc based running applications; otherwise
+        // background programs without a window never show up.
+        const runningIds = Windows.backend === "none" ? Apps.runningIds : [];
+        for (const id of runningIds) {
             if (seen[id])
                 continue;
             seen[id] = true;

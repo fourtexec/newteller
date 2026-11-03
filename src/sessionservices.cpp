@@ -10,6 +10,7 @@
 #include <QDBusConnection>
 
 #include <QColor>
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -570,7 +571,8 @@ void SessionServices::settingChanged(const QString &key)
         m_configDebounce.start();
     }
     if (inSession() && (all || key.startsWith(QLatin1String("apps."))
-                        || key.startsWith(QLatin1String("cursor."))))
+                        || key.startsWith(QLatin1String("cursor."))
+                        || key.startsWith(QLatin1String("decorations."))))
         applyAppearance();
     if (inSession() && (all || key.startsWith(QLatin1String("power."))))
         m_idleDebounce.start();
@@ -833,11 +835,85 @@ QVariantList SessionServices::autostartEntries() const
 // GTK, libadwaita, Firefox and Chromium read the dark/light preference and
 // the cursor from org.gnome.desktop.interface (directly or through the
 // settings portal), so that is where the choice goes.
+namespace {
+
+// Sets `key=value` in the [Settings] group of a GTK settings.ini, keeping
+// whatever else the file holds.
+void setGtkIniKey(const QString &path, const QString &key, const QString &value)
+{
+    QStringList lines;
+    QFile in(path);
+    if (in.open(QIODevice::ReadOnly | QIODevice::Text))
+        lines = QString::fromUtf8(in.readAll()).split(QLatin1Char('\n'));
+    in.close();
+    while (!lines.isEmpty() && lines.constLast().trimmed().isEmpty())
+        lines.removeLast();
+    int group = -1;
+    int end = lines.size();
+    for (int i = 0; i < lines.size(); ++i) {
+        const QString trimmed = lines.at(i).trimmed();
+        if (trimmed.startsWith(QLatin1Char('['))) {
+            if (group >= 0) {
+                end = i;
+                break;
+            }
+            if (trimmed == QLatin1String("[Settings]"))
+                group = i;
+        }
+    }
+    const QString line = key + QLatin1Char('=') + value;
+    if (group < 0) {
+        lines << QStringLiteral("[Settings]") << line;
+    } else {
+        bool replaced = false;
+        for (int i = group + 1; i < end; ++i) {
+            if (lines.at(i).section(QLatin1Char('='), 0, 0).trimmed() == key) {
+                lines[i] = line;
+                replaced = true;
+                break;
+            }
+        }
+        if (!replaced)
+            lines.insert(end, line);
+    }
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QSaveFile out(path);
+    if (out.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        out.write((lines.join(QLatin1Char('\n')) + QLatin1Char('\n')).toUtf8());
+        out.commit();
+    }
+}
+
+} // namespace
+
 void SessionServices::applyAppearance()
 {
+    // Window buttons of applications that draw their own title bar (GTK 4,
+    // libadwaita): the same buttons, on the same side, as NewTeller's frames.
+    // GNOME's default would be a lone close button.
+    QStringList buttons;
+    if (m_settings->value(QStringLiteral("decorations.showMinimize"), true).toBool())
+        buttons << QStringLiteral("minimize");
+    if (m_settings->value(QStringLiteral("decorations.showMaximize"), true).toBool())
+        buttons << QStringLiteral("maximize");
+    QString layout;
+    if (m_settings->value(QStringLiteral("decorations.buttonsLeft")).toBool()) {
+        QStringList left{QStringLiteral("close")};
+        left << buttons;
+        layout = left.join(QLatin1Char(',')) + QStringLiteral(":");
+    } else {
+        buttons << QStringLiteral("close");
+        layout = QStringLiteral(":") + buttons.join(QLatin1Char(','));
+    }
+    const QString config = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation);
+    setGtkIniKey(config + QStringLiteral("/gtk-3.0/settings.ini"), QStringLiteral("gtk-decoration-layout"), layout);
+    setGtkIniKey(config + QStringLiteral("/gtk-4.0/settings.ini"), QStringLiteral("gtk-decoration-layout"), layout);
+
     const QString gsettings = findProgram(QStringLiteral("gsettings"));
     if (gsettings.isEmpty())
         return;
+    QProcess::startDetached(gsettings, {QStringLiteral("set"), QStringLiteral("org.gnome.desktop.wm.preferences"),
+                                        QStringLiteral("button-layout"), layout});
     const QString schema = QStringLiteral("org.gnome.desktop.interface");
     const QString scheme = m_settings->value(QStringLiteral("apps.colorScheme")).toString();
     if (scheme == QLatin1String("dark")) {
@@ -1487,6 +1563,13 @@ void SessionServices::runAutostart()
         if (args.isEmpty())
             continue;
         const QString program = args.takeFirst();
+        // The session runs exactly one polkit agent itself (NewTeller's own
+        // or the first one installed): a second one from the distribution's
+        // autostart fails to register and shows "An authentication agent
+        // already exists for the given subject" on every login.
+        const QString base = QFileInfo(program).fileName().toLower();
+        if (base.contains(QLatin1String("polkit")) || base == QLatin1String("lxpolkit"))
+            continue;
         // nm-applet only shows up in a StatusNotifier tray in indicator mode;
         // its stock autostart entry asks for the old X11 tray icon.
         if (QFileInfo(program).fileName() == QLatin1String("nm-applet")
@@ -1498,6 +1581,17 @@ void SessionServices::runAutostart()
 
 void SessionServices::startPolkitAgent()
 {
+    // NewTeller's own administrator prompt is registered (PolkitAgent).
+    if (QCoreApplication::instance()->property("newteller.builtinPolkitAgent").toBool()) {
+        m_polkitAgent = QStringLiteral("NewTeller");
+        return;
+    }
+    // Another agent already serves this session (started by the display
+    // manager or a script): starting one more would only show an error.
+    if (QCoreApplication::instance()->property("newteller.polkitAgentElsewhere").toBool()) {
+        m_polkitAgent = QStringLiteral("(already running)");
+        return;
+    }
     // The first agent that is installed; a second agent in the same session
     // simply fails to register and exits.
     const QStringList candidates{

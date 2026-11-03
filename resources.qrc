@@ -42,6 +42,7 @@
     <file>qml/BluetoothPopup.qml</file>
     <file>qml/TaskView.qml</file>
     <file>qml/ForceQuitWindow.qml</file>
+    <file>qml/AuthDialog.qml</file>
     <file>data/wallpapers/default.jpg</file>
     <file>themes/default.json</file>
     <file>themes/light.json</file>
@@ -102,6 +103,7 @@
     <file>icons/save.svg</file>
     <file>icons/search.svg</file>
     <file>icons/settings.svg</file>
+    <file>icons/shield.svg</file>
     <file>icons/shuffle.svg</file>
     <file>icons/skip-back.svg</file>
     <file>icons/skip-forward.svg</file>

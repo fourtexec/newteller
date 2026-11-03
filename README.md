@@ -119,6 +119,17 @@ inside VirtualBox. The implemented pieces are:
   message, styled dark) and falls back to swaylock (always-visible ring with
   the typing state). The wallpaper is the lock screen background
   (`power.lockAfter`, `power.lockOnSleep`).
+- **Administrator prompt (like UAC).** NewTeller is its own polkit
+  authentication agent (libpolkit-agent-1): when a program asks for
+  administrator rights the screen dims and a card says who asks, what for
+  (details: polkit action, command line), for which account, with a
+  password field, "Allow" and "Cancel"; a wrong password is reported and
+  asked again. `security.builtinAgent` turns it off (an external agent such
+  as lxpolkit is used then, as when the build has no libpolkit-agent-1).
+- **Open with root.** The dock's right-click menu and the start menu's
+  right-click menu start an application as root:
+  `newteller-run-as-root` runs it through pkexec (the administrator prompt
+  above) and hands over the Wayland/X display so it opens in the session.
 - **Force quit.** `Ctrl+Shift+Esc` (or `Ctrl+Alt+Esc`) lists every window
   with "Not responding" next to frozen ones; End task kills the process,
   Close asks it politely. The compositor pings windows when they are focused
@@ -308,6 +319,13 @@ through every window, most recently used first, with the candidate raised as a p
 exports `org.newteller.Shell` on the session bus;
 scripts can call `showStartMenu`, `toggleStartMenu`, `showRunDialog`, `openSettings`, `lock`, `logout`
 and the other session methods with `gdbus call`.
+
+## Installation images (ISO)
+
+`iso/build-iso.sh` builds a bootable live ISO for Debian 13, Ubuntu 26.04,
+Arch Linux or Fedora with NewTeller and a graphical installer that starts on
+its own and installs the system with NewTeller as the only desktop:
+`sudo iso/build-iso.sh debian|ubuntu|arch|fedora`. See [iso/README.md](iso/README.md).
 
 ## Automated builds and commit releases
 

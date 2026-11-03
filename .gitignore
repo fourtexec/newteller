@@ -8,3 +8,7 @@ dist/
 rust/target/
 **/*.rs.bk
 __pycache__/
+
+# ISO builds
+iso/work/
+iso/out/

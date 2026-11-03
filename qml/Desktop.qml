@@ -144,59 +144,247 @@ Window {
         showDotAndDotDot: false
     }
 
-    // Desktop icons. Auto-arrange lays them out on the configured grid; once
-    // an icon is dragged its position is stored in desktop.iconPositions and
-    // restored on the next start. Dragging the first icon also turns
-    // auto-arrange off, so the layout the user made stays put.
+    // --- the desktop grid -----------------------------------------------------
+    // The whole desktop is an invisible grid of cells (desktop.cellWidth x
+    // desktop.cellHeight). An icon takes one cell, a widget as many as its
+    // size needs. Nothing is ever placed on a taken cell, so icons and
+    // widgets cannot overlap; dragging drops onto the nearest free cells.
+    //
+    // desktop.gridPositions keeps where the user put things:
+    //   { "icon:<file name>": {col, row}, "widget:<plugin id>": {col, row} }
+    // Everything without a saved place is arranged: icons in columns from
+    // the top-left corner, widgets in columns from the top-right corner.
+    readonly property var gridSaved: Settings.values["desktop.gridPositions"] || ({})
+    readonly property bool autoArrange: Settings.values["desktop.autoArrangeIcons"] !== false
+    readonly property string panelEdge: Settings.values["panel.position"] || "bottom"
+    readonly property int panelSize: (Settings.values["panel.height"] || 48) + (Settings.values["panel.margin"] || 0)
+    readonly property int gridMargin: 12
+    readonly property int gridLeft: gridMargin + (panelEdge === "left" ? panelSize : 0)
+    readonly property int gridTop: gridMargin + (panelEdge === "top" ? panelSize : 0)
+    readonly property int gridColumns: Math.max(1, Math.floor((width - gridLeft - gridMargin
+                                                               - (panelEdge === "right" ? panelSize : 0))
+                                                              / Math.max(1, cellWidth)))
+    readonly property int gridRows: Math.max(1, Math.floor((height - gridTop - gridMargin
+                                                            - (panelEdge === "bottom" ? panelSize : 0))
+                                                           / Math.max(1, cellHeight)))
+    // key -> {col, row, cols, rows}, recomputed by layoutGrid().
+    property var gridCells: ({})
+
+    function spanOf(size, cell) {
+        return Math.max(1, Math.ceil((size + 8) / Math.max(1, cell)));
+    }
+
+    // Every element on the desktop: {key, cols, rows, widget}.
+    function gridElements() {
+        const list = [];
+        if (desk.showIcons) {
+            for (var i = 0; i < iconRepeater.count; ++i) {
+                const icon = iconRepeater.itemAt(i);
+                if (icon)
+                    list.push({ key: "icon:" + icon.fileName, cols: 1, rows: 1, widget: false });
+            }
+        }
+        for (var w = 0; w < widgetRepeater.count; ++w) {
+            const loader = widgetRepeater.itemAt(w);
+            if (!loader || !loader.item || loader.item.width <= 0 || loader.item.height <= 0)
+                continue;
+            list.push({ key: "widget:" + loader.pluginId, widget: true,
+                        cols: Math.min(gridColumns, spanOf(loader.item.width, cellWidth)),
+                        rows: Math.min(gridRows, spanOf(loader.item.height, cellHeight)) });
+        }
+        return list;
+    }
+
+    function cellsFree(taken, col, row, cols, rows) {
+        if (col < 0 || row < 0 || col + cols > gridColumns || row + rows > gridRows)
+            return false;
+        for (var c = col; c < col + cols; ++c)
+            for (var r = row; r < row + rows; ++r)
+                if (taken[c + "," + r])
+                    return false;
+        return true;
+    }
+    function takeCells(taken, col, row, cols, rows) {
+        for (var c = col; c < col + cols; ++c)
+            for (var r = row; r < row + rows; ++r)
+                taken[c + "," + r] = true;
+    }
+    // The free spot closest to (col, row), searched ring by ring.
+    function nearestFree(taken, col, row, cols, rows) {
+        const limit = Math.max(gridColumns, gridRows);
+        for (var d = 0; d <= limit; ++d) {
+            var best = null;
+            var bestDistance = 1e9;
+            for (var dc = -d; dc <= d; ++dc) {
+                for (var dr = -d; dr <= d; ++dr) {
+                    if (Math.max(Math.abs(dc), Math.abs(dr)) !== d)
+                        continue;
+                    if (cellsFree(taken, col + dc, row + dr, cols, rows)) {
+                        const distance = dc * dc + dr * dr;
+                        if (distance < bestDistance) {
+                            bestDistance = distance;
+                            best = { col: col + dc, row: row + dr };
+                        }
+                    }
+                }
+            }
+            if (best)
+                return best;
+        }
+        return null;
+    }
+
+    function layoutGrid() {
+        const taken = {};
+        const cells = {};
+        const elements = gridElements();
+        const pending = [];
+        // 1. Places the user chose (icons only while auto-arrange is off).
+        for (const e of elements) {
+            const saved = gridSaved[e.key];
+            const useSaved = saved && saved.col !== undefined && (e.widget || !autoArrange);
+            if (useSaved && cellsFree(taken, Number(saved.col), Number(saved.row), e.cols, e.rows)) {
+                cells[e.key] = { col: Number(saved.col), row: Number(saved.row), cols: e.cols, rows: e.rows };
+                takeCells(taken, Number(saved.col), Number(saved.row), e.cols, e.rows);
+            } else {
+                pending.push(e);
+            }
+        }
+        // 2. Widgets: columns from the right edge, top to bottom.
+        for (const e of pending) {
+            if (!e.widget)
+                continue;
+            var spot = null;
+            for (var col = gridColumns - e.cols; col >= 0 && !spot; --col)
+                for (var row = 0; row + e.rows <= gridRows && !spot; ++row)
+                    if (cellsFree(taken, col, row, e.cols, e.rows))
+                        spot = { col: col, row: row };
+            if (!spot)
+                spot = { col: Math.max(0, gridColumns - e.cols), row: 0 };
+            cells[e.key] = { col: spot.col, row: spot.row, cols: e.cols, rows: e.rows };
+            takeCells(taken, spot.col, spot.row, e.cols, e.rows);
+        }
+        // 3. Icons: columns from the left edge, top to bottom.
+        var next = 0;
+        for (const e of pending) {
+            if (e.widget)
+                continue;
+            var place = null;
+            while (!place && next < gridColumns * gridRows) {
+                const c = Math.floor(next / gridRows);
+                const r = next % gridRows;
+                ++next;
+                if (cellsFree(taken, c, r, 1, 1))
+                    place = { col: c, row: r };
+            }
+            if (!place)
+                place = { col: 0, row: 0 };
+            cells[e.key] = { col: place.col, row: place.row, cols: 1, rows: 1 };
+            takeCells(taken, place.col, place.row, 1, 1);
+        }
+        gridCells = cells;
+    }
+    function scheduleGridLayout() {
+        gridLayoutTimer.restart();
+    }
+
+    // Pixel position of an element: centred in the cells it takes.
+    function gridX(key, size) {
+        const cell = gridCells[key];
+        if (!cell)
+            return -10000;
+        return Math.round(gridLeft + cell.col * cellWidth + (cell.cols * cellWidth - size) / 2);
+    }
+    function gridY(key, size, centred) {
+        const cell = gridCells[key];
+        if (!cell)
+            return -10000;
+        return Math.round(gridTop + cell.row * cellHeight
+                          + (centred ? (cell.rows * cellHeight - size) / 2 : 0));
+    }
+
+    // Drops a dragged element on the nearest free cells and remembers them.
+    function dropOnGrid(key, x, y, size) {
+        const cell = gridCells[key];
+        const cols = cell ? cell.cols : 1;
+        const rows = cell ? cell.rows : 1;
+        const col = Math.round((x - gridLeft - (cols * cellWidth - size.width) / 2) / cellWidth);
+        const row = Math.round((y - gridTop - (key.startsWith("widget:")
+                                               ? (rows * cellHeight - size.height) / 2 : 0)) / cellHeight);
+        const taken = {};
+        for (const other in gridCells) {
+            if (other === key)
+                continue;
+            const o = gridCells[other];
+            takeCells(taken, o.col, o.row, o.cols, o.rows);
+        }
+        const target = nearestFree(taken,
+                                   Math.max(0, Math.min(gridColumns - cols, col)),
+                                   Math.max(0, Math.min(gridRows - rows, row)), cols, rows);
+        if (!target) {
+            scheduleGridLayout();
+            return;
+        }
+        const copy = {};
+        for (const k in gridSaved)
+            copy[k] = gridSaved[k];
+        copy[key] = { "col": target.col, "row": target.row };
+        // Moving an icon by hand ends auto-arrange, so its place sticks.
+        if (key.startsWith("icon:") && autoArrange) {
+            // Keep every other icon where it is now.
+            for (const k in gridCells)
+                if (k.startsWith("icon:") && k !== key)
+                    copy[k] = { "col": gridCells[k].col, "row": gridCells[k].row };
+            Settings.setValues({ "desktop.autoArrangeIcons": false, "desktop.gridPositions": copy });
+        } else {
+            Settings.setValue("desktop.gridPositions", copy);
+        }
+    }
+
+    function resetIconLayout() {
+        const copy = {};
+        for (const k in gridSaved)
+            if (!k.startsWith("icon:"))
+                copy[k] = gridSaved[k];
+        Settings.setValues({ "desktop.gridPositions": copy, "desktop.autoArrangeIcons": true });
+    }
+    function resetWidgets() {
+        const copy = {};
+        for (const k in gridSaved)
+            if (!k.startsWith("widget:"))
+                copy[k] = gridSaved[k];
+        Settings.setValue("desktop.gridPositions", copy);
+    }
+
+    onWidthChanged: scheduleGridLayout()
+    onHeightChanged: scheduleGridLayout()
+    onGridColumnsChanged: scheduleGridLayout()
+    onGridRowsChanged: scheduleGridLayout()
+    onGridSavedChanged: scheduleGridLayout()
+    onAutoArrangeChanged: scheduleGridLayout()
+    onShowIconsChanged: scheduleGridLayout()
+
+    Timer {
+        id: gridLayoutTimer
+        interval: 40
+        onTriggered: desk.layoutGrid()
+    }
+
+    // Desktop icons (~/Desktop).
     Item {
         id: iconLayer
+        objectName: "desktopIcons"
         anchors.fill: parent
-        anchors.margins: 12
         visible: desk.showIcons
-        clip: true
-
-        readonly property var savedPositions: Settings.values["desktop.iconPositions"] || ({})
-        readonly property bool autoArrange: Settings.values["desktop.autoArrangeIcons"] !== false
-        readonly property int columns: Math.max(1, Math.floor(width / Math.max(1, desk.cellWidth)))
-
-        function gridX(index) {
-            return (index % columns) * desk.cellWidth;
-        }
-        function gridY(index) {
-            return Math.floor(index / columns) * desk.cellHeight;
-        }
-        function savedX(name, fallback) {
-            const entry = savedPositions[name];
-            return (autoArrange || !entry || entry.x === undefined) ? fallback : Number(entry.x);
-        }
-        function savedY(name, fallback) {
-            const entry = savedPositions[name];
-            return (autoArrange || !entry || entry.y === undefined) ? fallback : Number(entry.y);
-        }
-
-        function savePosition(name, x, y) {
-            const old = savedPositions || ({});
-            const copy = {};
-            for (const key in old)
-                copy[key] = old[key];
-            copy[name] = { "x": Math.round(x), "y": Math.round(y) };
-            if (autoArrange)
-                Settings.setValues({ "desktop.autoArrangeIcons": false,
-                                     "desktop.iconPositions": copy });
-            else
-                Settings.setValue("desktop.iconPositions", copy);
-        }
-
-        function resetPositions() {
-            Settings.setValues({ "desktop.iconPositions": ({}),
-                                 "desktop.autoArrangeIcons": true });
-        }
 
         Repeater {
+            id: iconRepeater
             model: desktopFiles
+            onCountChanged: desk.scheduleGridLayout()
 
             delegate: Item {
                 id: iconDelegate
+                objectName: "desktopIcon"
                 width: desk.cellWidth
                 height: desk.cellHeight
 
@@ -206,9 +394,10 @@ Window {
                 required property url fileUrl
                 required property bool fileIsDir
 
+                readonly property string gridKey: "icon:" + fileName
                 readonly property string resolvedIconName: fileIsDir ? "folder" : "file-text"
-                // While dragging, x/y follow the pointer; otherwise they are a
-                // pure binding to the saved position or the auto-arrange grid.
+                // While dragging, x/y follow the pointer; otherwise they are
+                // the element's grid cell.
                 property real dragX: 0
                 property real dragY: 0
                 property bool dragging: false
@@ -217,10 +406,11 @@ Window {
                 property real startIconX: 0
                 property real startIconY: 0
 
-                x: dragging ? dragX : iconLayer.savedX(fileName, iconLayer.gridX(index))
-                y: dragging ? dragY : iconLayer.savedY(fileName, iconLayer.gridY(index))
+                x: dragging ? dragX : desk.gridX(gridKey, width)
+                y: dragging ? dragY : desk.gridY(gridKey, height, false)
                 z: dragging ? 20 : 0
                 opacity: dragging ? 0.85 : 1.0
+                Component.onCompleted: desk.scheduleGridLayout()
 
                 Behavior on opacity {
                     NumberAnimation { duration: motion.fast }
@@ -304,23 +494,19 @@ Window {
                         const scene = iconDelegate.mapToItem(null, mouse.x, mouse.y);
                         const dx = scene.x - iconDelegate.pressSceneX;
                         const dy = scene.y - iconDelegate.pressSceneY;
-                        if (!iconDelegate.dragging
-                            && Math.sqrt(dx * dx + dy * dy) > 5) {
+                        if (!iconDelegate.dragging && Math.sqrt(dx * dx + dy * dy) > 5)
                             iconDelegate.dragging = true;
-                        }
                         if (!iconDelegate.dragging)
                             return;
-                        iconDelegate.dragX = Math.max(0, Math.min(iconLayer.width - iconDelegate.width,
+                        iconDelegate.dragX = Math.max(0, Math.min(desk.width - iconDelegate.width,
                                                                    iconDelegate.startIconX + dx));
-                        iconDelegate.dragY = Math.max(0, Math.min(iconLayer.height - iconDelegate.height,
+                        iconDelegate.dragY = Math.max(0, Math.min(desk.height - iconDelegate.height,
                                                                    iconDelegate.startIconY + dy));
                     }
                     onReleased: {
-                        if (iconDelegate.dragging) {
-                            iconLayer.savePosition(iconDelegate.fileName,
-                                                   iconDelegate.dragX,
-                                                   iconDelegate.dragY);
-                        }
+                        if (iconDelegate.dragging)
+                            desk.dropOnGrid(iconDelegate.gridKey, iconDelegate.dragX, iconDelegate.dragY,
+                                            Qt.size(iconDelegate.width, iconDelegate.height));
                         iconDelegate.dragging = false;
                     }
                     onDoubleClicked: {
@@ -332,14 +518,46 @@ Window {
         }
     }
 
+    // Desktop widgets (plugins), on the same grid.
     Repeater {
+        id: widgetRepeater
         model: desk.desktopPlugins
+        onCountChanged: desk.scheduleGridLayout()
 
         delegate: Loader {
+            id: widgetLoader
+            objectName: "desktopWidget"
             required property var modelData
+            readonly property string pluginId: modelData.id
+            readonly property string gridKey: "widget:" + pluginId
+            property bool dragging: false
             source: modelData.entry
-            x: modelData.x
-            y: modelData.y
+            x: desk.gridX(gridKey, width)
+            y: desk.gridY(gridKey, height, true)
+            z: dragging ? 20 : 1
+            onLoaded: desk.scheduleGridLayout()
+            onWidthChanged: desk.scheduleGridLayout()
+            onHeightChanged: desk.scheduleGridLayout()
+
+            // Drag a widget anywhere; it snaps to the nearest free cells.
+            DragHandler {
+                target: widgetLoader
+                xAxis.minimum: 0
+                xAxis.maximum: desk.width - widgetLoader.width
+                yAxis.minimum: 0
+                yAxis.maximum: desk.height - widgetLoader.height
+                onActiveChanged: {
+                    if (active) {
+                        widgetLoader.dragging = true;
+                        return;
+                    }
+                    desk.dropOnGrid(widgetLoader.gridKey, widgetLoader.x, widgetLoader.y,
+                                    Qt.size(widgetLoader.width, widgetLoader.height));
+                    widgetLoader.dragging = false;
+                    widgetLoader.x = Qt.binding(() => desk.gridX(widgetLoader.gridKey, widgetLoader.width));
+                    widgetLoader.y = Qt.binding(() => desk.gridY(widgetLoader.gridKey, widgetLoader.height, true));
+                }
+            }
         }
     }
 
@@ -447,13 +665,13 @@ Window {
                 width: parent.width
                 fillWidth: true
                 iconName: "layout-grid"
-                label: iconLayer.autoArrange ? "Free icon placement" : "Auto-arrange icons"
+                label: desk.autoArrange ? "Free icon placement" : "Auto-arrange icons"
                 onClicked: {
                     contextMenu.visible = false;
-                    if (iconLayer.autoArrange)
+                    if (desk.autoArrange)
                         Settings.setValue("desktop.autoArrangeIcons", false);
                     else
-                        iconLayer.resetPositions();
+                        desk.resetIconLayout();
                 }
             }
             TaskButton {
@@ -463,7 +681,17 @@ Window {
                 label: "Reset icon layout"
                 onClicked: {
                     contextMenu.visible = false;
-                    iconLayer.resetPositions();
+                    desk.resetIconLayout();
+                }
+            }
+            TaskButton {
+                width: parent.width
+                fillWidth: true
+                iconName: "layout-grid"
+                label: "Arrange widgets"
+                onClicked: {
+                    contextMenu.visible = false;
+                    desk.resetWidgets();
                 }
             }
             TaskButton {

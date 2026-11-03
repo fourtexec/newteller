@@ -371,6 +371,16 @@ struct Pointer {
 };
 
 // One ext-session-lock surface (the locker's window on one output).
+// A KDE server-decoration object: GTK 3 drops its own title bar when the
+// compositor offers to draw one this way (it does not speak xdg-decoration).
+struct KdeDecoration {
+    struct Server *server;
+    struct wlr_server_decoration *decoration;
+    struct wl_listener mode;
+    struct wl_listener destroy;
+    struct wl_list link;
+};
+
 struct LockSurface {
     struct wl_list link;
     struct Server *server;
@@ -426,6 +436,9 @@ struct Server {
     struct wlr_foreign_toplevel_manager_v1 *foreignToplevels;
     struct wlr_xdg_activation_v1 *activation;
     struct wlr_server_decoration_manager *serverDecoration;
+    // org_kde_kwin_server_decoration objects (GTK 3 asks through this one).
+    struct wl_list kdeDecorations;
+    struct wl_listener newKdeDecoration;
     struct wlr_seat *seat;
     struct wlr_cursor *cursor;
     struct wlr_xcursor_manager *cursorManager;
@@ -881,12 +894,13 @@ static struct CairoBuffer *cairoBufferCreate(cairo_surface_t *surface)
     return buffer;
 }
 
+// Every window that asked for a server-side frame gets one - the shell's own
+// windows (Settings) too: Qt asks for one and then draws nothing itself, so
+// leaving them out left them without a title bar, buttons or a way to move.
+// The shell's popups are frameless and never ask.
 static bool viewDecorated(struct View *view)
 {
-    if (!view->ssd || view->fullscreen || view->overrideRedirect || !view->mapped)
-        return false;
-    // The shell's own windows draw their own frame.
-    return strcmp(viewAppId(view), "org.newteller.Shell") != 0;
+    return view->ssd && !view->fullscreen && !view->overrideRedirect && view->mapped;
 }
 
 // Frame thickness around the window content: title bar on top, border on
@@ -1285,11 +1299,19 @@ static void clearKeyboardFocus(struct Server *server)
         viewSetActivated(view, false);
     }
     server->focusedLayer = NULL;
+    // The locker keeps the keyboard: a window closing or minimizing behind
+    // the lock screen must not take it away from the password field.
+    struct wlr_surface *focused = server->seat->keyboard_state.focused_surface;
+    if (server->locked && focused && wlr_session_lock_surface_v1_try_from_wlr_surface(focused))
+        return;
     wlr_seat_keyboard_notify_clear_focus(server->seat);
 }
 
 static void restoreFocus(struct Server *server)
 {
+    // Behind the lock screen nothing gets focus; unlocking restores it.
+    if (server->locked)
+        return;
     if (server->previousView && server->previousView->mapped
         && !server->previousView->minimized
         && !server->previousView->overrideRedirect
@@ -2402,6 +2424,11 @@ static void processCursorMotion(struct Server *server, uint32_t time)
 
     struct Hit hit = hitTest(server, server->cursor->x, server->cursor->y);
     struct wlr_surface *focused = server->seat->pointer_state.focused_surface;
+    if (server->locked && hit.surface) {
+        struct wlr_surface *keys = server->seat->keyboard_state.focused_surface;
+        if (!keys || !wlr_session_lock_surface_v1_try_from_wlr_surface(keys))
+            lockFocusSurface(server, wlr_surface_get_root_surface(hit.surface));
+    }
     pointerFocus(server, &hit);
     if (hit.surface && focused == hit.surface)
         wlr_seat_pointer_notify_motion(server->seat, time, hit.sx, hit.sy);
@@ -3016,6 +3043,12 @@ static void reloadConfig(struct Server *server)
     }
     broadcastWorkspaces(server);
     scheduleAllFrames(server);
+    if (server->serverDecoration) {
+        wlr_server_decoration_manager_set_default_mode(
+            server->serverDecoration, server->config.decorationsServer
+                                          ? WLR_SERVER_DECORATION_MANAGER_MODE_SERVER
+                                          : WLR_SERVER_DECORATION_MANAGER_MODE_CLIENT);
+    }
     // New frame colours, sizes or button layout.
     wl_list_for_each(view, &server->views, link) {
         view->decoWidth = -1;
@@ -3552,6 +3585,21 @@ static void keyboardKey(struct wl_listener *listener, void *data)
             (void *)server->seat->keyboard_state.focused_surface);
 
     notifyActivity(server);
+    // While locked, keys always go to a lock surface: if the locker's
+    // window has not got the keyboard yet (it mapped late, focus was lost),
+    // the first key press hands it over instead of typing into nothing.
+    if (server->locked) {
+        struct wlr_surface *focused = server->seat->keyboard_state.focused_surface;
+        if (!focused || !wlr_session_lock_surface_v1_try_from_wlr_surface(focused)) {
+            struct LockSurface *lock;
+            wl_list_for_each(lock, &server->lockSurfaces, link) {
+                if (lock->lockSurface->surface && lock->lockSurface->surface->mapped) {
+                    lockFocusSurface(server, lock->lockSurface->surface);
+                    break;
+                }
+            }
+        }
+    }
     xkb_keysym_t sym = xkb_state_key_get_one_sym(
         keyboard->keyboard->xkb_state, event->keycode + 8);
     bool isLogo = sym == XKB_KEY_Super_L || sym == XKB_KEY_Super_R;
@@ -3900,10 +3948,32 @@ static enum wlr_xdg_toplevel_decoration_v1_mode decorationModeFor(struct View *v
                : WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE;
 }
 
+// The mode a window chose through the KDE protocol, or -1 without one.
+static int kdeDecorationMode(struct View *view)
+{
+    struct wlr_surface *surface = viewSurface(view);
+    struct KdeDecoration *kde;
+    if (!surface)
+        return -1;
+    wl_list_for_each(kde, &view->server->kdeDecorations, link) {
+        if (kde->decoration->surface == surface)
+            return (int)kde->decoration->mode;
+    }
+    return -1;
+}
+
 static void applyDecorationMode(struct View *view)
 {
-    if (!view->xdgDecoration || !view->xdg->base->initialized)
+    if (!view->xdg || !view->xdg->base->initialized)
         return;
+    if (!view->xdgDecoration) {
+        int kde = kdeDecorationMode(view);
+        if (kde < 0)
+            return;
+        view->ssd = kde == WLR_SERVER_DECORATION_MANAGER_MODE_SERVER;
+        viewUpdateDecoration(view);
+        return;
+    }
     enum wlr_xdg_toplevel_decoration_v1_mode mode = decorationModeFor(view);
     wlr_xdg_toplevel_decoration_v1_set_mode(view->xdgDecoration, mode);
     view->ssd = mode == WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE;
@@ -3929,6 +3999,58 @@ static void handleXdgDecorationDestroy(struct wl_listener *listener, void *data)
     // tree may already be gone.
     if (view->mapped)
         viewUpdateDecoration(view);
+}
+
+static void kdeDecorationApply(struct KdeDecoration *kde)
+{
+    struct View *view;
+    wl_list_for_each(view, &kde->server->views, link) {
+        if (view->xdg && viewSurface(view) == kde->decoration->surface) {
+            applyDecorationMode(view);
+            return;
+        }
+    }
+}
+
+static void handleKdeDecorationMode(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct KdeDecoration *kde = wl_container_of(listener, kde, mode);
+    kdeDecorationApply(kde);
+}
+
+static void handleKdeDecorationDestroy(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct KdeDecoration *kde = wl_container_of(listener, kde, destroy);
+    struct Server *server = kde->server;
+    struct wlr_surface *surface = kde->decoration->surface;
+    wl_list_remove(&kde->mode.link);
+    wl_list_remove(&kde->destroy.link);
+    wl_list_remove(&kde->link);
+    free(kde);
+    struct View *view;
+    wl_list_for_each(view, &server->views, link) {
+        if (view->xdg && !view->xdgDecoration && view->mapped && viewSurface(view) == surface) {
+            view->ssd = false;
+            viewUpdateDecoration(view);
+            break;
+        }
+    }
+}
+
+static void handleNewKdeDecoration(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, newKdeDecoration);
+    struct KdeDecoration *kde = xcalloc(1, sizeof(*kde));
+    kde->server = server;
+    kde->decoration = data;
+    kde->mode.notify = handleKdeDecorationMode;
+    wl_signal_add(&kde->decoration->events.mode, &kde->mode);
+    kde->destroy.notify = handleKdeDecorationDestroy;
+    wl_signal_add(&kde->decoration->events.destroy, &kde->destroy);
+    wl_list_insert(&server->kdeDecorations, &kde->link);
+    kdeDecorationApply(kde);
 }
 
 static void handleNewXdgDecoration(struct wl_listener *listener, void *data)
@@ -6529,10 +6651,17 @@ static void setupProtocols(struct Server *server)
     server->newXdgDecoration.notify = handleNewXdgDecoration;
     wl_signal_add(&server->xdgDecorationManager->events.new_toplevel_decoration,
                   &server->newXdgDecoration);
+    // KDE's server-decoration protocol: GTK 3 (and Firefox) drop their own
+    // header bar and get NewTeller's title bar with all three buttons.
+    wl_list_init(&server->kdeDecorations);
     server->serverDecoration = wlr_server_decoration_manager_create(
         server->display);
     wlr_server_decoration_manager_set_default_mode(
-        server->serverDecoration, WLR_SERVER_DECORATION_MANAGER_MODE_CLIENT);
+        server->serverDecoration, server->config.decorationsServer
+                                      ? WLR_SERVER_DECORATION_MANAGER_MODE_SERVER
+                                      : WLR_SERVER_DECORATION_MANAGER_MODE_CLIENT);
+    server->newKdeDecoration.notify = handleNewKdeDecoration;
+    wl_signal_add(&server->serverDecoration->events.new_decoration, &server->newKdeDecoration);
 
 #if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR >= 19
     wlr_presentation_create(server->display, server->backend, 1);
@@ -6923,6 +7052,7 @@ static int run(struct Server *server)
     wl_list_remove(&server->layoutChange.link);
     wl_list_remove(&server->gammaSetGamma.link);
     wl_list_remove(&server->newXdgDecoration.link);
+    wl_list_remove(&server->newKdeDecoration.link);
     wlr_log(WLR_DEBUG, "destroying cursor");
     if (server->cursorManager)
         wlr_xcursor_manager_destroy(server->cursorManager);

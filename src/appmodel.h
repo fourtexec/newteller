@@ -78,6 +78,10 @@ public:
     // Launches the application, passing `files` to its %f/%u field codes.
     Q_INVOKABLE bool launch(const QString &id, const QStringList &files = QStringList());
     Q_INVOKABLE bool launchAction(const QString &id, const QString &actionId);
+    // "Open with root": the application as root through pkexec
+    // (newteller-run-as-root), after the administrator prompt.
+    Q_INVOKABLE bool launchAsRoot(const QString &id);
+    Q_INVOKABLE bool canLaunchAsRoot() const;
 
     Q_INVOKABLE bool isRunning(const QString &id) const;
     Q_INVOKABLE void refreshRunning();

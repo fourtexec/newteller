@@ -1,0 +1,425 @@
+#!/usr/bin/env bash
+# NewTeller installer backend: installs the running live system to a disk.
+#
+#   newteller-install-backend CONFIG
+#
+# Started as root by the installer (pkexec). CONFIG holds KEY=<base64 value>
+# lines written by the installer UI and is deleted on start:
+#   DISK       whole disk to erase (/dev/sda, /dev/nvme0n1)
+#   FULLNAME   the user's full name
+#   USERNAME   login name
+#   PASSWORD   password of the user
+#   HOSTNAME   computer name
+#   TIMEZONE   Region/City
+#   LOCALE     ru_RU.UTF-8
+#   LAYOUT     xkb layouts, comma separated (us,ru)
+#   AUTOLOGIN  yes | no
+#
+# Progress goes to stdout, one line each:
+#   PROGRESS <0-100> <text>     LOG <text>     ERROR <text>     DONE
+#
+# The system is copied from the live image's own (pristine) root filesystem,
+# then everything that makes it a live system is undone, the initramfs is
+# rebuilt without the live hooks and GRUB is installed for UEFI or BIOS.
+set -Eeuo pipefail
+export LANG=C.UTF-8 LC_ALL=C.UTF-8 DEBIAN_FRONTEND=noninteractive
+
+TARGET=/mnt/newteller-target
+MOUNTED=()
+
+progress() { printf 'PROGRESS %d %s\n' "$1" "$2"; }
+say() { printf 'LOG %s\n' "$*"; }
+fail() {
+    printf 'ERROR %s\n' "$*"
+    cleanup
+    exit 1
+}
+
+cleanup() {
+    local index
+    sync || true
+    for ((index = ${#MOUNTED[@]} - 1; index >= 0; index--)); do
+        umount -R "${MOUNTED[index]}" 2> /dev/null || umount -lR "${MOUNTED[index]}" 2> /dev/null || true
+    done
+    MOUNTED=()
+}
+trap 'fail "Step failed: ${BASH_COMMAND} (line ${LINENO})"' ERR
+trap cleanup EXIT
+
+# Every command's output goes to the log, never to the progress protocol.
+run() {
+    say "\$ $*"
+    "$@" 2>&1 | sed -u 's/^/LOG   /'
+}
+in_target() {
+    say "(target) \$ $*"
+    chroot "$TARGET" /usr/bin/env -i HOME=/root LANG=C.UTF-8 DEBIAN_FRONTEND=noninteractive \
+        PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin "$@" 2>&1 | sed -u 's/^/LOG   /'
+}
+
+# --- configuration --------------------------------------------------------------
+
+[[ $EUID -eq 0 ]] || { echo 'ERROR The installer backend must run as root.'; exit 1; }
+[[ $# -eq 1 && -r $1 ]] || { echo 'ERROR usage: newteller-install-backend CONFIG'; exit 1; }
+
+declare -A cfg=()
+while IFS='=' read -r key value; do
+    [[ $key =~ ^[A-Z_]+$ ]] || continue
+    cfg[$key]=$(printf '%s' "$value" | base64 -d)
+done < "$1"
+rm -f -- "$1"
+
+DISK=${cfg[DISK]:-}
+FULLNAME=${cfg[FULLNAME]:-}
+USERNAME=${cfg[USERNAME]:-}
+PASSWORD=${cfg[PASSWORD]:-}
+HOSTNAME_NEW=${cfg[HOSTNAME]:-newteller}
+TIMEZONE=${cfg[TIMEZONE]:-UTC}
+LOCALE=${cfg[LOCALE]:-en_US.UTF-8}
+LAYOUT=${cfg[LAYOUT]:-us}
+AUTOLOGIN=${cfg[AUTOLOGIN]:-no}
+
+[[ -b $DISK && $(lsblk -dno TYPE "$DISK") == disk ]] || fail "$DISK is not a disk."
+[[ $USERNAME =~ ^[a-z_][a-z0-9_-]{0,31}$ ]] || fail "Invalid user name: $USERNAME"
+[[ $USERNAME != root && $USERNAME != live ]] || fail "The user name $USERNAME is reserved."
+[[ $HOSTNAME_NEW =~ ^[A-Za-z0-9][A-Za-z0-9-]{0,62}$ ]] || fail "Invalid computer name: $HOSTNAME_NEW"
+[[ -n $PASSWORD ]] || fail 'The password is empty.'
+[[ -e /usr/share/zoneinfo/$TIMEZONE ]] || TIMEZONE=UTC
+[[ $LOCALE =~ ^[A-Za-z_]+\.UTF-8$ ]] || LOCALE=en_US.UTF-8
+[[ $LAYOUT =~ ^[a-z,]+$ ]] || LAYOUT=us
+
+NEWTELLER_DISTRO=''
+# shellcheck source=/dev/null
+source /usr/lib/newteller-installer/image.conf
+case $NEWTELLER_DISTRO in
+    debian|ubuntu) ADMIN_GROUP=sudo ;;
+    arch|fedora) ADMIN_GROUP=wheel ;;
+    *) fail "Unknown image: $NEWTELLER_DISTRO" ;;
+esac
+UEFI=no
+[[ -d /sys/firmware/efi ]] && UEFI=yes
+say "Installing $NEWTELLER_DISTRO_NAME to $DISK (firmware: $([[ $UEFI == yes ]] && echo UEFI || echo BIOS))"
+
+# The pristine root filesystem of the live image.
+SOURCE=''
+for candidate in /run/live/rootfs/filesystem.squashfs /run/archiso/airootfs /run/rootfsbase; do
+    if [[ -d $candidate/etc && -d $candidate/usr ]]; then
+        SOURCE=$candidate
+        break
+    fi
+done
+[[ -n $SOURCE ]] || fail 'The live system image was not found (is this a NewTeller live medium?).'
+
+# Never erase the medium the live system runs from.
+for medium in /run/live/medium /run/archiso/bootmnt /run/initramfs/live; do
+    if mountpoint -q "$medium"; then
+        device=$(findmnt -no SOURCE "$medium" || true)
+        parent=$(lsblk -no PKNAME "$device" 2> /dev/null | head -n 1 || true)
+        if [[ -n $device && ($device == "$DISK" || /dev/$parent == "$DISK") ]]; then
+            fail "$DISK holds the live medium itself."
+        fi
+    fi
+done
+
+# --- disk -------------------------------------------------------------------------
+
+progress 2 'Preparing the disk'
+swapoff -a 2> /dev/null || true
+while read -r name; do
+    umount -f "$name" 2> /dev/null || true
+done < <(lsblk -nrpo NAME "$DISK" | tail -n +2)
+run wipefs -af "$DISK"
+
+progress 5 'Creating partitions'
+if [[ $UEFI == yes ]]; then
+    run sfdisk --wipe always --wipe-partitions always "$DISK" <<'EOF'
+label: gpt
+size=1GiB, type=uefi, name="EFI system partition"
+type=linux, name="NewTeller"
+EOF
+else
+    # MBR for BIOS machines: every BIOS boots it, GRUB lives in the gap
+    # before the first partition.
+    run sfdisk --wipe always --wipe-partitions always "$DISK" <<'EOF'
+label: dos
+type=83, bootable
+EOF
+fi
+partprobe "$DISK" 2> /dev/null || blockdev --rereadpt "$DISK" 2> /dev/null || true
+udevadm settle 2> /dev/null || true
+
+parts=()
+for _ in $(seq 1 20); do
+    mapfile -t parts < <(lsblk -nrpo NAME,TYPE "$DISK" | awk '$2 == "part" { print $1 }')
+    if [[ ($UEFI == yes && ${#parts[@]} -ge 2) || ($UEFI == no && ${#parts[@]} -ge 1) ]]; then
+        break
+    fi
+    sleep 0.5
+done
+if [[ $UEFI == yes ]]; then
+    [[ ${#parts[@]} -ge 2 ]] || fail 'The new partitions did not appear.'
+    ESP=${parts[0]}
+    ROOT_PART=${parts[1]}
+else
+    [[ ${#parts[@]} -ge 1 ]] || fail 'The new partition did not appear.'
+    ESP=''
+    ROOT_PART=${parts[0]}
+fi
+
+progress 8 'Formatting'
+[[ -n $ESP ]] && run mkfs.fat -F 32 -n EFI "$ESP"
+run mkfs.ext4 -F -L NewTeller "$ROOT_PART"
+
+mkdir -p "$TARGET"
+mount "$ROOT_PART" "$TARGET"
+MOUNTED+=("$TARGET")
+if [[ -n $ESP ]]; then
+    mkdir -p "$TARGET/boot/efi"
+    mount "$ESP" "$TARGET/boot/efi"
+fi
+
+# --- copy -------------------------------------------------------------------------
+
+progress 10 'Copying the system'
+last=-1
+rsync -aHAXx --numeric-ids --no-inc-recursive --info=progress2 \
+        --exclude=/boot/efi/ "$SOURCE/" "$TARGET/" 2>&1 \
+    | stdbuf -o0 tr '\r' '\n' \
+    | while read -r line; do
+        if [[ $line =~ ([0-9]+)% ]]; then
+            percent=${BASH_REMATCH[1]}
+            scaled=$((10 + percent * 65 / 100))
+            if ((scaled != last)); then
+                progress "$scaled" "Copying the system ($percent%)"
+                last=$scaled
+            fi
+        elif [[ -n $line && $line != *xfr#* ]]; then
+            say "$line"
+        fi
+    done
+# The EFI files some distributions ship (Fedora's shim and GRUB) go to the
+# FAT partition without owners or extended attributes.
+install -d "$TARGET/boot/efi"
+if [[ -d $SOURCE/boot/efi ]] && [[ -n $(ls -A "$SOURCE/boot/efi") ]]; then
+    cp -r --no-preserve=mode,ownership "$SOURCE/boot/efi/." "$TARGET/boot/efi/"
+fi
+# Wi-Fi networks joined in the live session.
+if [[ -d /etc/NetworkManager/system-connections ]]; then
+    install -d -m 700 "$TARGET/etc/NetworkManager/system-connections"
+    cp -a /etc/NetworkManager/system-connections/. "$TARGET/etc/NetworkManager/system-connections/" 2> /dev/null || true
+fi
+
+for dir in dev proc sys run; do
+    mkdir -p "$TARGET/$dir"
+done
+mount --rbind /dev "$TARGET/dev" && mount --make-rslave "$TARGET/dev"
+mount -t proc proc "$TARGET/proc"
+mount --rbind /sys "$TARGET/sys" && mount --make-rslave "$TARGET/sys"
+mount -t tmpfs tmpfs "$TARGET/run"
+rm -f "$TARGET/etc/resolv.conf.newteller-copy"
+if [[ -e $TARGET/etc/resolv.conf || -L $TARGET/etc/resolv.conf ]]; then
+    mv "$TARGET/etc/resolv.conf" "$TARGET/etc/resolv.conf.newteller-copy"
+fi
+cp -L /etc/resolv.conf "$TARGET/etc/resolv.conf" 2> /dev/null || true
+
+# --- system settings ----------------------------------------------------------------
+
+progress 77 'Configuring the system'
+root_uuid=$(blkid -s UUID -o value "$ROOT_PART")
+{
+    echo '# <file system> <mount point> <type> <options> <dump> <pass>'
+    echo "UUID=$root_uuid / ext4 errors=remount-ro 0 1"
+    if [[ -n $ESP ]]; then
+        echo "UUID=$(blkid -s UUID -o value "$ESP") /boot/efi vfat umask=0077 0 2"
+    fi
+} > "$TARGET/etc/fstab"
+
+# Swap file: up to 4 GiB, as much as the memory.
+memory_mib=$(awk '/MemTotal/ { print int($2 / 1024) }' /proc/meminfo)
+swap_mib=$((memory_mib < 4096 ? memory_mib : 4096))
+if ((swap_mib >= 512)); then
+    if fallocate -l "${swap_mib}M" "$TARGET/swapfile" 2> /dev/null \
+        || dd if=/dev/zero of="$TARGET/swapfile" bs=1M count="$swap_mib" status=none; then
+        chmod 600 "$TARGET/swapfile"
+        mkswap "$TARGET/swapfile" > /dev/null
+        echo '/swapfile none swap defaults 0 0' >> "$TARGET/etc/fstab"
+    fi
+fi
+
+echo "$HOSTNAME_NEW" > "$TARGET/etc/hostname"
+cat > "$TARGET/etc/hosts" <<EOF
+127.0.0.1 localhost
+127.0.1.1 $HOSTNAME_NEW
+::1 localhost ip6-localhost ip6-loopback
+EOF
+
+ln -sf "../usr/share/zoneinfo/$TIMEZONE" "$TARGET/etc/localtime"
+[[ $NEWTELLER_DISTRO == debian || $NEWTELLER_DISTRO == ubuntu ]] && echo "$TIMEZONE" > "$TARGET/etc/timezone"
+
+language=${LOCALE%%.*}
+case $NEWTELLER_DISTRO in
+    debian)
+        if [[ -f $TARGET/etc/locale.gen ]]; then
+            sed -i "s/^# *\($LOCALE .*\)/\1/" "$TARGET/etc/locale.gen"
+            grep -q "^$LOCALE " "$TARGET/etc/locale.gen" || echo "$LOCALE UTF-8" >> "$TARGET/etc/locale.gen"
+            sed -i 's/^# *\(en_US.UTF-8 .*\)/\1/' "$TARGET/etc/locale.gen"
+        fi
+        in_target locale-gen || true
+        printf 'LANG=%s\n' "$LOCALE" > "$TARGET/etc/default/locale"
+        ;;
+    ubuntu)
+        in_target locale-gen "$LOCALE" en_US.UTF-8 || true
+        printf 'LANG=%s\n' "$LOCALE" > "$TARGET/etc/default/locale"
+        ;;
+    arch)
+        sed -i "s/^#\($LOCALE .*\)/\1/; s/^#\(en_US.UTF-8 .*\)/\1/" "$TARGET/etc/locale.gen"
+        in_target locale-gen || true
+        printf 'LANG=%s\n' "$LOCALE" > "$TARGET/etc/locale.conf"
+        ;;
+    fedora)
+        printf 'LANG=%s\n' "$LOCALE" > "$TARGET/etc/locale.conf"
+        ;;
+esac
+
+first_layout=${LAYOUT%%,*}
+# NewTeller's compositor and the login screen read this file.
+cat > "$TARGET/etc/default/keyboard" <<EOF
+XKBMODEL="pc105"
+XKBLAYOUT="$LAYOUT"
+XKBVARIANT=""
+XKBOPTIONS="grp:alt_shift_toggle"
+BACKSPACE="guess"
+EOF
+install -d "$TARGET/etc/X11/xorg.conf.d"
+cat > "$TARGET/etc/X11/xorg.conf.d/00-keyboard.conf" <<EOF
+Section "InputClass"
+    Identifier "system-keyboard"
+    MatchIsKeyboard "on"
+    Option "XkbLayout" "$LAYOUT"
+    Option "XkbOptions" "grp:alt_shift_toggle"
+EndSection
+EOF
+if [[ $NEWTELLER_DISTRO == arch || $NEWTELLER_DISTRO == fedora ]]; then
+    printf 'KEYMAP=%s\n' "$first_layout" > "$TARGET/etc/vconsole.conf"
+fi
+
+# --- users ----------------------------------------------------------------------------
+
+progress 80 'Creating your account'
+# Everything that made this a live system goes.
+in_target userdel -rf live || true
+rm -rf "$TARGET/home/live"
+rm -f "$TARGET/etc/sudoers.d/90-newteller-live" \
+    "$TARGET/etc/polkit-1/rules.d/49-newteller-live.rules" \
+    "$TARGET/etc/sddm.conf.d/90-newteller-live.conf"
+rm -rf "$TARGET/usr/lib/newteller-installer"
+rm -f "$TARGET/usr/bin/newteller-installer" "$TARGET/usr/share/applications/newteller-installer.desktop"
+
+groups=$ADMIN_GROUP
+for group in video input audio render netdev plugdev lpadmin bluetooth; do
+    if chroot "$TARGET" getent group "$group" > /dev/null; then
+        groups+=",$group"
+    fi
+done
+in_target useradd -m -s /bin/bash -c "$FULLNAME" -G "$groups" "$USERNAME"
+printf '%s:%s\n' "$USERNAME" "$PASSWORD" | chroot "$TARGET" chpasswd
+in_target passwd -l root || true
+if [[ $ADMIN_GROUP == wheel ]]; then
+    install -d -m 750 "$TARGET/etc/sudoers.d"
+    printf '%%wheel ALL=(ALL:ALL) ALL\n' > "$TARGET/etc/sudoers.d/10-newteller-wheel"
+    chmod 440 "$TARGET/etc/sudoers.d/10-newteller-wheel"
+fi
+if [[ $AUTOLOGIN == yes ]]; then
+    install -d "$TARGET/etc/sddm.conf.d"
+    printf '[Autologin]\nUser=%s\nSession=newteller.desktop\n' "$USERNAME" \
+        > "$TARGET/etc/sddm.conf.d/20-autologin.conf"
+fi
+
+rm -f "$TARGET/etc/machine-id" "$TARGET/var/lib/dbus/machine-id"
+in_target systemd-machine-id-setup || true
+
+# --- initramfs ------------------------------------------------------------------------------
+
+progress 84 'Preparing the start-up files'
+case $NEWTELLER_DISTRO in
+    debian|ubuntu)
+        in_target apt-get purge -y live-boot live-boot-initramfs-tools || true
+        in_target update-initramfs -c -k all || in_target update-initramfs -u -k all
+        ;;
+    arch)
+        rm -f "$TARGET/etc/newteller/live-mkinitcpio.conf" "$TARGET/boot/initramfs-live.img"
+        in_target pacman -Rdd --noconfirm mkinitcpio-archiso || true
+        in_target mkinitcpio -P
+        ;;
+    fedora)
+        rm -f "$TARGET/boot/initramfs-live.img"
+        for modules in "$TARGET"/lib/modules/*/; do
+            kver=$(basename "$modules")
+            [[ -e $TARGET/boot/vmlinuz-$kver ]] || cp "$modules/vmlinuz" "$TARGET/boot/vmlinuz-$kver"
+        done
+        in_target dracut --force --regenerate-all
+        # The image was built without SELinux labels: relabel on first boot.
+        touch "$TARGET/.autorelabel"
+        ;;
+esac
+
+# --- boot loader ----------------------------------------------------------------------------
+
+progress 92 'Installing the boot loader'
+case $NEWTELLER_DISTRO in
+    debian|ubuntu)
+        if [[ $UEFI == yes ]]; then
+            secure=()
+            [[ -e $TARGET/usr/lib/shim/shimx64.efi.signed ]] && secure=(--uefi-secure-boot)
+            in_target grub-install --target=x86_64-efi --efi-directory=/boot/efi \
+                --bootloader-id="$NEWTELLER_DISTRO" "${secure[@]}" --recheck
+            # Also the fallback path, for firmware that forgets boot entries.
+            in_target grub-install --target=x86_64-efi --efi-directory=/boot/efi \
+                --removable "${secure[@]}" || true
+        else
+            in_target grub-install --target=i386-pc --recheck "$DISK"
+        fi
+        in_target grub-mkconfig -o /boot/grub/grub.cfg
+        ;;
+    arch)
+        if [[ $UEFI == yes ]]; then
+            in_target grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=NewTeller --recheck
+            in_target grub-install --target=x86_64-efi --efi-directory=/boot/efi --removable || true
+        else
+            in_target grub-install --target=i386-pc --recheck "$DISK"
+        fi
+        in_target grub-mkconfig -o /boot/grub/grub.cfg
+        ;;
+    fedora)
+        if [[ $UEFI == yes ]]; then
+            install -d "$TARGET/boot/efi/EFI/fedora"
+            cat > "$TARGET/boot/efi/EFI/fedora/grub.cfg" <<EOF
+search --no-floppy --fs-uuid --set=dev $root_uuid
+set prefix=(\$dev)/boot/grub2
+export \$prefix
+configfile \$prefix/grub.cfg
+EOF
+            disk_part=1
+            loader='\EFI\fedora\shimx64.efi'
+            [[ -e $TARGET/boot/efi/EFI/fedora/shimx64.efi ]] || loader='\EFI\fedora\grubx64.efi'
+            in_target efibootmgr --create --disk "$DISK" --part "$disk_part" \
+                --label 'Fedora (NewTeller)' --loader "$loader" || true
+        else
+            in_target grub2-install --target=i386-pc --recheck "$DISK"
+        fi
+        in_target grub2-mkconfig -o /boot/grub2/grub.cfg
+        ;;
+esac
+
+# --- done -------------------------------------------------------------------------------------
+
+progress 98 'Finishing'
+rm -f "$TARGET/etc/resolv.conf"
+if [[ -e $TARGET/etc/resolv.conf.newteller-copy || -L $TARGET/etc/resolv.conf.newteller-copy ]]; then
+    mv "$TARGET/etc/resolv.conf.newteller-copy" "$TARGET/etc/resolv.conf"
+fi
+in_target systemctl enable NetworkManager.service sddm.service || true
+in_target systemctl set-default graphical.target || true
+cleanup
+progress 100 'Installation complete'
+echo DONE

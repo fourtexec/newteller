@@ -49,10 +49,17 @@ fi
 
 # gtklock before 3.0 used wlr-input-inhibitor, which this compositor does
 # not offer: such a locker could not keep the session locked.
+# Some releases print the version on stderr: read both.
 gtklock_usable() {
     command -v gtklock >/dev/null 2>&1 || return 1
-    version=$(gtklock --version 2>/dev/null | sed -n 's/[^0-9]*\([0-9][0-9]*\)\..*/\1/p' | head -n 1)
+    version=$(gtklock --version 2>&1 | sed -n 's/^[^0-9]*\([0-9][0-9]*\)\..*/\1/p' | head -n 1)
     [ -n "$version" ] && [ "$version" -ge 3 ]
+}
+
+note() {
+    echo "newteller-lock: $*" >&2
+    command -v logger >/dev/null 2>&1 && logger -t newteller-lock -- "$*"
+    return 0
 }
 
 if gtklock_usable; then
@@ -113,10 +120,13 @@ window {
 EOF
     # --daemonize returns once the session is locked; if gtklock could not
     # lock it, swaylock below still does.
+    note "locking with gtklock $version"
     if gtklock --daemonize --style "$style"; then
         exit 0
     fi
-    echo 'newteller-lock: gtklock failed, falling back to swaylock' >&2
+    note 'gtklock failed, falling back to swaylock'
+elif command -v gtklock >/dev/null 2>&1; then
+    note "gtklock $(gtklock --version 2>&1 | head -n 1) is older than 3.0 (no ext-session-lock); using swaylock"
 fi
 
 if ! command -v swaylock >/dev/null 2>&1; then

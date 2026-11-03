@@ -125,6 +125,11 @@ QtObject {
         screen: Qt.application.screens[0]
     }
 
+    // The administrator prompt (polkit): "Open with root", system changes.
+    readonly property AuthDialog authDialog: AuthDialog {
+        screen: Qt.application.screens[0]
+    }
+
     // Ctrl+Shift+Esc: end a frozen application.
     readonly property ForceQuitWindow forceQuit: ForceQuitWindow {
         screen: Qt.application.screens[0]

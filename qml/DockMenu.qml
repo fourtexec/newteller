@@ -214,6 +214,23 @@ DropdownWindow {
         }
     }
 
+    // Another instance with administrator rights, after the shell's
+    // administrator prompt (pkexec).
+    TaskButton {
+        objectName: "openWithRoot"
+        width: menuColumn.width
+        height: 34
+        fillWidth: true
+        visible: dockMenu.entry && dockMenu.entry.appId.length > 0
+                 && dockMenu.entry.app.id !== undefined
+        iconName: "shield"
+        label: "Open with root"
+        onClicked: {
+            Apps.launchAsRoot(dockMenu.entry.appId);
+            dockMenu.close();
+        }
+    }
+
     TaskButton {
         width: menuColumn.width
         height: 34

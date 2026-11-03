@@ -209,6 +209,7 @@ class Settings(QObject):
             "panel.backgroundOpacity": 0.92,
             "panel.foregroundColor": "",
             "dock.material": "none",
+            "dock.group": False,
             "dock.backgroundColor": "",
             "dock.backgroundOpacity": 0.5,
             "dock.hoverOpacity": 0.15,
@@ -352,6 +353,15 @@ class Apps(QObject):
     @Slot(str, result="QVariantMap")
     def byId(self, app_id):
         return next((a for a in APPS if a["id"] == app_id), {})
+
+    @Slot(str, result=bool)
+    def launchAsRoot(self, app_id):
+        self.launched.append(("root", app_id))
+        return True
+
+    @Slot(result=bool)
+    def canLaunchAsRoot(self):
+        return True
 
     @Slot(str, str, result="QVariantMap")
     def matchWindowApp(self, app_id, title=""):
@@ -967,6 +977,64 @@ class Session(QObject):
         return {"us": "English (US)", "ru": "Russian"}.get(code, code)
 
 
+class PolkitStub(QObject):
+    """Stand-in for the Polkit context property (src/polkitagent.h)."""
+
+    changed = Signal()
+    registeredChanged = Signal()
+    finished = Signal(bool)
+
+    def __init__(self):
+        super().__init__()
+        self.calls = []
+        self._active = False
+        self._busy = False
+        self._error = ""
+        self._identity = 0
+
+    available = Property(bool, lambda self: True, constant=True)
+    registered = Property(bool, lambda self: True, notify=registeredChanged)
+    active = Property(bool, lambda self: self._active, notify=changed)
+    message = Property(str, lambda self: "Authentication is needed to run `/usr/bin/env' as the super user",
+                       notify=changed)
+    actionId = Property(str, lambda self: "org.freedesktop.policykit.exec", notify=changed)
+    iconName = Property(str, lambda self: "", notify=changed)
+    program = Property(str, lambda self: "/usr/bin/env WAYLAND_DISPLAY=/run/user/1000/wayland-0 /usr/bin/gedit",
+                       notify=changed)
+    details = Property("QVariantMap", lambda self: {}, notify=changed)
+    identities = Property("QVariantList", lambda self: ["tester", "root"], notify=changed)
+    identityIndex = Property(int, lambda self: self._identity, notify=changed)
+    prompt = Property(str, lambda self: "Password:", notify=changed)
+    echo = Property(bool, lambda self: False, notify=changed)
+    busy = Property(bool, lambda self: self._busy, notify=changed)
+    error = Property(str, lambda self: self._error, notify=changed)
+    info = Property(str, lambda self: "", notify=changed)
+
+    def request(self):
+        self._active = True
+        self._error = ""
+        self.changed.emit()
+
+    @Slot(str)
+    def respond(self, response):
+        self.calls.append(("respond", response))
+        self._error = "That password did not work. Try again."
+        self.changed.emit()
+
+    @Slot()
+    def cancel(self):
+        self.calls.append(("cancel",))
+        self._active = False
+        self.changed.emit()
+        self.finished.emit(False)
+
+    @Slot(int)
+    def selectIdentity(self, index):
+        self.calls.append(("selectIdentity", index))
+        self._identity = index
+        self.changed.emit()
+
+
 class BluetoothStub(QObject):
     """Stand-in for the Bluetooth context property (src/bluetooth.h)."""
 
@@ -1186,12 +1254,13 @@ def main():
     tray, quick, session = Tray(), Quick(), Session()
     clipboard = ClipboardStub()
     bluetooth = BluetoothStub()
+    polkit = PolkitStub()
     engine = QQmlApplicationEngine()
     for name, obj in (("Settings", settings), ("Theme", theme), ("Apps", apps), ("Shell", shell),
                       ("Plugins", plugin_manager), ("System", system), ("Windows", window_list),
                       ("Notifications", notifications), ("FilePortal", file_portal),
                       ("Tray", tray), ("Quick", quick), ("Session", session),
-                      ("Clipboard", clipboard), ("Bluetooth", bluetooth)):
+                      ("Clipboard", clipboard), ("Bluetooth", bluetooth), ("Polkit", polkit)):
         engine.rootContext().setContextProperty(name, obj)
 
     failures = []
@@ -1571,6 +1640,30 @@ def main():
         settings.setValue("panel.position", "bottom")
         QTest.qWait(300)
 
+    # Desktop widgets are laid out so that none covers another.
+    QTest.qWait(200)
+    for desktop in desktops[:1]:
+        root_item = desktop.property("contentItem")
+        widgets = []
+        if root_item is not None:
+            stack = [root_item]
+            while stack:
+                item = stack.pop()
+                if (item.objectName() in ("desktopWidget", "desktopIcon")
+                        and item.width() > 0 and item.height() > 0 and item.isVisible()):
+                    widgets.append(item)
+                stack.extend(item.childItems())
+        overlaps = []
+        for i, a in enumerate(widgets):
+            for b in widgets[i + 1:]:
+                if (a.x() < b.x() + b.width() and b.x() < a.x() + a.width()
+                        and a.y() < b.y() + b.height() and b.y() < a.y() + a.height()):
+                    overlaps.append((a.property("gridKey"), b.property("gridKey")))
+        check(len(widgets) >= 2, f"the desktop shows its widgets and icons ({len(widgets)})")
+        check(not overlaps, f"desktop widgets and icons do not overlap ({overlaps})")
+        offgrid = [w.property("gridKey") for w in widgets if w.x() < -1000]
+        check(not offgrid, f"every desktop element has a grid cell ({offgrid})")
+
     # One dock menu per panel.
     dock_menus = windows_of_kind("DockMenu")
     check(len(dock_menus) == len(panels),
@@ -1884,6 +1977,25 @@ def main():
                 shell.taskViewToggleRequested.emit()
                 QTest.qWait(200)
                 check(not views[0].isVisible(), "Super+Tab again closes the overview")
+
+            # The administrator prompt: polkit asks, the screen dims, the
+            # password goes back, Cancel refuses.
+            polkit.request()
+            QTest.qWait(150)
+            auths = windows_of_kind("AuthDialog")
+            check(bool(auths) and auths[0].isVisible(), "a polkit request opens the administrator prompt")
+            if auths:
+                field = auths[0].findChild(QObject, "authPassword")
+                check(field is not None, "the administrator prompt has a password field")
+                if field is not None:
+                    field.setProperty("text", "secret")
+                    QMetaObject.invokeMethod(auths[0], "allow")
+                    check(("respond", "secret") in polkit.calls, "Allow hands the password to polkit")
+                    QTest.qWait(50)
+                    check(field.property("text") == "", "a wrong password clears the field")
+                polkit.cancel()
+                QTest.qWait(100)
+                check(not auths[0].isVisible(), "cancelling closes the administrator prompt")
 
             # Ctrl+Shift+Esc: the force-quit dialog lists windows and ends one.
             shell.forceQuitRequested.emit()

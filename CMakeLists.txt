@@ -101,6 +101,7 @@ qt_add_executable(newteller
     src/sessionservices.cpp
     src/clipboardhistory.cpp
     src/bluetooth.cpp
+    src/polkitagent.cpp
 )
 
 target_compile_definitions(newteller PRIVATE NEWTELLER_VERSION="${PROJECT_VERSION}")
@@ -116,6 +117,17 @@ target_link_libraries(newteller PRIVATE
     ${WAYLAND_CLIENT_LIBRARY}
     ${XCB_LIBRARY}
 )
+
+# The built-in administrator prompt (polkit authentication agent). Without
+# libpolkit-agent-1 the session uses an external agent instead.
+pkg_check_modules(POLKIT_AGENT QUIET IMPORTED_TARGET polkit-agent-1)
+if(POLKIT_AGENT_FOUND)
+    message(STATUS "Administrator prompt: built in (polkit-agent-1 ${POLKIT_AGENT_VERSION})")
+    target_compile_definitions(newteller PRIVATE NEWTELLER_HAVE_POLKIT=1)
+    target_link_libraries(newteller PRIVATE PkgConfig::POLKIT_AGENT)
+else()
+    message(STATUS "Administrator prompt: external agent (polkit-agent-1 not found)")
+endif()
 
 if(NEWTELLER_RUST_ENABLED)
     target_include_directories(newteller PRIVATE ${CMAKE_SOURCE_DIR}/rust/crates/newteller-core/include)
@@ -176,7 +188,8 @@ target_link_libraries(newteller-compositor PRIVATE
 )
 
 install(TARGETS newteller newteller-compositor RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(PROGRAMS scripts/newteller-session scripts/newteller-screenshot scripts/newteller-lock DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(PROGRAMS scripts/newteller-session scripts/newteller-screenshot scripts/newteller-lock
+                 scripts/newteller-run-as-root DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(DIRECTORY plugins/ DESTINATION ${CMAKE_INSTALL_DATADIR}/newteller/plugins)
 install(FILES data/org.newteller.Shell.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
 install(FILES data/newteller-session.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/wayland-sessions RENAME newteller.desktop)

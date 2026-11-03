@@ -173,6 +173,21 @@ DropdownWindow {
                     pinMenu.close();
                 }
             }
+            TaskButton {
+                objectName: "startOpenWithRoot"
+                width: 180
+                height: 32
+                fillWidth: true
+                iconName: "shield"
+                label: "Open with root"
+                onClicked: {
+                    const app = menu.pinTarget;
+                    pinMenu.close();
+                    menu.hide();
+                    if (app)
+                        Apps.launchAsRoot(app.id);
+                }
+            }
         }
     }
 

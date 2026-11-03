@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Install NewTeller
+Comment=Install the system with the NewTeller desktop to this computer
+Exec=newteller-installer
+Icon=system-software-install
+Terminal=false
+Categories=System;
+Keywords=install;installer;setup;

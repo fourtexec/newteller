@@ -709,6 +709,39 @@ bool AppModel::launch(const QString &id, const QStringList &files)
     return true;
 }
 
+bool AppModel::canLaunchAsRoot() const
+{
+    return !QStandardPaths::findExecutable(QStringLiteral("newteller-run-as-root")).isEmpty()
+           && !QStandardPaths::findExecutable(QStringLiteral("pkexec")).isEmpty();
+}
+
+bool AppModel::launchAsRoot(const QString &id)
+{
+    const QString helper = QStandardPaths::findExecutable(QStringLiteral("newteller-run-as-root"));
+    if (helper.isEmpty() || QStandardPaths::findExecutable(QStringLiteral("pkexec")).isEmpty()) {
+        emit launchFailed(id, QStringLiteral("pkexec or newteller-run-as-root is not installed"));
+        return false;
+    }
+    const QVariantList args = launchArgs(id);
+    QStringList argv;
+    for (const QVariant &arg : args)
+        argv << arg.toString();
+    if (argv.isEmpty() || argv.constFirst().isEmpty()) {
+        emit launchFailed(id, QStringLiteral("no such application or empty Exec line"));
+        return false;
+    }
+    // pkexec wants an absolute program path.
+    const QString program = QStandardPaths::findExecutable(argv.constFirst());
+    if (!program.isEmpty())
+        argv[0] = program;
+    if (!QProcess::startDetached(helper, argv)) {
+        emit launchFailed(id, QStringLiteral("could not start %1").arg(helper));
+        return false;
+    }
+    rememberRecent(id);
+    return true;
+}
+
 bool AppModel::launchAction(const QString &id, const QString &actionId)
 {
     const int row = indexOf(id);

@@ -35,6 +35,16 @@ enable_network_manager() {
         || echo 'note: could not start NetworkManager' >&2
 }
 
+# Whether apt can install the package. `apt-cache show` also succeeds for
+# names that are only mentioned by other packages (Debian firmware names on
+# Ubuntu), which then make `apt-get install` fail; a real candidate version
+# is what counts.
+apt_has() {
+    local candidate
+    candidate=$(apt-cache policy "$1" 2>/dev/null | awk '/Candidate:/ { print $2; exit }')
+    [[ -n $candidate && $candidate != '(none)' ]]
+}
+
 power_manager_installed() {
     local manager
     for manager in tlp laptop-mode-tools tuned tuned-ppd auto-cpufreq; do
@@ -64,15 +74,17 @@ install_debian() {
         libxkbcommon0 libseat1 libinput10 libdrm2 libgbm1 libegl1 libgles2
         libcairo2 libpangocairo-1.0-0
         grim
+        # The administrator prompt (polkit agent) is linked into the shell.
+        libpolkit-agent-1-0
     )
     # Some packaging splits the QML extension out of layer-shell-qt.
-    if apt-cache show qml6-module-org-kde-layershell > /dev/null 2>&1; then
+    if apt_has qml6-module-org-kde-layershell; then
         packages+=(qml6-module-org-kde-layershell)
     fi
     apt-get install -y --no-install-recommends "${packages[@]}"
 
     local optional=(
-        gtklock swaylock swayidle wlsunset
+        gtklock swaylock swayidle wlsunset polkitd pkexec
         xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk
         lxpolkit procps wdisplays
         network-manager wpasupplicant network-manager-gnome
@@ -86,14 +98,20 @@ install_debian() {
     power_manager_installed || optional+=(power-profiles-daemon)
     local available=() package
     for package in "${optional[@]}"; do
-        if apt-cache show "$package" > /dev/null 2>&1; then
+        if apt_has "$package"; then
             available+=("$package")
         else
             echo "note: optional package $package is not available here" >&2
         fi
     done
-    if [[ ${#available[@]} -gt 0 ]]; then
-        apt-get install -y --no-install-recommends "${available[@]}"
+    # Optional packages never stop the installation: if the batch fails,
+    # each one is tried on its own.
+    if [[ ${#available[@]} -gt 0 ]] \
+        && ! apt-get install -y --no-install-recommends "${available[@]}"; then
+        for package in "${available[@]}"; do
+            apt-get install -y --no-install-recommends "$package" \
+                || echo "note: optional package $package could not be installed" >&2
+        done
     fi
 }
 
@@ -109,7 +127,7 @@ install_arch() {
     pacman -Syu --noconfirm --needed \
         qt6-base qt6-declarative qt6-svg qt6-wayland qt6-imageformats layer-shell-qt \
         "$wlroots" xorg-xwayland dbus glib2 libxkbcommon seatd libinput libdrm mesa \
-        cairo pango grim
+        cairo pango grim polkit
 
     local optional=(
         gtklock swaylock swayidle wlsunset
@@ -144,7 +162,7 @@ install_fedora() {
         qt6-qtbase qt6-qtbase-gui qt6-qtdeclarative qt6-qtsvg qt6-qtwayland \
         qt6-qtimageformats layer-shell-qt \
         "$wlroots" xorg-x11-server-Xwayland dbus-daemon glib2 libxkbcommon libseat \
-        libinput libdrm mesa-libgbm mesa-libEGL mesa-libGLES cairo pango grim
+        libinput libdrm mesa-libgbm mesa-libEGL mesa-libGLES cairo pango grim polkit polkit-libs
 
     local optional=(
         gtklock swaylock swayidle wlsunset

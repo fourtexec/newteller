@@ -1,0 +1,334 @@
+#!/usr/bin/env python3
+"""NewTeller installer (live session).
+
+A small PySide6 application: Installer.qml is the interface (welcome,
+keyboard, disk, location, account, summary, progress), this file gathers what
+it shows (disks, time zones, keyboard layouts) and runs
+newteller-install-backend as root through pkexec, turning its PROGRESS / LOG /
+ERROR / DONE lines into signals.
+"""
+
+import base64
+import json
+import os
+import re
+import subprocess
+import sys
+import tempfile
+
+from PySide6.QtCore import Property, QObject, QProcess, QUrl, Signal, Slot
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtQml import QQmlApplicationEngine
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+BACKEND = os.path.join(HERE, "newteller-install-backend")
+IMAGE_CONF = os.path.join(HERE, "image.conf")
+
+LOCALES = [
+    ("en_US.UTF-8", "English (United States)"),
+    ("en_GB.UTF-8", "English (United Kingdom)"),
+    ("ru_RU.UTF-8", "Русский"),
+    ("uk_UA.UTF-8", "Українська"),
+    ("be_BY.UTF-8", "Беларуская"),
+    ("kk_KZ.UTF-8", "Қазақ тілі"),
+    ("de_DE.UTF-8", "Deutsch"),
+    ("fr_FR.UTF-8", "Français"),
+    ("es_ES.UTF-8", "Español"),
+    ("it_IT.UTF-8", "Italiano"),
+    ("pt_BR.UTF-8", "Português (Brasil)"),
+    ("pl_PL.UTF-8", "Polski"),
+    ("tr_TR.UTF-8", "Türkçe"),
+    ("zh_CN.UTF-8", "中文 (简体)"),
+    ("ja_JP.UTF-8", "日本語"),
+]
+
+# The keyboard layout that usually goes with a language.
+LOCALE_LAYOUT = {
+    "ru": "us,ru", "uk": "us,ua", "be": "us,by", "kk": "us,kz", "de": "de",
+    "fr": "fr", "es": "es", "it": "it", "pt": "br", "pl": "pl", "tr": "tr",
+    "en_GB": "gb",
+}
+
+
+def read_image_conf():
+    values = {"NEWTELLER_DISTRO": "", "NEWTELLER_DISTRO_NAME": "Linux"}
+    try:
+        with open(IMAGE_CONF, encoding="utf-8") as handle:
+            for line in handle:
+                key, _, value = line.strip().partition("=")
+                if key in values:
+                    values[key] = value.strip().strip("'\"").replace("\\ ", " ")
+    except OSError:
+        pass
+    return values
+
+
+def human_size(size):
+    units = ["B", "KB", "MB", "GB", "TB"]
+    value = float(size)
+    for unit in units:
+        if value < 1000 or unit == units[-1]:
+            return f"{value:.0f} {unit}" if unit in ("B", "KB") else f"{value:.1f} {unit}"
+        value /= 1000
+    return f"{size} B"
+
+
+def live_medium_disks():
+    """Disks that hold the running live medium (never offered)."""
+    disks = set()
+    for medium in ("/run/live/medium", "/run/archiso/bootmnt", "/run/initramfs/live"):
+        try:
+            source = subprocess.run(["findmnt", "-no", "SOURCE", medium], capture_output=True,
+                                    text=True, check=False).stdout.strip()
+        except OSError:
+            continue
+        if not source:
+            continue
+        disks.add(source)
+        parent = subprocess.run(["lsblk", "-no", "PKNAME", source], capture_output=True,
+                                text=True, check=False).stdout.strip().splitlines()
+        if parent and parent[0]:
+            disks.add("/dev/" + parent[0])
+    return disks
+
+
+def list_disks():
+    try:
+        output = subprocess.run(
+            ["lsblk", "-J", "-b", "-d", "-o", "NAME,PATH,SIZE,MODEL,TYPE,RO,TRAN,RM"],
+            capture_output=True, text=True, check=True).stdout
+        devices = json.loads(output).get("blockdevices", [])
+    except (OSError, subprocess.CalledProcessError, ValueError):
+        return []
+    skip = live_medium_disks()
+    disks = []
+    for device in devices:
+        path = device.get("path") or "/dev/" + device.get("name", "")
+        if device.get("type") != "disk" or str(device.get("ro")) in ("1", "True", "true"):
+            continue
+        if re.match(r"/dev/(loop|zram|sr|ram)", path) or path in skip:
+            continue
+        size = int(device.get("size") or 0)
+        if size < 8 * 1000 ** 3:
+            continue
+        model = (device.get("model") or "").strip() or "Disk"
+        transport = (device.get("tran") or "").upper()
+        disks.append({
+            "path": path,
+            "model": model,
+            "size": size,
+            "sizeText": human_size(size),
+            "transport": transport,
+            "removable": str(device.get("rm")) in ("1", "True", "true"),
+        })
+    return disks
+
+
+def list_timezones():
+    try:
+        zones = subprocess.run(["timedatectl", "list-timezones"], capture_output=True,
+                               text=True, check=True).stdout.split()
+        if zones:
+            return zones
+    except (OSError, subprocess.CalledProcessError):
+        pass
+    zones = []
+    try:
+        with open("/usr/share/zoneinfo/zone1970.tab", encoding="utf-8") as handle:
+            for line in handle:
+                if not line.startswith("#"):
+                    fields = line.split("\t")
+                    if len(fields) >= 3:
+                        zones.append(fields[2].strip())
+    except OSError:
+        pass
+    return sorted(set(zones + ["UTC"]))
+
+
+def current_timezone():
+    try:
+        target = os.readlink("/etc/localtime")
+        if "zoneinfo/" in target:
+            return target.split("zoneinfo/", 1)[1]
+    except OSError:
+        pass
+    return "UTC"
+
+
+def list_layouts():
+    layouts = []
+    try:
+        with open("/usr/share/X11/xkb/rules/evdev.lst", encoding="utf-8") as handle:
+            section = ""
+            for line in handle:
+                line = line.rstrip("\n")
+                if line.startswith("!"):
+                    section = line[1:].strip()
+                    continue
+                if section != "layout" or not line.strip():
+                    continue
+                code, _, name = line.strip().partition(" ")
+                layouts.append({"code": code, "name": name.strip()})
+    except OSError:
+        layouts = [{"code": "us", "name": "English (US)"}, {"code": "ru", "name": "Russian"}]
+    layouts.sort(key=lambda item: item["name"].lower())
+    return layouts
+
+
+class Installer(QObject):
+    disksChanged = Signal()
+    stateChanged = Signal()
+    logAppended = Signal(str)
+    finished = Signal(bool, str)
+
+    def __init__(self):
+        super().__init__()
+        image = read_image_conf()
+        self._distro = image["NEWTELLER_DISTRO"]
+        self._distro_name = image["NEWTELLER_DISTRO_NAME"] or "Linux"
+        self._disks = list_disks()
+        self._timezones = list_timezones()
+        self._layouts = list_layouts()
+        self._running = False
+        self._progress = 0
+        self._status = ""
+        self._log = []
+        self._process = None
+        self._buffer = b""
+        self._failed = ""
+
+    # --- facts for the interface ---------------------------------------------
+
+    distroName = Property(str, lambda self: self._distro_name, constant=True)
+    distro = Property(str, lambda self: self._distro, constant=True)
+    uefi = Property(bool, lambda self: os.path.isdir("/sys/firmware/efi"), constant=True)
+    disks = Property("QVariantList", lambda self: self._disks, notify=disksChanged)
+    timezones = Property("QVariantList", lambda self: self._timezones, constant=True)
+    layouts = Property("QVariantList", lambda self: self._layouts, constant=True)
+    locales = Property("QVariantList",
+                       lambda self: [{"code": c, "name": n} for c, n in LOCALES], constant=True)
+    defaultTimezone = Property(str, lambda self: current_timezone(), constant=True)
+    running = Property(bool, lambda self: self._running, notify=stateChanged)
+    progress = Property(int, lambda self: self._progress, notify=stateChanged)
+    status = Property(str, lambda self: self._status, notify=stateChanged)
+    log = Property(str, lambda self: "\n".join(self._log[-400:]), notify=stateChanged)
+
+    @Slot()
+    def refreshDisks(self):
+        self._disks = list_disks()
+        self.disksChanged.emit()
+
+    @Slot(str, result=str)
+    def layoutForLocale(self, locale):
+        if locale.startswith("en_GB"):
+            return LOCALE_LAYOUT["en_GB"]
+        return LOCALE_LAYOUT.get(locale.split("_", 1)[0], "us")
+
+    @Slot(str, result=str)
+    def suggestUsername(self, full_name):
+        first = (full_name.strip().split() or [""])[0].lower()
+        name = re.sub(r"[^a-z0-9_-]", "", first)
+        if not name or not re.match(r"[a-z_]", name[0]):
+            name = "user"
+        return name[:32]
+
+    @Slot(str, result=str)
+    def suggestHostname(self, username):
+        base = re.sub(r"[^A-Za-z0-9-]", "", username) or "newteller"
+        return (base + "-pc")[:63]
+
+    # --- installation ----------------------------------------------------------
+
+    @Slot("QVariantMap")
+    def install(self, choices):
+        if self._running:
+            return
+        values = {
+            "DISK": choices.get("disk", ""),
+            "FULLNAME": choices.get("fullName", ""),
+            "USERNAME": choices.get("username", ""),
+            "PASSWORD": choices.get("password", ""),
+            "HOSTNAME": choices.get("hostname", ""),
+            "TIMEZONE": choices.get("timezone", "UTC"),
+            "LOCALE": choices.get("locale", "en_US.UTF-8"),
+            "LAYOUT": choices.get("layout", "us"),
+            "AUTOLOGIN": "yes" if choices.get("autologin") else "no",
+        }
+        handle, path = tempfile.mkstemp(prefix="newteller-install-", suffix=".conf")
+        with os.fdopen(handle, "w", encoding="utf-8") as config:
+            for key, value in values.items():
+                encoded = base64.b64encode(str(value).encode("utf-8")).decode("ascii")
+                config.write(f"{key}={encoded}\n")
+        os.chmod(path, 0o600)
+
+        self._running = True
+        self._progress = 0
+        self._status = "Starting"
+        self._log = []
+        self._failed = ""
+        self.stateChanged.emit()
+
+        self._process = QProcess(self)
+        self._process.setProcessChannelMode(QProcess.ProcessChannelMode.MergedChannels)
+        self._process.readyReadStandardOutput.connect(self._read)
+        self._process.finished.connect(self._done)
+        self._process.start("pkexec", [BACKEND, path])
+
+    def _read(self):
+        self._buffer += bytes(self._process.readAllStandardOutput())
+        while b"\n" in self._buffer:
+            raw, self._buffer = self._buffer.split(b"\n", 1)
+            line = raw.decode("utf-8", "replace")
+            kind, _, rest = line.partition(" ")
+            if kind == "PROGRESS":
+                number, _, text = rest.partition(" ")
+                try:
+                    self._progress = max(0, min(100, int(number)))
+                except ValueError:
+                    pass
+                self._status = text
+            elif kind == "ERROR":
+                self._failed = rest
+                self._log.append("ERROR: " + rest)
+            elif kind == "LOG":
+                self._log.append(rest)
+            elif kind == "DONE":
+                pass
+            else:
+                self._log.append(line)
+            self.stateChanged.emit()
+
+    def _done(self, code, _status):
+        self._read()
+        self._running = False
+        ok = code == 0 and not self._failed
+        if not ok and not self._failed:
+            self._failed = ("The administrator permission was refused." if code in (126, 127)
+                            else f"The installer stopped (exit code {code}).")
+        self.stateChanged.emit()
+        self.finished.emit(ok, self._failed)
+
+    @Slot()
+    def reboot(self):
+        subprocess.Popen(["systemctl", "reboot"])
+
+    @Slot()
+    def quit(self):
+        QGuiApplication.quit()
+
+
+def main():
+    app = QGuiApplication(sys.argv)
+    app.setApplicationName("NewTeller Installer")
+    app.setDesktopFileName("newteller-installer")
+    installer = Installer()
+    engine = QQmlApplicationEngine()
+    engine.rootContext().setContextProperty("installer", installer)
+    engine.load(QUrl.fromLocalFile(os.path.join(HERE, "Installer.qml")))
+    if not engine.rootObjects():
+        return 1
+    return app.exec()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

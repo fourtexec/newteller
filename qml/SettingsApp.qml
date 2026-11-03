@@ -1098,13 +1098,14 @@ Window {
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Show running applications"
+                                title: "Show open windows"
                                 settingKey: "dock.showWindows"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
                                 title: "Group windows of one application"
+                                subtitle: "Off: every window has its own button."
                                 settingKey: "dock.group"
                                 SettingsSwitch {}
                             }
@@ -1568,7 +1569,7 @@ Window {
                                     iconName: "rotate-ccw"
                                     label: "Reset layout"
                                     onClicked: Settings.setValues({
-                                        "desktop.iconPositions": ({}),
+                                        "desktop.gridPositions": ({}),
                                         "desktop.autoArrangeIcons": true
                                     })
                                 }
@@ -3483,6 +3484,18 @@ Window {
                             subtitle: Session.lockAvailable
                                       ? "Super+L locks the screen. Your password unlocks it."
                                       : "The screen locker is not installed: install gtklock (or swaylock)"
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Built-in administrator prompt"
+                                subtitle: Polkit.registered
+                                          ? "Active: NewTeller asks for the administrator password itself. Applies after logging in again."
+                                          : "Off or unavailable: " + (Session.polkitAgent.length > 0
+                                                                       ? Session.polkitAgent : "no polkit agent")
+                                            + " asks instead. Applies after logging in again."
+                                settingKey: "security.builtinAgent"
+                                SettingsSwitch { settingKey: "security.builtinAgent" }
+                            }
 
                             SettingsRow {
                                 width: parent.width
