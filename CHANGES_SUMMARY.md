@@ -21,6 +21,33 @@ NewTeller is now a desktop session, not only a shell that runs inside another de
   moving windows between outputs (`Super+Shift+Left/Right`), show-desktop (`Super+D`),
   `Alt+F4`, and `Print` screenshots saved to `~/Pictures/Screenshots`.
 
+## Everyday desktop parity with GNOME and KDE
+
+What a GNOME or KDE user expects from a desktop session, now in NewTeller:
+
+| Area | What works |
+| --- | --- |
+| Lock screen | `Super+L`, idle timeout, before suspend; swaylock over `ext-session-lock-v1`; a crashed locker never unlocks |
+| Idle | Screen off after a timeout, video players keep it on (idle-inhibit), input counts as activity |
+| Keyboard | Layout list (or `/etc/default/keyboard`), `Super+Space` / Alt+Shift / Ctrl+Shift / Caps switching, panel indicator, repeat, Num Lock, XKB options |
+| Mouse & touchpad | Tap to click, natural scrolling, disable while typing, speed, left-handed, cursor theme/size |
+| Displays | wlr-output-management (wdisplays, wlr-randr, kanshi), per-monitor memory, automatic 200% on HiDPI |
+| Night light | wlsunset over gamma control, scheduled or always on |
+| Workspaces | Four desktops, `Ctrl+Super+Left/Right`, `Super+Page Up/Down`, Shift moves the window, panel dots |
+| Window switching | Alt+Tab through every window with an overlay and live preview; Super+drag to move/resize |
+| Hardware keys | Volume, mute, mic mute, brightness, media keys with an on-screen level |
+| Screenshots | Full screen and area (`Shift+Print`, `Super+Shift+S`), copied to the clipboard |
+| Clipboard | History on `Super+V` (wlr-data-control + wl-clipboard) |
+| Network | Wi-Fi list with password entry in quick settings; nm-applet in the tray |
+| Power | Power profiles, low-battery warnings |
+| Session services | XDG autostart, startup applications, polkit agent, portals for screen sharing, dark mode for GTK/Firefox/Chromium apps, VT switching, a crashed shell is restarted |
+| Shortcuts | `Super` tap (start menu), `Super+N/A/R/E/I/V`, as on Windows |
+
+The compositor reads `~/.config/newteller/compositor.conf` (written by the shell) and is
+controlled through `newteller-compositor --msg` over `$NEWTELLER_IPC`. The CI session test
+covers the control socket, blanking, wlr-randr, workspaces, shell crash recovery and the
+lock screen (including a killed locker).
+
 ## Overview
 
 This comprehensive update adds **100+ new settings** across all aspects of NewTeller, including:

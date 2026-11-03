@@ -29,6 +29,10 @@ Window {
         { id: "plugins", label: "Plugins", icon: "puzzle" },
         { id: "hotkeys", label: "Hotkeys", icon: "keyboard" },
         { id: "animations", label: "Animations", icon: "sparkles" },
+        { id: "keyboard", label: "Keyboard", icon: "keyboard" },
+        { id: "mouse", label: "Mouse & touchpad", icon: "mouse" },
+        { id: "display", label: "Displays", icon: "monitor" },
+        { id: "power", label: "Power & lock", icon: "power" },
         { id: "about", label: "About", icon: "info" }
     ]
     property string currentPage: "appearance"
@@ -389,6 +393,25 @@ Window {
                                             }
                                         }
                                     }
+                                }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Applications"
+                            subtitle: "GTK, GNOME, Firefox and Chromium-based applications follow this choice."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Application colour scheme"
+                                settingKey: "apps.colorScheme"
+                                SettingsChoice {
+                                    settingKey: "apps.colorScheme"
+                                    model: [
+                                        { value: "dark", label: "Dark" },
+                                        { value: "light", label: "Light" },
+                                        { value: "system", label: "Leave as is" }
+                                    ]
                                 }
                             }
                         }
@@ -1692,6 +1715,29 @@ Window {
                         }
 
                         SettingsSection {
+                            title: "Started by the system"
+                            subtitle: "XDG autostart entries from ~/.config/autostart and /etc/xdg/autostart. Applications add them with their own \"start at login\" option; delete the file in ~/.config/autostart to stop one."
+
+                            Repeater {
+                                model: Session.autostartEntries()
+
+                                delegate: SettingsRow {
+                                    required property var modelData
+                                    width: parent ? parent.width : 320
+                                    title: modelData.name
+                                    subtitle: modelData.exec
+
+                                    Text {
+                                        text: modelData.file.indexOf("/etc/") === 0 ? "System" : "Personal"
+                                        color: Theme.muted
+                                        font.family: Theme.fontFamily
+                                        font.pointSize: Theme.fontSize - 1
+                                    }
+                                }
+                            }
+                        }
+
+                        SettingsSection {
                             title: "Search"
                             subtitle: "Application search behavior."
 
@@ -2443,6 +2489,456 @@ Window {
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+            }
+
+            // ---- Keyboard ---------------------------------------------------
+            Item {
+                Flickable {
+                    id: keyboardScroll
+                    anchors.fill: parent
+                    contentHeight: keyboardColumn.implicitHeight + 24
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Column {
+                        id: keyboardColumn
+                        x: 16
+                        y: 12
+                        width: keyboardScroll.width - 32
+                        spacing: 16
+
+                        // The configured layouts, in switching order.
+                        readonly property var layouts: {
+                            const raw = Settings.values["keyboard.layouts"];
+                            return (raw === undefined || raw === null ? "" : String(raw))
+                                .split(",").map(function (x) { return x.trim(); })
+                                .filter(function (x) { return x.length > 0; });
+                        }
+                        readonly property var commonLayouts: ["us", "ru", "ua", "by", "kz", "gb",
+                            "de", "fr", "es", "it", "pl", "cz", "pt", "br", "tr", "gr", "il",
+                            "ara", "ge", "am", "jp", "kr", "cn", "se", "fi", "no", "dk", "nl"]
+
+                        function setLayouts(list) {
+                            Settings.setValue("keyboard.layouts", list.join(","));
+                        }
+                        function addLayout(code) {
+                            var list = layouts.slice();
+                            if (list.length === 0)
+                                list.push("us");
+                            if (list.indexOf(code) < 0)
+                                list.push(code);
+                            setLayouts(list);
+                        }
+                        function removeLayout(code) {
+                            setLayouts(layouts.filter(function (x) { return x !== code; }));
+                        }
+                        function moveFirst(code) {
+                            setLayouts([code].concat(layouts.filter(function (x) { return x !== code; })));
+                        }
+
+                        SettingsSection {
+                            title: "Input languages"
+                            subtitle: keyboardColumn.layouts.length === 0
+                                      ? "Following the system keyboard settings (/etc/default/keyboard). Add a layout to choose your own."
+                                      : "Super+Space or the switch keys below cycle through them; the panel shows the current one."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Your layouts"
+                                subtitle: "Click a layout to make it the first one; × removes it."
+                                settingKey: "keyboard.layouts"
+
+                                Flow {
+                                    width: Math.min(320, parent ? parent.width * 0.55 : 320)
+                                    spacing: 6
+                                    Repeater {
+                                        model: keyboardColumn.layouts
+                                        delegate: Row {
+                                            required property var modelData
+                                            required property int index
+                                            spacing: 2
+                                            TaskButton {
+                                                label: Session.layoutDisplayName(modelData)
+                                                active: index === 0
+                                                onClicked: keyboardColumn.moveFirst(modelData)
+                                            }
+                                            TaskButton {
+                                                width: 28
+                                                iconName: "x"
+                                                onClicked: keyboardColumn.removeLayout(modelData)
+                                            }
+                                        }
+                                    }
+                                    Text {
+                                        visible: keyboardColumn.layouts.length === 0
+                                        text: "System default"
+                                        color: Theme.muted
+                                        font.family: Theme.fontFamily
+                                        font.pointSize: Theme.fontSize
+                                    }
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Add a layout"
+                                height: Math.max(44, addLayoutFlow.implicitHeight + 12)
+
+                                Flow {
+                                    id: addLayoutFlow
+                                    width: Math.min(360, parent ? parent.width * 0.6 : 360)
+                                    spacing: 4
+                                    Repeater {
+                                        model: keyboardColumn.commonLayouts.filter(function (code) {
+                                            return keyboardColumn.layouts.indexOf(code) < 0;
+                                        })
+                                        delegate: TaskButton {
+                                            required property var modelData
+                                            label: Session.layoutDisplayName(modelData)
+                                            onClicked: keyboardColumn.addLayout(modelData)
+                                        }
+                                    }
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Switch layouts with"
+                                subtitle: "Super+Space always works as well."
+                                settingKey: "keyboard.switchKeys"
+                                SettingsChoice {
+                                    settingKey: "keyboard.switchKeys"
+                                    model: [
+                                        { value: "grp:alt_shift_toggle", label: "Alt+Shift" },
+                                        { value: "grp:ctrl_shift_toggle", label: "Ctrl+Shift" },
+                                        { value: "grp:caps_toggle", label: "Caps Lock" },
+                                        { value: "", label: "Super+Space only" }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Show the layout on the panel"
+                                settingKey: "keyboard.showIndicator"
+                                SettingsSwitch { settingKey: "keyboard.showIndicator" }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Typing"
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Repeat delay"
+                                subtitle: "How long a key is held before it repeats."
+                                settingKey: "keyboard.repeatDelay"
+                                SettingsSlider { settingKey: "keyboard.repeatDelay"; from: 150; to: 1000; step: 25; suffix: " ms" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Repeat rate"
+                                settingKey: "keyboard.repeatRate"
+                                SettingsSlider { settingKey: "keyboard.repeatRate"; from: 5; to: 60; step: 1; suffix: " /s" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Num Lock on at login"
+                                settingKey: "keyboard.numlock"
+                                SettingsSwitch { settingKey: "keyboard.numlock" }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Advanced"
+                            subtitle: "XKB names, comma separated, in the same order as the layouts."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Variants"
+                                subtitle: "For example \",phonetic\" for a phonetic second layout."
+                                settingKey: "keyboard.variants"
+                                SettingsTextField { settingKey: "keyboard.variants"; placeholder: "(default)" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Extra XKB options"
+                                subtitle: "For example ctrl:nocaps or compose:ralt."
+                                settingKey: "keyboard.options"
+                                SettingsTextField { settingKey: "keyboard.options"; placeholder: "(none)" }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---- Mouse & touchpad -------------------------------------------
+            Item {
+                Flickable {
+                    id: mouseScroll
+                    anchors.fill: parent
+                    contentHeight: mouseColumn.implicitHeight + 24
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Column {
+                        id: mouseColumn
+                        x: 16
+                        y: 12
+                        width: mouseScroll.width - 32
+                        spacing: 16
+
+                        SettingsSection {
+                            title: "Touchpad"
+                            subtitle: "Applied right away to every touchpad."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Tap to click"
+                                subtitle: "One finger taps click, two fingers right-click."
+                                settingKey: "touchpad.tapToClick"
+                                SettingsSwitch { settingKey: "touchpad.tapToClick" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Natural scrolling"
+                                subtitle: "Content follows the fingers, like on a phone."
+                                settingKey: "touchpad.naturalScroll"
+                                SettingsSwitch { settingKey: "touchpad.naturalScroll" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Disable while typing"
+                                settingKey: "touchpad.disableWhileTyping"
+                                SettingsSwitch { settingKey: "touchpad.disableWhileTyping" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Pointer speed"
+                                settingKey: "touchpad.speed"
+                                SettingsSlider { settingKey: "touchpad.speed"; from: -1; to: 1; step: 0.1 }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Mouse"
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Pointer speed"
+                                settingKey: "mouse.speed"
+                                SettingsSlider { settingKey: "mouse.speed"; from: -1; to: 1; step: 0.1 }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Natural scrolling"
+                                settingKey: "mouse.naturalScroll"
+                                SettingsSwitch { settingKey: "mouse.naturalScroll" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Left-handed buttons"
+                                settingKey: "mouse.leftHanded"
+                                SettingsSwitch { settingKey: "mouse.leftHanded" }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Cursor"
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Cursor size"
+                                settingKey: "cursor.size"
+                                SettingsStepper { settingKey: "cursor.size"; from: 16; to: 96; step: 8; suffix: " px" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Cursor theme"
+                                subtitle: "An installed theme name, e.g. Adwaita or breeze_cursors. Empty = default."
+                                settingKey: "cursor.theme"
+                                SettingsTextField { settingKey: "cursor.theme"; placeholder: "(default)" }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---- Displays & night light -------------------------------------
+            Item {
+                Flickable {
+                    id: displayScroll
+                    anchors.fill: parent
+                    contentHeight: displayColumn.implicitHeight + 24
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Column {
+                        id: displayColumn
+                        x: 16
+                        y: 12
+                        width: displayScroll.width - 32
+                        spacing: 16
+
+                        SettingsSection {
+                            title: "Monitors"
+                            subtitle: "Resolution, refresh rate, scale, rotation and arrangement. NewTeller remembers them for every monitor; high-density panels start at 200%."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Display arrangement"
+                                subtitle: Session.displaySettingsTool.length > 0
+                                          ? "Opens the display configuration tool."
+                                          : "Install wdisplays (sudo apt install wdisplays) for a graphical editor; wlr-randr and kanshi work too."
+                                TaskButton {
+                                    iconName: "monitor"
+                                    label: "Configure displays"
+                                    dimmed: Session.displaySettingsTool.length === 0
+                                    onClicked: Session.openDisplaySettings()
+                                }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Desktops & switching"
+                            subtitle: "Ctrl+Super+Left/Right (or Super+Page Up/Down) moves between desktops; add Shift to take the window along. Alt+Tab walks through the windows of the current desktop."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Number of desktops"
+                                settingKey: "workspaces.count"
+                                SettingsStepper { settingKey: "workspaces.count"; from: 1; to: 9; step: 1 }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Show desktops on the panel"
+                                settingKey: "workspaces.showOnPanel"
+                                SettingsSwitch { settingKey: "workspaces.showOnPanel" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Show the window list during Alt+Tab"
+                                settingKey: "switcher.showOverlay"
+                                SettingsSwitch { settingKey: "switcher.showOverlay" }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Night light"
+                            subtitle: Session.nightLightAvailable
+                                      ? "Warmer colours in the evening are easier on the eyes."
+                                      : "Needs wlsunset (sudo apt install wlsunset)."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Night light"
+                                settingKey: "nightLight.enabled"
+                                SettingsSwitch { settingKey: "nightLight.enabled" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Colour temperature"
+                                subtitle: "Lower is warmer."
+                                settingKey: "nightLight.temperature"
+                                SettingsSlider { settingKey: "nightLight.temperature"; from: 2500; to: 5500; step: 100; suffix: " K" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "When"
+                                settingKey: "nightLight.schedule"
+                                SettingsChoice {
+                                    settingKey: "nightLight.schedule"
+                                    model: [
+                                        { value: "custom", label: "From - to" },
+                                        { value: "always", label: "Always on" }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                visible: Settings.values["nightLight.schedule"] !== "always"
+                                title: "Turn on at"
+                                settingKey: "nightLight.from"
+                                SettingsTextField { width: 90; settingKey: "nightLight.from"; placeholder: "20:00" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                visible: Settings.values["nightLight.schedule"] !== "always"
+                                title: "Turn off at"
+                                settingKey: "nightLight.to"
+                                SettingsTextField { width: 90; settingKey: "nightLight.to"; placeholder: "07:00" }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // ---- Power & lock -----------------------------------------------
+            Item {
+                Flickable {
+                    id: powerScroll
+                    anchors.fill: parent
+                    contentHeight: powerColumn.implicitHeight + 24
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Column {
+                        id: powerColumn
+                        x: 16
+                        y: 12
+                        width: powerScroll.width - 32
+                        spacing: 16
+
+                        SettingsSection {
+                            title: "Screen lock"
+                            subtitle: Session.lockAvailable
+                                      ? "Super+L locks the screen. Your password unlocks it."
+                                      : "The screen locker is not installed: sudo apt install swaylock"
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Lock after inactivity"
+                                subtitle: "0 = never."
+                                settingKey: "power.lockAfter"
+                                SettingsStepper { settingKey: "power.lockAfter"; from: 0; to: 240; step: 1; suffix: " min" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Lock before suspend"
+                                settingKey: "power.lockOnSleep"
+                                SettingsSwitch { settingKey: "power.lockOnSleep" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Lock now"
+                                TaskButton {
+                                    iconName: "lock"
+                                    label: "Lock"
+                                    onClicked: Shell.lock()
+                                }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Screen"
+                            subtitle: Session.idleAvailable
+                                      ? "Video players keep the screen on while they play."
+                                      : "Idle timers need swayidle (sudo apt install swayidle)."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Turn the screen off after"
+                                subtitle: "0 = never. Any key or mouse movement wakes it."
+                                settingKey: "power.screenOffAfter"
+                                SettingsStepper { settingKey: "power.screenOffAfter"; from: 0; to: 240; step: 1; suffix: " min" }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Administrator prompts"
+                            subtitle: Session.polkitAgent.length > 0
+                                      ? "Authentication agent: " + Session.polkitAgent
+                                      : "No polkit agent found; install lxpolkit so programs can ask for the administrator password."
                         }
                     }
                 }

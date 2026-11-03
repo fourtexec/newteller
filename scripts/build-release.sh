@@ -82,6 +82,7 @@ test -x "$stage/usr/bin/newteller"
 test -x "$stage/usr/bin/newteller-compositor"
 test -x "$stage/usr/bin/newteller-session"
 test -x "$stage/usr/bin/newteller-screenshot"
+test -x "$stage/usr/bin/newteller-lock"
 test -x "$stage/usr/bin/newteller-ctl"
 for plugin in desktop-clock desktop-sysinfo panel-system-monitor; do
     test -f "$stage/usr/share/newteller/plugins/$plugin/manifest.json"
@@ -90,6 +91,7 @@ done
 test -f "$stage/usr/share/applications/org.newteller.Shell.desktop"
 test -f "$stage/usr/share/wayland-sessions/newteller.desktop"
 test -f "$stage/usr/share/newteller/newteller-autostart.desktop"
+test -f "$stage/usr/share/xdg-desktop-portal/newteller-portals.conf"
 archive="$root/dist/$name.zip"
 rm -f -- "$archive"
 (cd "$(dirname "$stage")" && zip -qr "$archive" "$name")

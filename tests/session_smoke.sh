@@ -126,6 +126,46 @@ sleep 2
 XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" grim -o HEADLESS-1 "$after"
 "$python" "$root/tests/session_check.py" "$before" "$after"
 
+# The control socket: the shell's settings, the idle manager (swayidle) and
+# scripts reach the compositor through `newteller-compositor --msg`.
+msg() {
+    XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" "$compositor" --msg "$@"
+}
+reply=$(msg ping || true)
+if [[ $reply != 'ok pong' ]]; then
+    echo "the control socket did not answer ping ($reply)" >&2
+    exit 1
+fi
+reply=$(msg outputs || true)
+if [[ $reply != *'HEADLESS-1:1280x800@'* ]]; then
+    echo "the control socket lists no headless output ($reply)" >&2
+    exit 1
+fi
+msg reload >/dev/null
+reply=$(msg locked || true)
+if [[ $reply != 'ok 0' ]]; then
+    echo "a fresh session reports itself locked ($reply)" >&2
+    exit 1
+fi
+# Blank and wake the screen the way the idle manager does.
+msg dpms off >/dev/null
+msg dpms on >/dev/null
+
+# wlr-output-management: a display tool changes the scale, the compositor
+# applies it and reports it back.
+if command -v wlr-randr >/dev/null 2>&1; then
+    XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" \
+        wlr-randr --output HEADLESS-1 --scale 2
+    reply=$(msg outputs || true)
+    if [[ $reply != *':2.00:on'* ]]; then
+        echo "wlr-randr could not change the output scale ($reply)" >&2
+        exit 1
+    fi
+    XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" \
+        wlr-randr --output HEADLESS-1 --scale 1
+fi
+sleep 1
+
 # Exercise the Print-key helper too: it captures the same output through
 # wlr-screencopy and writes a PNG under XDG_PICTURES_DIR/Screenshots.
 if command -v grim >/dev/null 2>&1; then
@@ -163,6 +203,18 @@ if has_shell_name; then
         sleep 1
         XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" grim -o HEADLESS-1 "$menu"
         "$python" "$root/tests/session_check.py" "$menu_before" "$menu"
+        # A tap of Super calls toggleStartMenu; on an open menu it closes it.
+        menu_closed="$runtime/menu-closed.png"
+        if ! XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" \
+            gdbus call --session --dest org.newteller.Shell \
+                --object-path /org/newteller/Shell \
+                --method org.newteller.Shell.toggleStartMenu >/dev/null 2>&1; then
+            echo 'the shell did not answer toggleStartMenu over D-Bus' >&2
+            exit 1
+        fi
+        sleep 1
+        XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" grim -o HEADLESS-1 "$menu_closed"
+        "$python" "$root/tests/session_check.py" "$menu" "$menu_closed"
     else
         echo 'the shell did not open the start menu over D-Bus' >&2
         exit 1
@@ -185,4 +237,59 @@ if [[ -n $client_pid ]]; then
         cat "$log" >&2
         exit 1
     fi
+fi
+
+# A crashed shell is restarted; the session and its windows survive.
+if command -v pgrep >/dev/null 2>&1; then
+    old_shell=$(pgrep -x newteller | head -n 1 || true)
+    if [[ -n $old_shell ]]; then
+        kill -KILL "$old_shell"
+        sleep 4
+        if ! kill -0 "$compositor_pid" 2>/dev/null; then
+            echo 'the session ended when the shell crashed' >&2
+            exit 1
+        fi
+        new_shell=$(pgrep -x newteller | head -n 1 || true)
+        if [[ -z $new_shell || $new_shell == "$old_shell" ]]; then
+            echo 'the compositor did not restart the crashed shell' >&2
+            exit 1
+        fi
+        echo "session smoke: the shell came back after a crash ($old_shell -> $new_shell)"
+    fi
+fi
+
+# Workspaces over the control socket (Ctrl+Super+Left/Right do the same).
+msg workspace 1 >/dev/null
+msg workspace 0 >/dev/null
+
+# The lock screen. swaylock takes the session through ext-session-lock-v1:
+# the screen shows nothing but the locker, and killing the locker must leave
+# the session locked, never fall back to the desktop.
+if command -v swaylock >/dev/null 2>&1 && command -v pkill >/dev/null 2>&1; then
+    XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" \
+        swaylock --daemonize --color 000000 >/dev/null 2>&1 &
+    lock_starter=$!
+    for _ in $(seq 1 50); do
+        [[ $(msg locked || true) == 'ok 1' ]] && break
+        sleep 0.1
+    done
+    if [[ $(msg locked || true) != 'ok 1' ]]; then
+        echo 'swaylock could not lock the session' >&2
+        exit 1
+    fi
+    sleep 1
+    XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" grim -o HEADLESS-1 "$runtime/locked.png"
+    "$python" "$root/tests/session_check.py" --locked "$runtime/locked.png"
+
+    pkill -KILL -x swaylock || true
+    wait "$lock_starter" 2>/dev/null || true
+    sleep 1
+    if [[ $(msg locked || true) != 'ok 1' ]]; then
+        echo 'the session unlocked itself when the locker was killed' >&2
+        exit 1
+    fi
+    XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" grim -o HEADLESS-1 "$runtime/locked-killed.png"
+    "$python" "$root/tests/session_check.py" --locked "$runtime/locked-killed.png"
+else
+    echo 'session smoke: swaylock or pkill missing, skipping the lock screen check' >&2
 fi

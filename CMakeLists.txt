@@ -13,6 +13,7 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Qml Quick Svg DBus)
 # else's desktop into a real Wayland session. It only needs C libraries, not Qt.
 find_package(PkgConfig REQUIRED)
 pkg_search_module(WLROOTS REQUIRED IMPORTED_TARGET wlroots-0.19 wlroots-0.18)
+pkg_check_modules(LIBINPUT REQUIRED IMPORTED_TARGET libinput)
 find_program(WAYLAND_SCANNER_EXECUTABLE wayland-scanner REQUIRED)
 
 # wlr-layer-shell support (panel, desktop, menu). Package names differ per distro,
@@ -94,6 +95,8 @@ qt_add_executable(newteller
     src/notifications.cpp
     src/tray.cpp
     src/quicksettings.cpp
+    src/sessionservices.cpp
+    src/clipboardhistory.cpp
 )
 
 target_compile_definitions(newteller PRIVATE NEWTELLER_VERSION="${PROJECT_VERSION}")
@@ -140,6 +143,7 @@ add_custom_command(
 
 add_executable(newteller-compositor
     src/session/main.c
+    src/session/config.c
     ${NEWTELLER_LAYER_SHELL_HEADER}
     ${NEWTELLER_XDG_SHELL_HEADER}
 )
@@ -159,13 +163,15 @@ target_include_directories(newteller-compositor PRIVATE
 target_link_directories(newteller-compositor PRIVATE ${WLROOTS_LIBRARY_DIRS})
 target_link_libraries(newteller-compositor PRIVATE
     PkgConfig::WLROOTS
+    PkgConfig::LIBINPUT
     wayland-server
     xkbcommon
 )
 
 install(TARGETS newteller newteller-compositor RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
-install(PROGRAMS scripts/newteller-session scripts/newteller-screenshot DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(PROGRAMS scripts/newteller-session scripts/newteller-screenshot scripts/newteller-lock DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(DIRECTORY plugins/ DESTINATION ${CMAKE_INSTALL_DATADIR}/newteller/plugins)
 install(FILES data/org.newteller.Shell.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
 install(FILES data/newteller-session.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/wayland-sessions RENAME newteller.desktop)
 install(FILES data/newteller-autostart.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/newteller)
+install(FILES data/newteller-portals.conf DESTINATION ${CMAKE_INSTALL_DATADIR}/xdg-desktop-portal)

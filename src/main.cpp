@@ -10,6 +10,8 @@
 #include "notifications.h"
 #include "plugins.h"
 #include "quicksettings.h"
+#include "sessionservices.h"
+#include "clipboardhistory.h"
 #include "settings.h"
 #include "shellcontroller.h"
 #include "shellwindow.h"
@@ -223,6 +225,8 @@ int main(int argc, char *argv[])
     SystemMonitor system(&settings);
     TrayWatcher tray(&settings);
     QuickSettings quick(&settings);
+    SessionServices session(&settings);
+    ClipboardHistory clipboard(&settings);
     // Declared before the engine: the engine owns the QML objects that hold
     // connections to this object, and it must therefore be destroyed first.
     FilePortal filePortal;
@@ -259,6 +263,8 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("Notifications"), &notifications);
     engine.rootContext()->setContextProperty(QStringLiteral("Tray"), &tray);
     engine.rootContext()->setContextProperty(QStringLiteral("Quick"), &quick);
+    engine.rootContext()->setContextProperty(QStringLiteral("Session"), &session);
+    engine.rootContext()->setContextProperty(QStringLiteral("Clipboard"), &clipboard);
 
     engine.rootContext()->setContextProperty(QStringLiteral("FilePortal"), &filePortal);
 

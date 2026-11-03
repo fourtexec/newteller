@@ -32,6 +32,41 @@ if apt-cache show qml6-module-org-kde-layershell > /dev/null 2>&1; then
 fi
 apt-get install -y --no-install-recommends "${packages[@]}"
 
+# Desktop services the session starts when they are installed: the screen
+# locker and idle manager, night light, screen sharing portals, a polkit
+# agent for administrator prompts, and the network (nm-applet), Bluetooth
+# (blueman) and sound (pavucontrol) tools that GNOME and KDE users expect.
+# Each one is optional, so a package that a release of the distribution
+# renamed or dropped never blocks the install.
+optional=(
+    swaylock swayidle wlsunset
+    xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk
+    lxpolkit procps wdisplays
+    network-manager-gnome blueman pavucontrol slurp wl-clipboard
+)
+# power-profiles-daemon conflicts with other power managers; never let apt
+# remove one the user chose.
+power_manager_installed=false
+for manager in tlp laptop-mode-tools tuned auto-cpufreq; do
+    if dpkg -s "$manager" > /dev/null 2>&1; then
+        power_manager_installed=true
+    fi
+done
+if [[ $power_manager_installed == false ]]; then
+    optional+=(power-profiles-daemon)
+fi
+available=()
+for package in "${optional[@]}"; do
+    if apt-cache show "$package" > /dev/null 2>&1; then
+        available+=("$package")
+    else
+        echo "note: optional package $package is not available here" >&2
+    fi
+done
+if [[ ${#available[@]} -gt 0 ]]; then
+    apt-get install -y --no-install-recommends "${available[@]}"
+fi
+
 if ! find /usr/lib -path '*/qt6/qml/org/kde/layershell/qmldir' -print -quit | grep -q .; then
     echo 'The org.kde.layershell Qt6 QML module is missing.' >&2
     exit 1

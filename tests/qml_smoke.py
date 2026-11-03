@@ -408,6 +408,10 @@ class Shell(QObject):
     nowChanged = Signal()
     settingsRequested = Signal()
     startMenuRequested = Signal()
+    startMenuToggleRequested = Signal()
+    notificationsToggleRequested = Signal()
+    quickSettingsToggleRequested = Signal()
+    clipboardToggleRequested = Signal()
     runDialogRequested = Signal()
 
     def __init__(self, desktop_dir, home_dir):
@@ -574,6 +578,7 @@ class FilePortal(QObject):
 class System(QObject):
     """Stand-in for the SystemMonitor context property (src/systemmonitor.h)."""
 
+    snapshotUpdated = Signal()
     cpuPercent = Property(float, lambda self: 12.5, constant=True)
     cpuCount = Property(int, lambda self: 8, constant=True)
     load1 = Property(float, lambda self: 0.5, constant=True)
@@ -777,6 +782,141 @@ class Tray(QObject):
         self.calls.append(("menuEvent", item_id, menu_item_id, event))
 
 
+class Session(QObject):
+    """Stand-in for the Session context property (src/sessionservices.h)."""
+
+    compositorChanged = Signal()
+    keyboardChanged = Signal()
+    lockedChanged = Signal()
+    nightLightChanged = Signal()
+
+    compositorConnected = Property(bool, lambda self: True, notify=compositorChanged)
+    # Two layouts, so the panel shows its layout indicator.
+    keyboardLayouts = Property("QVariantList", lambda self: ["us", "ru"], notify=keyboardChanged)
+    keyboardLayout = Property(int, lambda self: 1, notify=keyboardChanged)
+    keyboardLayoutLabel = Property(str, lambda self: "RU", notify=keyboardChanged)
+    keyboardLayoutName = Property(str, lambda self: "Russian", notify=keyboardChanged)
+    locked = Property(bool, lambda self: False, notify=lockedChanged)
+    lockAvailable = Property(bool, lambda self: True, constant=True)
+    idleAvailable = Property(bool, lambda self: True, constant=True)
+    nightLightAvailable = Property(bool, lambda self: True, constant=True)
+    nightLightRunning = Property(bool, lambda self: False, notify=nightLightChanged)
+    polkitAgent = Property(str, lambda self: "/usr/bin/lxpolkit", constant=True)
+    displaySettingsTool = Property(str, lambda self: "wdisplays", constant=True)
+    soundSettingsTool = Property(str, lambda self: "pavucontrol", constant=True)
+
+    @Slot()
+    def openSoundSettings(self):
+        self.calls.append(("openSoundSettings",))
+    workspacesChanged = Signal()
+    switcherChanged = Signal()
+    mediaKey = Signal(str)
+    workspace = Property(int, lambda self: 0, notify=workspacesChanged)
+    workspaceCount = Property(int, lambda self: 4, notify=workspacesChanged)
+    workspaceOccupied = Property(int, lambda self: 0b101, notify=workspacesChanged)
+    switcherEntries = Property("QVariantList", lambda self: [], notify=switcherChanged)
+    switcherIndex = Property(int, lambda self: -1, notify=switcherChanged)
+    powerProfileChanged = Signal()
+    powerProfile = Property(str, lambda self: "balanced", notify=powerProfileChanged)
+    powerProfiles = Property("QVariantList", lambda self: ["power-saver", "balanced", "performance"],
+                             notify=powerProfileChanged)
+
+    wifiChanged = Signal()
+    wifiConnectFinished = Signal(bool, str, str)
+    wifiAvailable = Property(bool, lambda self: True, constant=True)
+    wifiBusy = Property(bool, lambda self: False, notify=wifiChanged)
+    wifiNetworks = Property("QVariantList", lambda self: [
+        {"ssid": "Home", "signal": 80, "secure": True, "active": True},
+        {"ssid": "Cafe", "signal": 40, "secure": False, "active": False}], notify=wifiChanged)
+
+    @Slot()
+    def scanWifi(self):
+        self.calls.append(("scanWifi",))
+
+    @Slot(str, str)
+    def connectWifi(self, ssid, password):
+        self.calls.append(("connectWifi", ssid))
+
+    @Slot()
+    def disconnectWifi(self):
+        self.calls.append(("disconnectWifi",))
+
+    @Slot(result="QVariantList")
+    def autostartEntries(self):
+        return [{"name": "Network", "file": "/etc/xdg/autostart/nm-applet.desktop",
+                 "exec": "nm-applet"}]
+
+    @Slot(str)
+    def setPowerProfile(self, profile):
+        self.calls.append(("setPowerProfile", profile))
+
+    def __init__(self):
+        super().__init__()
+        self.calls = []
+
+    @Slot(int)
+    def switchWorkspace(self, index):
+        self.calls.append(("switchWorkspace", index))
+
+    @Slot(int)
+    def moveToWorkspace(self, index):
+        self.calls.append(("moveToWorkspace", index))
+
+    @Slot()
+    def nextKeyboardLayout(self):
+        self.calls.append(("nextKeyboardLayout",))
+
+    @Slot(int)
+    def setKeyboardLayout(self, index):
+        self.calls.append(("setKeyboardLayout", index))
+
+    @Slot()
+    def lock(self):
+        self.calls.append(("lock",))
+
+    @Slot()
+    def screenOff(self):
+        self.calls.append(("screenOff",))
+
+    @Slot()
+    def openDisplaySettings(self):
+        self.calls.append(("openDisplaySettings",))
+
+    @Slot()
+    def logout(self):
+        self.calls.append(("logout",))
+
+    @Slot(str, result=str)
+    def layoutDisplayName(self, code):
+        return {"us": "English (US)", "ru": "Russian"}.get(code, code)
+
+
+class ClipboardStub(QObject):
+    """Stand-in for the Clipboard context property (src/clipboardhistory.h)."""
+
+    itemsChanged = Signal()
+    available = Property(bool, lambda self: True, constant=True)
+
+    def __init__(self):
+        super().__init__()
+        self._items = ["first copied text", "second\nline"]
+        self.calls = []
+
+    items = Property("QVariantList", lambda self: self._items, notify=itemsChanged)
+
+    @Slot(int)
+    def copy(self, index):
+        self.calls.append(("copy", index))
+
+    @Slot(int)
+    def remove(self, index):
+        self.calls.append(("remove", index))
+
+    @Slot()
+    def clear(self):
+        self.calls.append(("clear",))
+
+
 class Quick(QObject):
     """Stand-in for the QuickSettings context property (src/quicksettings.h)."""
 
@@ -918,12 +1058,14 @@ def main():
     shell, plugin_manager = Shell(desktop_dir, work), Plugins(plugins)
     system, window_list = System(), Windows()
     notifications, file_portal = Notifications(), FilePortal()
-    tray, quick = Tray(), Quick()
+    tray, quick, session = Tray(), Quick(), Session()
+    clipboard = ClipboardStub()
     engine = QQmlApplicationEngine()
     for name, obj in (("Settings", settings), ("Theme", theme), ("Apps", apps), ("Shell", shell),
                       ("Plugins", plugin_manager), ("System", system), ("Windows", window_list),
                       ("Notifications", notifications), ("FilePortal", file_portal),
-                      ("Tray", tray), ("Quick", quick)):
+                      ("Tray", tray), ("Quick", quick), ("Session", session),
+                      ("Clipboard", clipboard)):
         engine.rootContext().setContextProperty(name, obj)
 
     failures = []
@@ -1543,6 +1685,52 @@ def main():
             check(bool(settings._values.get("notifications.doNotDisturb")) != dnd,
                   "right-clicking the bell toggles do-not-disturb")
             check(not centres[0].isVisible(), "and does not open the notification centre")
+
+            # With two layouts the panel shows the current one. (Not clicked:
+            # the pointer would stay over it and fade its tooltip in, which
+            # the offscreen platform reports as a window-opacity warning.)
+            layout_button = panel.findChild(QObject, "layoutButton")
+            check(layout_button is not None and layout_button.property("visible"),
+                  "the panel shows the keyboard layout with two layouts configured")
+            strip = panel.findChild(QObject, "workspaceStrip")
+            check(strip is not None and strip.property("visible"),
+                  "the panel shows the desktop dots with four desktops")
+
+            # Hardware keys arrive from the compositor through Session.
+            quick.calls.clear()
+            session.mediaKey.emit("volume-up")
+            QTest.qWait(50)
+            check(("setVolume", 47) in quick.calls,
+                  f"the volume-up key raises the volume by 5% ({quick.calls})")
+            osds = windows_of_kind("OsdPopup")
+            check(bool(osds) and osds[0].isVisible(), "the volume key shows the on-screen level")
+
+            # Super+V reaches the shell over D-Bus and opens the history.
+            shell.clipboardToggleRequested.emit()
+            QTest.qWait(300)
+            clips = windows_of_kind("ClipboardPopup")
+            check(bool(clips) and clips[0].isVisible(), "Super+V opens the clipboard history")
+            if clips:
+                entries = clips[0].findChild(QObject, "clipboardList")
+                check(entries is not None and entries.property("count") == 2,
+                      "the clipboard history lists the copied texts")
+                shell.clipboardToggleRequested.emit()
+                QTest.qWait(400)
+                check(not clips[0].isVisible(), "Super+V again closes it")
+
+            # The Wi-Fi list scans on the way in and lists the networks.
+            wifis = windows_of_kind("WifiPopup")
+            check(bool(wifis), "the Wi-Fi network list exists")
+            if wifis:
+                session.calls.clear()
+                QMetaObject.invokeMethod(wifis[0], "show")
+                QTest.qWait(300)
+                check(("scanWifi",) in session.calls, "opening the Wi-Fi list scans for networks")
+                wifi_list = wifis[0].findChild(QObject, "wifiList")
+                check(wifi_list is not None and wifi_list.property("count") == 2,
+                      "the Wi-Fi list shows the networks in range")
+                QMetaObject.invokeMethod(wifis[0], "hide")
+                QTest.qWait(400)
             settings._values["notifications.doNotDisturb"] = dnd
             settings.valuesChanged.emit()
             QTest.qWait(50)

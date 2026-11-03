@@ -46,7 +46,34 @@ def rgb_at(image, x, y):
     return image.pixelColor(x, y).getRgb()[:3]
 
 
+def check_locked(path):
+    """The frame shows nothing but the lock screen: one flat dark colour
+    (swaylock with --color 000000 over the compositor's dark backdrop), no
+    panel, no windows."""
+    image = load(path)
+    if image is None:
+        print("session smoke: locked frame captured (no image module to inspect it)")
+        return
+    width, height = dimensions(image)
+    bright = 0
+    samples = 0
+    for y in range(0, height, 8):
+        for x in range(0, width, 8):
+            r, g, b = rgb_at(image, x, y)[:3]
+            samples += 1
+            if max(r, g, b) > 40:
+                bright += 1
+    # swaylock draws its small indicator ring in the middle; everything
+    # else must be dark.
+    if bright > samples * 0.05:
+        raise SystemExit(f"the locked screen still shows the desktop ({bright}/{samples} bright samples)")
+    print(f"session smoke: locked frame is dark ({bright}/{samples} bright samples)")
+
+
 def main():
+    if len(sys.argv) == 3 and sys.argv[1] == "--locked":
+        check_locked(sys.argv[2])
+        return
     if len(sys.argv) != 3:
         raise SystemExit("usage: session_check.py BEFORE.png AFTER.png")
     before = load(sys.argv[1])

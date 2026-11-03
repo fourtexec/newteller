@@ -203,10 +203,47 @@ Settings::Settings(QObject *parent)
     // Power management
     m_defaults.insert(QStringLiteral("power.sleepAction"), QStringLiteral("suspend"));
     m_defaults.insert(QStringLiteral("power.lockOnSleep"), true);
+    // Minutes of inactivity before the screen locks / turns off (0 = never).
+    m_defaults.insert(QStringLiteral("power.lockAfter"), 10);
+    m_defaults.insert(QStringLiteral("power.screenOffAfter"), 10);
+    // Night light (wlsunset): warmer colours in the evening.
+    m_defaults.insert(QStringLiteral("nightLight.enabled"), false);
+    m_defaults.insert(QStringLiteral("nightLight.temperature"), 4000);
+    m_defaults.insert(QStringLiteral("nightLight.schedule"), QStringLiteral("custom"));
+    m_defaults.insert(QStringLiteral("nightLight.from"), QStringLiteral("20:00"));
+    m_defaults.insert(QStringLiteral("nightLight.to"), QStringLiteral("07:00"));
+    // Keyboard (mirrored into compositor.conf). Empty layouts = the system
+    // keyboard configuration (/etc/default/keyboard).
+    m_defaults.insert(QStringLiteral("keyboard.layouts"), QString());
+    m_defaults.insert(QStringLiteral("keyboard.variants"), QString());
+    m_defaults.insert(QStringLiteral("keyboard.switchKeys"), QStringLiteral("grp:alt_shift_toggle"));
+    m_defaults.insert(QStringLiteral("keyboard.options"), QString());
+    m_defaults.insert(QStringLiteral("keyboard.repeatRate"), 25);
+    m_defaults.insert(QStringLiteral("keyboard.repeatDelay"), 600);
+    m_defaults.insert(QStringLiteral("keyboard.numlock"), false);
+    m_defaults.insert(QStringLiteral("keyboard.showIndicator"), true);
+    // Pointer devices (libinput, applied by the compositor).
+    m_defaults.insert(QStringLiteral("touchpad.tapToClick"), true);
+    m_defaults.insert(QStringLiteral("touchpad.naturalScroll"), true);
+    m_defaults.insert(QStringLiteral("touchpad.disableWhileTyping"), true);
+    m_defaults.insert(QStringLiteral("touchpad.speed"), 0.0);
+    m_defaults.insert(QStringLiteral("mouse.naturalScroll"), false);
+    m_defaults.insert(QStringLiteral("mouse.speed"), 0.0);
+    m_defaults.insert(QStringLiteral("mouse.leftHanded"), false);
+    m_defaults.insert(QStringLiteral("cursor.theme"), QString());
+    m_defaults.insert(QStringLiteral("cursor.size"), 24);
+    // Colour scheme applications follow: "system" (leave it), "dark", "light".
+    m_defaults.insert(QStringLiteral("apps.colorScheme"), QStringLiteral("dark"));
+    // Virtual desktops (Ctrl+Super+Left/Right) and their panel indicator.
+    m_defaults.insert(QStringLiteral("workspaces.count"), 4);
+    m_defaults.insert(QStringLiteral("workspaces.showOnPanel"), true);
+    // The Alt+Tab overlay with the windows and their titles.
+    m_defaults.insert(QStringLiteral("switcher.showOverlay"), true);
     // Clipboard
     m_defaults.insert(QStringLiteral("clipboard.historyEnabled"), true);
     m_defaults.insert(QStringLiteral("clipboard.historySize"), 100);
-    m_defaults.insert(QStringLiteral("clipboard.persistHistory"), true);
+    // Off by default: copied passwords should not end up on disk.
+    m_defaults.insert(QStringLiteral("clipboard.persistHistory"), false);
 
     // ===== Performance & Features =====
     // Animations

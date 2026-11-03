@@ -16,6 +16,8 @@ DropdownWindow {
     // The notification centre on the primary screen; set by Main.qml so the
     // History button can open it.
     property var notificationCenter: null
+    // The Wi-Fi network list, opened from the network row.
+    property var wifiPopup: null
     // Rows that are on right now, for the height computation.
     readonly property int visibleRows: {
         var rows = 0;
@@ -28,6 +30,10 @@ DropdownWindow {
         if (Quick.networkAvailable)
             rows++;
         if (System.batteryPresent)
+            rows++;
+        if (Session.nightLightAvailable)
+            rows++;
+        if (Session.powerProfiles.length > 0)
             rows++;
         return rows + 1 /* dnd */ + 1 /* footer separator */;
     }
@@ -137,6 +143,16 @@ DropdownWindow {
                     function onVolumeChanged() { volumeSlider.value = Quick.volume }
                 }
             }
+            TaskButton {
+                visible: Session.soundSettingsTool.length > 0
+                width: 30
+                iconName: "chevron-right"
+                tooltipText: "Sound devices"
+                onClicked: {
+                    popup.hide();
+                    Session.openSoundSettings();
+                }
+            }
         }
 
         // --- brightness -------------------------------------------------
@@ -210,6 +226,17 @@ DropdownWindow {
                     font.pointSize: Theme.fontSize - 1
                 }
             }
+            TaskButton {
+                objectName: "wifiNetworksButton"
+                visible: Session.wifiAvailable && Quick.wifiEnabled && popup.wifiPopup !== null
+                width: 30
+                iconName: "chevron-right"
+                tooltipText: "Choose a network"
+                onClicked: {
+                    popup.hide();
+                    popup.wifiPopup.show();
+                }
+            }
             SettingsSwitch {
                 id: wifiSwitch
                 checked: Quick.wifiEnabled
@@ -254,6 +281,76 @@ DropdownWindow {
             }
             SettingsSwitch {
                 settingKey: "notifications.doNotDisturb"
+            }
+        }
+
+        // --- night light (wlsunset) ----------------------------------------
+        RowLayout {
+            objectName: "nightLightRow"
+            Layout.fillWidth: true
+            visible: Session.nightLightAvailable
+            spacing: 8
+
+            Item {
+                width: 34
+                height: 34
+                Image {
+                    anchors.centerIn: parent
+                    width: 18
+                    height: 18
+                    sourceSize.width: 36
+                    sourceSize.height: 36
+                    fillMode: Image.PreserveAspectFit
+                    source: Shell.tintedIcon(
+                                Settings.values["nightLight.enabled"] ? "moon" : "sun",
+                                Theme.foreground)
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                text: "Night light"
+                color: Theme.foreground
+                font.family: Theme.fontFamily
+                font.pointSize: Theme.fontSize
+            }
+            SettingsSwitch {
+                settingKey: "nightLight.enabled"
+            }
+        }
+
+        // --- power profile (power-profiles-daemon) ----------------------------
+        RowLayout {
+            objectName: "powerProfileRow"
+            Layout.fillWidth: true
+            visible: Session.powerProfiles.length > 0
+            spacing: 4
+
+            Item {
+                width: 34
+                height: 34
+                Image {
+                    anchors.centerIn: parent
+                    width: 18
+                    height: 18
+                    sourceSize.width: 36
+                    sourceSize.height: 36
+                    fillMode: Image.PreserveAspectFit
+                    source: Shell.tintedIcon("battery", Theme.foreground)
+                }
+            }
+            Repeater {
+                model: [
+                    { value: "power-saver", label: "Saver" },
+                    { value: "balanced", label: "Balanced" },
+                    { value: "performance", label: "Performance" }
+                ]
+                delegate: TaskButton {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    label: modelData.label
+                    active: Session.powerProfile === modelData.value
+                    onClicked: Session.setPowerProfile(modelData.value)
+                }
             }
         }
 
@@ -315,6 +412,12 @@ DropdownWindow {
                 onClicked: { Shell.openSettings(); popup.hide(); }
             }
             Item { Layout.fillWidth: true }
+            TaskButton {
+                objectName: "quickLockButton"
+                iconName: "lock"
+                label: "Lock"
+                onClicked: { popup.hide(); Shell.lock(); }
+            }
             TaskButton {
                 iconName: "bell"
                 label: "History"

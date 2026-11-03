@@ -1,6 +1,20 @@
 #!/bin/sh
-# Save a full-screen PNG through the compositor's wlr-screencopy support.
+# Take a screenshot through the compositor's wlr-screencopy support.
+#
+#   newteller-screenshot          the whole screen (Print)
+#   newteller-screenshot --area   a region picked with the mouse (Shift+Print,
+#                                 Super+Shift+S); needs slurp
+#
+# The PNG goes to ~/Pictures/Screenshots and, when wl-copy is installed, to
+# the clipboard as well, ready to paste.
 set -eu
+
+mode=full
+case "${1:-}" in
+    --area|-a) mode=area ;;
+    '' ) ;;
+    *) echo "usage: newteller-screenshot [--area]" >&2; exit 2 ;;
+esac
 
 pictures="${XDG_PICTURES_DIR:-$HOME/Pictures}"
 dir="$pictures/Screenshots"
@@ -23,10 +37,28 @@ if ! command -v grim >/dev/null 2>&1; then
     notify "Screenshot failed" "grim is not installed"
     exit 1
 fi
-if grim "$file"; then
-    notify "Screenshot saved" "$file"
-    printf '%s\n' "$file"
-else
+
+if [ "$mode" = area ]; then
+    if ! command -v slurp >/dev/null 2>&1; then
+        notify "Screenshot failed" "Area screenshots need slurp (sudo apt install slurp)"
+        exit 1
+    fi
+    # Escape in slurp cancels: no screenshot, no error.
+    region=$(slurp -d 2>/dev/null) || exit 0
+    [ -n "$region" ] || exit 0
+    grim -g "$region" "$file" || {
+        notify "Screenshot failed" "The compositor did not return an image"
+        exit 1
+    }
+elif ! grim "$file"; then
     notify "Screenshot failed" "The compositor did not return an image"
     exit 1
 fi
+
+if command -v wl-copy >/dev/null 2>&1; then
+    wl-copy --type image/png < "$file" >/dev/null 2>&1 &
+    notify "Screenshot saved" "$file (also copied to the clipboard)"
+else
+    notify "Screenshot saved" "$file"
+fi
+printf '%s\n' "$file"

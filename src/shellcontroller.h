@@ -61,7 +61,14 @@ public:
     // Session-level entry points used by newteller-compositor keybindings and
     // by `gdbus call` from scripts. The QML root listens to the signals.
     Q_INVOKABLE void showStartMenu();
+    // Opens the start menu, or closes it when it is open (a tap of Super).
+    Q_INVOKABLE void toggleStartMenu();
     Q_INVOKABLE void showRunDialog();
+    // Super+N and Super+A from the compositor.
+    Q_INVOKABLE void toggleNotifications();
+    Q_INVOKABLE void toggleQuickSettings();
+    // Super+V: the clipboard history.
+    Q_INVOKABLE void toggleClipboard();
     Q_INVOKABLE void openConfig() const;
     // Opens the path in the file manager (or its handler for directories).
     Q_INVOKABLE void openPath(const QString &path) const;
@@ -100,7 +107,11 @@ signals:
     // Emitted by openSettings(); Main.qml shows the embedded settings window.
     void settingsRequested();
     void startMenuRequested();
+    void startMenuToggleRequested();
     void runDialogRequested();
+    void notificationsToggleRequested();
+    void quickSettingsToggleRequested();
+    void clipboardToggleRequested();
 
 private:
     QString expandHome(const QString &path) const;

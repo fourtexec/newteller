@@ -1,0 +1,292 @@
+#define _POSIX_C_SOURCE 200809L
+
+#include "config.h"
+
+#include <ctype.h>
+#include <errno.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+static void copyText(char *target, size_t size, const char *value)
+{
+    snprintf(target, size, "%s", value ? value : "");
+}
+
+static char *trim(char *text)
+{
+    while (*text && isspace((unsigned char)*text))
+        ++text;
+    size_t length = strlen(text);
+    while (length > 0 && isspace((unsigned char)text[length - 1]))
+        text[--length] = '\0';
+    return text;
+}
+
+// Strips one level of matching single or double quotes.
+static char *unquote(char *text)
+{
+    size_t length = strlen(text);
+    if (length >= 2 && (text[0] == '"' || text[0] == '\'')
+        && text[length - 1] == text[0]) {
+        text[length - 1] = '\0';
+        return text + 1;
+    }
+    return text;
+}
+
+static bool parseBool(const char *value, bool fallback)
+{
+    if (strcmp(value, "1") == 0 || strcmp(value, "true") == 0
+        || strcmp(value, "yes") == 0 || strcmp(value, "on") == 0)
+        return true;
+    if (strcmp(value, "0") == 0 || strcmp(value, "false") == 0
+        || strcmp(value, "no") == 0 || strcmp(value, "off") == 0)
+        return false;
+    return fallback;
+}
+
+static int parseInt(const char *value, int fallback, int min, int max)
+{
+    char *end = NULL;
+    errno = 0;
+    long number = strtol(value, &end, 10);
+    if (errno != 0 || end == value)
+        return fallback;
+    if (number < min)
+        number = min;
+    if (number > max)
+        number = max;
+    return (int)number;
+}
+
+static double parseDouble(const char *value, double fallback, double min, double max)
+{
+    char *end = NULL;
+    errno = 0;
+    double number = strtod(value, &end);
+    if (errno != 0 || end == value)
+        return fallback;
+    if (number < min)
+        number = min;
+    if (number > max)
+        number = max;
+    return number;
+}
+
+void ntConfigDefaults(struct CompositorConfig *config)
+{
+    memset(config, 0, sizeof(*config));
+    config->repeatRate = 25;
+    config->repeatDelay = 600;
+    config->numlock = false;
+    config->touchpadTap = true;
+    config->touchpadNaturalScroll = true;
+    config->touchpadDisableWhileTyping = true;
+    config->touchpadSpeed = 0.0;
+    config->mouseNaturalScroll = false;
+    config->mouseSpeed = 0.0;
+    config->leftHanded = false;
+    config->cursorSize = 24;
+    config->workspaceCount = 4;
+}
+
+void ntConfigLoadSystemKeyboard(struct CompositorConfig *config, const char *path)
+{
+    FILE *file = fopen(path, "r");
+    if (!file)
+        return;
+    char line[512];
+    while (fgets(line, sizeof(line), file)) {
+        char *text = trim(line);
+        if (text[0] == '#' || text[0] == '\0')
+            continue;
+        char *equals = strchr(text, '=');
+        if (!equals)
+            continue;
+        *equals = '\0';
+        char *key = trim(text);
+        char *value = unquote(trim(equals + 1));
+        if (strcmp(key, "XKBLAYOUT") == 0 && config->keyboardLayout[0] == '\0')
+            copyText(config->keyboardLayout, sizeof(config->keyboardLayout), value);
+        else if (strcmp(key, "XKBVARIANT") == 0 && config->keyboardVariant[0] == '\0')
+            copyText(config->keyboardVariant, sizeof(config->keyboardVariant), value);
+        else if (strcmp(key, "XKBOPTIONS") == 0 && config->keyboardOptions[0] == '\0')
+            copyText(config->keyboardOptions, sizeof(config->keyboardOptions), value);
+        else if (strcmp(key, "XKBMODEL") == 0 && config->keyboardModel[0] == '\0')
+            copyText(config->keyboardModel, sizeof(config->keyboardModel), value);
+    }
+    fclose(file);
+}
+
+bool ntConfigLoadFile(struct CompositorConfig *config, const char *path)
+{
+    FILE *file = fopen(path, "r");
+    if (!file)
+        return false;
+    char line[1024];
+    while (fgets(line, sizeof(line), file)) {
+        char *text = trim(line);
+        if (text[0] == '#' || text[0] == '\0')
+            continue;
+        char *equals = strchr(text, '=');
+        if (!equals)
+            continue;
+        *equals = '\0';
+        char *key = trim(text);
+        char *value = unquote(trim(equals + 1));
+
+        if (strcmp(key, "keyboard.layout") == 0)
+            copyText(config->keyboardLayout, sizeof(config->keyboardLayout), value);
+        else if (strcmp(key, "keyboard.variant") == 0)
+            copyText(config->keyboardVariant, sizeof(config->keyboardVariant), value);
+        else if (strcmp(key, "keyboard.options") == 0)
+            copyText(config->keyboardOptions, sizeof(config->keyboardOptions), value);
+        else if (strcmp(key, "keyboard.model") == 0)
+            copyText(config->keyboardModel, sizeof(config->keyboardModel), value);
+        else if (strcmp(key, "keyboard.repeatRate") == 0)
+            config->repeatRate = parseInt(value, config->repeatRate, 1, 100);
+        else if (strcmp(key, "keyboard.repeatDelay") == 0)
+            config->repeatDelay = parseInt(value, config->repeatDelay, 100, 2000);
+        else if (strcmp(key, "keyboard.numlock") == 0)
+            config->numlock = parseBool(value, config->numlock);
+        else if (strcmp(key, "touchpad.tapToClick") == 0)
+            config->touchpadTap = parseBool(value, config->touchpadTap);
+        else if (strcmp(key, "touchpad.naturalScroll") == 0)
+            config->touchpadNaturalScroll = parseBool(value, config->touchpadNaturalScroll);
+        else if (strcmp(key, "touchpad.disableWhileTyping") == 0)
+            config->touchpadDisableWhileTyping =
+                parseBool(value, config->touchpadDisableWhileTyping);
+        else if (strcmp(key, "touchpad.speed") == 0)
+            config->touchpadSpeed = parseDouble(value, config->touchpadSpeed, -1.0, 1.0);
+        else if (strcmp(key, "mouse.naturalScroll") == 0)
+            config->mouseNaturalScroll = parseBool(value, config->mouseNaturalScroll);
+        else if (strcmp(key, "mouse.speed") == 0)
+            config->mouseSpeed = parseDouble(value, config->mouseSpeed, -1.0, 1.0);
+        else if (strcmp(key, "mouse.leftHanded") == 0)
+            config->leftHanded = parseBool(value, config->leftHanded);
+        else if (strcmp(key, "cursor.theme") == 0)
+            copyText(config->cursorTheme, sizeof(config->cursorTheme), value);
+        else if (strcmp(key, "cursor.size") == 0)
+            config->cursorSize = parseInt(value, config->cursorSize, 8, 256);
+        else if (strcmp(key, "workspaces.count") == 0)
+            config->workspaceCount = parseInt(value, config->workspaceCount, 1, 9);
+    }
+    fclose(file);
+    return true;
+}
+
+void ntConfigPath(char *buffer, size_t size, const char *name)
+{
+    const char *config = getenv("XDG_CONFIG_HOME");
+    if (config && config[0] == '/') {
+        snprintf(buffer, size, "%s/newteller/%s", config, name);
+        return;
+    }
+    const char *home = getenv("HOME");
+    snprintf(buffer, size, "%s/.config/newteller/%s", home ? home : "", name);
+}
+
+int ntConfigSplitList(const char *list, char out[][32], int max)
+{
+    int count = 0;
+    const char *start = list;
+    while (start && count < max) {
+        const char *comma = strchr(start, ',');
+        size_t length = comma ? (size_t)(comma - start) : strlen(start);
+        if (length > 31)
+            length = 31;
+        memcpy(out[count], start, length);
+        out[count][length] = '\0';
+        char *item = trim(out[count]);
+        if (item != out[count])
+            memmove(out[count], item, strlen(item) + 1);
+        ++count;
+        if (!comma)
+            break;
+        start = comma + 1;
+    }
+    // A single empty entry means "no list".
+    if (count == 1 && out[0][0] == '\0')
+        return 0;
+    return count;
+}
+
+int ntOutputsLoad(const char *path, struct SavedOutput *outputs, int max)
+{
+    FILE *file = fopen(path, "r");
+    if (!file)
+        return 0;
+    int count = 0;
+    char line[1024];
+    while (count < max && fgets(line, sizeof(line), file)) {
+        char *fields[6] = {0};
+        int n = 0;
+        char *cursor = line;
+        while (n < 6) {
+            fields[n++] = cursor;
+            char *tab = strchr(cursor, '\t');
+            if (!tab)
+                break;
+            *tab = '\0';
+            cursor = tab + 1;
+        }
+        if (n != 6)
+            continue;
+        struct SavedOutput *out = &outputs[count];
+        memset(out, 0, sizeof(*out));
+        copyText(out->key, sizeof(out->key), fields[0]);
+        out->enabled = parseBool(trim(fields[1]), true);
+        if (sscanf(fields[2], "%dx%d@%d", &out->width, &out->height, &out->refresh) < 2)
+            continue;
+        if (sscanf(fields[3], "%d,%d", &out->x, &out->y) != 2)
+            continue;
+        out->scale = parseDouble(trim(fields[4]), 1.0, 0.25, 4.0);
+        out->transform = parseInt(trim(fields[5]), 0, 0, 7);
+        ++count;
+    }
+    fclose(file);
+    return count;
+}
+
+static void makeParents(const char *path)
+{
+    char directory[1024];
+    snprintf(directory, sizeof(directory), "%s", path);
+    for (char *p = directory + 1; *p; ++p) {
+        if (*p != '/')
+            continue;
+        *p = '\0';
+        mkdir(directory, 0700);
+        *p = '/';
+    }
+}
+
+bool ntOutputsSave(const char *path, const struct SavedOutput *outputs, int count)
+{
+    makeParents(path);
+    char temporary[1100];
+    snprintf(temporary, sizeof(temporary), "%s.tmp", path);
+    FILE *file = fopen(temporary, "w");
+    if (!file)
+        return false;
+    for (int i = 0; i < count; ++i) {
+        const struct SavedOutput *out = &outputs[i];
+        char key[NT_CONFIG_TEXT];
+        copyText(key, sizeof(key), out->key);
+        for (char *p = key; *p; ++p) {
+            if (*p == '\t' || *p == '\n' || *p == '\r')
+                *p = ' ';
+        }
+        fprintf(file, "%s\t%d\t%dx%d@%d\t%d,%d\t%.3f\t%d\n", key,
+                out->enabled ? 1 : 0, out->width, out->height, out->refresh,
+                out->x, out->y, out->scale, out->transform);
+    }
+    if (fclose(file) != 0) {
+        unlink(temporary);
+        return false;
+    }
+    return rename(temporary, path) == 0;
+}
