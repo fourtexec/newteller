@@ -1603,6 +1603,16 @@ void SessionServices::startPolkitAgent()
         m_polkitAgent = QStringLiteral("(already running)");
         return;
     }
+    // The built-in agent tried and polkit refused it (no login session, no
+    // polkit daemon): an external agent fails the same way and only shows an
+    // "Error" window at every login, so none is started. External agents are
+    // for builds without the built-in one, or when it is turned off.
+    const QString builtinError =
+        QCoreApplication::instance()->property("newteller.polkitAgentError").toString();
+    if (!builtinError.isEmpty()) {
+        m_polkitAgent = QStringLiteral("none (%1)").arg(builtinError);
+        return;
+    }
     // The first agent that is installed; a second agent in the same session
     // simply fails to register and exits.
     const QStringList candidates{

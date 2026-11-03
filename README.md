@@ -131,7 +131,10 @@ inside VirtualBox. The implemented pieces are:
   asked again. `security.builtinAgent` turns it off (an external agent such
   as lxpolkit is used then, as when the build has no libpolkit-agent-1).
   The session runs exactly one agent: polkit agents from the
-  distribution's autostart (`*polkit*`, `*policykit*`) are skipped.
+  distribution's autostart (`*polkit*`, `*policykit*`) are skipped, and when
+  polkit refuses the built-in agent (no login session, no polkit daemon) no
+  external one is started either - it would fail the same way and only show
+  an "Error" window. The Security settings page shows the reason.
 - **Open with root.** The dock's right-click menu and the start menu's
   right-click menu start an application as root:
   `newteller-run-as-root` runs it through pkexec (the administrator prompt

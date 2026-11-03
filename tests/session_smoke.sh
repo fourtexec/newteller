@@ -160,6 +160,16 @@ if [[ $reply != ok* || -z $window_id ]]; then
     echo "the compositor lists no windows ($reply)" >&2
     exit 1
 fi
+# No polkit agent window: polkit refuses the built-in agent here (no login
+# session), and an external agent started anyway only showed an "Error"
+# window - the same one users saw at every login.
+agent_windows=$(printf '%s' "${reply#ok }" | tr '\037' '\n' \
+    | awk -F $'\x1e' 'tolower($3) ~ /polkit/ { print $3 ": " $4 }')
+if [[ -n $agent_windows ]]; then
+    echo "a polkit agent opened a window at login: $agent_windows" >&2
+    exit 1
+fi
+echo "session smoke: no polkit agent window at login"
 reply=$(msg thumbnail "$window_id" 200 || true)
 thumb=${reply#ok }
 if [[ $reply != ok* || ! -s $thumb ]]; then
