@@ -9,6 +9,8 @@
 #include <QDBusObjectPath>
 #include <QDBusServiceWatcher>
 #include <QDBusVariant>
+#include <QDBusPendingCallWatcher>
+#include <QDBusPendingReply>
 #include <QIcon>
 #include <QQuickImageProvider>
 #include <QtDebug>
@@ -30,18 +32,6 @@ QStringList candidatePaths()
             QStringLiteral("/org/kde/statusnotifieritem"),
             QStringLiteral("/org/freedesktop/StatusNotifierItem"),
             QStringLiteral("/StatusBar")};
-}
-
-// Reads one item property; invalid when the item is gone or lacks the property.
-QVariant itemProperty(const QString &service, const QString &path, const QString &name)
-{
-    QDBusMessage call = QDBusMessage::createMethodCall(service, path, QString::fromLatin1(kPropsInterface),
-                                                       QStringLiteral("Get"));
-    call << QString::fromLatin1(kItemInterface) << name;
-    const QDBusMessage reply = QDBusConnection::sessionBus().call(call, QDBus::Block, 500);
-    if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
-        return {};
-    return reply.arguments().first();
 }
 
 // The IconPixmap property: array of structs {int width, int height, array of
@@ -329,18 +319,42 @@ void TrayWatcher::scanExistingItems()
     QDBusConnection bus = QDBusConnection::sessionBus();
     if (!bus.interface())
         return;
-    const QStringList names = bus.interface()->registeredServiceNames().value();
-    for (const QString &name : names) {
-        if (name.startsWith(QLatin1String("org.freedesktop"))
-            || name.startsWith(QLatin1String("org.kde.StatusNotifier")))
-            continue;
-        for (const QString &path : candidatePaths()) {
-            if (itemProperty(name, path, QStringLiteral("Id")).isValid()) {
-                addItem(name, path);
-                break;
+    // Asynchronous probes only: a bus easily has dozens of names, and one
+    // blocking call per name and path froze the shell for minutes. Items also
+    // re-register by themselves when they see the watcher appear.
+    auto *namesCall = new QDBusPendingCallWatcher(bus.interface()->asyncCall(
+                                                      QStringLiteral("ListNames")), this);
+    connect(namesCall, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher *w) {
+        w->deleteLater();
+        QDBusPendingReply<QStringList> reply = *w;
+        if (reply.isError() || !m_available)
+            return;
+        for (const QString &name : reply.value()) {
+            if (name.startsWith(QLatin1Char(':')) || name.startsWith(QLatin1String("org.freedesktop"))
+                || name == QLatin1String(kWatcherService)
+                || name.startsWith(QLatin1String("org.kde.StatusNotifierHost")))
+                continue;
+            for (const QString &path : candidatePaths()) {
+                QDBusMessage call = QDBusMessage::createMethodCall(
+                    name, path, QString::fromLatin1(kPropsInterface), QStringLiteral("Get"));
+                call << QString::fromLatin1(kItemInterface) << QStringLiteral("Id");
+                auto *probe = new QDBusPendingCallWatcher(
+                    QDBusConnection::sessionBus().asyncCall(call, 2000), this);
+                connect(probe, &QDBusPendingCallWatcher::finished, this,
+                        [this, name, path](QDBusPendingCallWatcher *p) {
+                            p->deleteLater();
+                            if (p->isError() || !m_available)
+                                return;
+                            // One item per service: the first path that answers.
+                            for (const TrayItemData &item : std::as_const(m_items)) {
+                                if (item.service == name)
+                                    return;
+                            }
+                            addItem(name, path);
+                        });
             }
         }
-    }
+    });
 }
 
 void TrayWatcher::RegisterStatusNotifierItem(const QString &service)
@@ -384,10 +398,22 @@ void TrayWatcher::addItem(const QString &service, const QString &path)
     item.id = makeId(service, path);
     item.service = service;
     item.path = path;
-    refreshItem(item);
+    item.itemId = service;
+    item.title = service;
+    item.status = QStringLiteral("Active");
 
     m_items.append(item);
     m_registered.append(item.id);
+    requestRefresh(item.id);
+
+    // The StatusNotifierItem change signals (most items use these rather
+    // than PropertiesChanged).
+    for (const char *signal : {"NewIcon", "NewTitle", "NewStatus", "NewToolTip",
+                               "NewAttentionIcon", "NewMenu"}) {
+        QDBusConnection::sessionBus().connect(service, path, QString::fromLatin1(kItemInterface),
+                                              QString::fromLatin1(signal), this,
+                                              SLOT(handleItemSignal(QDBusMessage)));
+    }
 
     // Watch the item's properties so icon, title and status changes reach the
     // panel without polling.
@@ -408,6 +434,12 @@ void TrayWatcher::removeItem(const QString &service, const QString &path)
                 service, path, QString::fromLatin1(kPropsInterface),
                 QStringLiteral("PropertiesChanged"), this,
                 SLOT(handlePropertiesChanged(QString, QVariantMap, QStringList)));
+            for (const char *signal : {"NewIcon", "NewTitle", "NewStatus", "NewToolTip",
+                                       "NewAttentionIcon", "NewMenu"}) {
+                QDBusConnection::sessionBus().disconnect(
+                    service, path, QString::fromLatin1(kItemInterface), QString::fromLatin1(signal),
+                    this, SLOT(handleItemSignal(QDBusMessage)));
+            }
             m_items.removeAt(i);
             m_registered.removeAll(id);
             emitItems();
@@ -436,15 +468,60 @@ TrayItemData *TrayWatcher::find(const QString &id)
 
 // Reads every property the panel shows. One round trip each; items are few and
 // this only runs when an item appears or reports a change.
-void TrayWatcher::refreshItem(TrayItemData &item)
+void TrayWatcher::requestRefresh(const QString &id)
 {
-    const QVariant id = itemProperty(item.service, item.path, QStringLiteral("Id"));
-    const QVariant title = itemProperty(item.service, item.path, QStringLiteral("Title"));
-    const QVariant status = itemProperty(item.service, item.path, QStringLiteral("Status"));
-    const QVariant iconName = itemProperty(item.service, item.path, QStringLiteral("IconName"));
-    const QVariant pixmap = itemProperty(item.service, item.path, QStringLiteral("IconPixmap"));
-    const QVariant tooltip = itemProperty(item.service, item.path, QStringLiteral("ToolTip"));
-    const QVariant menu = itemProperty(item.service, item.path, QStringLiteral("Menu"));
+    TrayItemData *item = find(id);
+    if (!item)
+        return;
+    if (m_refreshing.contains(id)) {
+        m_refreshAgain.insert(id);
+        return;
+    }
+    m_refreshing.insert(id);
+    QDBusMessage call = QDBusMessage::createMethodCall(item->service, item->path,
+                                                       QString::fromLatin1(kPropsInterface),
+                                                       QStringLiteral("GetAll"));
+    call << QString::fromLatin1(kItemInterface);
+    auto *watcher = new QDBusPendingCallWatcher(
+        QDBusConnection::sessionBus().asyncCall(call, 3000), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, id](QDBusPendingCallWatcher *w) {
+        w->deleteLater();
+        m_refreshing.remove(id);
+        QDBusPendingReply<QVariantMap> reply = *w;
+        TrayItemData *item = find(id);
+        if (item && !reply.isError()) {
+            applyProperties(*item, reply.value());
+            emitItems();
+        }
+        if (m_refreshAgain.remove(id))
+            requestRefresh(id);
+    });
+}
+
+void TrayWatcher::handleItemSignal(const QDBusMessage &message)
+{
+    // Items registered under a well-known name emit from their unique name,
+    // so match the exact id first and fall back to the object path.
+    const QString exact = makeId(message.service(), message.path());
+    if (find(exact)) {
+        requestRefresh(exact);
+        return;
+    }
+    for (const TrayItemData &item : std::as_const(m_items)) {
+        if (item.path == message.path())
+            requestRefresh(item.id);
+    }
+}
+
+void TrayWatcher::applyProperties(TrayItemData &item, const QVariantMap &properties)
+{
+    const QVariant id = properties.value(QStringLiteral("Id"));
+    const QVariant title = properties.value(QStringLiteral("Title"));
+    const QVariant status = properties.value(QStringLiteral("Status"));
+    const QVariant iconName = properties.value(QStringLiteral("IconName"));
+    const QVariant pixmap = properties.value(QStringLiteral("IconPixmap"));
+    const QVariant tooltip = properties.value(QStringLiteral("ToolTip"));
+    const QVariant menu = properties.value(QStringLiteral("Menu"));
 
     QString newId = id.toString();
     if (newId.isEmpty())
@@ -512,8 +589,7 @@ void TrayWatcher::handlePropertiesChanged(const QString &interface, const QVaria
                               || changed.contains(QStringLiteral("Menu"))
                               || !invalidated.isEmpty();
         if (relevant)
-            refreshItem(item);
-        emitItems();
+            requestRefresh(item.id);
         return;
     }
 }

@@ -89,6 +89,7 @@ void ntConfigDefaults(struct CompositorConfig *config)
     config->mouseNaturalScroll = false;
     config->mouseSpeed = 0.0;
     config->leftHanded = false;
+    config->gestures = true;
     config->cursorSize = 24;
     config->workspaceCount = 4;
     config->workspaceWrap = false;
@@ -101,10 +102,10 @@ void ntConfigDefaults(struct CompositorConfig *config)
     config->showMinimize = true;
     config->showMaximize = true;
     snprintf(config->titleFont, sizeof(config->titleFont), "%s", "Sans Bold 10");
-    ntConfigParseColor("#2b2e3b", config->activeBackground);
+    ntConfigParseColor("#262626", config->activeBackground);
     ntConfigParseColor("#f2f2f5", config->activeForeground);
-    ntConfigParseColor("#1f212b", config->inactiveBackground);
-    ntConfigParseColor("#8c8f9c", config->inactiveForeground);
+    ntConfigParseColor("#1a1a1a", config->inactiveBackground);
+    ntConfigParseColor("#8e8e93", config->inactiveForeground);
     ntConfigParseColor("#e5484d", config->closeHover);
 
     config->focusFollowsMouse = false;
@@ -216,6 +217,8 @@ bool ntConfigLoadFile(struct CompositorConfig *config, const char *path)
             config->mouseNaturalScroll = parseBool(value, config->mouseNaturalScroll);
         else if (strcmp(key, "mouse.speed") == 0)
             config->mouseSpeed = parseDouble(value, config->mouseSpeed, -1.0, 1.0);
+        else if (strcmp(key, "touchpad.gestures") == 0)
+            config->gestures = parseBool(value, config->gestures);
         else if (strcmp(key, "mouse.leftHanded") == 0)
             config->leftHanded = parseBool(value, config->leftHanded);
         else if (strcmp(key, "cursor.theme") == 0)

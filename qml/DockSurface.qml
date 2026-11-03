@@ -57,20 +57,20 @@ Item {
 
     // --- body tint ---------------------------------------------------------
     // A translucent dock keeps the theme surface colour; an opaque one is a
-    // solid slab just off the theme surface (a full slab needs its own light);
-    // frosted is milked towards white; liquid stays dark and clear with a cool
-    // accent lean, so the wallpaper reads through it.
+    // solid slab just off the theme surface; frosted is milked towards white;
+    // liquid stays dark and clear. All of them are neutral: no colour cast,
+    // the theme decides the colour.
     readonly property color bodyColor: {
         if (solid)
-            return Qt.rgba(baseColor.r * 0.94, baseColor.g * 0.95, baseColor.b * 0.98, 1);
+            return Qt.rgba(baseColor.r * 0.95, baseColor.g * 0.95, baseColor.b * 0.95, 1);
         if (frostedGlass)
-            return Qt.rgba(baseColor.r * 0.46 + 0.58,
-                           baseColor.g * 0.46 + 0.63,
-                           baseColor.b * 0.46 + 0.71, 1);
+            return Qt.rgba(baseColor.r * 0.46 + 0.60,
+                           baseColor.g * 0.46 + 0.60,
+                           baseColor.b * 0.46 + 0.60, 1);
         if (liquidGlass)
-            return Qt.rgba(baseColor.r * 0.62 + accentColor.r * 0.10 + 0.06,
-                           baseColor.g * 0.62 + accentColor.g * 0.10 + 0.12,
-                           baseColor.b * 0.62 + accentColor.b * 0.10 + 0.24, 1);
+            return Qt.rgba(baseColor.r * 0.62 + 0.08,
+                           baseColor.g * 0.62 + 0.08,
+                           baseColor.b * 0.62 + 0.08, 1);
         return baseColor;
     }
 

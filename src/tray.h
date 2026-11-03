@@ -3,6 +3,8 @@
 #include <QHash>
 #include <QImage>
 #include <QObject>
+#include <QSet>
+#include <QDBusMessage>
 #include <QStringList>
 #include <QTimer>
 #include <QUrl>
@@ -117,6 +119,8 @@ signals:
 private slots:
     void handlePropertiesChanged(const QString &interface, const QVariantMap &changed,
                                  const QStringList &invalidated);
+    // NewIcon, NewTitle, NewStatus, NewToolTip, NewAttentionIcon, NewMenu.
+    void handleItemSignal(const QDBusMessage &message);
 
 private:
     void setupDBus();
@@ -126,7 +130,10 @@ private:
     void removeItem(const QString &service, const QString &path);
     void removeService(const QString &service);
     TrayItemData *find(const QString &id);
-    void refreshItem(TrayItemData &item);
+    // Fetches every property of the item in one asynchronous GetAll; the
+    // panel updates when the answer arrives. Never blocks the UI thread.
+    void requestRefresh(const QString &id);
+    void applyProperties(TrayItemData &item, const QVariantMap &properties);
     void emitItems();
     QString calledFromService() const;
 
@@ -140,6 +147,9 @@ private:
     bool m_enabled = true;
     bool m_registeredObject = false;
     qlonglong m_revision = 1;
+    // Refreshes already on the way, so a chatty item cannot pile them up.
+    QSet<QString> m_refreshing;
+    QSet<QString> m_refreshAgain;
 };
 
 class QQuickImageProvider;

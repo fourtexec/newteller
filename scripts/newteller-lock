@@ -20,7 +20,7 @@ fi
 config="${XDG_CONFIG_HOME:-$HOME/.config}/newteller/lock.conf"
 image=''
 color='1e1e2e'
-ring='3584e4'
+ring='8e8e93'
 if [ -r "$config" ]; then
     while IFS='=' read -r key value; do
         case "$key" in
