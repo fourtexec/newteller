@@ -48,6 +48,7 @@
 #include <wlr/types/wlr_presentation_time.h>
 #include <wlr/types/wlr_primary_selection.h>
 #include <wlr/types/wlr_primary_selection_v1.h>
+#include <wlr/types/wlr_cursor_shape_v1.h>
 #include <wlr/types/wlr_pointer_constraints_v1.h>
 #include <wlr/types/wlr_relative_pointer_v1.h>
 #include <wlr/types/wlr_scene.h>
@@ -649,6 +650,8 @@ struct Server {
     struct wlr_pointer_constraints_v1 *pointerConstraints;
     struct wlr_pointer_constraint_v1 *activeConstraint;
     struct wl_listener newPointerConstraint;
+    // cursor-shape-v1: applications name their cursor (GTK 4, Firefox).
+    struct wl_listener cursorShape;
     struct wl_listener newXdgToplevel;
     struct wl_listener newXdgPopup;
     struct wl_listener newLayerSurface;
@@ -2918,6 +2921,20 @@ static void seatRequestCursor(struct wl_listener *listener, void *data)
         wlr_cursor_set_surface(server->cursor, event->surface,
                                event->hotspot_x, event->hotspot_y);
     }
+}
+
+// cursor-shape-v1: the application names a cursor ("text", "pointer",
+// "ew-resize") and the compositor draws it from the cursor theme. Only the
+// client under the pointer may change it.
+static void handleCursorShape(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, cursorShape);
+    struct wlr_cursor_shape_manager_v1_request_set_shape_event *event = data;
+    if (event->device_type != WLR_CURSOR_SHAPE_MANAGER_V1_DEVICE_TYPE_POINTER
+        || server->seat->pointer_state.focused_client != event->seat_client)
+        return;
+    wlr_cursor_set_xcursor(server->cursor, server->cursorManager,
+                           wlr_cursor_shape_v1_name(event->shape));
 }
 
 static void seatRequestSetSelection(struct wl_listener *listener, void *data)
@@ -7465,6 +7482,10 @@ static void setupProtocols(struct Server *server)
     wl_signal_add(&server->lockManager->events.new_lock, &server->newLock);
     server->relativePointers = wlr_relative_pointer_manager_v1_create(server->display);
     server->pointerConstraints = wlr_pointer_constraints_v1_create(server->display);
+    struct wlr_cursor_shape_manager_v1 *cursorShapes =
+        wlr_cursor_shape_manager_v1_create(server->display, 1);
+    server->cursorShape.notify = handleCursorShape;
+    wl_signal_add(&cursorShapes->events.request_set_shape, &server->cursorShape);
     server->newPointerConstraint.notify = handleNewPointerConstraint;
     wl_signal_add(&server->pointerConstraints->events.new_constraint, &server->newPointerConstraint);
     wlr_viewporter_create(server->display);
@@ -7830,6 +7851,7 @@ static int run(struct Server *server)
     wl_list_remove(&server->requestSetPrimarySelection.link);
     wl_list_remove(&server->requestStartDrag.link);
     wl_list_remove(&server->newPointerConstraint.link);
+    wl_list_remove(&server->cursorShape.link);
     wl_list_remove(&server->startDrag.link);
     detachLock(server);
     wl_list_remove(&server->newLock.link);
