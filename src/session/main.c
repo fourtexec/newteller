@@ -196,6 +196,7 @@ static void clearBlurRegion(struct Server *server, const char *ns, const char *o
 static void destroyGhost(struct Ghost *ghost);
 static void viewRestoreGeometry(struct View *view, int x, int y, int width, int height);
 static pid_t viewPid(struct View *view);
+static void updateIdleInhibited(struct Server *server);
 struct Keyboard;
 static struct wlr_input_method_keyboard_grab_v2 *keyboardImGrab(struct Keyboard *keyboard);
 
@@ -422,7 +423,9 @@ struct LockSurface {
 };
 
 struct IdleInhibitor {
+    struct wl_list link;
     struct Server *server;
+    struct wlr_idle_inhibitor_v1 *inhibitor;
     struct wl_listener destroy;
 };
 
@@ -591,6 +594,7 @@ struct Server {
 
     struct wlr_idle_notifier_v1 *idleNotifier;
     int idleInhibitors;
+    struct wl_list idleInhibitorList; // struct IdleInhibitor
     int ipcIdleInhibitors;
     // Input methods (text-input-v3 <-> input-method-v2 relay).
     struct wl_list textInputs;   // struct TextInput
@@ -892,6 +896,9 @@ static void viewSyncVisible(struct View *view)
                                    view->mapped && !view->minimized
                                        && viewOnWorkspace(view));
     }
+    // A video in a minimized window or on another desktop no longer keeps
+    // the screen awake.
+    updateIdleInhibited(view->server);
 }
 
 // ---------------------------------------------------------------------------
@@ -5953,10 +5960,40 @@ static void handleNewLock(struct wl_listener *listener, void *data)
 
 // Idle is inhibited by Wayland clients (idle-inhibit-unstable-v1) and by
 // control-socket clients ("idle-inhibit on").
+// idle-inhibit-v1: an inhibitor counts only while its surface is visible.
+// Windows are visible when shown on the current desktop; other surfaces
+// (layer surfaces, popups) while they exist.
+static bool idleInhibitorVisible(struct Server *server, struct IdleInhibitor *inhibitor)
+{
+    struct wlr_surface *surface = inhibitor->inhibitor->surface;
+    if (!surface)
+        return false;
+    struct wlr_surface *root = wlr_surface_get_root_surface(surface);
+    struct View *view;
+    wl_list_for_each(view, &server->views, link) {
+        if (viewSurface(view) == root)
+            return view->tree && view->tree->node.enabled;
+    }
+    return true;
+}
+
+static bool idleInhibited(struct Server *server)
+{
+    if (server->ipcIdleInhibitors > 0)
+        return true;
+    struct IdleInhibitor *inhibitor;
+    wl_list_for_each(inhibitor, &server->idleInhibitorList, link) {
+        if (idleInhibitorVisible(server, inhibitor))
+            return true;
+    }
+    return false;
+}
+
 static void updateIdleInhibited(struct Server *server)
 {
-    wlr_idle_notifier_v1_set_inhibited(server->idleNotifier,
-                                       server->idleInhibitors > 0 || server->ipcIdleInhibitors > 0);
+    if (!server->idleNotifier)
+        return;
+    wlr_idle_notifier_v1_set_inhibited(server->idleNotifier, idleInhibited(server));
 }
 
 static void ipcSetIdleInhibit(struct IpcClient *client, bool inhibit)
@@ -5978,6 +6015,7 @@ static void idleInhibitorDestroy(struct wl_listener *listener, void *data)
     struct IdleInhibitor *inhibitor = wl_container_of(listener, inhibitor, destroy);
     struct Server *server = inhibitor->server;
     wl_list_remove(&inhibitor->destroy.link);
+    wl_list_remove(&inhibitor->link);
     free(inhibitor);
     if (server->idleInhibitors > 0)
         --server->idleInhibitors;
@@ -5990,8 +6028,10 @@ static void handleNewIdleInhibitor(struct wl_listener *listener, void *data)
     struct wlr_idle_inhibitor_v1 *wlrInhibitor = data;
     struct IdleInhibitor *inhibitor = xcalloc(1, sizeof(*inhibitor));
     inhibitor->server = server;
+    inhibitor->inhibitor = wlrInhibitor;
     inhibitor->destroy.notify = idleInhibitorDestroy;
     wl_signal_add(&wlrInhibitor->events.destroy, &inhibitor->destroy);
+    wl_list_insert(&server->idleInhibitorList, &inhibitor->link);
     ++server->idleInhibitors;
     updateIdleInhibited(server);
 }
@@ -6830,8 +6870,7 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
         if (argument)
             ipcSetIdleInhibit(client, strcmp(argument, "on") == 0 || strcmp(argument, "1") == 0);
         char reply[32];
-        snprintf(reply, sizeof(reply), "ok %d",
-                 server->idleInhibitors > 0 || server->ipcIdleInhibitors > 0);
+        snprintf(reply, sizeof(reply), "ok %d", idleInhibited(server));
         ipcSend(client, reply);
     } else if (strcmp(command, "dpms") == 0 && argument) {
         setOutputsPower(server, strcmp(argument, "off") != 0);
@@ -7245,6 +7284,7 @@ static void setupProtocols(struct Server *server)
     server->idleNotifier = wlr_idle_notifier_v1_create(server->display);
     struct wlr_idle_inhibit_manager_v1 *idleInhibit =
         wlr_idle_inhibit_v1_create(server->display);
+    wl_list_init(&server->idleInhibitorList);
     server->newIdleInhibitor.notify = handleNewIdleInhibitor;
     wl_signal_add(&idleInhibit->events.new_inhibitor, &server->newIdleInhibitor);
     server->lockManager = wlr_session_lock_manager_v1_create(server->display);
