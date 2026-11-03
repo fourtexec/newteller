@@ -69,6 +69,9 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("theme.name"), QStringLiteral("default"));
     m_defaults.insert(QStringLiteral("theme.autoReload"), true);
     m_defaults.insert(QStringLiteral("desktop.wallpaper"), QString());
+    // Without a chosen wallpaper the desktop shows the bundled one (false:
+    // the plain themed gradient).
+    m_defaults.insert(QStringLiteral("desktop.defaultWallpaper"), true);
     m_defaults.insert(QStringLiteral("desktop.showIcons"), true);
     m_defaults.insert(QStringLiteral("desktop.iconSize"), 48);
     m_defaults.insert(QStringLiteral("desktop.cellWidth"), 96);
@@ -226,6 +229,7 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("touchpad.tapToClick"), true);
     m_defaults.insert(QStringLiteral("touchpad.naturalScroll"), true);
     m_defaults.insert(QStringLiteral("touchpad.disableWhileTyping"), true);
+    m_defaults.insert(QStringLiteral("touchpad.gestures"), true);
     m_defaults.insert(QStringLiteral("touchpad.speed"), 0.0);
     m_defaults.insert(QStringLiteral("mouse.naturalScroll"), false);
     m_defaults.insert(QStringLiteral("mouse.speed"), 0.0);
@@ -251,10 +255,10 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("decorations.showMinimize"), true);
     m_defaults.insert(QStringLiteral("decorations.showMaximize"), true);
     m_defaults.insert(QStringLiteral("decorations.font"), QString());
-    m_defaults.insert(QStringLiteral("decorations.activeBackground"), QStringLiteral("#2b2e3b"));
+    m_defaults.insert(QStringLiteral("decorations.activeBackground"), QStringLiteral("#262626"));
     m_defaults.insert(QStringLiteral("decorations.activeForeground"), QStringLiteral("#f2f2f5"));
-    m_defaults.insert(QStringLiteral("decorations.inactiveBackground"), QStringLiteral("#1f212b"));
-    m_defaults.insert(QStringLiteral("decorations.inactiveForeground"), QStringLiteral("#8c8f9c"));
+    m_defaults.insert(QStringLiteral("decorations.inactiveBackground"), QStringLiteral("#1a1a1a"));
+    m_defaults.insert(QStringLiteral("decorations.inactiveForeground"), QStringLiteral("#8e8e93"));
     m_defaults.insert(QStringLiteral("decorations.closeHover"), QStringLiteral("#e5484d"));
     // Window behaviour (compositor).
     m_defaults.insert(QStringLiteral("windows.focusFollowsMouse"), false);

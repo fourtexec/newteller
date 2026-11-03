@@ -35,6 +35,8 @@ struct CompositorConfig {
     bool mouseNaturalScroll;
     double mouseSpeed;                     // -1 .. 1
     bool leftHanded;
+    // Three-finger window drag, four-finger desktop switch.
+    bool gestures;
 
     char cursorTheme[NT_CONFIG_TEXT];
     int cursorSize;

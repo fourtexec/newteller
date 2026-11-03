@@ -5,5 +5,5 @@ Comment=NewTeller Wayland desktop session
 Exec=newteller-session
 TryExec=newteller-session
 DesktopNames=NewTeller
-Icon=preferences-desktop
+Icon=preferences-system
 Keywords=desktop;session;wayland;

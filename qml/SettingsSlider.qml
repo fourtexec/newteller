@@ -1,8 +1,9 @@
 import QtQuick
 
-// Horizontal slider with a value label. With `settingKey` set it reads and
-// writes the shell.json key directly; `step` snaps the values.
-Rectangle {
+// Horizontal slider with its value printed to the right of the track (never
+// under the handle). With `settingKey` set it reads and writes the shell.json
+// key directly; `step` snaps the values.
+Item {
     id: control
 
     property string settingKey: ""
@@ -14,12 +15,14 @@ Rectangle {
     property int decimals: step < 1 ? 2 : 0
     signal changed(real value)
 
-    width: 220
+    width: 260
     height: 26
-    radius: 13
-    color: Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.10)
+    implicitWidth: width
+    implicitHeight: height
 
-    readonly property real ratio: (value - from) / Math.max(0.000001, to - from)
+    readonly property real ratio: Math.max(0, Math.min(1, (value - from) / Math.max(0.000001, to - from)))
+    readonly property int labelWidth: 54
+    readonly property real trackWidth: Math.max(60, width - labelWidth - 8)
 
     function refresh() {
         if (settingKey.length > 0) {
@@ -30,9 +33,10 @@ Rectangle {
     }
 
     function commit(raw) {
-        const span = to - from;
         var snapped = Math.round((raw - from) / step) * step + from;
         snapped = Math.max(from, Math.min(to, snapped));
+        // Rounding noise of the step arithmetic (0.30000000000000004).
+        snapped = Number(snapped.toFixed(Math.max(0, decimals + 2)));
         value = snapped;
         if (settingKey.length > 0)
             Settings.setValue(settingKey, snapped);
@@ -40,8 +44,8 @@ Rectangle {
     }
 
     function valueAt(x) {
-        return from + (Math.max(2, Math.min(width - 22, x)) - 2) / Math.max(1, width - 24)
-               * (to - from);
+        const usable = Math.max(1, control.trackWidth - handle.width);
+        return from + Math.max(0, Math.min(1, (x - handle.width / 2) / usable)) * (to - from);
     }
 
     Component.onCompleted: refresh()
@@ -51,32 +55,41 @@ Rectangle {
     }
 
     Rectangle {
-        anchors.left: parent.left
-        anchors.leftMargin: 2
-        anchors.verticalCenter: parent.verticalCenter
-        width: 2 + control.ratio * (control.width - 24) + 8
+        id: track
+        x: 0
+        width: control.trackWidth
         height: 6
         radius: 3
-        visible: control.ratio > 0
-        color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.55)
+        anchors.verticalCenter: parent.verticalCenter
+        color: Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.14)
+
+        Rectangle {
+            width: handle.x + handle.width / 2
+            height: parent.height
+            radius: 3
+            visible: control.ratio > 0
+            color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.75)
+        }
     }
 
     Rectangle {
         id: handle
-        width: 20
-        height: 20
-        radius: 10
-        x: 2 + control.ratio * (control.width - 24)
+        width: 18
+        height: 18
+        radius: 9
+        x: control.ratio * (control.trackWidth - width)
         anchors.verticalCenter: parent.verticalCenter
-        color: Theme.accent
-        border.width: 2
-        border.color: Qt.lighter(Theme.accent, 1.25)
+        color: Theme.foreground
+        border.width: 1
+        border.color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.9)
     }
 
     Text {
         anchors.right: parent.right
-        anchors.rightMargin: 8
         anchors.verticalCenter: parent.verticalCenter
+        width: control.labelWidth
+        horizontalAlignment: Text.AlignRight
+        elide: Text.ElideRight
         text: control.value.toFixed(control.decimals) + control.suffix
         color: Theme.foreground
         font.family: Theme.fontFamily
@@ -84,8 +97,9 @@ Rectangle {
     }
 
     MouseArea {
-        anchors.fill: parent
-        anchors.rightMargin: 44
+        x: 0
+        width: control.trackWidth
+        height: parent.height
         cursorShape: Qt.PointingHandCursor
         preventStealing: true
         onPressed: (mouse) => control.commit(control.valueAt(mouse.x))

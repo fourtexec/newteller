@@ -43,6 +43,7 @@
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_output_management_v1.h>
+#include <wlr/types/wlr_pointer_gestures_v1.h>
 #include <wlr/types/wlr_pointer.h>
 #include <wlr/types/wlr_presentation_time.h>
 #include <wlr/types/wlr_primary_selection.h>
@@ -193,6 +194,8 @@ static void setBlurRegion(struct Server *server, const char *ns, const char *out
                           struct wlr_box box, int radius);
 static void clearBlurRegion(struct Server *server, const char *ns, const char *output);
 static void destroyGhost(struct Ghost *ghost);
+static void viewRestoreGeometry(struct View *view, int x, int y, int width, int height);
+static pid_t viewPid(struct View *view);
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -268,6 +271,15 @@ struct View {
     struct wl_listener xdgDecorationMode;
     struct wl_listener xdgDecorationDestroy;
     struct wl_listener x11SetDecorations;
+
+    // Geometry before fullscreen (kept apart from the maximize one).
+    int fullSavedX;
+    int fullSavedY;
+    int fullSavedWidth;
+    int fullSavedHeight;
+    // The client did not answer an xdg ping in time.
+    bool hung;
+    struct wl_listener pingTimeout;
 
     // Open/restore animation (effects renderer).
     bool animating;
@@ -488,6 +500,21 @@ struct Server {
     struct View *lastTitleView;
     uint32_t lastTitleClick;
     bool suppressRaise;
+
+    // Touchpad gestures: what the current swipe does.
+    struct wlr_pointer_gestures_v1 *pointerGestures;
+    int gestureKind;            // 0 none (forwarded), 1 move window, 2 desktops
+    double gestureDx;
+    double gestureDy;
+    struct View *gestureView;
+    struct wl_listener swipeBegin;
+    struct wl_listener swipeUpdate;
+    struct wl_listener swipeEnd;
+    struct wl_listener pinchBegin;
+    struct wl_listener pinchUpdate;
+    struct wl_listener pinchEnd;
+    struct wl_listener holdBegin;
+    struct wl_listener holdEnd;
 
     // Effects renderer state.
     uint64_t effectFrames;      // frames drawn by the effects renderer
@@ -1124,6 +1151,11 @@ static void viewSetPosition(struct View *view, int x, int y)
     view->y = y;
     if (view->tree)
         wlr_scene_node_set_position(&view->tree->node, x, y);
+    // X11 clients place their menus from the position they believe they
+    // have; tell them where the window went.
+    if (view->x11 && !view->overrideRedirect && view->width > 0 && view->height > 0)
+        wlr_xwayland_surface_configure(view->x11, (int16_t)x, (int16_t)y,
+                                       (uint16_t)view->width, (uint16_t)view->height);
 }
 
 static void viewSetSize(struct View *view, int width, int height)
@@ -1206,6 +1238,8 @@ static void focusView(struct View *view, struct wlr_surface *surface)
     if (!server->suppressRaise)
         viewRaise(view);
     viewSetActivated(view, true);
+    if (view->xdg && view->xdg->base->initialized)
+        wlr_xdg_surface_ping(view->xdg->base);
 
     struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
     if (keyboard) {
@@ -1568,8 +1602,9 @@ static void viewSetMaximized(struct View *view, bool maximized)
         viewSetPosition(view, box.x, box.y);
         viewSetSize(view, box.width, box.height);
     } else {
-        viewSetPosition(view, view->savedX, view->savedY);
-        viewSetSize(view, view->savedWidth, view->savedHeight);
+        view->maximized = false;
+        viewRestoreGeometry(view, view->savedX, view->savedY, view->savedWidth,
+                            view->savedHeight);
     }
 
     view->maximized = maximized;
@@ -1588,10 +1623,10 @@ static void viewSetFullscreen(struct View *view, bool fullscreen)
         viewClearSnap(view);
 
     if (fullscreen) {
-        view->savedX = view->x;
-        view->savedY = view->y;
-        view->savedWidth = view->width;
-        view->savedHeight = view->height;
+        view->fullSavedX = view->x;
+        view->fullSavedY = view->y;
+        view->fullSavedWidth = view->width;
+        view->fullSavedHeight = view->height;
         struct wlr_output *output = wlr_output_layout_output_at(
             view->server->outputLayout, view->x, view->y);
         struct wlr_box box = {0, 0, 1280, 800};
@@ -1601,8 +1636,17 @@ static void viewSetFullscreen(struct View *view, bool fullscreen)
         viewSetSize(view, box.width, box.height);
         viewRaise(view);
     } else {
-        viewSetPosition(view, view->savedX, view->savedY);
-        viewSetSize(view, view->savedWidth, view->savedHeight);
+        // The frame comes back with the window: decide the geometry with
+        // fullscreen already off.
+        view->fullscreen = false;
+        if (view->maximized) {
+            struct wlr_box box = frameContentBox(view, usableBoxForView(view));
+            viewSetPosition(view, box.x, box.y);
+            viewSetSize(view, box.width, box.height);
+        } else {
+            viewRestoreGeometry(view, view->fullSavedX, view->fullSavedY,
+                                view->fullSavedWidth, view->fullSavedHeight);
+        }
     }
 
     view->fullscreen = fullscreen;
@@ -1629,10 +1673,58 @@ static void viewSetFullscreen(struct View *view, bool fullscreen)
 
 static void viewClose(struct View *view)
 {
-    if (view->xdg)
+    if (view->xdg) {
         wlr_xdg_toplevel_send_close(view->xdg);
-    else if (view->x11)
+        // A client that does not answer the ping is hung; the shell then
+        // offers to end it (see handleXdgPingTimeout).
+        wlr_xdg_surface_ping(view->xdg->base);
+    } else if (view->x11) {
         wlr_xwayland_surface_close(view->x11);
+    }
+}
+
+static pid_t viewPid(struct View *view)
+{
+    pid_t pid = 0;
+    if (view->xdg && view->xdg->base->resource) {
+        wl_client_get_credentials(wl_resource_get_client(view->xdg->base->resource),
+                                  &pid, NULL, NULL);
+    } else if (view->x11) {
+        pid = view->x11->pid;
+    }
+    return pid;
+}
+
+// A usable window geometry to come back to: an application that went
+// fullscreen or maximized before it ever had a size has nothing saved, and
+// restoring "nothing" left a 64 px square at 0,0 whose title bar was off
+// screen. Such windows get two thirds of the screen, centred; everything is
+// kept on screen with the title bar reachable.
+static void viewRestoreGeometry(struct View *view, int x, int y, int width, int height)
+{
+    struct wlr_box area = usableBoxForView(view);
+    int top, side, bottom;
+    viewFrame(view, &top, &side, &bottom);
+    if (width < 160 || height < 100) {
+        width = area.width * 2 / 3;
+        height = area.height * 2 / 3;
+        x = area.x + (area.width - width) / 2;
+        y = area.y + (area.height - height) / 2;
+    }
+    if (width > area.width - 2 * side)
+        width = area.width - 2 * side;
+    if (height > area.height - top - bottom)
+        height = area.height - top - bottom;
+    if (x < area.x + side - width + 120)
+        x = area.x + side;
+    if (x > area.x + area.width - 120)
+        x = area.x + area.width - width - side;
+    if (y < area.y + top)
+        y = area.y + top;
+    if (y > area.y + area.height - 60)
+        y = area.y + area.height - height - bottom;
+    viewSetPosition(view, x, y);
+    viewSetSize(view, width, height);
 }
 
 static void centerView(struct View *view)
@@ -1786,6 +1878,16 @@ static void destroyView(struct View *view)
         server->hoverView = NULL;
     if (server->lastTitleView == view)
         server->lastTitleView = NULL;
+    if (server->gestureView == view) {
+        server->gestureView = NULL;
+        server->gestureKind = 0;
+    }
+    if (view->hung) {
+        // The force-quit dialog stops listing it.
+        char line[48];
+        snprintf(line, sizeof(line), "event closed %u", view->id);
+        ipcBroadcast(server, line);
+    }
     if (view->xdgDecoration) {
         wl_list_remove(&view->xdgDecorationMode.link);
         wl_list_remove(&view->xdgDecorationDestroy.link);
@@ -2153,8 +2255,13 @@ static bool viewAt(struct View *view, double lx, double ly, struct Hit *hit)
     double sy = 0;
     struct wlr_surface *surface = NULL;
     if (view->xdg) {
-        surface = wlr_xdg_surface_surface_at(view->xdg->base, lx - nodeX,
-                                             ly - nodeY, &sx, &sy);
+        // The tree sits at the window geometry; the surface (with any
+        // client-side shadow around it) starts geometry.x/y further up-left.
+        // Without this offset every click on a GTK4/libadwaita window landed
+        // 20-50 px off: close buttons and header bars did not react.
+        struct wlr_box geometry = viewGeometry(view);
+        surface = wlr_xdg_surface_surface_at(view->xdg->base, lx - nodeX + geometry.x,
+                                             ly - nodeY + geometry.y, &sx, &sy);
     } else if (view->x11 && view->x11->surface) {
         surface = wlr_surface_surface_at(view->x11->surface, lx - nodeX,
                                          ly - nodeY, &sx, &sy);
@@ -2386,6 +2493,14 @@ static void cursorButton(struct wl_listener *listener, void *data)
     // Super+click is a chord, not a tap of Super.
     server->logoTap = false;
     notifyActivity(server);
+    if (event->state == WL_POINTER_BUTTON_STATE_PRESSED && !server->locked
+        && ipcHasWatchers(server)) {
+        // The shell closes an open card when the click is outside it.
+        char line[64];
+        snprintf(line, sizeof(line), "event click %d %d", (int)server->cursor->x,
+                 (int)server->cursor->y);
+        ipcBroadcast(server, line);
+    }
 
     if (server->locked) {
         // Only the locker gets pointer input; a click also gives it the
@@ -3240,6 +3355,12 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
             return true;
         }
     }
+    // Ctrl+Shift+Esc (Windows) or Ctrl+Alt+Esc: end a frozen application.
+    if ((modifiers & WLR_MODIFIER_CTRL) && sym == XKB_KEY_Escape
+        && ((modifiers & WLR_MODIFIER_SHIFT) || alt)) {
+        shellAction("showForceQuit");
+        return true;
+    }
     if (logo && (sym == XKB_KEY_Tab || sym == XKB_KEY_ISO_Left_Tab) && !alt) {
         // Super+Tab: the overview of every window (as Windows' Task View).
         shellAction("toggleTaskView");
@@ -3630,6 +3751,12 @@ static void handleXdgCommit(struct wl_listener *listener, void *data)
     // The client may have resized itself: keep the frame around it.
     if (view->mapped)
         viewUpdateDecoration(view);
+    if (view->hung) {
+        view->hung = false;
+        char line[64];
+        snprintf(line, sizeof(line), "event responsive %u", view->id);
+        ipcBroadcast(view->server, line);
+    }
 }
 
 static void handleXdgMap(struct wl_listener *listener, void *data)
@@ -3696,6 +3823,7 @@ static void handleXdgDestroy(struct wl_listener *listener, void *data)
     wl_list_remove(&view->requestMinimize.link);
     wl_list_remove(&view->setTitle.link);
     wl_list_remove(&view->setAppId.link);
+    wl_list_remove(&view->pingTimeout.link);
     // The scene helper owns this tree and destroys it with the xdg surface.
     view->tree = NULL;
     destroyView(view);
@@ -3823,6 +3951,20 @@ static void handleNewXdgDecoration(struct wl_listener *listener, void *data)
     }
 }
 
+// The client did not answer a ping (sent when it is asked to close or
+// gets focus): tell the shell, which offers to end it.
+static void handleXdgPingTimeout(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct View *view = wl_container_of(listener, view, pingTimeout);
+    if (view->hung)
+        return;
+    view->hung = true;
+    char line[64];
+    snprintf(line, sizeof(line), "event hung %u", view->id);
+    ipcBroadcast(view->server, line);
+}
+
 static void handleNewXdgToplevel(struct wl_listener *listener, void *data)
 {
     struct Server *server = wl_container_of(listener, server, newXdgToplevel);
@@ -3868,6 +4010,8 @@ static void handleNewXdgToplevel(struct wl_listener *listener, void *data)
     wl_signal_add(&toplevel->events.set_title, &view->setTitle);
     view->setAppId.notify = handleXdgSetAppId;
     wl_signal_add(&toplevel->events.set_app_id, &view->setAppId);
+    view->pingTimeout.notify = handleXdgPingTimeout;
+    wl_signal_add(&toplevel->base->events.ping_timeout, &view->pingTimeout);
 }
 
 // ---------------------------------------------------------------------------
@@ -5887,7 +6031,7 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
             ipcField(title, sizeof(title), viewTitle(view), false);
             char appId[96];
             ipcField(appId, sizeof(appId), viewAppId(view), true);
-            char flags[4];
+            char flags[5];
             int f = 0;
             if (view == server->focusedView)
                 flags[f++] = 'f';
@@ -5895,10 +6039,13 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
                 flags[f++] = 'm';
             if (view->maximized)
                 flags[f++] = 'x';
+            if (view->hung)
+                flags[f++] = 'h';
             flags[f] = '\0';
             int written = snprintf(reply + used, sizeof(reply) - used,
-                                   "%s%u\x1e%d\x1e%s\x1e%s\x1e%s", first ? "" : "\x1f",
-                                   view->id, view->workspace, appId, title, flags);
+                                   "%s%u\x1e%d\x1e%s\x1e%s\x1e%s\x1e%d", first ? "" : "\x1f",
+                                   view->id, view->workspace, appId, title, flags,
+                                   (int)viewPid(view));
             if (written < 0 || used + (size_t)written >= sizeof(reply))
                 break;
             used += (size_t)written;
@@ -5906,7 +6053,8 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
         }
         ipcSend(client, reply);
     } else if ((strcmp(command, "thumbnail") == 0 || strcmp(command, "activate") == 0
-                || strcmp(command, "close") == 0 || strcmp(command, "move-window") == 0)
+                || strcmp(command, "close") == 0 || strcmp(command, "move-window") == 0
+                || strcmp(command, "kill") == 0)
                && argument) {
         uint32_t id = (uint32_t)strtoul(argument, NULL, 10);
         struct View *target = NULL;
@@ -5942,6 +6090,19 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
             ipcSend(client, "ok");
         } else if (strcmp(command, "close") == 0) {
             viewClose(target);
+            ipcSend(client, "ok");
+        } else if (strcmp(command, "kill") == 0) {
+            // Force quit: the process behind the window, never the session.
+            pid_t pid = viewPid(target);
+            if (pid <= 1 || pid == getpid() || pid == server->shellPid) {
+                ipcSend(client, "error this window cannot be force-quit");
+                return;
+            }
+            if (kill(pid, SIGKILL) != 0) {
+                ipcSend(client, "error the process could not be ended");
+                return;
+            }
+            wlr_log(WLR_INFO, "force-quit pid %d (%s)", (int)pid, viewTitle(target));
             ipcSend(client, "ok");
         } else {
             char *desktop = strtok(NULL, " \t\r");
@@ -6169,6 +6330,125 @@ static int sendCommand(const char *command)
 }
 
 // ---------------------------------------------------------------------------
+// Touchpad gestures
+// ---------------------------------------------------------------------------
+//
+// Four fingers left/right switch desktops; three fingers drag the focused
+// window. Everything else (two-finger pinch in a browser, other swipes) goes
+// to the application through pointer-gestures-unstable-v1.
+
+static void handleSwipeBegin(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, swipeBegin);
+    struct wlr_pointer_swipe_begin_event *event = data;
+    notifyActivity(server);
+    server->gestureKind = 0;
+    server->gestureDx = 0;
+    server->gestureDy = 0;
+    server->gestureView = NULL;
+    if (server->config.gestures && !server->locked) {
+        if (event->fingers == 4) {
+            server->gestureKind = 2;
+            return;
+        }
+        if (event->fingers == 3 && server->focusedView && !server->focusedView->fullscreen) {
+            server->gestureKind = 1;
+            server->gestureView = server->focusedView;
+            if (server->gestureView->maximized)
+                viewSetMaximized(server->gestureView, false);
+            viewClearSnap(server->gestureView);
+            return;
+        }
+    }
+    wlr_pointer_gestures_v1_send_swipe_begin(server->pointerGestures, server->seat,
+                                             event->time_msec, event->fingers);
+}
+
+static void handleSwipeUpdate(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, swipeUpdate);
+    struct wlr_pointer_swipe_update_event *event = data;
+    if (server->gestureKind == 0) {
+        wlr_pointer_gestures_v1_send_swipe_update(server->pointerGestures, server->seat,
+                                                  event->time_msec, event->dx, event->dy);
+        return;
+    }
+    server->gestureDx += event->dx;
+    server->gestureDy += event->dy;
+    if (server->gestureKind == 1 && server->gestureView) {
+        // Follow the fingers; whole pixels, the rest carries over.
+        int stepX = (int)server->gestureDx;
+        int stepY = (int)server->gestureDy;
+        if (stepX || stepY) {
+            server->gestureDx -= stepX;
+            server->gestureDy -= stepY;
+            viewSetPosition(server->gestureView, server->gestureView->x + stepX,
+                            server->gestureView->y + stepY);
+        }
+    }
+}
+
+static void handleSwipeEnd(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, swipeEnd);
+    struct wlr_pointer_swipe_end_event *event = data;
+    int kind = server->gestureKind;
+    server->gestureKind = 0;
+    server->gestureView = NULL;
+    if (kind == 0) {
+        wlr_pointer_gestures_v1_send_swipe_end(server->pointerGestures, server->seat,
+                                               event->time_msec, event->cancelled);
+        return;
+    }
+    if (kind == 2 && !event->cancelled && fabs(server->gestureDx) > 80
+        && fabs(server->gestureDx) > fabs(server->gestureDy)) {
+        // Fingers to the left bring the next desktop in from the right.
+        switchWorkspace(server, server->workspace + (server->gestureDx < 0 ? 1 : -1));
+    }
+}
+
+static void handlePinchBegin(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, pinchBegin);
+    struct wlr_pointer_pinch_begin_event *event = data;
+    wlr_pointer_gestures_v1_send_pinch_begin(server->pointerGestures, server->seat,
+                                             event->time_msec, event->fingers);
+}
+
+static void handlePinchUpdate(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, pinchUpdate);
+    struct wlr_pointer_pinch_update_event *event = data;
+    wlr_pointer_gestures_v1_send_pinch_update(server->pointerGestures, server->seat,
+                                              event->time_msec, event->dx, event->dy,
+                                              event->scale, event->rotation);
+}
+
+static void handlePinchEnd(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, pinchEnd);
+    struct wlr_pointer_pinch_end_event *event = data;
+    wlr_pointer_gestures_v1_send_pinch_end(server->pointerGestures, server->seat,
+                                           event->time_msec, event->cancelled);
+}
+
+static void handleHoldBegin(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, holdBegin);
+    struct wlr_pointer_hold_begin_event *event = data;
+    wlr_pointer_gestures_v1_send_hold_begin(server->pointerGestures, server->seat,
+                                            event->time_msec, event->fingers);
+}
+
+static void handleHoldEnd(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, holdEnd);
+    struct wlr_pointer_hold_end_event *event = data;
+    wlr_pointer_gestures_v1_send_hold_end(server->pointerGestures, server->seat,
+                                          event->time_msec, event->cancelled);
+}
+
+// ---------------------------------------------------------------------------
 // Protocol setup
 // ---------------------------------------------------------------------------
 
@@ -6187,6 +6467,18 @@ static void handleActivationRequest(struct wl_listener *listener, void *data)
             || wlr_surface_get_root_surface(view->xdg->base->surface)
                    == event->surface) {
             focusView(view, event->surface);
+            return;
+        }
+    }
+    // The shell's menus and cards are layer surfaces; Qt asks for their
+    // activation through xdg-activation. Without the keyboard they never
+    // lost it either, so a click elsewhere did not close them.
+    struct Layer *layer;
+    wl_list_for_each(layer, &server->layers, link) {
+        if (layer->layer && layer->layer->surface == event->surface
+            && layer->layer->current.keyboard_interactive
+                   != ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_NONE) {
+            focusLayer(layer);
             return;
         }
     }
@@ -6333,6 +6625,24 @@ static void setupInput(struct Server *server)
     wl_signal_add(&server->cursor->events.axis, &server->cursorAxis);
     server->cursorFrame.notify = cursorFrame;
     wl_signal_add(&server->cursor->events.frame, &server->cursorFrame);
+
+    server->pointerGestures = wlr_pointer_gestures_v1_create(server->display);
+    server->swipeBegin.notify = handleSwipeBegin;
+    wl_signal_add(&server->cursor->events.swipe_begin, &server->swipeBegin);
+    server->swipeUpdate.notify = handleSwipeUpdate;
+    wl_signal_add(&server->cursor->events.swipe_update, &server->swipeUpdate);
+    server->swipeEnd.notify = handleSwipeEnd;
+    wl_signal_add(&server->cursor->events.swipe_end, &server->swipeEnd);
+    server->pinchBegin.notify = handlePinchBegin;
+    wl_signal_add(&server->cursor->events.pinch_begin, &server->pinchBegin);
+    server->pinchUpdate.notify = handlePinchUpdate;
+    wl_signal_add(&server->cursor->events.pinch_update, &server->pinchUpdate);
+    server->pinchEnd.notify = handlePinchEnd;
+    wl_signal_add(&server->cursor->events.pinch_end, &server->pinchEnd);
+    server->holdBegin.notify = handleHoldBegin;
+    wl_signal_add(&server->cursor->events.hold_begin, &server->holdBegin);
+    server->holdEnd.notify = handleHoldEnd;
+    wl_signal_add(&server->cursor->events.hold_end, &server->holdEnd);
 
     wlr_cursor_set_xcursor(server->cursor, server->cursorManager, "left_ptr");
 }
@@ -6594,6 +6904,14 @@ static int run(struct Server *server)
     wl_list_remove(&server->cursorButton.link);
     wl_list_remove(&server->cursorAxis.link);
     wl_list_remove(&server->cursorFrame.link);
+    wl_list_remove(&server->swipeBegin.link);
+    wl_list_remove(&server->swipeUpdate.link);
+    wl_list_remove(&server->swipeEnd.link);
+    wl_list_remove(&server->pinchBegin.link);
+    wl_list_remove(&server->pinchUpdate.link);
+    wl_list_remove(&server->pinchEnd.link);
+    wl_list_remove(&server->holdBegin.link);
+    wl_list_remove(&server->holdEnd.link);
     wl_list_remove(&server->requestCursor.link);
     wl_list_remove(&server->requestSetSelection.link);
     wl_list_remove(&server->requestSetPrimarySelection.link);

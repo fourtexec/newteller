@@ -413,6 +413,7 @@ class Shell(QObject):
     quickSettingsToggleRequested = Signal()
     clipboardToggleRequested = Signal()
     taskViewToggleRequested = Signal()
+    forceQuitRequested = Signal()
     runDialogRequested = Signal()
 
     def __init__(self, desktop_dir, home_dir):
@@ -824,7 +825,17 @@ class Session(QObject):
 
     wifiChanged = Signal()
     wifiConnectFinished = Signal(bool, str, str)
-    wifiAvailable = Property(bool, lambda self: True, constant=True)
+    wifiAvailable = Property(bool, lambda self: True, notify=wifiChanged)
+    wifiStatus = Property(str, lambda self: "", notify=wifiChanged)
+    pointerPressed = Signal(int, int)
+    hungWindowsChanged = Signal()
+    windowHung = Signal(int)
+    hungWindows = Property("QVariantList", lambda self: [], notify=hungWindowsChanged)
+
+    @Slot(int, result=str)
+    def killWindow(self, window_id):
+        self.calls.append(("killWindow", window_id))
+        return ""
     wifiBusy = Property(bool, lambda self: False, notify=wifiChanged)
     wifiNetworks = Property("QVariantList", lambda self: [
         {"ssid": "Home", "signal": 80, "secure": True, "active": True},
@@ -1534,6 +1545,32 @@ def main():
         check(start is not None and start.height() >= 16,
               "the start button keeps its geometry")
 
+        # A bigger icon size makes the bar grow instead of clipping the icons.
+        settings.setValue("dock.iconSize", 44)
+        QTest.qWait(150)
+        check(panel.property("barThickness") >= 64,
+              f"the bar grows with the dock icon size ({panel.property('barThickness')})")
+        settings.setValue("dock.iconSize", 28)
+        QTest.qWait(150)
+
+        # A vertical dock: one column of square buttons inside the bar.
+        settings.setValue("panel.position", "left")
+        QTest.qWait(300)
+        items = []
+        if panel.property("contentItem") is not None:
+            walk_items(panel.property("contentItem"), items)
+        column_buttons = [i for i in items if isinstance(i, QQuickItem) and is_task_button(i)
+                          and i.parentItem() is not None
+                          and i.parentItem().metaObject().className() == "QQuickColumn"]
+        check(len(column_buttons) >= 2,
+              f"a vertical dock lists its buttons in one column ({len(column_buttons)})")
+        bad = [f"{b.width():.0f}x{b.height():.0f}" for b in column_buttons
+               if abs(b.width() - b.height()) > 1 or b.width() < 16
+               or b.width() > panel.property("barThickness")]
+        check(not bad, f"vertical dock buttons are square and fit the bar ({bad})")
+        settings.setValue("panel.position", "bottom")
+        QTest.qWait(300)
+
     # One dock menu per panel.
     dock_menus = windows_of_kind("DockMenu")
     check(len(dock_menus) == len(panels),
@@ -1847,6 +1884,23 @@ def main():
                 shell.taskViewToggleRequested.emit()
                 QTest.qWait(200)
                 check(not views[0].isVisible(), "Super+Tab again closes the overview")
+
+            # Ctrl+Shift+Esc: the force-quit dialog lists windows and ends one.
+            shell.forceQuitRequested.emit()
+            QTest.qWait(200)
+            quits = windows_of_kind("ForceQuitWindow")
+            check(bool(quits) and quits[0].isVisible(), "Ctrl+Shift+Esc opens the force-quit dialog")
+            if quits:
+                fq_list = quits[0].findChild(QObject, "forceQuitList")
+                check(fq_list is not None and fq_list.property("count") == 3,
+                      "the force-quit dialog lists every window")
+                session.calls.clear()
+                QMetaObject.invokeMethod(quits[0], "endTask")
+                check(any(c[0] == "killWindow" for c in session.calls),
+                      "End task kills the selected window")
+                QMetaObject.invokeMethod(quits[0], "hide")
+                QTest.qWait(100)
+                check(not quits[0].isVisible(), "the force-quit dialog closes")
 
             # The Bluetooth list scans while open and shows the devices.
             bts = windows_of_kind("BluetoothPopup")

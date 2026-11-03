@@ -338,6 +338,11 @@ void ShellController::toggleTaskView()
     emit taskViewToggleRequested();
 }
 
+void ShellController::showForceQuit()
+{
+    emit forceQuitRequested();
+}
+
 void ShellController::showRunDialog()
 {
     emit runDialogRequested();

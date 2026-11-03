@@ -73,38 +73,50 @@ Window {
         anchorY = centerY;
         if (!visible) {
             // Start transparent so the fade-in covers the first frame.
-            opacity = 0;
+            bubble.opacity = 0;
             visible = true;
         }
-        opacity = 1;
+        bubble.opacity = 1;
+        // A tooltip never stays up on its own: if the pointer left without
+        // a leave event (another surface took it), it goes after a while.
+        lingerTimer.restart();
+    }
+
+    Timer {
+        id: lingerTimer
+        interval: 4000
+        onTriggered: tipWindow.hide()
     }
 
     function hide() {
         if (!visible)
             return;
-        opacity = 0;
+        lingerTimer.stop();
+        bubble.opacity = 0;
         fadeTimer.restart();
     }
 
     // Exit is quick: fade out, then take the window off the screen. Re-shows
     // during the fade cancel the timer, so hopping across buttons never
-    // flickers.
-    Behavior on opacity {
-        NumberAnimation {
-            duration: 110
-        }
-    }
+    // flickers. The bubble fades, not the window: window opacity is not
+    // supported everywhere.
     Timer {
         id: fadeTimer
         interval: 120
         onTriggered: {
-            if (tipWindow.opacity <= 0)
+            if (bubble.opacity <= 0)
                 tipWindow.visible = false;
         }
     }
 
     Rectangle {
+        id: bubble
         anchors.fill: parent
+        Behavior on opacity {
+            NumberAnimation {
+                duration: 110
+            }
+        }
         radius: 6
         color: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, 0.98)
         border.width: 1

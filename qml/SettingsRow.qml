@@ -2,6 +2,10 @@ import QtQuick
 
 // One setting row: title, optional description, the control on the right and
 // a small reset button that restores the default of `settingKey`.
+//
+// The row is as tall as its text or its control, whichever needs more, so a
+// wrapped description never runs into the next row. When the control is too
+// wide to leave the text a readable column, it moves under the text.
 Item {
     id: row
 
@@ -11,23 +15,31 @@ Item {
     // The shell.json key this row edits; enables the reset-to-default button.
     property string settingKey: ""
 
-    width: parent ? parent.width : 320
-    height: Math.max(44, controlSlot.implicitHeight + 12)
+    readonly property int resetWidth: resetButton.visible ? 34 : 0
+    // Text column width when the control sits beside it.
+    readonly property real besideTextWidth: width - controlSlot.implicitWidth - resetWidth - 16
+    readonly property bool stacked: besideTextWidth < Math.min(220, width * 0.4)
 
+    width: parent ? parent.width : 320
+    height: stacked
+            ? textColumn.implicitHeight + controlSlot.implicitHeight + 22
+            : Math.max(44, textColumn.implicitHeight + 16, controlSlot.implicitHeight + 12)
+
+    // Separator above every row but the first.
     Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.verticalCenter: parent.verticalCenter
+        anchors.top: parent.top
         height: 1
         color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.25)
         visible: row.y > 0
     }
 
     Column {
-        anchors.left: parent.left
-        anchors.right: controlSlot.left
-        anchors.rightMargin: 12
-        anchors.verticalCenter: parent.verticalCenter
+        id: textColumn
+        x: 0
+        y: row.stacked ? 8 : Math.round((row.height - implicitHeight) / 2)
+        width: row.stacked ? row.width - row.resetWidth : Math.max(60, row.besideTextWidth)
         spacing: 2
 
         Text {
@@ -36,6 +48,8 @@ Item {
             font.family: Theme.fontFamily
             font.pointSize: Theme.fontSize
             width: parent.width
+            wrapMode: Text.Wrap
+            maximumLineCount: 2
             elide: Text.ElideRight
         }
         Text {
@@ -45,16 +59,15 @@ Item {
             font.family: Theme.fontFamily
             font.pointSize: Theme.fontSize - 2
             width: parent.width
-            elide: Text.ElideRight
             wrapMode: Text.Wrap
         }
     }
 
     Row {
         id: controlSlot
-        anchors.right: resetButton.left
-        anchors.rightMargin: resetButton.visible ? 6 : 0
-        anchors.verticalCenter: parent.verticalCenter
+        x: row.stacked ? 0 : row.width - row.resetWidth - implicitWidth - (resetButton.visible ? 0 : 0)
+        y: row.stacked ? textColumn.y + textColumn.implicitHeight + 8
+                       : Math.round((row.height - implicitHeight) / 2)
         spacing: 4
     }
 
@@ -75,7 +88,7 @@ Item {
     TaskButton {
         id: resetButton
         anchors.right: parent.right
-        anchors.verticalCenter: parent.verticalCenter
+        y: row.stacked ? 6 : Math.round((row.height - height) / 2)
         width: 28
         height: 28
         iconName: "rotate-ccw"

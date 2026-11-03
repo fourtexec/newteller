@@ -420,7 +420,6 @@ Window {
                                 title: "GTK theme"
                                 subtitle: "Installed in /usr/share/themes or ~/.themes. Overrides the colour scheme's default theme."
                                 settingKey: "apps.gtkTheme"
-                                height: Math.max(44, gtkFlow.implicitHeight + 12)
                                 SettingsChoice {
                                     id: gtkFlow
                                     width: Math.min(420, appearanceColumn.width * 0.6)
@@ -433,7 +432,6 @@ Window {
                                 width: parent.width
                                 title: "Icon theme"
                                 settingKey: "apps.iconTheme"
-                                height: Math.max(44, iconFlow.implicitHeight + 12)
                                 SettingsChoice {
                                     id: iconFlow
                                     width: Math.min(420, appearanceColumn.width * 0.6)
@@ -703,9 +701,9 @@ Window {
                                                 anchors.fill: parent
                                                 radius: 6
                                                 gradient: Gradient {
-                                                    GradientStop { position: 0.0; color: "#0d1330" }
-                                                    GradientStop { position: 0.55; color: "#1b2150" }
-                                                    GradientStop { position: 1.0; color: "#2b1636" }
+                                                    GradientStop { position: 0.0; color: "#101010" }
+                                                    GradientStop { position: 0.55; color: "#1c1c1c" }
+                                                    GradientStop { position: 1.0; color: "#262626" }
                                                 }
                                             }
                                             Rectangle {
@@ -713,7 +711,7 @@ Window {
                                                 radius: 6
                                                 gradient: Gradient {
                                                     GradientStop { position: 0.0; color: "#00000000" }
-                                                    GradientStop { position: 0.45; color: "#3877a8ff" }
+                                                    GradientStop { position: 0.45; color: "#5a5a5aff" }
                                                     GradientStop { position: 0.62; color: "#00000000" }
                                                     GradientStop { position: 1.0; color: "#00000000" }
                                                 }
@@ -1417,6 +1415,13 @@ Window {
                         SettingsSection {
                             title: "Wallpaper"
 
+                            SettingsRow {
+                                width: parent.width
+                                title: "Default wallpaper"
+                                subtitle: "Shown while no picture is chosen and no background colour is set."
+                                settingKey: "desktop.defaultWallpaper"
+                                SettingsSwitch { settingKey: "desktop.defaultWallpaper" }
+                            }
                             SettingsRow {
                                 width: parent.width
                                 title: "Wallpaper mode"
@@ -2872,7 +2877,7 @@ Window {
                                 settingKey: "keyboard.layouts"
 
                                 Flow {
-                                    width: Math.min(320, parent ? parent.width * 0.55 : 320)
+                                    width: Math.min(320, keyboardColumn.width * 0.55)
                                     spacing: 6
                                     Repeater {
                                         model: keyboardColumn.layouts
@@ -2904,11 +2909,10 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: "Add a layout"
-                                height: Math.max(44, addLayoutFlow.implicitHeight + 12)
 
                                 Flow {
                                     id: addLayoutFlow
-                                    width: Math.min(360, parent ? parent.width * 0.6 : 360)
+                                    width: Math.min(360, keyboardColumn.width * 0.6)
                                     spacing: 4
                                     Repeater {
                                         model: keyboardColumn.commonLayouts.filter(function (code) {
@@ -3034,6 +3038,14 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: "Touchpad gestures"
+                                subtitle: "Three fingers sideways move the active window; four "
+                                          + "fingers sideways switch desktops."
+                                settingKey: "touchpad.gestures"
+                                SettingsSwitch { settingKey: "touchpad.gestures" }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: "Pointer speed"
                                 settingKey: "touchpad.speed"
                                 SettingsSlider { settingKey: "touchpad.speed"; from: -1; to: 1; step: 0.1 }
@@ -3082,7 +3094,6 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: "Installed cursor themes"
-                                height: Math.max(44, cursorFlow.implicitHeight + 12)
                                 SettingsChoice {
                                     id: cursorFlow
                                     width: Math.min(420, mouseColumn.width * 0.6)
@@ -3254,7 +3265,6 @@ Window {
                                     width: parent.width
                                     visible: screenSection.modelData.enabled
                                     title: "Resolution"
-                                    height: Math.max(44, resolutionFlow.implicitHeight + 12)
                                     Flow {
                                         id: resolutionFlow
                                         width: Math.min(420, displayColumn.width * 0.6)
@@ -3472,7 +3482,7 @@ Window {
                             title: "Screen lock"
                             subtitle: Session.lockAvailable
                                       ? "Super+L locks the screen. Your password unlocks it."
-                                      : "The screen locker is not installed: sudo apt install swaylock"
+                                      : "The screen locker is not installed: install gtklock (or swaylock)"
 
                             SettingsRow {
                                 width: parent.width

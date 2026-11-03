@@ -2,25 +2,29 @@
 # Lock the NewTeller session.
 #
 # Started by Super+L, the start menu's Lock button, the idle timeout and
-# before suspend (through swayidle). swaylock speaks ext-session-lock-v1, so
-# the compositor shows nothing but the locker until the password is right,
-# and keeps the screen locked even if the locker crashes.
+# before suspend (through swayidle). The locker speaks ext-session-lock-v1,
+# so the compositor shows nothing but the locker until the password is
+# right, and keeps the screen locked even if the locker crashes.
+#
+# gtklock (3.0 or newer, which uses ext-session-lock-v1) is preferred: it
+# shows a clock, a real password field with a placeholder, an Unlock button
+# and a "wrong password" message. swaylock is the fallback; it has no text
+# field, only a ring that lights up while typing, so it is configured to
+# show the ring all the time with a "Type your password" hint.
 set -u
 
 # One locker at a time.
-if pgrep -u "$(id -u)" -x swaylock >/dev/null 2>&1; then
-    exit 0
-fi
-if ! command -v swaylock >/dev/null 2>&1; then
-    echo 'newteller-lock: swaylock is not installed (apt install swaylock)' >&2
-    exit 1
-fi
+for locker in gtklock swaylock; do
+    if pgrep -u "$(id -u)" -x "$locker" >/dev/null 2>&1; then
+        exit 0
+    fi
+done
 
 # Written by the shell from its settings: the wallpaper and accent colour.
 config="${XDG_CONFIG_HOME:-$HOME/.config}/newteller/lock.conf"
 image=''
-color='1e1e2e'
-ring='3584e4'
+color='141414'
+ring='8e8e93'
 if [ -r "$config" ]; then
     while IFS='=' read -r key value; do
         case "$key" in
@@ -32,12 +36,104 @@ if [ -r "$config" ]; then
 fi
 color=${color#\#}
 ring=${ring#\#}
+# No settings written yet: the bundled wallpaper.
+if [ ! -r "$config" ]; then
+    for candidate in /usr/share/backgrounds/newteller/default.jpg \
+                     /usr/local/share/backgrounds/newteller/default.jpg; do
+        if [ -r "$candidate" ]; then
+            image=$candidate
+            break
+        fi
+    done
+fi
+
+# gtklock before 3.0 used wlr-input-inhibitor, which this compositor does
+# not offer: such a locker could not keep the session locked.
+gtklock_usable() {
+    command -v gtklock >/dev/null 2>&1 || return 1
+    version=$(gtklock --version 2>/dev/null | sed -n 's/[^0-9]*\([0-9][0-9]*\)\..*/\1/p' | head -n 1)
+    [ -n "$version" ] && [ "$version" -ge 3 ]
+}
+
+if gtklock_usable; then
+    style="${XDG_RUNTIME_DIR:-/tmp}/newteller-gtklock.css"
+    background=''
+    if [ -n "$image" ]; then
+        background="background-image: url(\"file://$image\");"
+    fi
+    cat > "$style" <<EOF
+window {
+    background-color: #$color;
+    $background
+    background-size: cover;
+    background-position: center;
+}
+#window-box {
+    padding: 40px 48px;
+    border-radius: 20px;
+    background-color: rgba(18, 18, 18, 0.78);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+#clock-label {
+    color: #ececec;
+    font-size: 64px;
+    font-weight: 300;
+    margin-bottom: 16px;
+}
+#input-label {
+    color: #8e8e93;
+}
+#input-field {
+    min-width: 280px;
+    min-height: 38px;
+    padding: 0 12px;
+    border-radius: 10px;
+    color: #ececec;
+    background-color: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(255, 255, 255, 0.14);
+    caret-color: #$ring;
+}
+#input-field:focus {
+    border-color: #$ring;
+}
+#unlock-button {
+    min-height: 38px;
+    border-radius: 10px;
+    color: #ececec;
+    background-image: none;
+    background-color: rgba(255, 255, 255, 0.10);
+    border: none;
+}
+#error-label {
+    color: #e5534b;
+}
+#warning-label {
+    color: #d29922;
+}
+EOF
+    # --daemonize returns once the session is locked; if gtklock could not
+    # lock it, swaylock below still does.
+    if gtklock --daemonize --style "$style"; then
+        exit 0
+    fi
+    echo 'newteller-lock: gtklock failed, falling back to swaylock' >&2
+fi
+
+if ! command -v swaylock >/dev/null 2>&1; then
+    echo 'newteller-lock: neither gtklock nor swaylock is installed' >&2
+    exit 1
+fi
 
 set -- --daemonize --show-failed-attempts --indicator-caps-lock \
-    --ignore-empty-password --color "$color" \
-    --ring-color "$ring" --key-hl-color "${ring}ff" \
-    --inside-color 00000088 --line-color 00000000 --separator-color 00000000
-if [ -n "$image" ] && [ -r "$image" ]; then
+    --ignore-empty-password --indicator-idle-visible --indicator-radius 70 \
+    --color "$color" \
+    --ring-color "${ring}88" --key-hl-color "${ring}ff" --bs-hl-color e5534bff \
+    --ring-ver-color "${ring}ff" --ring-wrong-color e5534bff \
+    --inside-color 121212cc --inside-ver-color 121212cc --inside-wrong-color 121212cc \
+    --text-color ececec --text-ver-color ececec --text-wrong-color e5534b \
+    --line-color 00000000 --line-ver-color 00000000 --line-wrong-color 00000000 \
+    --separator-color 00000000
+if [ -n "$image" ]; then
     set -- "$@" --image "$image" --scaling fill
 fi
 exec swaylock "$@"

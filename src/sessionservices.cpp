@@ -1,6 +1,13 @@
 #include "sessionservices.h"
 
 #include "settings.h"
+#include <QDBusMetaType>
+#include <QDBusVariant>
+#include <QDBusObjectPath>
+#include <QDBusMessage>
+#include <QDBusArgument>
+#include <QDBusConnectionInterface>
+#include <QDBusConnection>
 
 #include <QColor>
 #include <QDir>
@@ -218,6 +225,7 @@ SessionServices::SessionServices(Settings *settings, QObject *parent)
     }
 
     connect(m_settings, &Settings::changed, this, &SessionServices::settingChanged);
+    qDBusRegisterMetaType<NMSettingsMap>();
 
     writeCompositorConfig();
     writeLockConfig();
@@ -268,7 +276,8 @@ QString SessionServices::findProgram(const QString &name)
 
 bool SessionServices::lockAvailable() const
 {
-    return !findProgram(QStringLiteral("swaylock")).isEmpty();
+    return !findProgram(QStringLiteral("gtklock")).isEmpty()
+           || !findProgram(QStringLiteral("swaylock")).isEmpty();
 }
 
 bool SessionServices::idleAvailable() const
@@ -379,6 +388,23 @@ void SessionServices::handleEvent(const QString &line)
             }
         }
         emit switcherChanged();
+    } else if (line.startsWith(QLatin1String("click "))) {
+        const QStringList parts = line.mid(6).split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        if (parts.size() >= 2)
+            emit pointerPressed(parts.at(0).toInt(), parts.at(1).toInt());
+    } else if (line.startsWith(QLatin1String("hung "))) {
+        const int id = line.mid(5).trimmed().toInt();
+        if (!m_hung.contains(id)) {
+            m_hung.insert(id);
+            emit hungWindowsChanged();
+            emit windowHung(id);
+        }
+    } else if (line.startsWith(QLatin1String("responsive "))) {
+        if (m_hung.remove(line.mid(11).trimmed().toInt()))
+            emit hungWindowsChanged();
+    } else if (line.startsWith(QLatin1String("closed "))) {
+        if (m_hung.remove(line.mid(7).trimmed().toInt()))
+            emit hungWindowsChanged();
     } else if (line.startsWith(QLatin1String("key "))) {
         emit mediaKey(line.mid(4).trimmed());
     } else if (line.startsWith(QLatin1String("locked "))) {
@@ -538,7 +564,9 @@ void SessionServices::settingChanged(const QString &key)
         || key == QLatin1String("windows.focusFollowsMouse")
         || key == QLatin1String("windows.placement") || key == QLatin1String("windows.snapping")
         || key.startsWith(QLatin1String("mouse.")) || key.startsWith(QLatin1String("cursor."))
-        || key == QLatin1String("desktop.wallpaper")) {
+        || key == QLatin1String("desktop.wallpaper")
+        || key == QLatin1String("desktop.defaultWallpaper")
+        || key == QLatin1String("desktop.backgroundColor")) {
         m_configDebounce.start();
     }
     if (inSession() && (all || key.startsWith(QLatin1String("apps."))
@@ -582,6 +610,7 @@ QString SessionServices::compositorConfigText() const
     text += confLine(QStringLiteral("touchpad.naturalScroll"), boolText(value("touchpad.naturalScroll")));
     text += confLine(QStringLiteral("touchpad.disableWhileTyping"),
                      boolText(value("touchpad.disableWhileTyping")));
+    text += confLine(QStringLiteral("touchpad.gestures"), boolText(value("touchpad.gestures")));
     text += confLine(QStringLiteral("touchpad.speed"),
                      QString::number(qBound(-1.0, value("touchpad.speed").toDouble(), 1.0), 'f', 2));
     text += confLine(QStringLiteral("mouse.naturalScroll"), boolText(value("mouse.naturalScroll")));
@@ -696,6 +725,11 @@ void SessionServices::writeLockConfig()
         image = QDir::homePath() + image.mid(1);
     if (!image.isEmpty() && !QFileInfo(image).isFile())
         image.clear();
+    // The desktop shows the bundled wallpaper; the lock screen matches it.
+    if (image.isEmpty() && m_settings->value(QStringLiteral("desktop.defaultWallpaper")).toBool()
+        && m_settings->value(QStringLiteral("desktop.backgroundColor")).toString().isEmpty())
+        image = QStandardPaths::locate(QStandardPaths::GenericDataLocation,
+                                       QStringLiteral("backgrounds/newteller/default.jpg"));
     if (!m_settings->value(QStringLiteral("lock.useWallpaper")).toBool())
         image.clear();
     const QString path = Settings::configDir() + QStringLiteral("/lock.conf");
@@ -881,70 +915,167 @@ void SessionServices::setPowerProfile(const QString &profile)
 }
 
 // ---------------------------------------------------------------------------
-// Wi-Fi (nmcli)
+// Wi-Fi (NetworkManager over D-Bus)
 // ---------------------------------------------------------------------------
+//
+// Talks to NetworkManager directly instead of parsing nmcli: secrets travel
+// in the D-Bus call, nothing depends on nmcli's output format or on a
+// terminal, and every way Wi-Fi can be unavailable gets its own message
+// (no NetworkManager, no adapter, adapter not managed, switched off,
+// hardware switch, missing firmware).
 
 namespace {
 
-// nmcli -t escapes ':' and '\\' inside fields with a backslash.
-QStringList splitTerse(const QString &line)
+const QString kNm = QStringLiteral("org.freedesktop.NetworkManager");
+const QString kNmPath = QStringLiteral("/org/freedesktop/NetworkManager");
+const QString kNmDevice = QStringLiteral("org.freedesktop.NetworkManager.Device");
+const QString kNmWireless = QStringLiteral("org.freedesktop.NetworkManager.Device.Wireless");
+const QString kNmAccessPoint = QStringLiteral("org.freedesktop.NetworkManager.AccessPoint");
+const QString kNmSettings = QStringLiteral("org.freedesktop.NetworkManager.Settings");
+const QString kNmConnection = QStringLiteral("org.freedesktop.NetworkManager.Settings.Connection");
+const QString kDBusProperties = QStringLiteral("org.freedesktop.DBus.Properties");
+
+QDBusMessage nmCall(const QString &path, const QString &interface, const QString &method,
+                    const QVariantList &arguments = {}, int timeout = 2000)
 {
-    QStringList fields;
-    QString current;
-    for (int i = 0; i < line.size(); ++i) {
-        const QChar c = line.at(i);
-        if (c == QLatin1Char('\\') && i + 1 < line.size()) {
-            current += line.at(++i);
-        } else if (c == QLatin1Char(':')) {
-            fields << current;
-            current.clear();
-        } else {
-            current += c;
-        }
+    QDBusMessage message = QDBusMessage::createMethodCall(kNm, path, interface, method);
+    message.setArguments(arguments);
+    return QDBusConnection::systemBus().call(message, QDBus::Block, timeout);
+}
+
+QVariant nmProperty(const QString &path, const QString &interface, const QString &name)
+{
+    const QDBusMessage reply = nmCall(path, kDBusProperties, QStringLiteral("Get"),
+                                      {interface, name}, 1500);
+    if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
+        return {};
+    return reply.arguments().constFirst().value<QDBusVariant>().variant();
+}
+
+QList<QDBusObjectPath> objectPaths(const QDBusMessage &reply)
+{
+    if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
+        return {};
+    // qdbus_cast reads both a demarshalled list and a raw QDBusArgument.
+    return qdbus_cast<QList<QDBusObjectPath>>(reply.arguments().constFirst());
+}
+
+QVariantMap nmAll(const QString &path, const QString &interface)
+{
+    const QDBusMessage reply = nmCall(path, kDBusProperties, QStringLiteral("GetAll"), {interface}, 1500);
+    if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
+        return {};
+    return qdbus_cast<QVariantMap>(reply.arguments().constFirst());
+}
+
+// a{sa{sv}} from Connection.GetSettings.
+NMSettingsMap connectionSettings(const QString &path)
+{
+    const QDBusMessage reply = nmCall(path, kNmConnection, QStringLiteral("GetSettings"));
+    if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
+        return {};
+    return qdbus_cast<NMSettingsMap>(reply.arguments().constFirst());
+}
+
+bool sysfsHasWireless()
+{
+    const QStringList interfaces = QDir(QStringLiteral("/sys/class/net"))
+                                       .entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+    for (const QString &name : interfaces) {
+        if (QFileInfo::exists(QStringLiteral("/sys/class/net/%1/wireless").arg(name)))
+            return true;
     }
-    fields << current;
-    return fields;
+    return false;
 }
 
 } // namespace
 
 bool SessionServices::wifiAvailable() const
 {
-    return !findProgram(QStringLiteral("nmcli")).isEmpty();
+    QDBusConnectionInterface *bus = QDBusConnection::systemBus().interface();
+    return bus && bus->isServiceRegistered(kNm).value();
 }
 
-void SessionServices::scanWifi()
+// The Wi-Fi device, or an explanation in m_wifiStatus when there is none.
+QString SessionServices::wifiDevice()
 {
-    const QString nmcli = findProgram(QStringLiteral("nmcli"));
-    if (nmcli.isEmpty() || m_wifiBusy)
-        return;
-    m_wifiBusy = true;
-    emit wifiChanged();
-    auto *process = new QProcess(this);
-    connect(process, &QProcess::finished, this, [this, process] {
-        process->deleteLater();
+    m_wifiStatus.clear();
+    if (!wifiAvailable()) {
+        m_wifiStatus = QStringLiteral("NetworkManager is not running. Install and start it "
+                                      "(network-manager / NetworkManager) to use Wi-Fi.");
+        return QString();
+    }
+    const QList<QDBusObjectPath> devices = objectPaths(nmCall(kNmPath, kNm, QStringLiteral("GetDevices")));
+    QString unmanaged;
+    for (const QDBusObjectPath &device : devices) {
+        if (nmProperty(device.path(), kNmDevice, QStringLiteral("DeviceType")).toUInt() != 2)
+            continue;
+        const uint state = nmProperty(device.path(), kNmDevice, QStringLiteral("State")).toUInt();
+        const QString iface = nmProperty(device.path(), kNmDevice, QStringLiteral("Interface")).toString();
+        const QString driver = nmProperty(device.path(), kNmDevice, QStringLiteral("Driver")).toString();
+        if (state == 10) { // NM_DEVICE_STATE_UNMANAGED
+            unmanaged = iface;
+            continue;
+        }
+        if (state == 20) { // NM_DEVICE_STATE_UNAVAILABLE
+            const bool enabled = nmProperty(kNmPath, kNm, QStringLiteral("WirelessEnabled")).toBool();
+            const bool hardware = nmProperty(kNmPath, kNm, QStringLiteral("WirelessHardwareEnabled")).toBool();
+            if (!hardware)
+                m_wifiStatus = QStringLiteral("Wi-Fi is blocked by the hardware switch or the airplane-mode key.");
+            else if (!enabled)
+                m_wifiStatus = QStringLiteral("Wi-Fi is turned off.");
+            else
+                m_wifiStatus = QStringLiteral("The Wi-Fi adapter %1 (driver %2) is not ready - "
+                                              "its firmware may be missing.").arg(iface, driver);
+        }
+        return device.path();
+    }
+    if (!unmanaged.isEmpty()) {
+        m_wifiStatus = QStringLiteral("The Wi-Fi adapter %1 is not managed by NetworkManager "
+                                      "(it is configured in /etc/network/interfaces). Remove it "
+                                      "there and restart NetworkManager.").arg(unmanaged);
+    } else if (sysfsHasWireless()) {
+        m_wifiStatus = QStringLiteral("NetworkManager does not see the Wi-Fi adapter. "
+                                      "Restart NetworkManager or check its configuration.");
+    } else {
+        m_wifiStatus = QStringLiteral("No Wi-Fi adapter was found: its driver or firmware is "
+                                      "missing (see 'dmesg | grep -i firmware').");
+    }
+    return QString();
+}
+
+void SessionServices::readAccessPoints()
+{
+    const QString device = wifiDevice();
+    m_wifiNetworks.clear();
+    if (!device.isEmpty() && m_wifiStatus.isEmpty()) {
+        const QString active = nmProperty(device, kNmWireless, QStringLiteral("ActiveAccessPoint"))
+                                   .value<QDBusObjectPath>().path();
         QHash<QString, QVariantMap> best;
-        const QStringList lines = QString::fromUtf8(process->readAllStandardOutput())
-                                      .split(QLatin1Char('\n'), Qt::SkipEmptyParts);
-        for (const QString &line : lines) {
-            const QStringList f = splitTerse(line);
-            if (f.size() < 4 || f.at(1).isEmpty())
+        const QList<QDBusObjectPath> points =
+            objectPaths(nmCall(device, kNmWireless, QStringLiteral("GetAllAccessPoints")));
+        for (const QDBusObjectPath &point : points) {
+            const QVariantMap p = nmAll(point.path(), kNmAccessPoint);
+            const QString ssid = QString::fromUtf8(p.value(QStringLiteral("Ssid")).toByteArray());
+            if (ssid.isEmpty())
                 continue;
+            const uint flags = p.value(QStringLiteral("Flags")).toUInt();
+            const uint wpa = p.value(QStringLiteral("WpaFlags")).toUInt();
+            const uint rsn = p.value(QStringLiteral("RsnFlags")).toUInt();
             QVariantMap network;
-            network.insert(QStringLiteral("active"), f.at(0) == QLatin1String("*"));
-            network.insert(QStringLiteral("ssid"), f.at(1));
-            network.insert(QStringLiteral("signal"), f.at(2).toInt());
-            const QString security = f.at(3).trimmed();
-            network.insert(QStringLiteral("secure"),
-                           !security.isEmpty() && security != QLatin1String("--"));
-            // One row per name: the active access point, else the strongest.
-            const QVariantMap seen = best.value(f.at(1));
+            network.insert(QStringLiteral("ssid"), ssid);
+            network.insert(QStringLiteral("path"), point.path());
+            network.insert(QStringLiteral("signal"), p.value(QStringLiteral("Strength")).toInt());
+            network.insert(QStringLiteral("secure"), (flags & 0x1) || wpa || rsn);
+            network.insert(QStringLiteral("sae"), (rsn & 0x400) != 0);
+            network.insert(QStringLiteral("enterprise"), ((wpa | rsn) & 0x200) != 0);
+            network.insert(QStringLiteral("active"), point.path() == active);
+            const QVariantMap seen = best.value(ssid);
             if (seen.isEmpty() || network.value(QStringLiteral("active")).toBool()
                 || (!seen.value(QStringLiteral("active")).toBool()
                     && network.value(QStringLiteral("signal")).toInt()
-                           > seen.value(QStringLiteral("signal")).toInt())) {
-                best.insert(f.at(1), network);
-            }
+                           > seen.value(QStringLiteral("signal")).toInt()))
+                best.insert(ssid, network);
         }
         QList<QVariantMap> sorted = best.values();
         std::sort(sorted.begin(), sorted.end(), [](const QVariantMap &a, const QVariantMap &b) {
@@ -952,70 +1083,157 @@ void SessionServices::scanWifi()
                 return a.value(QStringLiteral("active")).toBool();
             return a.value(QStringLiteral("signal")).toInt() > b.value(QStringLiteral("signal")).toInt();
         });
-        m_wifiNetworks.clear();
         for (const QVariantMap &network : sorted)
             m_wifiNetworks.append(network);
+    }
+    emit wifiChanged();
+}
+
+void SessionServices::scanWifi()
+{
+    const QString device = wifiDevice();
+    readAccessPoints();
+    if (device.isEmpty() || !m_wifiStatus.isEmpty())
+        return;
+    // Ask for a fresh scan; the list is read again once it had time to run.
+    QDBusMessage message = QDBusMessage::createMethodCall(kNm, device, kNmWireless,
+                                                          QStringLiteral("RequestScan"));
+    message << QVariantMap();
+    QDBusConnection::systemBus().asyncCall(message);
+    m_wifiBusy = true;
+    emit wifiChanged();
+    QTimer::singleShot(3000, this, [this] {
         m_wifiBusy = false;
-        emit wifiChanged();
+        readAccessPoints();
     });
-    process->start(nmcli, {QStringLiteral("-t"), QStringLiteral("-f"),
-                           QStringLiteral("IN-USE,SSID,SIGNAL,SECURITY"),
-                           QStringLiteral("device"), QStringLiteral("wifi"),
-                           QStringLiteral("list"), QStringLiteral("--rescan"),
-                           QStringLiteral("auto")});
 }
 
 void SessionServices::connectWifi(const QString &ssid, const QString &password)
 {
-    const QString nmcli = findProgram(QStringLiteral("nmcli"));
-    if (nmcli.isEmpty() || ssid.isEmpty())
+    const QString device = wifiDevice();
+    if (device.isEmpty() || !m_wifiStatus.isEmpty()) {
+        emit wifiConnectFinished(false, ssid, m_wifiStatus);
         return;
+    }
+    QVariantMap network;
+    for (const QVariant &item : std::as_const(m_wifiNetworks)) {
+        if (item.toMap().value(QStringLiteral("ssid")).toString() == ssid)
+            network = item.toMap();
+    }
+    if (network.value(QStringLiteral("enterprise")).toBool()) {
+        emit wifiConnectFinished(false, ssid,
+                                 QStringLiteral("This is an enterprise (802.1X) network; set it up "
+                                                "with nm-connection-editor."));
+        return;
+    }
+    const QString accessPoint = network.value(QStringLiteral("path"), QStringLiteral("/")).toString();
+    const bool secure = network.value(QStringLiteral("secure")).toBool();
+
+    // A saved connection for this network?
+    QString saved;
+    const QList<QDBusObjectPath> connections = objectPaths(
+        nmCall(QStringLiteral("/org/freedesktop/NetworkManager/Settings"), kNmSettings,
+               QStringLiteral("ListConnections")));
+    NMSettingsMap savedSettings;
+    for (const QDBusObjectPath &connection : connections) {
+        const NMSettingsMap settings = connectionSettings(connection.path());
+        if (settings.value(QStringLiteral("802-11-wireless")).value(QStringLiteral("ssid")).toByteArray()
+            == ssid.toUtf8()) {
+            saved = connection.path();
+            savedSettings = settings;
+            break;
+        }
+    }
+
+    QDBusMessage reply;
+    if (!saved.isEmpty()) {
+        if (!password.isEmpty()) {
+            // A new password for a saved network.
+            QVariantMap security = savedSettings.value(QStringLiteral("802-11-wireless-security"));
+            security.insert(QStringLiteral("psk"), password);
+            savedSettings.insert(QStringLiteral("802-11-wireless-security"), security);
+            QDBusMessage update = QDBusMessage::createMethodCall(kNm, saved, kNmConnection,
+                                                                 QStringLiteral("Update"));
+            update << QVariant::fromValue(savedSettings);
+            QDBusConnection::systemBus().call(update, QDBus::Block, 3000);
+        }
+        reply = nmCall(kNmPath, kNm, QStringLiteral("ActivateConnection"),
+                       {QVariant::fromValue(QDBusObjectPath(saved)),
+                        QVariant::fromValue(QDBusObjectPath(device)),
+                        QVariant::fromValue(QDBusObjectPath(accessPoint))}, 5000);
+    } else {
+        if (secure && password.isEmpty()) {
+            emit wifiConnectFinished(false, ssid, QStringLiteral("Enter the password for %1").arg(ssid));
+            return;
+        }
+        NMSettingsMap settings;
+        QVariantMap wireless;
+        wireless.insert(QStringLiteral("ssid"), ssid.toUtf8());
+        wireless.insert(QStringLiteral("mode"), QStringLiteral("infrastructure"));
+        settings.insert(QStringLiteral("802-11-wireless"), wireless);
+        QVariantMap connection;
+        connection.insert(QStringLiteral("id"), ssid);
+        connection.insert(QStringLiteral("type"), QStringLiteral("802-11-wireless"));
+        settings.insert(QStringLiteral("connection"), connection);
+        if (secure) {
+            QVariantMap security;
+            security.insert(QStringLiteral("key-mgmt"),
+                            network.value(QStringLiteral("sae")).toBool() ? QStringLiteral("sae")
+                                                                          : QStringLiteral("wpa-psk"));
+            security.insert(QStringLiteral("psk"), password);
+            settings.insert(QStringLiteral("802-11-wireless-security"), security);
+        }
+        reply = nmCall(kNmPath, kNm, QStringLiteral("AddAndActivateConnection"),
+                       {QVariant::fromValue(settings), QVariant::fromValue(QDBusObjectPath(device)),
+                        QVariant::fromValue(QDBusObjectPath(accessPoint))}, 5000);
+    }
+    if (reply.type() != QDBusMessage::ReplyMessage) {
+        emit wifiConnectFinished(false, ssid, reply.errorMessage());
+        return;
+    }
+
+    // Follow the device until it is connected or gives up.
     m_wifiBusy = true;
     emit wifiChanged();
-    auto *process = new QProcess(this);
-    process->setProcessChannelMode(QProcess::MergedChannels);
-    connect(process, &QProcess::finished, this, [this, process, ssid](int code) {
-        const QString output = QString::fromUtf8(process->readAll()).trimmed();
-        process->deleteLater();
+    auto *poll = new QTimer(this);
+    poll->setInterval(500);
+    auto *ticks = new int(0);
+    auto *started = new bool(false);
+    connect(poll, &QTimer::timeout, this, [this, poll, ticks, started, device, ssid] {
+        const uint state = nmProperty(device, kNmDevice, QStringLiteral("State")).toUInt();
+        if (state >= 40 && state < 100)
+            *started = true;
+        bool done = false;
+        bool ok = false;
+        if (state == 100) {
+            done = ok = true;
+        } else if ((state == 120 || (*started && state <= 30)) || ++*ticks > 60) {
+            done = true;
+        }
+        if (!done)
+            return;
+        poll->stop();
+        poll->deleteLater();
+        delete ticks;
+        delete started;
         m_wifiBusy = false;
-        emit wifiChanged();
-        emit wifiConnectFinished(code == 0, ssid,
-                                 output.section(QLatin1Char('\n'), -1).trimmed());
-        scanWifi();
+        readAccessPoints();
+        emit wifiConnectFinished(ok, ssid, ok ? QString()
+                                              : QStringLiteral("Could not connect to %1 - "
+                                                               "wrong password or the network "
+                                                               "refused it.").arg(ssid));
     });
-    // --ask reads the password from stdin, so it never appears in the
-    // process list the way `password <secret>` on the command line would.
-    QStringList args;
-    if (!password.isEmpty())
-        args << QStringLiteral("--ask");
-    args << QStringLiteral("device") << QStringLiteral("wifi") << QStringLiteral("connect") << ssid;
-    process->start(nmcli, args);
-    if (!password.isEmpty()) {
-        process->write(password.toUtf8() + '\n');
-    }
-    process->closeWriteChannel();
+    poll->start();
 }
 
 void SessionServices::disconnectWifi()
 {
-    const QString nmcli = findProgram(QStringLiteral("nmcli"));
-    if (nmcli.isEmpty())
-        return;
-    for (const QVariant &item : std::as_const(m_wifiNetworks)) {
-        const QVariantMap network = item.toMap();
-        if (!network.value(QStringLiteral("active")).toBool())
-            continue;
-        auto *process = new QProcess(this);
-        connect(process, &QProcess::finished, this, [this, process] {
-            process->deleteLater();
-            scanWifi();
-        });
-        process->start(nmcli, {QStringLiteral("connection"), QStringLiteral("down"),
-                               QStringLiteral("id"),
-                               network.value(QStringLiteral("ssid")).toString()});
-        return;
-    }
+    const QString device = wifiDevice();
+    if (!device.isEmpty())
+        nmCall(device, kNmDevice, QStringLiteral("Disconnect"));
+    QTimer::singleShot(800, this, &SessionServices::readAccessPoints);
 }
+
 
 // ---------------------------------------------------------------------------
 // Synchronous queries (overview, displays)
@@ -1057,8 +1275,31 @@ QVariantList SessionServices::windows() const
         window.insert(QStringLiteral("focused"), f.at(4).contains(QLatin1Char('f')));
         window.insert(QStringLiteral("minimized"), f.at(4).contains(QLatin1Char('m')));
         window.insert(QStringLiteral("maximized"), f.at(4).contains(QLatin1Char('x')));
+        window.insert(QStringLiteral("hung"), f.at(4).contains(QLatin1Char('h')));
+        window.insert(QStringLiteral("pid"), f.value(5).toInt());
         list.append(window);
     }
+    return list;
+}
+
+QString SessionServices::killWindow(int id)
+{
+    const QString reply = query(QStringLiteral("kill %1").arg(id));
+    if (reply.startsWith(QLatin1String("ok"))) {
+        if (m_hung.remove(id))
+            emit hungWindowsChanged();
+        return QString();
+    }
+    if (reply.startsWith(QLatin1String("error ")))
+        return reply.mid(6);
+    return QStringLiteral("The compositor did not answer.");
+}
+
+QVariantList SessionServices::hungWindows() const
+{
+    QVariantList list;
+    for (int id : m_hung)
+        list.append(id);
     return list;
 }
 

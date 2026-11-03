@@ -7,6 +7,13 @@
 #include <QTimer>
 #include <QHash>
 #include <QVariant>
+#include <QMap>
+#include <QSet>
+#include <QMetaType>
+
+// a{sa{sv}}: NetworkManager connection settings.
+typedef QMap<QString, QVariantMap> NMSettingsMap;
+Q_DECLARE_METATYPE(NMSettingsMap)
 
 class Settings;
 
@@ -48,10 +55,15 @@ class SessionServices : public QObject
     // when the daemon is not installed.
     Q_PROPERTY(QString powerProfile READ powerProfile NOTIFY powerProfileChanged)
     Q_PROPERTY(QStringList powerProfiles READ powerProfiles NOTIFY powerProfileChanged)
-    // Wi-Fi networks in range (nmcli): ssid, signal (0-100), secure, active.
-    Q_PROPERTY(bool wifiAvailable READ wifiAvailable CONSTANT)
+    // Wi-Fi networks in range (NetworkManager): ssid, signal (0-100), secure,
+    // active. wifiStatus explains why there are none (no NetworkManager, no
+    // adapter, missing firmware, switched off); empty when Wi-Fi works.
+    Q_PROPERTY(bool wifiAvailable READ wifiAvailable NOTIFY wifiChanged)
+    Q_PROPERTY(QString wifiStatus READ wifiStatus NOTIFY wifiChanged)
     Q_PROPERTY(QVariantList wifiNetworks READ wifiNetworks NOTIFY wifiChanged)
     Q_PROPERTY(bool wifiBusy READ wifiBusy NOTIFY wifiChanged)
+    // Ids of the windows that stopped answering the compositor's pings.
+    Q_PROPERTY(QVariantList hungWindows READ hungWindows NOTIFY hungWindowsChanged)
 
 public:
     explicit SessionServices(Settings *settings, QObject *parent = nullptr);
@@ -100,6 +112,10 @@ public:
     Q_INVOKABLE void activateWindow(int id);
     Q_INVOKABLE void closeWindow(int id);
     Q_INVOKABLE void moveWindow(int id, int workspace);
+    // Force quit: kills the process behind the window. "" on success, else
+    // the reason.
+    Q_INVOKABLE QString killWindow(int id);
+    QVariantList hungWindows() const;
 
     // --- displays ---
     // name, description, enabled, width, height, refresh (mHz), x, y,
@@ -114,6 +130,7 @@ public:
     Q_INVOKABLE QStringList iconThemes() const;
     Q_INVOKABLE QStringList cursorThemes() const;
     bool wifiAvailable() const;
+    QString wifiStatus() const { return m_wifiStatus; }
     QVariantList wifiNetworks() const { return m_wifiNetworks; }
     bool wifiBusy() const { return m_wifiBusy; }
     Q_INVOKABLE void scanWifi();
@@ -154,8 +171,14 @@ signals:
     void mediaKey(const QString &name);
     void powerProfileChanged();
     void wifiChanged();
-    // The outcome of connectWifi(); `message` is nmcli's explanation.
+    // The outcome of connectWifi(); `message` explains a failure.
     void wifiConnectFinished(bool ok, const QString &ssid, const QString &message);
+    // A mouse button went down anywhere (layout coordinates): open cards
+    // close when it is outside them.
+    void pointerPressed(int x, int y);
+    void hungWindowsChanged();
+    // A window stopped responding (the force-quit dialog offers to end it).
+    void windowHung(int id);
 
 private:
     void connectCompositor();
@@ -172,6 +195,8 @@ private:
     void applyAppearance();
     QString query(const QString &command) const;
     void readPowerProfile();
+    QString wifiDevice();
+    void readAccessPoints();
     static QString findProgram(const QString &name);
 
     Settings *m_settings;
@@ -193,6 +218,8 @@ private:
     QStringList m_powerProfiles;
     QVariantList m_wifiNetworks;
     bool m_wifiBusy = false;
+    QString m_wifiStatus;
+    QSet<int> m_hung;
     QProcess m_idle;
     QProcess m_nightLight;
     QProcess m_polkit;
