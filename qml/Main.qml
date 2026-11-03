@@ -90,6 +90,10 @@ QtObject {
         function onStartMenuRequested() {
             root.startMenu.show();
         }
+        function onStartMenuToggleRequested() {
+            root.runDialog.hide();
+            root.startMenu.toggle();
+        }
         function onRunDialogRequested() {
             root.startMenu.hide();
             root.runDialog.show();

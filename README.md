@@ -203,8 +203,12 @@ these shortcuts globally, even when an application has focus:
 (close the focused window), `Alt+F4` (close), `Super+Left`/`Super+Right` (snap to a half),
 `Super+Up`/`Super+Down` (maximise/restore), `Super+Shift+Left`/`Super+Shift+Right`
 (move to another output), `Super+D` (show desktop), `Super+M` (maximise),
-`Super+F` (fullscreen), `Print` (screenshot), and `Alt+Tab` (switch windows). The running shell exports `org.newteller.Shell` on the session bus;
-scripts can call `showStartMenu`, `showRunDialog`, `openSettings`, `lock`, `logout`
+`Super+F` (fullscreen), `Print` (screenshot), a tap of `Super` on its own (open or close
+the start menu), and `Alt+Tab` (switch windows: keep Alt held and press Tab again to walk
+through every window, most recently used first, with the candidate raised as a preview;
+`Shift+Tab` steps back, `Escape` cancels and releasing Alt switches). The running shell
+exports `org.newteller.Shell` on the session bus;
+scripts can call `showStartMenu`, `toggleStartMenu`, `showRunDialog`, `openSettings`, `lock`, `logout`
 and the other session methods with `gdbus call`.
 
 ## Automated builds and commit releases

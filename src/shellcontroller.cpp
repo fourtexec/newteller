@@ -313,6 +313,11 @@ void ShellController::showStartMenu()
     emit startMenuRequested();
 }
 
+void ShellController::toggleStartMenu()
+{
+    emit startMenuToggleRequested();
+}
+
 void ShellController::showRunDialog()
 {
     emit runDialogRequested();

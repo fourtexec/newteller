@@ -265,6 +265,13 @@ struct Server {
     struct View *previousView;
     struct View *fullscreenView;
     struct View *grabbedView;
+    // Alt+Tab: while Alt is held, Tab walks the stacking order without
+    // reordering it; the window under the cursor is committed on release.
+    struct View *switchTarget;
+    bool switching;
+    // Set when Super goes down alone; any other key or click clears it, so
+    // only a plain tap of Super toggles the start menu.
+    bool logoTap;
     bool showDesktop;
     enum CursorMode cursorMode;
     double grabX;
@@ -1035,6 +1042,8 @@ static void destroyView(struct View *view)
     }
     if (server->grabbedView == view)
         server->grabbedView = NULL;
+    if (server->switchTarget == view)
+        server->switchTarget = NULL;
 
     if (view->handle) {
         wl_list_remove(&view->foreignActivate.link);
@@ -1472,6 +1481,8 @@ static void cursorButton(struct wl_listener *listener, void *data)
 {
     struct Server *server = wl_container_of(listener, server, cursorButton);
     struct wlr_pointer_button_event *event = data;
+    // Super+click is a chord, not a tap of Super.
+    server->logoTap = false;
 
     if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
         if (server->cursorMode == CURSOR_MOVE && server->grabbedView) {
@@ -1588,6 +1599,83 @@ static void shellAction(const char *method)
     spawnDetached(argv[0], argv);
 }
 
+// ---------------------------------------------------------------------------
+// Window switcher (Alt+Tab)
+// ---------------------------------------------------------------------------
+
+static bool switcherCandidate(struct View *view)
+{
+    return view && view->mapped && !view->minimized && !view->overrideRedirect
+        && viewSurface(view);
+}
+
+// The view after (or before) `from` in server->views, wrapping around and
+// skipping anything that cannot take focus. server->views is most recently
+// focused first, because focusView() moves the view to the head.
+static struct View *switcherNeighbour(struct Server *server, struct View *from,
+                                      bool backwards)
+{
+    struct wl_list *link = from ? &from->link : &server->views;
+    int count = wl_list_length(&server->views);
+    for (int i = 0; i < count; ++i) {
+        link = backwards ? link->prev : link->next;
+        if (link == &server->views)
+            link = backwards ? link->prev : link->next;
+        struct View *view = wl_container_of(link, view, link);
+        if (view != from && switcherCandidate(view))
+            return view;
+    }
+    return NULL;
+}
+
+// Restores the scene stacking to the order of server->views, undoing the
+// preview raises done while cycling.
+static void switcherRestoreStacking(struct Server *server)
+{
+    struct View *view;
+    wl_list_for_each_reverse(view, &server->views, link) {
+        if (view->tree)
+            wlr_scene_node_raise_to_top(&view->tree->node);
+    }
+}
+
+static void switcherStep(struct Server *server, bool backwards)
+{
+    struct View *from = server->switching ? server->switchTarget
+                                          : server->focusedView;
+    if (!switcherCandidate(from))
+        from = NULL;
+    struct View *next = switcherNeighbour(server, from, backwards);
+    if (!next)
+        return;
+    server->switching = true;
+    server->switchTarget = next;
+    // Preview: lift the candidate to the top of the stack without moving
+    // keyboard focus or the MRU order, so the next Tab keeps walking.
+    switcherRestoreStacking(server);
+    if (next->tree)
+        wlr_scene_node_raise_to_top(&next->tree->node);
+}
+
+static void switcherCommit(struct Server *server)
+{
+    if (!server->switching)
+        return;
+    struct View *target = server->switchTarget;
+    server->switching = false;
+    server->switchTarget = NULL;
+    switcherRestoreStacking(server);
+    if (switcherCandidate(target))
+        focusView(target, NULL);
+}
+
+static void switcherCancel(struct Server *server)
+{
+    server->switching = false;
+    server->switchTarget = NULL;
+    switcherRestoreStacking(server);
+}
+
 static bool keyHandled(struct Server *server, xkb_keysym_t sym,
                        uint32_t modifiers)
 {
@@ -1666,29 +1754,14 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
         spawnDetached(argv[0], argv);
         return true;
     }
-    if (alt && sym == XKB_KEY_Tab) {
-        if (wl_list_empty(&server->views))
-            return true;
-        struct View *next = NULL;
-        if (server->focusedView) {
-            struct wl_list *link = server->focusedView->link.next;
-            if (link == &server->views)
-                link = server->views.next;
-            next = wl_container_of(link, next, link);
-        } else {
-            next = wl_container_of(server->views.next, next, link);
-        }
-        int guard = 0;
-        while (next && (next->minimized || !next->mapped) && guard++ < 64) {
-            struct wl_list *link = next->link.next;
-            if (link == &server->views)
-                link = server->views.next;
-            next = wl_container_of(link, next, link);
-            if (next == server->focusedView)
-                break;
-        }
-        if (next && next->mapped && !next->minimized)
-            focusView(next, NULL);
+    if (alt && (sym == XKB_KEY_Tab || sym == XKB_KEY_ISO_Left_Tab)) {
+        bool backwards = sym == XKB_KEY_ISO_Left_Tab
+            || (modifiers & WLR_MODIFIER_SHIFT) != 0;
+        switcherStep(server, backwards);
+        return true;
+    }
+    if (server->switching && sym == XKB_KEY_Escape) {
+        switcherCancel(server);
         return true;
     }
     return false;
@@ -1698,6 +1771,10 @@ static void keyboardModifiers(struct wl_listener *listener, void *data)
 {
     (void)data;
     struct Keyboard *keyboard = wl_container_of(listener, keyboard, modifiers);
+    struct Server *server = keyboard->server;
+    if (server->switching
+        && !(wlr_keyboard_get_modifiers(keyboard->keyboard) & WLR_MODIFIER_ALT))
+        switcherCommit(server);
     wlr_seat_set_keyboard(keyboard->server->seat, keyboard->keyboard);
     wlr_seat_keyboard_notify_modifiers(keyboard->server->seat,
                                        &keyboard->keyboard->modifiers);
@@ -1714,13 +1791,22 @@ static void keyboardKey(struct wl_listener *listener, void *data)
             (int)event->state,
             (void *)server->seat->keyboard_state.focused_surface);
 
+    xkb_keysym_t sym = xkb_state_key_get_one_sym(
+        keyboard->keyboard->xkb_state, event->keycode + 8);
+    bool isLogo = sym == XKB_KEY_Super_L || sym == XKB_KEY_Super_R;
     if (event->state == WL_KEYBOARD_KEY_STATE_PRESSED) {
-        xkb_keysym_t sym = xkb_state_key_get_one_sym(
-            keyboard->keyboard->xkb_state, event->keycode + 8);
-        if (keyHandled(server, sym,
-                       wlr_keyboard_get_modifiers(keyboard->keyboard))) {
+        uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->keyboard);
+        // Super pressed on its own starts a tap; anything else cancels it.
+        // Lock modifiers (Caps, Num) do not count as a chord.
+        server->logoTap = isLogo
+            && !(modifiers & (WLR_MODIFIER_SHIFT | WLR_MODIFIER_CTRL
+                              | WLR_MODIFIER_ALT));
+        if (keyHandled(server, sym, modifiers))
             return;
-        }
+    } else if (isLogo && server->logoTap) {
+        server->logoTap = false;
+        if (!server->switching)
+            shellAction("toggleStartMenu");
     }
 
     wlr_seat_keyboard_notify_key(server->seat, event->time_msec,

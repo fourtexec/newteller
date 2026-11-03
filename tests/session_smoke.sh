@@ -163,6 +163,18 @@ if has_shell_name; then
         sleep 1
         XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" grim -o HEADLESS-1 "$menu"
         "$python" "$root/tests/session_check.py" "$menu_before" "$menu"
+        # A tap of Super calls toggleStartMenu; on an open menu it closes it.
+        menu_closed="$runtime/menu-closed.png"
+        if ! XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" \
+            gdbus call --session --dest org.newteller.Shell \
+                --object-path /org/newteller/Shell \
+                --method org.newteller.Shell.toggleStartMenu >/dev/null 2>&1; then
+            echo 'the shell did not answer toggleStartMenu over D-Bus' >&2
+            exit 1
+        fi
+        sleep 1
+        XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" grim -o HEADLESS-1 "$menu_closed"
+        "$python" "$root/tests/session_check.py" "$menu" "$menu_closed"
     else
         echo 'the shell did not open the start menu over D-Bus' >&2
         exit 1

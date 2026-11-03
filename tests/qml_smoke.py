@@ -408,6 +408,7 @@ class Shell(QObject):
     nowChanged = Signal()
     settingsRequested = Signal()
     startMenuRequested = Signal()
+    startMenuToggleRequested = Signal()
     runDialogRequested = Signal()
 
     def __init__(self, desktop_dir, home_dir):
