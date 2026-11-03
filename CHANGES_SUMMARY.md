@@ -46,6 +46,7 @@ What a GNOME or KDE user expects from a desktop session, now in NewTeller:
 | Overview | `Super+Tab` with live thumbnails per desktop; Alt+Tab thumbnails |
 | Displays | Native page: resolution, refresh, scale, rotation, position, with timed revert |
 | Bluetooth | Quick settings and device list over BlueZ |
+| Effects | Rounded window corners, backdrop blur behind the shell, open/close/minimize animations, sliding desktop switches |
 | Customization | Focus follows mouse, placement, snapping, own shortcuts, GTK/icon/cursor themes, app font and text size, lock screen colour |
 
 The compositor reads `~/.config/newteller/compositor.conf` (written by the shell) and is

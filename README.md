@@ -98,7 +98,11 @@ inside VirtualBox. The implemented pieces are:
   settings)
 - System monitor (`System` object, on a shared ticker) with bundled panel and
   desktop widgets
-- **Surface materials:** configure panel, dock buttons, floating shell windows and notifications independently as theme, opaque, half-transparent, frosted glass or liquid glass. These are lightweight Qt Quick layers; real backdrop blur is compositor-specific and is not required.
+- **Surface materials:** configure panel, dock buttons, floating shell windows and notifications independently as theme, opaque, half-transparent, frosted glass or liquid glass. Inside a NewTeller session the compositor blurs what is behind see-through menus, the dock, the overview, Alt+Tab and the on-screen display.
+- **Desktop effects** (Settings → Animations → Desktop effects): rounded window
+  corners, backdrop blur, and window animations (open, close, minimize, restore,
+  sliding desktop switches), drawn by the compositor's own renderer; off falls
+  back to the plain wlroots scene renderer.
 - Themes (JSON, including `nord`, `ocean` and `highcontrast`) and a settings file
   with live reload
 - Plugin system (manifest + QML) with enable/disable and auto-rescan
