@@ -68,6 +68,7 @@
 #include <libinput.h>
 
 #include <errno.h>
+#include <linux/input-event-codes.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <signal.h>
@@ -317,6 +318,9 @@ struct Server {
     pid_t shellPid;
     bool shellStarted;
     int shellTries;
+    // Crash restarts of the shell within the current one-minute window.
+    int shellRestarts;
+    time_t shellRestartWindow;
     struct wl_event_source *shellTimer;
     struct wl_event_source *arrangeIdle;
     struct wl_event_source *sigchld;
@@ -335,6 +339,13 @@ struct Server {
     // reordering it; the window under the cursor is committed on release.
     struct View *switchTarget;
     bool switching;
+    // A Super+drag move/resize: the client never saw the press, so it does
+    // not get the release either.
+    bool superGrab;
+    // Distance between the pointer and the edges being resized when the
+    // resize started (0 when a client starts it from its border).
+    double resizeOffsetX;
+    double resizeOffsetY;
     // Set when Super goes down alone; any other key or click clears it, so
     // only a plain tap of Super toggles the start menu.
     bool logoTap;
@@ -488,6 +499,8 @@ static void updateActivationEnvironment(struct Server *server)
 static int shellTimerCallback(void *data)
 {
     struct Server *server = data;
+    if (server->shellTimer)
+        wl_event_source_remove(server->shellTimer);
     server->shellTimer = NULL;
     maybeStartShell(server);
     return 0;
@@ -560,6 +573,30 @@ static int sigchldHandler(int signal, void *data)
         wlr_log(WLR_INFO, "NewTeller shell exited with status %d", WEXITSTATUS(status));
     else if (WIFSIGNALED(status))
         wlr_log(WLR_INFO, "NewTeller shell was killed by signal %d", WTERMSIG(status));
+
+    // A crashed shell comes back instead of taking every open application
+    // down with the session. A clean exit (status 0) still ends it, and so
+    // does a shell that keeps crashing.
+    bool crashed = WIFSIGNALED(status) || (WIFEXITED(status) && WEXITSTATUS(status) != 0);
+    if (crashed && server->running) {
+        time_t now = time(NULL);
+        if (now - server->shellRestartWindow > 60) {
+            server->shellRestartWindow = now;
+            server->shellRestarts = 0;
+        }
+        if (server->shellRestarts < 5) {
+            ++server->shellRestarts;
+            server->shellStarted = false;
+            wlr_log(WLR_ERROR, "the NewTeller shell stopped unexpectedly; restarting it (%d/5)",
+                    server->shellRestarts);
+            server->shellTimer = wl_event_loop_add_timer(server->eventLoop,
+                                                         shellTimerCallback, server);
+            if (server->shellTimer)
+                wl_event_source_timer_update(server->shellTimer, 1000);
+            return 0;
+        }
+        wlr_log(WLR_ERROR, "the NewTeller shell keeps crashing; ending the session");
+    }
     server->running = false;
     wl_display_terminate(server->display);
     return 0;
@@ -1692,14 +1729,16 @@ static void processCursorMotion(struct Server *server, uint32_t time)
         int right = left + server->grabWidth;
         int bottom = top + server->grabHeight;
 
+        int pointerX = (int)(server->cursor->x - server->resizeOffsetX);
+        int pointerY = (int)(server->cursor->y - server->resizeOffsetY);
         if (server->resizeEdges & WLR_EDGE_LEFT)
-            left = (int)server->cursor->x;
+            left = pointerX;
         if (server->resizeEdges & WLR_EDGE_RIGHT)
-            right = (int)server->cursor->x;
+            right = pointerX;
         if (server->resizeEdges & WLR_EDGE_TOP)
-            top = (int)server->cursor->y;
+            top = pointerY;
         if (server->resizeEdges & WLR_EDGE_BOTTOM)
-            bottom = (int)server->cursor->y;
+            bottom = pointerY;
 
         if (right - left < 64 || bottom - top < 64)
             return;
@@ -1777,11 +1816,55 @@ static void cursorButton(struct wl_listener *listener, void *data)
             else if (server->cursor->y <= area.y + 10)
                 viewSnap(view, WLR_EDGE_TOP);
         }
-        wlr_seat_pointer_notify_button(server->seat, event->time_msec,
-                                       event->button, event->state);
+        if (!server->superGrab) {
+            wlr_seat_pointer_notify_button(server->seat, event->time_msec,
+                                           event->button, event->state);
+        }
+        server->superGrab = false;
+        server->resizeOffsetX = 0;
+        server->resizeOffsetY = 0;
         server->cursorMode = CURSOR_PASSTHROUGH;
         server->grabbedView = NULL;
         return;
+    }
+
+    // Super + left drag moves a window from anywhere inside it, Super +
+    // right drag resizes it from the nearest corner (as on GNOME and KDE).
+    struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
+    bool superHeld = keyboard
+                     && (wlr_keyboard_get_modifiers(keyboard) & WLR_MODIFIER_LOGO);
+    if (superHeld && (event->button == BTN_LEFT || event->button == BTN_RIGHT)) {
+        struct Hit grab = hitTest(server, server->cursor->x, server->cursor->y);
+        struct View *view = grab.view;
+        if (view && !view->overrideRedirect && !view->fullscreen) {
+            focusView(view, NULL);
+            if (view->maximized)
+                viewSetMaximized(view, false);
+            viewClearSnap(view);
+            server->grabbedView = view;
+            server->superGrab = true;
+            if (event->button == BTN_LEFT) {
+                server->cursorMode = CURSOR_MOVE;
+                server->grabX = server->cursor->x - view->x;
+                server->grabY = server->cursor->y - view->y;
+            } else {
+                server->cursorMode = CURSOR_RESIZE;
+                server->resizeEdges =
+                    (server->cursor->x < view->x + view->width / 2.0 ? WLR_EDGE_LEFT
+                                                                     : WLR_EDGE_RIGHT)
+                    | (server->cursor->y < view->y + view->height / 2.0 ? WLR_EDGE_TOP
+                                                                        : WLR_EDGE_BOTTOM);
+                server->grabWidth = view->width;
+                server->grabHeight = view->height;
+                server->grabX = view->x;
+                server->grabY = view->y;
+                server->resizeOffsetX = server->cursor->x
+                    - ((server->resizeEdges & WLR_EDGE_LEFT) ? view->x : view->x + view->width);
+                server->resizeOffsetY = server->cursor->y
+                    - ((server->resizeEdges & WLR_EDGE_TOP) ? view->y : view->y + view->height);
+            }
+            return;
+        }
     }
 
     struct Hit hit = hitTest(server, server->cursor->x, server->cursor->y);
@@ -2349,7 +2432,7 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
         spawnDetached(argv[0], argv);
         return true;
     }
-    if (logo && (sym == XKB_KEY_s || sym == XKB_KEY_S)) {
+    if (logo && !(modifiers & WLR_MODIFIER_SHIFT) && (sym == XKB_KEY_s || sym == XKB_KEY_S)) {
         shellAction("openSettings");
         return true;
     }
@@ -2399,6 +2482,16 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
     if (alt && sym == XKB_KEY_F4) {
         if (server->focusedView)
             viewClose(server->focusedView);
+        return true;
+    }
+    // Print: the whole screen. Shift+Print or Super+Shift+S (the Windows
+    // snipping shortcut): pick an area first.
+    bool shiftHeld = (modifiers & WLR_MODIFIER_SHIFT) != 0;
+    if ((sym == XKB_KEY_Print && shiftHeld)
+        || (logo && shiftHeld && (sym == XKB_KEY_s || sym == XKB_KEY_S))) {
+        const char *argv[] = {"newteller-screenshot", "--area", NULL};
+        setChildEnvironment(server);
+        spawnDetached(argv[0], argv);
         return true;
     }
     if (sym == XKB_KEY_Print) {

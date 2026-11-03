@@ -238,3 +238,58 @@ if [[ -n $client_pid ]]; then
         exit 1
     fi
 fi
+
+# A crashed shell is restarted; the session and its windows survive.
+if command -v pgrep >/dev/null 2>&1; then
+    old_shell=$(pgrep -x newteller | head -n 1 || true)
+    if [[ -n $old_shell ]]; then
+        kill -KILL "$old_shell"
+        sleep 4
+        if ! kill -0 "$compositor_pid" 2>/dev/null; then
+            echo 'the session ended when the shell crashed' >&2
+            exit 1
+        fi
+        new_shell=$(pgrep -x newteller | head -n 1 || true)
+        if [[ -z $new_shell || $new_shell == "$old_shell" ]]; then
+            echo 'the compositor did not restart the crashed shell' >&2
+            exit 1
+        fi
+        echo "session smoke: the shell came back after a crash ($old_shell -> $new_shell)"
+    fi
+fi
+
+# Workspaces over the control socket (Ctrl+Super+Left/Right do the same).
+msg workspace 1 >/dev/null
+msg workspace 0 >/dev/null
+
+# The lock screen. swaylock takes the session through ext-session-lock-v1:
+# the screen shows nothing but the locker, and killing the locker must leave
+# the session locked, never fall back to the desktop.
+if command -v swaylock >/dev/null 2>&1 && command -v pkill >/dev/null 2>&1; then
+    XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" \
+        swaylock --daemonize --color 000000 >/dev/null 2>&1 &
+    lock_starter=$!
+    for _ in $(seq 1 50); do
+        [[ $(msg locked || true) == 'ok 1' ]] && break
+        sleep 0.1
+    done
+    if [[ $(msg locked || true) != 'ok 1' ]]; then
+        echo 'swaylock could not lock the session' >&2
+        exit 1
+    fi
+    sleep 1
+    XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" grim -o HEADLESS-1 "$runtime/locked.png"
+    "$python" "$root/tests/session_check.py" --locked "$runtime/locked.png"
+
+    pkill -KILL -x swaylock || true
+    wait "$lock_starter" 2>/dev/null || true
+    sleep 1
+    if [[ $(msg locked || true) != 'ok 1' ]]; then
+        echo 'the session unlocked itself when the locker was killed' >&2
+        exit 1
+    fi
+    XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" grim -o HEADLESS-1 "$runtime/locked-killed.png"
+    "$python" "$root/tests/session_check.py" --locked "$runtime/locked-killed.png"
+else
+    echo 'session smoke: swaylock or pkill missing, skipping the lock screen check' >&2
+fi

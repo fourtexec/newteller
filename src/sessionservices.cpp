@@ -13,6 +13,9 @@
 #include <QTime>
 #include <QUrl>
 
+#include <csignal>
+#include <sys/prctl.h>
+
 namespace {
 
 struct AutostartEntry {
@@ -201,6 +204,12 @@ SessionServices::SessionServices(Settings *settings, QObject *parent)
     });
     connect(&m_nightLight, &QProcess::stateChanged, this, [this] { emit nightLightChanged(); });
 
+    // The helpers die with the shell: when a crashed shell is restarted by
+    // the compositor, the new one starts its own, without duplicates.
+    for (QProcess *process : {&m_idle, &m_nightLight, &m_polkit}) {
+        process->setChildProcessModifier([] { ::prctl(PR_SET_PDEATHSIG, SIGTERM); });
+    }
+
     connect(m_settings, &Settings::changed, this, &SessionServices::settingChanged);
 
     writeCompositorConfig();
@@ -210,6 +219,7 @@ SessionServices::SessionServices(Settings *settings, QObject *parent)
         restartIdle();
         restartNightLight();
         startPolkitAgent();
+        applyAppearance();
         // Give the panel (and its tray watcher) a moment to come up, so tray
         // applications find a StatusNotifierWatcher when they start.
         QTimer::singleShot(1500, this, &SessionServices::runAutostart);
@@ -490,6 +500,9 @@ void SessionServices::settingChanged(const QString &key)
         || key == QLatin1String("desktop.wallpaper")) {
         m_configDebounce.start();
     }
+    if (inSession() && (all || key.startsWith(QLatin1String("apps.colorScheme"))
+                        || key.startsWith(QLatin1String("cursor."))))
+        applyAppearance();
     if (inSession() && (all || key.startsWith(QLatin1String("power."))))
         m_idleDebounce.start();
     if (inSession() && (all || key.startsWith(QLatin1String("nightLight."))))
@@ -661,6 +674,40 @@ QVariantList SessionServices::autostartEntries() const
         list.append(item);
     }
     return list;
+}
+
+// GTK, libadwaita, Firefox and Chromium read the dark/light preference and
+// the cursor from org.gnome.desktop.interface (directly or through the
+// settings portal), so that is where the choice goes.
+void SessionServices::applyAppearance()
+{
+    const QString gsettings = findProgram(QStringLiteral("gsettings"));
+    if (gsettings.isEmpty())
+        return;
+    const QString schema = QStringLiteral("org.gnome.desktop.interface");
+    const QString scheme = m_settings->value(QStringLiteral("apps.colorScheme")).toString();
+    if (scheme == QLatin1String("dark")) {
+        QProcess::startDetached(gsettings, {QStringLiteral("set"), schema,
+                                            QStringLiteral("color-scheme"), QStringLiteral("prefer-dark")});
+        QProcess::startDetached(gsettings, {QStringLiteral("set"), schema,
+                                            QStringLiteral("gtk-theme"), QStringLiteral("Adwaita-dark")});
+    } else if (scheme == QLatin1String("light")) {
+        QProcess::startDetached(gsettings, {QStringLiteral("set"), schema,
+                                            QStringLiteral("color-scheme"), QStringLiteral("prefer-light")});
+        QProcess::startDetached(gsettings, {QStringLiteral("set"), schema,
+                                            QStringLiteral("gtk-theme"), QStringLiteral("Adwaita")});
+    }
+    const QString cursorTheme = m_settings->value(QStringLiteral("cursor.theme")).toString().trimmed();
+    if (!cursorTheme.isEmpty()) {
+        QProcess::startDetached(gsettings, {QStringLiteral("set"), schema,
+                                            QStringLiteral("cursor-theme"), cursorTheme});
+    }
+    const int cursorSize = m_settings->value(QStringLiteral("cursor.size")).toInt();
+    if (cursorSize >= 8) {
+        QProcess::startDetached(gsettings, {QStringLiteral("set"), schema,
+                                            QStringLiteral("cursor-size"),
+                                            QString::number(cursorSize)});
+    }
 }
 
 void SessionServices::runAutostart()

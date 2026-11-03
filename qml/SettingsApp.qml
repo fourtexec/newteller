@@ -398,6 +398,25 @@ Window {
                         }
 
                         SettingsSection {
+                            title: "Applications"
+                            subtitle: "GTK, GNOME, Firefox and Chromium-based applications follow this choice."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Application colour scheme"
+                                settingKey: "apps.colorScheme"
+                                SettingsChoice {
+                                    settingKey: "apps.colorScheme"
+                                    model: [
+                                        { value: "dark", label: "Dark" },
+                                        { value: "light", label: "Light" },
+                                        { value: "system", label: "Leave as is" }
+                                    ]
+                                }
+                            }
+                        }
+
+                        SettingsSection {
                             title: "Theme variants"
                             subtitle: "Automatically switch themes based on system preferences."
 

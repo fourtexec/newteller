@@ -108,6 +108,7 @@ private:
     void restartNightLight();
     void startPolkitAgent();
     void runAutostart();
+    void applyAppearance();
     static QString findProgram(const QString &name);
 
     Settings *m_settings;

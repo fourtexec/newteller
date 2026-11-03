@@ -105,7 +105,8 @@ inside VirtualBox. The implemented pieces are:
 - Window management: snap a window to the left/right half with `Super+Left`/`Super+Right`,
   maximise with `Super+Up`, restore with `Super+Down`, drag a window to an edge to snap it,
   move it between outputs with `Super+Shift+Left`/`Super+Shift+Right`, and show/hide the
-  desktop with `Super+D`
+  desktop with `Super+D`, and move or resize a window from anywhere inside it with
+  `Super`+left or right mouse drag
 - **Lock screen.** `Super+L`, the start menu, quick settings, the idle timer and
   suspend lock the session with swaylock over `ext-session-lock-v1`: while
   locked the compositor draws and focuses nothing but the locker, and a
@@ -135,8 +136,9 @@ inside VirtualBox. The implemented pieces are:
 - **Desktop services.** Screen sharing and screenshots through
   xdg-desktop-portal-wlr, a polkit agent for administrator prompts, and
   `Ctrl+Alt+F1…F12` to switch virtual terminals.
-- Screenshots: `Print` captures the whole output to `~/Pictures/Screenshots` and announces
-  the saved path through the notification daemon
+- Screenshots: `Print` captures the whole screen, `Shift+Print` or `Super+Shift+S` an
+  area picked with the mouse (slurp); the PNG lands in `~/Pictures/Screenshots`, is
+  copied to the clipboard (wl-copy) and announced through the notification daemon
 - Multi-monitor: one desktop and one panel per screen
 - Rust core (application search index, metrics sampler, config, watcher) with a
   C++/Qt fallback, plus the `newteller-ctl` command line tool

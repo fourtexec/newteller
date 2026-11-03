@@ -41,7 +41,7 @@ optional=(
     swaylock swayidle wlsunset
     xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk
     lxpolkit procps wdisplays
-    network-manager-gnome blueman pavucontrol
+    network-manager-gnome blueman pavucontrol slurp wl-clipboard
 )
 available=()
 for package in "${optional[@]}"; do
