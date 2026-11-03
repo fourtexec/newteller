@@ -48,6 +48,11 @@ struct TrayItemData {
 // simply stays hidden. Exposed to QML as the context property `Tray`.
 class TrayWatcher : public QObject, protected QDBusContext {
     Q_OBJECT
+    // The interface name tray applications call. Without it QtDBus publishes
+    // "local.<app>.TrayWatcher" and RegisterStatusNotifierItem fails with
+    // UnknownInterface. Only the Q_SCRIPTABLE methods and signals and the
+    // properties are exported on the bus; the rest is for QML.
+    Q_CLASSINFO("D-Bus Interface", "org.kde.StatusNotifierWatcher")
     // One map per item: { id, service, path, title, name, status,
     // tooltipTitle, tooltipBody, iconUrl }.
     Q_PROPERTY(QVariantList items READ items NOTIFY itemsChanged)
@@ -82,8 +87,8 @@ public slots:
     // Items register either with "com.example.App" (object path on the well
     // known /StatusNotifierItem) or with an object path, in which case the
     // sender's unique name is the service.
-    void RegisterStatusNotifierItem(const QString &service);
-    void RegisterStatusNotifierHost(const QString &service);
+    Q_SCRIPTABLE void RegisterStatusNotifierItem(const QString &service);
+    Q_SCRIPTABLE void RegisterStatusNotifierHost(const QString &service);
 
     Q_INVOKABLE void activate(const QString &id) const;
     Q_INVOKABLE void secondaryActivate(const QString &id) const;
@@ -112,9 +117,9 @@ signals:
     void enabledChanged();
 
     // org.kde.StatusNotifierWatcher signals, exported on the bus.
-    void StatusNotifierItemRegistered(const QString &service);
-    void StatusNotifierItemUnregistered(const QString &service);
-    void StatusNotifierHostRegistered();
+    Q_SCRIPTABLE void StatusNotifierItemRegistered(const QString &service);
+    Q_SCRIPTABLE void StatusNotifierItemUnregistered(const QString &service);
+    Q_SCRIPTABLE void StatusNotifierHostRegistered();
 
 private slots:
     void handlePropertiesChanged(const QString &interface, const QVariantMap &changed,

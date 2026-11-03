@@ -274,8 +274,8 @@ void TrayWatcher::setupDBus()
     }
 
     m_registeredObject = bus.registerObject(QString::fromLatin1(kWatcherPath), this,
-                                            QDBusConnection::ExportAllSlots
-                                                | QDBusConnection::ExportAllSignals
+                                            QDBusConnection::ExportScriptableSlots
+                                                | QDBusConnection::ExportScriptableSignals
                                                 | QDBusConnection::ExportAllProperties);
     if (!m_registeredObject) {
         bus.unregisterService(QString::fromLatin1(kWatcherService));
