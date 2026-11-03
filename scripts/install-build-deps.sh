@@ -36,7 +36,7 @@ debian)
 arch)
     pacman -Sy --noconfirm > /dev/null
     if ! wlroots=$(newteller_arch_wlroots); then
-        echo 'Arch packages neither wlroots 0.19 nor 0.18 right now:' >&2
+        echo 'Arch packages no wlroots 0.18-0.20 right now:' >&2
         pacman -Sl | awk '$2 ~ /^wlroots/' >&2
         exit 1
     fi

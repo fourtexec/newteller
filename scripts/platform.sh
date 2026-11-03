@@ -33,13 +33,13 @@ newteller_detect_platform() {
     fi
 }
 
-# Arch: the repository package that carries wlroots 0.19 (preferred) or 0.18,
+# Arch: the repository package that carries wlroots 0.20, 0.19 or 0.18,
 # whatever it is called right now (wlroots, wlroots0.19, ...). Needs a synced
 # package database. Prints nothing when neither version is packaged.
 newteller_arch_wlroots() {
     local listing want
     listing=$(pacman -Sl 2>/dev/null | awk '$2 ~ /^wlroots/ { print $2, $3 }')
-    for want in 0.19 0.18; do
+    for want in 0.20 0.19 0.18; do
         awk -v want="$want" 'index($2, want ".") == 1 || index($2, want "-") == 1 { print $1; exit }' \
             <<< "$listing" | grep . && return 0
     done
