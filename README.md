@@ -203,7 +203,8 @@ inside VirtualBox. The implemented pieces are:
   firmware packages, and starts NetworkManager.
 - **Clipboard history** on `Super+V` (wl-clipboard): the texts copied in the
   session, newest first; click one to copy it again. Kept in memory unless
-  `clipboard.persistHistory` is on.
+  `clipboard.persistHistory` is on. Passwords that a password manager marks as secret
+  (KeePassXC, Bitwarden and others) are never recorded.
 - **Power profiles** (power-profiles-daemon) in quick settings and low-battery
   notifications at 10% and 5%.
 - **Night light** (wlsunset) on a schedule or always, from quick settings or
