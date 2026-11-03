@@ -215,6 +215,7 @@ SessionServices::SessionServices(Settings *settings, QObject *parent)
     writeCompositorConfig();
     writeLockConfig();
     connectCompositor();
+    readPowerProfile();
     if (inSession()) {
         restartIdle();
         restartNightLight();
@@ -708,6 +709,41 @@ void SessionServices::applyAppearance()
                                             QStringLiteral("cursor-size"),
                                             QString::number(cursorSize)});
     }
+}
+
+void SessionServices::readPowerProfile()
+{
+    const QString tool = findProgram(QStringLiteral("powerprofilesctl"));
+    if (tool.isEmpty())
+        return;
+    // Asynchronous: the daemon may take a moment to answer on a cold boot.
+    auto *process = new QProcess(this);
+    connect(process, &QProcess::finished, this, [this, process] {
+        const QString current = QString::fromUtf8(process->readAllStandardOutput()).trimmed();
+        process->deleteLater();
+        if (current.isEmpty())
+            return;
+        m_powerProfiles = {QStringLiteral("power-saver"), QStringLiteral("balanced"),
+                           QStringLiteral("performance")};
+        if (current != m_powerProfile || m_powerProfiles.isEmpty()) {
+            m_powerProfile = current;
+        }
+        emit powerProfileChanged();
+    });
+    process->start(tool, {QStringLiteral("get")});
+}
+
+void SessionServices::setPowerProfile(const QString &profile)
+{
+    const QString tool = findProgram(QStringLiteral("powerprofilesctl"));
+    if (tool.isEmpty() || !m_powerProfiles.contains(profile))
+        return;
+    auto *process = new QProcess(this);
+    connect(process, &QProcess::finished, this, [this, process] {
+        process->deleteLater();
+        readPowerProfile();
+    });
+    process->start(tool, {QStringLiteral("set"), profile});
 }
 
 void SessionServices::runAutostart()

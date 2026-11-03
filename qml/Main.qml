@@ -68,6 +68,30 @@ QtObject {
         }
     }
 
+    // Low battery: one notification at 10% and one at 5% while discharging,
+    // re-armed once the machine is plugged in.
+    property int batteryWarned: 100
+    readonly property Connections batteryWatch: Connections {
+        target: System
+        function onSnapshotUpdated() {
+            if (!System.batteryPresent)
+                return;
+            if (System.batteryCharging) {
+                root.batteryWarned = 100;
+                return;
+            }
+            const level = Math.round(System.batteryPercent);
+            if (level <= 5 && root.batteryWarned > 5) {
+                root.batteryWarned = 5;
+                Shell.notify("Battery critically low",
+                             level + "% left. Plug in now or the computer will shut down.");
+            } else if (level <= 10 && root.batteryWarned > 10) {
+                root.batteryWarned = 10;
+                Shell.notify("Battery low", level + "% left. Plug in soon.");
+            }
+        }
+    }
+
     // The Alt+Tab window list; the compositor drives it through Session.
     readonly property SwitcherOverlay switcher: SwitcherOverlay {
         screen: Qt.application.screens[0]
@@ -168,6 +192,14 @@ QtObject {
         }
         function onStartMenuRequested() {
             root.startMenu.show();
+        }
+        function onNotificationsToggleRequested() {
+            root.startMenu.hide();
+            root.notificationCenter.toggle();
+        }
+        function onQuickSettingsToggleRequested() {
+            root.startMenu.hide();
+            root.quickSettings.toggle();
         }
         function onStartMenuToggleRequested() {
             root.runDialog.hide();

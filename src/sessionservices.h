@@ -41,6 +41,10 @@ class SessionServices : public QObject
     // and the selected one; -1 while the switcher is closed.
     Q_PROPERTY(QVariantList switcherEntries READ switcherEntries NOTIFY switcherChanged)
     Q_PROPERTY(int switcherIndex READ switcherIndex NOTIFY switcherChanged)
+    // power-profiles-daemon: "power-saver", "balanced", "performance"; empty
+    // when the daemon is not installed.
+    Q_PROPERTY(QString powerProfile READ powerProfile NOTIFY powerProfileChanged)
+    Q_PROPERTY(QStringList powerProfiles READ powerProfiles NOTIFY powerProfileChanged)
 
 public:
     explicit SessionServices(Settings *settings, QObject *parent = nullptr);
@@ -63,6 +67,9 @@ public:
     int workspaceOccupied() const { return m_workspaceOccupied; }
     QVariantList switcherEntries() const { return m_switcherEntries; }
     int switcherIndex() const { return m_switcherIndex; }
+    QString powerProfile() const { return m_powerProfile; }
+    QStringList powerProfiles() const { return m_powerProfiles; }
+    Q_INVOKABLE void setPowerProfile(const QString &profile);
 
     Q_INVOKABLE void switchWorkspace(int index);
     // Moves the focused window to another desktop.
@@ -95,6 +102,7 @@ signals:
     // volume-up, volume-down, mute, mic-mute, brightness-up,
     // brightness-down, play-pause, next, previous.
     void mediaKey(const QString &name);
+    void powerProfileChanged();
 
 private:
     void connectCompositor();
@@ -109,6 +117,7 @@ private:
     void startPolkitAgent();
     void runAutostart();
     void applyAppearance();
+    void readPowerProfile();
     static QString findProgram(const QString &name);
 
     Settings *m_settings;
@@ -126,6 +135,8 @@ private:
     int m_workspaceOccupied = 0;
     QVariantList m_switcherEntries;
     int m_switcherIndex = -1;
+    QString m_powerProfile;
+    QStringList m_powerProfiles;
     QProcess m_idle;
     QProcess m_nightLight;
     QProcess m_polkit;

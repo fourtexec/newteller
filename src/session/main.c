@@ -2432,8 +2432,30 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
         spawnDetached(argv[0], argv);
         return true;
     }
-    if (logo && !(modifiers & WLR_MODIFIER_SHIFT) && (sym == XKB_KEY_s || sym == XKB_KEY_S)) {
+    if (logo && !(modifiers & WLR_MODIFIER_SHIFT)
+        && (sym == XKB_KEY_s || sym == XKB_KEY_S || sym == XKB_KEY_i || sym == XKB_KEY_I)) {
         shellAction("openSettings");
+        return true;
+    }
+    // The Windows shortcuts: Super+N notifications, Super+A quick
+    // settings, Super+R run, Super+E the home folder in the file manager.
+    if (logo && (sym == XKB_KEY_n || sym == XKB_KEY_N)) {
+        shellAction("toggleNotifications");
+        return true;
+    }
+    if (logo && (sym == XKB_KEY_a || sym == XKB_KEY_A)) {
+        shellAction("toggleQuickSettings");
+        return true;
+    }
+    if (logo && (sym == XKB_KEY_r || sym == XKB_KEY_R)) {
+        shellAction("showRunDialog");
+        return true;
+    }
+    if (logo && (sym == XKB_KEY_e || sym == XKB_KEY_E)) {
+        const char *home = getenv("HOME");
+        const char *argv[] = {"xdg-open", home ? home : "/", NULL};
+        setChildEnvironment(server);
+        spawnDetached(argv[0], argv);
         return true;
     }
     if (logo && (sym == XKB_KEY_q || sym == XKB_KEY_Q)) {

@@ -31,6 +31,8 @@ DropdownWindow {
             rows++;
         if (Session.nightLightAvailable)
             rows++;
+        if (Session.powerProfiles.length > 0)
+            rows++;
         return rows + 1 /* dnd */ + 1 /* footer separator */;
     }
 
@@ -290,6 +292,42 @@ DropdownWindow {
             }
             SettingsSwitch {
                 settingKey: "nightLight.enabled"
+            }
+        }
+
+        // --- power profile (power-profiles-daemon) ----------------------------
+        RowLayout {
+            objectName: "powerProfileRow"
+            Layout.fillWidth: true
+            visible: Session.powerProfiles.length > 0
+            spacing: 4
+
+            Item {
+                width: 34
+                height: 34
+                Image {
+                    anchors.centerIn: parent
+                    width: 18
+                    height: 18
+                    sourceSize.width: 36
+                    sourceSize.height: 36
+                    fillMode: Image.PreserveAspectFit
+                    source: Shell.tintedIcon("battery", Theme.foreground)
+                }
+            }
+            Repeater {
+                model: [
+                    { value: "power-saver", label: "Saver" },
+                    { value: "balanced", label: "Balanced" },
+                    { value: "performance", label: "Performance" }
+                ]
+                delegate: TaskButton {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    label: modelData.label
+                    active: Session.powerProfile === modelData.value
+                    onClicked: Session.setPowerProfile(modelData.value)
+                }
             }
         }
 

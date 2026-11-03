@@ -409,6 +409,8 @@ class Shell(QObject):
     settingsRequested = Signal()
     startMenuRequested = Signal()
     startMenuToggleRequested = Signal()
+    notificationsToggleRequested = Signal()
+    quickSettingsToggleRequested = Signal()
     runDialogRequested = Signal()
 
     def __init__(self, desktop_dir, home_dir):
@@ -575,6 +577,7 @@ class FilePortal(QObject):
 class System(QObject):
     """Stand-in for the SystemMonitor context property (src/systemmonitor.h)."""
 
+    snapshotUpdated = Signal()
     cpuPercent = Property(float, lambda self: 12.5, constant=True)
     cpuCount = Property(int, lambda self: 8, constant=True)
     load1 = Property(float, lambda self: 0.5, constant=True)
@@ -807,6 +810,19 @@ class Session(QObject):
     workspaceOccupied = Property(int, lambda self: 0b101, notify=workspacesChanged)
     switcherEntries = Property("QVariantList", lambda self: [], notify=switcherChanged)
     switcherIndex = Property(int, lambda self: -1, notify=switcherChanged)
+    powerProfileChanged = Signal()
+    powerProfile = Property(str, lambda self: "balanced", notify=powerProfileChanged)
+    powerProfiles = Property("QVariantList", lambda self: ["power-saver", "balanced", "performance"],
+                             notify=powerProfileChanged)
+
+    @Slot(result="QVariantList")
+    def autostartEntries(self):
+        return [{"name": "Network", "file": "/etc/xdg/autostart/nm-applet.desktop",
+                 "exec": "nm-applet"}]
+
+    @Slot(str)
+    def setPowerProfile(self, profile):
+        self.calls.append(("setPowerProfile", profile))
 
     def __init__(self):
         super().__init__()

@@ -64,6 +64,9 @@ public:
     // Opens the start menu, or closes it when it is open (a tap of Super).
     Q_INVOKABLE void toggleStartMenu();
     Q_INVOKABLE void showRunDialog();
+    // Super+N and Super+A from the compositor.
+    Q_INVOKABLE void toggleNotifications();
+    Q_INVOKABLE void toggleQuickSettings();
     Q_INVOKABLE void openConfig() const;
     // Opens the path in the file manager (or its handler for directories).
     Q_INVOKABLE void openPath(const QString &path) const;
@@ -104,6 +107,8 @@ signals:
     void startMenuRequested();
     void startMenuToggleRequested();
     void runDialogRequested();
+    void notificationsToggleRequested();
+    void quickSettingsToggleRequested();
 
 private:
     QString expandHome(const QString &path) const;

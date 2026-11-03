@@ -1715,6 +1715,29 @@ Window {
                         }
 
                         SettingsSection {
+                            title: "Started by the system"
+                            subtitle: "XDG autostart entries from ~/.config/autostart and /etc/xdg/autostart. Applications add them with their own \"start at login\" option; delete the file in ~/.config/autostart to stop one."
+
+                            Repeater {
+                                model: Session.autostartEntries()
+
+                                delegate: SettingsRow {
+                                    required property var modelData
+                                    width: parent ? parent.width : 320
+                                    title: modelData.name
+                                    subtitle: modelData.exec
+
+                                    Text {
+                                        text: modelData.file.indexOf("/etc/") === 0 ? "System" : "Personal"
+                                        color: Theme.muted
+                                        font.family: Theme.fontFamily
+                                        font.pointSize: Theme.fontSize - 1
+                                    }
+                                }
+                            }
+                        }
+
+                        SettingsSection {
                             title: "Search"
                             subtitle: "Application search behavior."
 

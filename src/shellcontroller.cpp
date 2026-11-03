@@ -318,6 +318,16 @@ void ShellController::toggleStartMenu()
     emit startMenuToggleRequested();
 }
 
+void ShellController::toggleNotifications()
+{
+    emit notificationsToggleRequested();
+}
+
+void ShellController::toggleQuickSettings()
+{
+    emit quickSettingsToggleRequested();
+}
+
 void ShellController::showRunDialog()
 {
     emit runDialogRequested();
