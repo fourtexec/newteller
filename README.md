@@ -158,6 +158,8 @@ inside VirtualBox. The implemented pieces are:
   and XWayland applications use while they play; Wayland applications use
   the idle-inhibit protocol. An inhibition ends with UnInhibit or when the
   application quits, so a crashed player never keeps the screen on.
+  Flatpak applications reach it through the portal (`Inhibit=gtk` in
+  `newteller-portals.conf`).
 - **Open with root.** The dock's right-click menu and the start menu's
   right-click menu start an application as root:
   `newteller-run-as-root` runs it through pkexec (the administrator prompt
