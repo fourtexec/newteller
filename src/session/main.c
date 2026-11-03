@@ -490,6 +490,8 @@ struct Server {
     bool suppressRaise;
 
     // Effects renderer state.
+    uint64_t effectFrames;      // frames drawn by the effects renderer
+    uint64_t fallbackFrames;    // frames it handed back to the scene
     struct wl_list ghosts;
     struct wl_list blurRegions;
     bool wsAnimating;
@@ -4962,8 +4964,13 @@ static void outputFrame(struct wl_listener *listener, void *data)
     struct Output *output = wl_container_of(listener, output, frame);
     if (!output->sceneOutput)
         return;
-    if (output->server->config.effects && renderEffectsFrame(output))
-        return;
+    if (output->server->config.effects) {
+        if (renderEffectsFrame(output)) {
+            ++output->server->effectFrames;
+            return;
+        }
+        ++output->server->fallbackFrames;
+    }
     if (output->gammaPending) {
         // A night light (wlsunset) changed the gamma ramp: commit it with
         // the next frame.
@@ -5957,6 +5964,12 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
         setBlurRegion(server, argument, output,
                       (struct wlr_box){atoi(x), atoi(y), atoi(w), atoi(h)}, atoi(radius));
         ipcSend(client, "ok");
+    } else if (strcmp(command, "effects") == 0) {
+        char reply[96];
+        snprintf(reply, sizeof(reply), "ok %s %llu %llu", server->config.effects ? "on" : "off",
+                 (unsigned long long)server->effectFrames,
+                 (unsigned long long)server->fallbackFrames);
+        ipcSend(client, reply);
     } else if (strcmp(command, "blur-clear") == 0 && argument) {
         char *output = strtok(NULL, " \t\r");
         clearBlurRegion(server, argument, output ? output : "");

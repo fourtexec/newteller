@@ -194,6 +194,13 @@ sleep 0.5
 XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" grim -o HEADLESS-1 "$runtime/blur.png"
 "$python" "$root/tests/session_check.py" "$before" "$runtime/blur.png"
 msg blur-clear newteller-panel HEADLESS-1 >/dev/null
+# The frames above came from the effects renderer, not the fallback.
+read -r _ effects_state effect_frames fallback_frames <<<"$(msg effects || true)"
+if [[ $effects_state != on || ${effect_frames:-0} -lt 10 ]]; then
+    echo "the effects renderer did not draw ($effects_state, $effect_frames frames, $fallback_frames fallbacks)" >&2
+    exit 1
+fi
+echo "session smoke: effects renderer drew $effect_frames frames ($fallback_frames fallbacks)"
 
 # Blank and wake the screen the way the idle manager does.
 msg dpms off >/dev/null
