@@ -220,6 +220,8 @@ void PolkitAgent::registerAgent()
         // Usually another agent already serves this session.
         qWarning("NewTeller: could not register the administrator prompt: %s",
                  error ? error->message : "unknown error");
+        if (error && g_strrstr(error->message, "already exists"))
+            QCoreApplication::instance()->setProperty("newteller.polkitAgentElsewhere", true);
         g_clear_error(&error);
         g_object_unref(listener);
         return;

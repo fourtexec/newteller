@@ -209,6 +209,7 @@ class Settings(QObject):
             "panel.backgroundOpacity": 0.92,
             "panel.foregroundColor": "",
             "dock.material": "none",
+            "dock.group": False,
             "dock.backgroundColor": "",
             "dock.backgroundOpacity": 0.5,
             "dock.hoverOpacity": 0.15,
@@ -1648,7 +1649,8 @@ def main():
             stack = [root_item]
             while stack:
                 item = stack.pop()
-                if item.objectName() == "desktopWidget" and item.width() > 0 and item.height() > 0:
+                if (item.objectName() in ("desktopWidget", "desktopIcon")
+                        and item.width() > 0 and item.height() > 0 and item.isVisible()):
                     widgets.append(item)
                 stack.extend(item.childItems())
         overlaps = []
@@ -1656,9 +1658,11 @@ def main():
             for b in widgets[i + 1:]:
                 if (a.x() < b.x() + b.width() and b.x() < a.x() + a.width()
                         and a.y() < b.y() + b.height() and b.y() < a.y() + a.height()):
-                    overlaps.append((a.property("pluginId"), b.property("pluginId")))
-        check(len(widgets) >= 2, f"the desktop shows its widgets ({len(widgets)})")
-        check(not overlaps, f"desktop widgets do not overlap ({overlaps})")
+                    overlaps.append((a.property("gridKey"), b.property("gridKey")))
+        check(len(widgets) >= 2, f"the desktop shows its widgets and icons ({len(widgets)})")
+        check(not overlaps, f"desktop widgets and icons do not overlap ({overlaps})")
+        offgrid = [w.property("gridKey") for w in widgets if w.x() < -1000]
+        check(not offgrid, f"every desktop element has a grid cell ({offgrid})")
 
     # One dock menu per panel.
     dock_menus = windows_of_kind("DockMenu")

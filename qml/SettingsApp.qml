@@ -1098,13 +1098,14 @@ Window {
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Show running applications"
+                                title: "Show open windows"
                                 settingKey: "dock.showWindows"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
                                 title: "Group windows of one application"
+                                subtitle: "Off: every window has its own button."
                                 settingKey: "dock.group"
                                 SettingsSwitch {}
                             }
@@ -1568,7 +1569,7 @@ Window {
                                     iconName: "rotate-ccw"
                                     label: "Reset layout"
                                     onClicked: Settings.setValues({
-                                        "desktop.iconPositions": ({}),
+                                        "desktop.gridPositions": ({}),
                                         "desktop.autoArrangeIcons": true
                                     })
                                 }
