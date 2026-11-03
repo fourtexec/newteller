@@ -201,6 +201,8 @@ private:
     void readPowerProfile();
     QString wifiDevice();
     void readAccessPoints();
+    // The same for a device wifiDevice() already found (no second lookup).
+    void readAccessPointsOf(const QString &device);
     static QString findProgram(const QString &name);
 
     Settings *m_settings;

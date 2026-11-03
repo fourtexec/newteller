@@ -1132,7 +1132,11 @@ QString SessionServices::wifiDevice()
 
 void SessionServices::readAccessPoints()
 {
-    const QString device = wifiDevice();
+    readAccessPointsOf(wifiDevice());
+}
+
+void SessionServices::readAccessPointsOf(const QString &device)
+{
     m_wifiNetworks.clear();
     if (!device.isEmpty() && m_wifiStatus.isEmpty()) {
         const QString active = nmProperty(device, kNmWireless, QStringLiteral("ActiveAccessPoint"))
@@ -1178,7 +1182,7 @@ void SessionServices::readAccessPoints()
 void SessionServices::scanWifi()
 {
     const QString device = wifiDevice();
-    readAccessPoints();
+    readAccessPointsOf(device);
     if (device.isEmpty() || !m_wifiStatus.isEmpty())
         return;
     // Ask for a fresh scan; the list is read again once it had time to run.
