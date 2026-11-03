@@ -119,6 +119,17 @@ inside VirtualBox. The implemented pieces are:
   message, styled dark) and falls back to swaylock (always-visible ring with
   the typing state). The wallpaper is the lock screen background
   (`power.lockAfter`, `power.lockOnSleep`).
+- **Administrator prompt (like UAC).** NewTeller is its own polkit
+  authentication agent (libpolkit-agent-1): when a program asks for
+  administrator rights the screen dims and a card says who asks, what for
+  (details: polkit action, command line), for which account, with a
+  password field, "Allow" and "Cancel"; a wrong password is reported and
+  asked again. `security.builtinAgent` turns it off (an external agent such
+  as lxpolkit is used then, as when the build has no libpolkit-agent-1).
+- **Open with root.** The dock's right-click menu and the start menu's
+  right-click menu start an application as root:
+  `newteller-run-as-root` runs it through pkexec (the administrator prompt
+  above) and hands over the Wayland/X display so it opens in the session.
 - **Force quit.** `Ctrl+Shift+Esc` (or `Ctrl+Alt+Esc`) lists every window
   with "Not responding" next to frozen ones; End task kills the process,
   Close asks it politely. The compositor pings windows when they are focused

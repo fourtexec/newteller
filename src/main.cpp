@@ -9,6 +9,7 @@
 #include "fileportal.h"
 #include "notifications.h"
 #include "plugins.h"
+#include "polkitagent.h"
 #include "quicksettings.h"
 #include "sessionservices.h"
 #include "clipboardhistory.h"
@@ -226,6 +227,9 @@ int main(int argc, char *argv[])
     SystemMonitor system(&settings);
     TrayWatcher tray(&settings);
     QuickSettings quick(&settings);
+    // Before SessionServices: it starts an external polkit agent only when
+    // the built-in administrator prompt could not register.
+    PolkitAgent polkit(&settings);
     SessionServices session(&settings);
     session.setTheme(&theme);
     ClipboardHistory clipboard(&settings);
@@ -269,6 +273,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("Session"), &session);
     engine.rootContext()->setContextProperty(QStringLiteral("Clipboard"), &clipboard);
     engine.rootContext()->setContextProperty(QStringLiteral("Bluetooth"), &bluetooth);
+    engine.rootContext()->setContextProperty(QStringLiteral("Polkit"), &polkit);
 
     engine.rootContext()->setContextProperty(QStringLiteral("FilePortal"), &filePortal);
 

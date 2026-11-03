@@ -84,6 +84,8 @@ test -x "$stage/usr/bin/newteller-compositor"
 test -x "$stage/usr/bin/newteller-session"
 test -x "$stage/usr/bin/newteller-screenshot"
 test -x "$stage/usr/bin/newteller-lock"
+test -x "$stage/usr/bin/newteller-run-as-root"
+test -f "$stage/usr/share/backgrounds/newteller/default.jpg"
 test -x "$stage/usr/bin/newteller-ctl"
 for plugin in desktop-clock desktop-sysinfo panel-system-monitor; do
     test -f "$stage/usr/share/newteller/plugins/$plugin/manifest.json"

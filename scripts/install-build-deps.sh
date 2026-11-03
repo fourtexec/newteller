@@ -30,6 +30,7 @@ debian)
         libxcb-render-util0-dev libxcb-shm0-dev libxcb-xfixes0-dev \
         libxcb-xinput-dev libxcb-composite0-dev libxcb-ewmh-dev \
         libxcb-errors-dev libxcb-icccm4-dev libxcb-res0-dev libxcb-image0-dev \
+        libpolkit-agent-1-dev \
         rustc cargo python3 python3-venv python3-pil grim wlrctl wlr-randr \
         "$wlroots_package"
     ;;
@@ -45,7 +46,7 @@ arch)
         base-devel git zip cmake ninja pkgconf \
         qt6-base qt6-declarative qt6-svg qt6-wayland layer-shell-qt \
         wayland wayland-protocols libxkbcommon libinput seatd libdrm mesa \
-        cairo pango pixman libxcb xcb-util-wm xcb-util-renderutil xcb-util-errors \
+        cairo pango pixman libxcb xcb-util-wm xcb-util-renderutil xcb-util-errors polkit \
         "$wlroots" rust python python-pillow grim wlr-randr
     # Test helpers that are not in every snapshot of the repositories.
     for helper in wlrctl; do
@@ -68,7 +69,7 @@ fedora)
         'pkgconfig(wayland-client)' 'pkgconfig(wayland-server)' 'pkgconfig(wayland-protocols)' \
         'pkgconfig(xkbcommon)' 'pkgconfig(libinput)' 'pkgconfig(libseat)' 'pkgconfig(libdrm)' \
         'pkgconfig(gbm)' 'pkgconfig(cairo)' 'pkgconfig(pangocairo)' 'pkgconfig(pixman-1)' \
-        'pkgconfig(xcb)' \
+        'pkgconfig(xcb)' 'pkgconfig(polkit-agent-1)' \
         "$wlroots" rust cargo python3 python3-pillow grim wlr-randr
     dnf install -y --skip-unavailable wlrctl
     ;;

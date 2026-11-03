@@ -3486,6 +3486,18 @@ Window {
 
                             SettingsRow {
                                 width: parent.width
+                                title: "Built-in administrator prompt"
+                                subtitle: Polkit.registered
+                                          ? "Active: NewTeller asks for the administrator password itself. Applies after logging in again."
+                                          : "Off or unavailable: " + (Session.polkitAgent.length > 0
+                                                                       ? Session.polkitAgent : "no polkit agent")
+                                            + " asks instead. Applies after logging in again."
+                                settingKey: "security.builtinAgent"
+                                SettingsSwitch { settingKey: "security.builtinAgent" }
+                            }
+
+                            SettingsRow {
+                                width: parent.width
                                 title: "Lock after inactivity"
                                 subtitle: "0 = never."
                                 settingKey: "power.lockAfter"

@@ -1,0 +1,41 @@
+#!/bin/bash
+# Run a graphical program as root ("Open with root" in the dock and the
+# start menu).
+#
+#   newteller-run-as-root PROGRAM [ARGUMENTS...]
+#
+# pkexec asks for the administrator password through the session's polkit
+# agent - NewTeller's own prompt - and starts the program as root. pkexec
+# clears the environment, so the variables a graphical program needs to
+# reach this session are handed over explicitly: the Wayland socket (as an
+# absolute path, root has no runtime directory of its own here), the X
+# display for XWayland programs, and the toolkit backends.
+set -u
+
+if [[ $# -eq 0 ]]; then
+    echo 'usage: newteller-run-as-root PROGRAM [ARGUMENTS...]' >&2
+    exit 2
+fi
+if ! command -v pkexec > /dev/null 2>&1; then
+    echo 'newteller-run-as-root: pkexec is not installed' >&2
+    exit 1
+fi
+
+environment=()
+wayland=${WAYLAND_DISPLAY:-}
+if [[ -n $wayland ]]; then
+    if [[ $wayland != /* && -n ${XDG_RUNTIME_DIR:-} ]]; then
+        wayland="$XDG_RUNTIME_DIR/$wayland"
+    fi
+    environment+=("WAYLAND_DISPLAY=$wayland" 'QT_QPA_PLATFORM=wayland;xcb'
+                  'GDK_BACKEND=wayland,x11' 'XDG_SESSION_TYPE=wayland'
+                  'MOZ_ENABLE_WAYLAND=1' 'ELECTRON_OZONE_PLATFORM_HINT=auto')
+fi
+[[ -n ${DISPLAY:-} ]] && environment+=("DISPLAY=$DISPLAY")
+[[ -n ${XAUTHORITY:-} ]] && environment+=("XAUTHORITY=$XAUTHORITY")
+environment+=("XDG_CURRENT_DESKTOP=${XDG_CURRENT_DESKTOP:-NewTeller}")
+[[ -n ${LANG:-} ]] && environment+=("LANG=$LANG")
+[[ -n ${XCURSOR_THEME:-} ]] && environment+=("XCURSOR_THEME=$XCURSOR_THEME")
+[[ -n ${XCURSOR_SIZE:-} ]] && environment+=("XCURSOR_SIZE=$XCURSOR_SIZE")
+
+exec pkexec /usr/bin/env "${environment[@]}" "$@"

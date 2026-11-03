@@ -10,6 +10,7 @@
 #include <QDBusConnection>
 
 #include <QColor>
+#include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
@@ -1498,6 +1499,11 @@ void SessionServices::runAutostart()
 
 void SessionServices::startPolkitAgent()
 {
+    // NewTeller's own administrator prompt is registered (PolkitAgent).
+    if (QCoreApplication::instance()->property("newteller.builtinPolkitAgent").toBool()) {
+        m_polkitAgent = QStringLiteral("NewTeller");
+        return;
+    }
     // The first agent that is installed; a second agent in the same session
     // simply fails to register and exits.
     const QStringList candidates{

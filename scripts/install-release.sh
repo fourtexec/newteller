@@ -24,6 +24,8 @@ test -f "$root/usr/bin/newteller-session"
 test -f "$root/usr/bin/newteller-ctl"
 test -f "$root/usr/bin/newteller-screenshot"
 test -f "$root/usr/bin/newteller-lock"
+test -f "$root/usr/bin/newteller-run-as-root"
+test -f "$root/usr/share/backgrounds/newteller/default.jpg"
 test -f "$root/usr/share/xdg-desktop-portal/newteller-portals.conf"
 test -d "$root/usr/share/newteller/plugins"
 test -f "$root/usr/share/applications/org.newteller.Shell.desktop"
@@ -32,9 +34,11 @@ bash "$root/install-runtime-deps.sh"
 install -m 755 "$root/usr/bin/newteller" "$root/usr/bin/newteller-compositor" \
     "$root/usr/bin/newteller-ctl" /usr/bin/
 install -m 755 "$root/usr/bin/newteller-session" "$root/usr/bin/newteller-screenshot" \
-    "$root/usr/bin/newteller-lock" /usr/bin/
+    "$root/usr/bin/newteller-lock" "$root/usr/bin/newteller-run-as-root" /usr/bin/
 install -d /usr/share/newteller/plugins /usr/share/applications /usr/share/wayland-sessions \
-    /usr/share/xdg-desktop-portal
+    /usr/share/xdg-desktop-portal /usr/share/backgrounds/newteller
+install -m 644 "$root/usr/share/backgrounds/newteller/default.jpg" \
+    /usr/share/backgrounds/newteller/default.jpg
 install -m 644 "$root/usr/share/xdg-desktop-portal/newteller-portals.conf" \
     /usr/share/xdg-desktop-portal/newteller-portals.conf
 cp -a "$root/usr/share/newteller/." /usr/share/newteller/

@@ -43,7 +43,7 @@ and the checks that will fail if one is broken.
 | `src/settings.cpp/.h` | `Settings` (shell.json). **Every key needs a default here.** |
 | `src/sessionservices.cpp/.h` | `Session`: talks to the compositor over the control socket, writes `compositor.conf` / `lock.conf`, runs swayidle, wlsunset, polkit agent, XDG autostart, Wi-Fi (NetworkManager over D-Bus, with `wifiStatus` diagnostics), overview/display queries, blur regions, hung windows / force quit, `pointerPressed` (clicks anywhere, closes cards). |
 | `src/shellcontroller.cpp/.h` | `Shell`: D-Bus object `org.newteller.Shell` (the compositor calls it with `gdbus` for Super shortcuts), icons, lock/logout. |
-| `src/quicksettings.*` `bluetooth.*` `clipboardhistory.*` `tray.*` `notifications.*` `windowlist.*` `systemmonitor.*` `theme.*` `appmodel.*` `plugins.*` | `Quick`, `Bluetooth`, `Clipboard`, `Tray`, `Notifications`, `Windows`, `System`, `Theme`, `Apps`, `Plugins`. |
+| `src/quicksettings.*` `bluetooth.*` `clipboardhistory.*` `tray.*` `notifications.*` `windowlist.*` `systemmonitor.*` `theme.*` `appmodel.*` `plugins.*` | `Quick`, `Bluetooth`, `Clipboard`, `Tray`, `Notifications`, `Windows`, `System`, `Theme`, `Apps`, `Plugins`, `Polkit` (`polkitagent.*`: the built-in polkit agent; GLib/polkit headers must be included before any Qt header there). |
 | `qml/Main.qml` | Root object: instantiates every window and wires D-Bus signals (`Connections { target: Shell }`). |
 | `qml/Panel.qml` | Bar, dock, tray, indicators, workspace dots, layout indicator. |
 | `qml/DropdownWindow.qml` + `ShellFrame.qml` | Base for every popup card (start menu, quick settings, Wi-Fi, Bluetooth, clipboard...). |

@@ -64,6 +64,8 @@ install_debian() {
         libxkbcommon0 libseat1 libinput10 libdrm2 libgbm1 libegl1 libgles2
         libcairo2 libpangocairo-1.0-0
         grim
+        # The administrator prompt (polkit agent) and "Open with root".
+        libpolkit-agent-1-0 polkitd pkexec
     )
     # Some packaging splits the QML extension out of layer-shell-qt.
     if apt-cache show qml6-module-org-kde-layershell > /dev/null 2>&1; then
@@ -109,7 +111,7 @@ install_arch() {
     pacman -Syu --noconfirm --needed \
         qt6-base qt6-declarative qt6-svg qt6-wayland qt6-imageformats layer-shell-qt \
         "$wlroots" xorg-xwayland dbus glib2 libxkbcommon seatd libinput libdrm mesa \
-        cairo pango grim
+        cairo pango grim polkit
 
     local optional=(
         gtklock swaylock swayidle wlsunset
@@ -144,7 +146,7 @@ install_fedora() {
         qt6-qtbase qt6-qtbase-gui qt6-qtdeclarative qt6-qtsvg qt6-qtwayland \
         qt6-qtimageformats layer-shell-qt \
         "$wlroots" xorg-x11-server-Xwayland dbus-daemon glib2 libxkbcommon libseat \
-        libinput libdrm mesa-libgbm mesa-libEGL mesa-libGLES cairo pango grim
+        libinput libdrm mesa-libgbm mesa-libEGL mesa-libGLES cairo pango grim polkit polkit-libs
 
     local optional=(
         gtklock swaylock swayidle wlsunset

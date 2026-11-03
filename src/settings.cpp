@@ -230,6 +230,8 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("touchpad.naturalScroll"), true);
     m_defaults.insert(QStringLiteral("touchpad.disableWhileTyping"), true);
     m_defaults.insert(QStringLiteral("touchpad.gestures"), true);
+    // NewTeller's own administrator prompt instead of an external polkit agent.
+    m_defaults.insert(QStringLiteral("security.builtinAgent"), true);
     m_defaults.insert(QStringLiteral("touchpad.speed"), 0.0);
     m_defaults.insert(QStringLiteral("mouse.naturalScroll"), false);
     m_defaults.insert(QStringLiteral("mouse.speed"), 0.0);
