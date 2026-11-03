@@ -1,0 +1,27 @@
+name: Probe wlroots headers (temporary)
+on:
+  push:
+    branches: [ccr-dc7a115e-kjxc15]
+    paths: ['.github/workflows/probe-headers.yml']
+jobs:
+  probe:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: debian:13
+            install: apt-get update -q && apt-get install -y -q libwlroots-0.18-dev
+          - image: ubuntu:26.04
+            install: apt-get update -q && apt-get install -y -q libwlroots-0.19-dev
+          - image: archlinux:latest
+            install: pacman -Sy --noconfirm wlroots0.20 || pacman -Sy --noconfirm wlroots
+    runs-on: ubuntu-24.04
+    container: ${{ matrix.image }}
+    steps:
+      - run: ${{ matrix.install }}
+      - run: |
+          for h in wlr_text_input_v3 wlr_input_method_v2; do
+            f=$(find /usr/include -name "$h.h" | head -n 1)
+            echo "===== $f"
+            grep -v '^ \*\|^/\*\|^$' "$f"
+          done
