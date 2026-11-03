@@ -661,7 +661,7 @@ Window {
                 width: parent.width
                 fillWidth: true
                 iconName: "image"
-                label: "Change wallpaper"
+                label: qsTr("Change wallpaper")
                 onClicked: {
                     contextMenu.visible = false;
                     if (wallpaperFiles.count > 0) {
@@ -676,7 +676,7 @@ Window {
                 width: parent.width
                 fillWidth: true
                 iconName: "clipboard"
-                label: "Paste"
+                label: qsTr("Paste")
                 onClicked: {
                     contextMenu.visible = false;
                     const text = Shell.clipboardText();
@@ -692,7 +692,7 @@ Window {
                 width: parent.width
                 fillWidth: true
                 iconName: "terminal"
-                label: "Open terminal"
+                label: qsTr("Open terminal")
                 onClicked: {
                     contextMenu.visible = false;
                     Shell.terminal("");
@@ -702,7 +702,7 @@ Window {
                 width: parent.width
                 fillWidth: true
                 iconName: "settings"
-                label: "Settings"
+                label: qsTr("Settings")
                 onClicked: {
                     contextMenu.visible = false;
                     Shell.openSettings();
@@ -712,7 +712,7 @@ Window {
                 width: parent.width
                 fillWidth: true
                 iconName: "layout-grid"
-                label: desk.autoArrange ? "Free icon placement" : "Auto-arrange icons"
+                label: desk.autoArrange ? qsTr("Free icon placement") : qsTr("Auto-arrange icons")
                 onClicked: {
                     contextMenu.visible = false;
                     if (desk.autoArrange)
@@ -725,7 +725,7 @@ Window {
                 width: parent.width
                 fillWidth: true
                 iconName: "rotate-ccw"
-                label: "Reset icon layout"
+                label: qsTr("Reset icon layout")
                 onClicked: {
                     contextMenu.visible = false;
                     desk.resetIconLayout();
@@ -735,7 +735,7 @@ Window {
                 width: parent.width
                 fillWidth: true
                 iconName: "layout-grid"
-                label: "Arrange widgets"
+                label: qsTr("Arrange widgets")
                 onClicked: {
                     contextMenu.visible = false;
                     desk.resetWidgets();
@@ -745,7 +745,7 @@ Window {
                 width: parent.width
                 fillWidth: true
                 iconName: "file-code"
-                label: "Config file"
+                label: qsTr("Config file")
                 onClicked: {
                     contextMenu.visible = false;
                     Shell.openConfig();

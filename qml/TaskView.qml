@@ -139,7 +139,7 @@ Window {
                     spacing: 2
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: "Desktop " + (index + 1)
+                        text: qsTr("Desktop %1").arg(index + 1)
                         color: Theme.foreground
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSize
@@ -174,7 +174,7 @@ Window {
     Text {
         anchors.centerIn: parent
         visible: view.shown.length === 0
-        text: "No windows on this desktop"
+        text: qsTr("No windows on this desktop")
         color: "#ffffff"
         opacity: 0.7
         font.family: Theme.fontFamily
@@ -312,7 +312,7 @@ Window {
 
                     Text {
                         anchors.verticalCenter: parent.verticalCenter
-                        text: "Move to"
+                        text: qsTr("Move to")
                         color: Theme.muted
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSize - 2

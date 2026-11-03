@@ -125,7 +125,7 @@ Window {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 2
                     Text {
-                        text: "Administrator access"
+                        text: qsTr("Administrator access")
                         color: Theme.foreground
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSize + 3
@@ -156,7 +156,7 @@ Window {
 
             // Details, folded by default.
             Text {
-                text: (dialog.showDetails ? "▾ " : "▸ ") + "Details"
+                text: (dialog.showDetails ? "▾ " : "▸ ") + qsTr("Details")
                 color: Theme.muted
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSize - 1
@@ -180,7 +180,7 @@ Window {
                     color: Theme.muted
                     font.family: "monospace"
                     font.pointSize: Theme.fontSize - 2
-                    text: "Action: " + Polkit.actionId
+                    text: qsTr("Action: ") + Polkit.actionId
                           + (Polkit.program.length > 0 ? "\nCommand: " + Polkit.program : "")
                 }
             }
@@ -191,7 +191,7 @@ Window {
                 spacing: 6
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Account:"
+                    text: qsTr("Account:")
                     color: Theme.muted
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize
@@ -255,7 +255,7 @@ Window {
                         anchors.fill: parent
                         verticalAlignment: Text.AlignVCenter
                         visible: password.text.length === 0
-                        text: Polkit.busy ? "Checking..."
+                        text: Polkit.busy ? qsTr("Checking...")
                               : "Password for " + (Polkit.identities[Polkit.identityIndex] || "the administrator")
                         color: Theme.muted
                         font: password.font
@@ -287,7 +287,7 @@ Window {
                     border.width: 1
                     Text {
                         anchors.centerIn: parent
-                        text: "Cancel"
+                        text: qsTr("Cancel")
                         color: Theme.foreground
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSize
@@ -308,7 +308,7 @@ Window {
                     color: allowArea.containsMouse ? Qt.darker(Theme.foreground, 1.15) : Theme.foreground
                     Text {
                         anchors.centerIn: parent
-                        text: Polkit.busy ? "Checking" : "Allow"
+                        text: Polkit.busy ? qsTr("Checking") : qsTr("Allow")
                         color: Theme.background
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSize

@@ -120,7 +120,7 @@ DropdownWindow {
                     source: Shell.tintedIcon("chevron-left", Theme.foreground)
                 }
                 Text {
-                    text: "Back"
+                    text: qsTr("Back")
                     color: Theme.foreground
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize
@@ -240,7 +240,7 @@ DropdownWindow {
         Text {
             visible: trayMenu.currentItems.length === 0
             width: parent.width
-            text: "No menu items"
+            text: qsTr("No menu items")
             color: Theme.muted
             font.family: Theme.fontFamily
             font.pointSize: Theme.fontSize

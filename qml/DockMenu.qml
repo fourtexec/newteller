@@ -142,7 +142,7 @@ DropdownWindow {
                 anchors.rightMargin: 4
                 anchors.verticalCenter: parent.verticalCenter
                 text: modelData.title && modelData.title.length > 0
-                      ? modelData.title : "Window"
+                      ? modelData.title : qsTr("Window")
                 color: Theme.foreground
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSize
@@ -207,7 +207,7 @@ DropdownWindow {
         visible: dockMenu.entry && dockMenu.entry.appId.length > 0
                  && dockMenu.entry.app.id !== undefined
         iconName: "plus"
-        label: "New window"
+        label: qsTr("New window")
         onClicked: {
             Apps.launch(dockMenu.entry.appId);
             dockMenu.close();
@@ -224,7 +224,7 @@ DropdownWindow {
         visible: dockMenu.entry && dockMenu.entry.appId.length > 0
                  && dockMenu.entry.app.id !== undefined
         iconName: "shield"
-        label: "Open with root"
+        label: qsTr("Open with root")
         onClicked: {
             Apps.launchAsRoot(dockMenu.entry.appId);
             dockMenu.close();
@@ -237,7 +237,7 @@ DropdownWindow {
         fillWidth: true
         visible: dockMenu.entry && dockMenu.entry.windows.length > 0
         iconName: "trash"
-        label: "Close all windows"
+        label: qsTr("Close all windows")
         onClicked: {
             for (const w of dockMenu.entry.windows)
                 Windows.closeWindow(w.id);
@@ -248,7 +248,7 @@ DropdownWindow {
     Text {
         width: menuColumn.width
         visible: dockMenu.entry === null
-        text: "No windows"
+        text: qsTr("No windows")
         color: Theme.muted
         font.family: Theme.fontFamily
         font.pointSize: Theme.fontSize

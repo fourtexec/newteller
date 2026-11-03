@@ -660,7 +660,7 @@ Window {
         objectName: "startButton"
         Layout.alignment: Qt.AlignVCenter | Qt.AlignHCenter
         iconName: "layout-grid"
-        label: panel.vertical ? "" : "Start"
+        label: panel.vertical ? "" : qsTr("Start")
         foregroundColor: panel.panelTextColor
         onClicked: {
             panel.menuWanted = true;

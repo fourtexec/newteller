@@ -57,7 +57,7 @@ Window {
 
             ShellTitleBar {
                 Layout.fillWidth: true
-                title: "Choose a font"
+                title: qsTr("Choose a font")
                 onCloseClicked: fontPicker.hide()
             }
 
@@ -83,7 +83,7 @@ Window {
                         anchors.fill: parent
                         verticalAlignment: Text.AlignVCenter
                         visible: filter.text.length === 0
-                        text: "Filter fonts..."
+                        text: qsTr("Filter fonts...")
                         color: Theme.muted
                         font: filter.font
                     }
@@ -133,7 +133,7 @@ Window {
                                 font.pointSize: Theme.fontSize
                             }
                             Text {
-                                text: "The quick brown fox  ·  " + row.modelData
+                                text: qsTr("The quick brown fox  ·  ") + row.modelData
                                 color: Theme.muted
                                 // The preview is rendered in the font itself.
                                 font.family: row.modelData
@@ -159,7 +159,7 @@ Window {
                 Text {
                     anchors.centerIn: parent
                     visible: fontList.count === 0
-                    text: "No font matches"
+                    text: qsTr("No font matches")
                     color: Theme.muted
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize

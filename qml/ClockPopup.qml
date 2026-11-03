@@ -240,7 +240,7 @@ DropdownWindow {
 
         Text {
             Layout.alignment: Qt.AlignHCenter
-            text: "Week " + Qt.formatDateTime(Shell.now, "ww")
+            text: qsTr("Week %1").arg(Qt.formatDateTime(Shell.now, "ww"))
             color: Theme.muted
             font.family: Theme.fontFamily
             font.pointSize: Theme.fontSize - 2

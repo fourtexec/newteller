@@ -58,7 +58,7 @@ DropdownWindow {
 
         ShellTitleBar {
             Layout.fillWidth: true
-            title: "Quick settings"
+            title: qsTr("Quick settings")
             iconName: "sliders-horizontal"
             onCloseClicked: popup.hide()
         }
@@ -71,7 +71,7 @@ DropdownWindow {
 
             Text {
                 Layout.fillWidth: true
-                text: Quick.mediaTitle.length > 0 ? Quick.mediaTitle : "Not playing"
+                text: Quick.mediaTitle.length > 0 ? Quick.mediaTitle : qsTr("Not playing")
                 color: Theme.foreground
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSize + 1
@@ -218,7 +218,7 @@ DropdownWindow {
                 spacing: 0
 
                 Text {
-                    text: "Wi-Fi"
+                    text: qsTr("Wi-Fi")
                     color: Theme.foreground
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize
@@ -280,7 +280,7 @@ DropdownWindow {
                 Layout.fillWidth: true
                 spacing: 0
                 Text {
-                    text: "Bluetooth"
+                    text: qsTr("Bluetooth")
                     color: Theme.foreground
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize
@@ -345,7 +345,7 @@ DropdownWindow {
             }
             Text {
                 Layout.fillWidth: true
-                text: "Do not disturb"
+                text: qsTr("Do not disturb")
                 color: Theme.foreground
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSize
@@ -379,7 +379,7 @@ DropdownWindow {
             }
             Text {
                 Layout.fillWidth: true
-                text: "Night light"
+                text: qsTr("Night light")
                 color: Theme.foreground
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSize
@@ -411,9 +411,9 @@ DropdownWindow {
             }
             Repeater {
                 model: [
-                    { value: "power-saver", label: "Saver" },
-                    { value: "balanced", label: "Balanced" },
-                    { value: "performance", label: "Performance" }
+                    { value: "power-saver", label: qsTr("Saver") },
+                    { value: "balanced", label: qsTr("Balanced") },
+                    { value: "performance", label: qsTr("Performance") }
                 ]
                 delegate: TaskButton {
                     required property var modelData
@@ -479,19 +479,19 @@ DropdownWindow {
 
             TaskButton {
                 iconName: "settings"
-                label: "All settings"
+                label: qsTr("All settings")
                 onClicked: { Shell.openSettings(); popup.hide(); }
             }
             Item { Layout.fillWidth: true }
             TaskButton {
                 objectName: "quickLockButton"
                 iconName: "lock"
-                label: "Lock"
+                label: qsTr("Lock")
                 onClicked: { popup.hide(); Shell.lock(); }
             }
             TaskButton {
                 iconName: "bell"
-                label: "History"
+                label: qsTr("History")
                 onClicked: {
                     popup.hide();
                     if (popup.notificationCenter)

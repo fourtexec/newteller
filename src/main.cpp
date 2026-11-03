@@ -13,6 +13,7 @@
 #include "quicksettings.h"
 #include "sessionservices.h"
 #include "screensaver.h"
+#include "translator.h"
 #include "clipboardhistory.h"
 #include "bluetooth.h"
 #include "settings.h"
@@ -263,7 +264,25 @@ int main(int argc, char *argv[])
     qmlRegisterUncreatableType<ShellWindow>("NewTeller", 1, 0, "ShellWindow",
                                             QStringLiteral("ShellWindow is only available as an attached property"));
 
+    // The shell's language: shell.language ("auto" = the system locale),
+    // switched live when the setting changes.
+    JsonTranslator translator;
+    auto applyLanguage = [&translator, &settings]() {
+        QCoreApplication::removeTranslator(&translator);
+        const QString language = JsonTranslator::resolveLanguage(
+            settings.value(QStringLiteral("shell.language"), QStringLiteral("auto")).toString());
+        if (translator.loadLanguage(language))
+            QCoreApplication::installTranslator(&translator);
+    };
+    applyLanguage();
+
     QQmlApplicationEngine engine;
+    QObject::connect(&settings, &Settings::changed, &engine, [&](const QString &key) {
+        if (key == QLatin1String("shell.language") || key.isEmpty()) {
+            applyLanguage();
+            engine.retranslate();
+        }
+    });
     engine.addImageProvider(QStringLiteral("theme"), new ThemeIconProvider);
     engine.addImageProvider(QStringLiteral("windowthumb"), new WindowThumbnailProvider);
     engine.addImageProvider(QStringLiteral("tray"), createTrayImageProvider(&tray));

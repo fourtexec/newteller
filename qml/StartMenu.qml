@@ -167,7 +167,7 @@ DropdownWindow {
                 height: 32
                 fillWidth: true
                 iconName: menu.isPinned(menu.pinTarget) ? "pin-off" : "pin"
-                label: menu.isPinned(menu.pinTarget) ? "Unpin from dock" : "Pin to dock"
+                label: menu.isPinned(menu.pinTarget) ? qsTr("Unpin from dock") : qsTr("Pin to dock")
                 onClicked: {
                     menu.togglePin(menu.pinTarget);
                     pinMenu.close();
@@ -179,7 +179,7 @@ DropdownWindow {
                 height: 32
                 fillWidth: true
                 iconName: "shield"
-                label: "Open with root"
+                label: qsTr("Open with root")
                 onClicked: {
                     const app = menu.pinTarget;
                     pinMenu.close();
@@ -254,7 +254,7 @@ DropdownWindow {
                         anchors.fill: parent
                         verticalAlignment: Text.AlignVCenter
                         visible: search.text.length === 0
-                        text: "Type to search apps..."
+                        text: qsTr("Type to search apps...")
                         color: Theme.muted
                         font: search.font
                     }
@@ -330,7 +330,7 @@ DropdownWindow {
             Text {
                 anchors.centerIn: parent
                 visible: menu.results.length === 0
-                text: "No applications match"
+                text: qsTr("No applications match")
                 color: Theme.muted
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSize
@@ -348,7 +348,7 @@ DropdownWindow {
             property var recentModel: []
 
             Text {
-                text: "Recently used"
+                text: qsTr("Recently used")
                 color: Theme.muted
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSize - 1
@@ -409,7 +409,7 @@ DropdownWindow {
             Item { Layout.fillWidth: true }
             TaskButton {
                 iconName: "settings"
-                label: "Settings"
+                label: qsTr("Settings")
                 onClicked: { Shell.openSettings(); menu.hide(); }
             }
         }

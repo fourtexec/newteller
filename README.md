@@ -73,6 +73,11 @@ inside VirtualBox. The implemented pieces are:
   built-in notification daemon, newest first, with per-entry removal, a clear-all
   button and the do-not-disturb switch; the bell counts what arrived while it
   was closed. Per-row removal is `Notifications.removeHistory()` on the daemon.
+- **Russian interface.** The shell follows the system language (`ru_RU`
+  gives a Russian panel, menus and settings); Settings → Appearance →
+  Language (`shell.language`: `auto`, `en`, `ru`) switches it live.
+  Translations live in `i18n/<language>.json` (English text -> translation)
+  and need no Qt Linguist tools to build.
 - **Settings application: a full settings GUI built into the shell.** Every key of
   `shell.json`, a theme editor, plugin management, diagnostics and config export —
   see [Settings application](#settings-application). The QML is compiled into the

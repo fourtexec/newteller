@@ -246,6 +246,8 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("cursor.size"), 24);
     // Colour scheme applications follow: "system" (leave it), "dark", "light".
     m_defaults.insert(QStringLiteral("apps.colorScheme"), QStringLiteral("dark"));
+    // Language of the shell: "auto" follows the system locale; "en", "ru".
+    m_defaults.insert(QStringLiteral("shell.language"), QStringLiteral("auto"));
     // Virtual desktops (Ctrl+Super+Left/Right) and their panel indicator.
     m_defaults.insert(QStringLiteral("workspaces.count"), 4);
     m_defaults.insert(QStringLiteral("workspaces.showOnPanel"), true);

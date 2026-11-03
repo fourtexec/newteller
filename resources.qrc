@@ -1,6 +1,7 @@
 <!DOCTYPE RCC>
 <RCC version="1.0">
   <qresource prefix="/">
+    <file>i18n/ru.json</file>
     <file>qml/Main.qml</file>
     <file>qml/Anchoring.js</file>
     <file>qml/DropdownWindow.qml</file>

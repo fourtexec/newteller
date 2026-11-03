@@ -18,7 +18,7 @@ DropdownWindow {
 
         ShellTitleBar {
             Layout.fillWidth: true
-            title: "Clipboard"
+            title: qsTr("Clipboard")
             iconName: "clipboard"
             onCloseClicked: popup.hide()
         }
@@ -100,7 +100,7 @@ DropdownWindow {
             Item { Layout.fillWidth: true }
             TaskButton {
                 iconName: "trash"
-                label: "Clear all"
+                label: qsTr("Clear all")
                 visible: Clipboard.items.length > 0
                 onClicked: Clipboard.clear()
             }

@@ -50,7 +50,7 @@ os.environ["QT_QUICK_BACKEND"] = "software"
 import PySide6  # noqa: E402
 from PySide6.QtCore import (Q_ARG, QDateTime, QDir, QEnum, QFile, QFileInfo, QMargins,  # noqa: E402
                             QMetaObject, QObject, QPoint, QPointF, QRectF, QtMsgType, QTimer,
-                            QUrl, Property, Qt, Signal, Slot, qInstallMessageHandler)
+                            QTranslator, QUrl, Property, Qt, Signal, Slot, qInstallMessageHandler)
 from PySide6.QtGui import QColor, QGuiApplication, QImage, QImageReader  # noqa: E402
 from PySide6.QtQml import (QmlAnonymous, QmlAttached, QmlNamedElement,  # noqa: E402
                            QmlUncreatable, QQmlApplicationEngine, QQmlComponent)
@@ -1321,6 +1321,26 @@ def main():
     missing_files = sorted(name for name in literal_icons
                            if not os.path.exists(os.path.join(icon_dir, name + ".svg")))
     check(not missing_files, f"every literal iconName has an icons/ file (missing: {missing_files})")
+    # Translations (i18n/<language>.json, read by src/translator.cpp): every
+    # entry translates a real qsTr() text, keeps its %1 placeholders, and the
+    # file is compiled in.
+    def qml_unquote(text):
+        return text.replace("\\\\", "\x00").replace("\\n", "\n").replace('\\"', '"').replace("\x00", "\\")
+    source_texts = set()
+    for qml in glob.glob(os.path.join(ROOT, "qml", "*.qml")):
+        with open(qml, encoding="utf-8") as handle:
+            source_texts.update(qml_unquote(t) for t in
+                                re.findall(r'qsTr\("((?:[^"\\]|\\.)*)"\)', handle.read()))
+    for path in glob.glob(os.path.join(ROOT, "i18n", "*.json")):
+        with open(path, encoding="utf-8") as handle:
+            table = json.load(handle)
+        name = os.path.basename(path)
+        stale = sorted(k for k in table if k not in source_texts)
+        check(not stale, f"{name}: every entry is a qsTr() text of the QML (stale: {stale[:5]})")
+        broken = sorted(k for k, v in table.items()
+                        if sorted(re.findall(r"%\d", k)) != sorted(re.findall(r"%\d", v)))
+        check(not broken, f"{name}: translations keep their %N placeholders ({broken[:5]})")
+        check("i18n/" + name in qrc_files, f"{name} is listed in resources.qrc")
     on_disk = {os.path.basename(p) for p in glob.glob(os.path.join(icon_dir, "*.svg"))}
     unlisted = sorted(on_disk - qrc_icons)
     check(not unlisted, f"every icons/ file is listed in resources.qrc (unlisted: {unlisted})")
@@ -2210,6 +2230,33 @@ def main():
         check(settings_app.isVisible(), "Shell.settingsRequested opens the settings window")
         check(settings_app.isVisible() and settings_app.title() == "NewTeller Settings",
               "the settings window carries its title")
+
+        # The shell's Russian translation (src/translator.cpp reads the same
+        # JSON): installed live, every binding is re-evaluated without a QML
+        # warning, and a translated text shows.
+        class JsonTranslator(QTranslator):
+            def __init__(self, strings):
+                super().__init__()
+                self.strings = strings
+
+            def translate(self, context, source, disambiguation=None, n=-1):
+                return self.strings.get(source, "")
+
+            def isEmpty(self):
+                return not self.strings
+
+        with open(os.path.join(ROOT, "i18n", "ru.json"), encoding="utf-8") as handle:
+            russian = JsonTranslator(json.load(handle))
+        QGuiApplication.installTranslator(russian)
+        engine.retranslate()
+        QTest.qWait(50)
+        check(settings_app.title() == "Настройки NewTeller",
+              f"the shell switches to Russian live ({settings_app.title()!r})")
+        QGuiApplication.removeTranslator(russian)
+        engine.retranslate()
+        QTest.qWait(50)
+        check(settings_app.title() == "NewTeller Settings",
+              f"and back to English ({settings_app.title()!r})")
         page = settings_app.property("currentPage")
         check(page == "appearance", f"settings starts on the appearance page ({page})")
         pages = settings_app.property("pages")

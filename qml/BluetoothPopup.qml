@@ -35,7 +35,7 @@ DropdownWindow {
 
         ShellTitleBar {
             Layout.fillWidth: true
-            title: "Bluetooth"
+            title: qsTr("Bluetooth")
             iconName: "bluetooth"
             onCloseClicked: popup.hide()
         }
@@ -44,7 +44,7 @@ DropdownWindow {
             Layout.fillWidth: true
             Text {
                 Layout.fillWidth: true
-                text: !Bluetooth.available ? "No Bluetooth adapter"
+                text: !Bluetooth.available ? qsTr("No Bluetooth adapter")
                       : !Bluetooth.powered ? "Bluetooth is off"
                       : Bluetooth.discovering ? "Looking for devices..." : "Bluetooth is on"
                 color: Theme.muted
@@ -113,7 +113,7 @@ DropdownWindow {
                             elide: Text.ElideRight
                         }
                         Text {
-                            text: Bluetooth.busyDevice === modelData.path ? "Working..."
+                            text: Bluetooth.busyDevice === modelData.path ? qsTr("Working...")
                                   : modelData.connected ? "Connected"
                                   : modelData.paired ? "Paired" : "Available"
                             color: Theme.muted
@@ -123,7 +123,7 @@ DropdownWindow {
                     }
                     TaskButton {
                         enabled: Bluetooth.busyDevice.length === 0
-                        label: modelData.connected ? "Disconnect"
+                        label: modelData.connected ? qsTr("Disconnect")
                                : modelData.paired ? "Connect" : "Pair"
                         onClicked: {
                             popup.statusText = "";
