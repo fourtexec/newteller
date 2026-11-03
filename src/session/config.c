@@ -112,6 +112,13 @@ void ntConfigDefaults(struct CompositorConfig *config)
     config->switcherAllWorkspaces = false;
     snprintf(config->placement, sizeof(config->placement), "%s", "center");
     config->bindingCount = 0;
+
+    config->effects = true;
+    config->cornerRadius = 10;
+    config->blur = true;
+    config->blurStrength = 2;
+    config->animations = true;
+    config->animationSpeed = 1.0;
 }
 
 bool ntConfigParseColor(const char *text, float out[4])
@@ -251,6 +258,18 @@ bool ntConfigLoadFile(struct CompositorConfig *config, const char *path)
             config->snapping = parseBool(value, config->snapping);
         else if (strcmp(key, "switcher.allWorkspaces") == 0)
             config->switcherAllWorkspaces = parseBool(value, config->switcherAllWorkspaces);
+        else if (strcmp(key, "effects.enabled") == 0)
+            config->effects = parseBool(value, config->effects);
+        else if (strcmp(key, "effects.cornerRadius") == 0)
+            config->cornerRadius = parseInt(value, config->cornerRadius, 0, 32);
+        else if (strcmp(key, "effects.blur") == 0)
+            config->blur = parseBool(value, config->blur);
+        else if (strcmp(key, "effects.blurStrength") == 0)
+            config->blurStrength = parseInt(value, config->blurStrength, 1, 4);
+        else if (strcmp(key, "effects.animations") == 0)
+            config->animations = parseBool(value, config->animations);
+        else if (strcmp(key, "effects.animationSpeed") == 0)
+            config->animationSpeed = parseDouble(value, config->animationSpeed, 0.25, 4.0);
         else if (strcmp(key, "windows.placement") == 0)
             copyText(config->placement, sizeof(config->placement), value);
         else if (strncmp(key, "bind.", 5) == 0 && config->bindingCount < NT_MAX_BINDINGS) {

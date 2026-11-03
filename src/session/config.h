@@ -65,6 +65,14 @@ struct CompositorConfig {
 
     struct NtBinding bindings[NT_MAX_BINDINGS];
     int bindingCount;
+
+    // Effects renderer: rounded corners, blur behind the shell, animations.
+    bool effects;
+    int cornerRadius;                      // px, 0 = square
+    bool blur;
+    int blurStrength;                      // 1 .. 4
+    bool animations;
+    double animationSpeed;                 // 0.25 .. 4, 1 = normal
 };
 
 void ntConfigDefaults(struct CompositorConfig *config);

@@ -21,6 +21,8 @@
 #include <wlr/interfaces/wlr_buffer.h>
 #include <wlr/interfaces/wlr_keyboard.h>
 #include <wlr/render/allocator.h>
+#include <wlr/render/drm_format_set.h>
+#include <wlr/render/pass.h>
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
@@ -103,6 +105,44 @@
 #ifndef DRM_FORMAT_ABGR8888
 #define DRM_FORMAT_ABGR8888 0x34324241
 #endif
+#ifndef DRM_FORMAT_MOD_INVALID
+#define DRM_FORMAT_MOD_INVALID 0x00ffffffffffffffULL
+#endif
+#ifndef DRM_FORMAT_MOD_LINEAR
+#define DRM_FORMAT_MOD_LINEAR 0ULL
+#endif
+
+enum GhostKind {
+    GHOST_CLOSE,
+    GHOST_MINIMIZE,
+};
+
+// The last picture of a window that closed or minimized, drawn while it
+// fades away.
+struct Ghost {
+    struct wl_list link;
+    struct wlr_buffer *buffer;          // locked client buffer
+    struct wlr_client_buffer *client;
+    struct wlr_buffer *titleBuffer;     // locked title bar, or NULL
+    struct wlr_box box;                 // surface, layout coordinates
+    struct wlr_box titleBox;
+    struct wlr_box frame;               // whole window, for rounding
+    int radius;
+    int workspace;
+    int kind;
+    uint64_t start;
+    int duration;
+};
+
+// Where the shell wants the backdrop blurred behind one of its surfaces
+// (layer namespace + output), in surface coordinates.
+struct BlurRegion {
+    struct wl_list link;
+    char ns[64];
+    char output[64];
+    struct wlr_box box;
+    int radius;
+};
 
 // The parts of a compositor-drawn window frame under the pointer.
 enum FramePart {
@@ -144,6 +184,14 @@ static void applyDecorationMode(struct View *view);
 static void compileBindings(struct Server *server);
 static bool captureThumbnail(struct View *view, int maxSize);
 static bool x11WantsFrame(struct View *view);
+static void createGhost(struct View *view, int kind);
+static void viewAnimate(struct View *view, float fromScale, float fromAlpha, int baseMs);
+static void startWorkspaceSlide(struct Server *server, int from, int to, int direction);
+static void scheduleAllFrames(struct Server *server);
+static void setBlurRegion(struct Server *server, const char *ns, const char *output,
+                          struct wlr_box box, int radius);
+static void clearBlurRegion(struct Server *server, const char *ns, const char *output);
+static void destroyGhost(struct Ghost *ghost);
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -219,6 +267,13 @@ struct View {
     struct wl_listener xdgDecorationMode;
     struct wl_listener xdgDecorationDestroy;
     struct wl_listener x11SetDecorations;
+
+    // Open/restore animation (effects renderer).
+    bool animating;
+    uint64_t animStart;
+    int animDuration;
+    float animFromScale;
+    float animFromAlpha;
     int snapEdges;
     int snapSavedX;
     int snapSavedY;
@@ -279,6 +334,8 @@ struct Output {
     // Blanked by `dpms off` (screen saver); comes back with `dpms on`.
     bool poweredOff;
     bool gammaPending;
+    // Offscreen buffers for the blurred backdrop.
+    struct wlr_buffer *blurBuffers[2];
 
     struct wl_listener frame;
     struct wl_listener requestState;
@@ -430,6 +487,15 @@ struct Server {
     struct View *lastTitleView;
     uint32_t lastTitleClick;
     bool suppressRaise;
+
+    // Effects renderer state.
+    struct wl_list ghosts;
+    struct wl_list blurRegions;
+    bool wsAnimating;
+    int wsFrom;
+    int wsDirection;
+    uint64_t wsStart;
+    int wsDuration;
     struct wl_list pointers;
     int layoutCount;
     int layoutIndex;
@@ -1212,6 +1278,10 @@ static void viewSetMinimized(struct View *view, bool minimized)
 {
     if (view->minimized == minimized || view->overrideRedirect)
         return;
+    if (minimized)
+        createGhost(view, GHOST_MINIMIZE);
+    else
+        viewAnimate(view, 0.85f, 0.0f, 220);
     view->minimized = minimized;
     viewSyncVisible(view);
     if (minimized) {
@@ -1440,6 +1510,7 @@ static void switchWorkspace(struct Server *server, int index)
     if (server->focusedView)
         clearKeyboardFocus(server);
     server->previousView = NULL;
+    startWorkspaceSlide(server, server->workspace, index, index > server->workspace ? 1 : -1);
     server->workspace = index;
     struct View *view;
     wl_list_for_each(view, &server->views, link)
@@ -2826,6 +2897,7 @@ static void reloadConfig(struct Server *server)
         updateFullscreenLayers(server);
     }
     broadcastWorkspaces(server);
+    scheduleAllFrames(server);
     // New frame colours, sizes or button layout.
     wl_list_for_each(view, &server->views, link) {
         view->decoWidth = -1;
@@ -3565,6 +3637,7 @@ static void handleXdgMap(struct wl_listener *listener, void *data)
     // A window maps on the desktop that is shown when it appears.
     view->workspace = view->server->workspace;
     viewSyncVisible(view);
+    viewAnimate(view, 0.94f, 0.0f, 200);
     broadcastWorkspaces(view->server);
     wlr_log(WLR_DEBUG, "xdg window mapped: %s", viewTitle(view));
     centerView(view);
@@ -3588,6 +3661,9 @@ static void handleXdgUnmap(struct wl_listener *listener, void *data)
     (void)data;
     struct View *view = wl_container_of(listener, view, unmap);
     wlr_log(WLR_DEBUG, "xdg window unmapped: %s", viewTitle(view));
+    if (view->mapped && !view->minimized && viewOnWorkspace(view))
+        createGhost(view, GHOST_CLOSE);
+    view->animating = false;
     view->mapped = false;
     viewSyncVisible(view);
     if (view->server->switchTarget == view)
@@ -4119,6 +4195,759 @@ static void handleGammaSet(struct wl_listener *listener, void *data)
 }
 
 // ---------------------------------------------------------------------------
+// Effects renderer: rounded corners, blur, animations
+// ---------------------------------------------------------------------------
+//
+// The scene graph keeps the structure (stacking, positions, visibility) but,
+// with effects on, each frame is drawn here instead of by
+// wlr_scene_output_commit(): every texture can then be clipped to a rounded
+// window shape, faded and scaled while it animates, and the shell's panels
+// and menus get a blurred copy of what is behind them. Without a render pass
+// (or with effects off) the scene draws the frame as before.
+
+static uint64_t nowMs(void)
+{
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return (uint64_t)ts.tv_sec * 1000u + (uint64_t)(ts.tv_nsec / 1000000);
+}
+
+static double easeOutCubic(double t)
+{
+    if (t <= 0)
+        return 0;
+    if (t >= 1)
+        return 1;
+    double u = 1 - t;
+    return 1 - u * u * u;
+}
+
+static bool animationsOn(struct Server *server)
+{
+    return server->config.effects && server->config.animations;
+}
+
+static int animationDuration(struct Server *server, int baseMs)
+{
+    if (!animationsOn(server))
+        return 0;
+    return (int)(baseMs / server->config.animationSpeed);
+}
+
+static void scheduleAllFrames(struct Server *server)
+{
+    struct Output *output;
+    wl_list_for_each(output, &server->outputs, link) {
+        if (!output->disabled && !output->poweredOff)
+            wlr_output_schedule_frame(output->output);
+    }
+}
+
+// A window grows in from `fromScale` and fades in from `fromAlpha`.
+static void viewAnimate(struct View *view, float fromScale, float fromAlpha, int baseMs)
+{
+    int duration = animationDuration(view->server, baseMs);
+    if (duration <= 0) {
+        view->animating = false;
+        return;
+    }
+    view->animating = true;
+    view->animStart = nowMs();
+    view->animDuration = duration;
+    view->animFromScale = fromScale;
+    view->animFromAlpha = fromAlpha;
+    scheduleAllFrames(view->server);
+}
+
+static void viewAnimationState(struct View *view, uint64_t now, double *scale, double *alpha)
+{
+    *scale = 1.0;
+    *alpha = 1.0;
+    if (!view->animating)
+        return;
+    double t = (double)(now - view->animStart) / view->animDuration;
+    if (t >= 1.0) {
+        view->animating = false;
+        return;
+    }
+    double e = easeOutCubic(t);
+    *scale = view->animFromScale + (1.0 - view->animFromScale) * e;
+    *alpha = view->animFromAlpha + (1.0 - view->animFromAlpha) * e;
+}
+
+// The window's frame (title bar and border included) in layout coordinates.
+static struct wlr_box viewOuterBox(struct View *view)
+{
+    struct wlr_box geometry = viewGeometry(view);
+    int width = geometry.width > 0 ? geometry.width : view->width;
+    int height = geometry.height > 0 ? geometry.height : view->height;
+    int top, side, bottom;
+    viewFrame(view, &top, &side, &bottom);
+    return (struct wlr_box){view->x - side, view->y - top, width + 2 * side,
+                            height + top + bottom};
+}
+
+// Rounded only where the compositor owns the edge: windows with a server
+// frame, or client windows without client-side shadows around them (those
+// round themselves). Never maximized or fullscreen windows.
+static int viewCornerRadius(struct View *view)
+{
+    int radius = view->server->config.cornerRadius;
+    if (!view->server->config.effects || radius <= 0 || view->maximized
+        || view->fullscreen || view->overrideRedirect)
+        return 0;
+    if (view->ssd && viewDecorated(view))
+        return radius;
+    struct wlr_box geometry = viewGeometry(view);
+    struct wlr_surface *surface = viewSurface(view);
+    if (view->xdg && surface
+        && (geometry.x > 0 || geometry.y > 0
+            || (geometry.width > 0 && geometry.width < surface->current.width)))
+        return 0;
+    return radius;
+}
+
+// A closed or minimized window keeps being drawn for a moment from the
+// buffer it last showed.
+static void createGhost(struct View *view, int kind)
+{
+    struct Server *server = view->server;
+    int duration = animationDuration(server, kind == GHOST_MINIMIZE ? 240 : 180);
+    struct wlr_surface *surface = viewSurface(view);
+    if (duration <= 0 || !surface || !surface->buffer || view->overrideRedirect
+        || !view->tree)
+        return;
+    struct Ghost *ghost = xcalloc(1, sizeof(*ghost));
+    ghost->buffer = wlr_buffer_lock(&surface->buffer->base);
+    ghost->client = surface->buffer;
+    struct wlr_box geometry = viewGeometry(view);
+    double originX = view->x - (view->xdg ? geometry.x : 0);
+    double originY = view->y - (view->xdg ? geometry.y : 0);
+    ghost->box = (struct wlr_box){(int)originX, (int)originY, surface->current.width,
+                                  surface->current.height};
+    if (view->decoTitle && view->decoTitle->buffer && viewDecorated(view)) {
+        int top, side, bottom;
+        viewFrame(view, &top, &side, &bottom);
+        ghost->titleBuffer = wlr_buffer_lock(view->decoTitle->buffer);
+        ghost->titleBox = (struct wlr_box){view->x - side, view->y - top,
+                                           view->decoWidth, top};
+    }
+    ghost->frame = viewOuterBox(view);
+    ghost->radius = viewCornerRadius(view);
+    ghost->workspace = view->workspace;
+    ghost->kind = kind;
+    ghost->start = nowMs();
+    ghost->duration = duration;
+    wl_list_insert(server->ghosts.prev, &ghost->link);
+    scheduleAllFrames(server);
+}
+
+static void destroyGhost(struct Ghost *ghost)
+{
+    wl_list_remove(&ghost->link);
+    wlr_buffer_unlock(ghost->buffer);
+    if (ghost->titleBuffer)
+        wlr_buffer_unlock(ghost->titleBuffer);
+    free(ghost);
+}
+
+// Workspace switches slide the old desktop out and the new one in.
+static void startWorkspaceSlide(struct Server *server, int from, int to, int direction)
+{
+    int duration = animationDuration(server, 260);
+    if (duration <= 0 || from == to)
+        return;
+    server->wsAnimating = true;
+    server->wsFrom = from;
+    server->wsDirection = direction;
+    server->wsStart = nowMs();
+    server->wsDuration = duration;
+    scheduleAllFrames(server);
+}
+
+struct RenderTarget {
+    struct wlr_render_pass *pass;
+    double scale;                   // layout px -> target px
+    enum wl_output_transform transform;
+    int width, height;              // transformed size, for wlr_box_transform
+    double ox, oy;                  // layout position of the target's corner
+    double logicalWidth;            // slide distance
+    int bufferWidth, bufferHeight;  // the buffer drawn into (untransformed)
+};
+
+struct RenderState {
+    double alpha;
+    double scale;                   // about (cx, cy)
+    double cx, cy;
+    double shiftX, shiftY;
+    struct View *view;
+    const pixman_region32_t *clip;
+};
+
+#define NT_MAX_FRAME_TEXTURES 256
+
+// Textures created for one frame (title bars, blur steps).
+struct FrameTextures {
+    struct wlr_texture *items[NT_MAX_FRAME_TEXTURES];
+    int count;
+};
+
+static struct wlr_texture *frameTexture(struct Server *server, struct FrameTextures *temp,
+                                        struct wlr_buffer *buffer)
+{
+    if (temp->count >= NT_MAX_FRAME_TEXTURES)
+        return NULL;
+    struct wlr_texture *texture = wlr_texture_from_buffer(server->renderer, buffer);
+    if (texture)
+        temp->items[temp->count++] = texture;
+    return texture;
+}
+
+static void releaseFrameTextures(struct FrameTextures *temp)
+{
+    for (int i = 0; i < temp->count; ++i)
+        wlr_texture_destroy(temp->items[i]);
+    temp->count = 0;
+}
+
+static struct wlr_box targetBox(const struct RenderTarget *t, const struct RenderState *s,
+                                double x, double y, double w, double h)
+{
+    double x1 = s->cx + (x - s->cx) * s->scale + s->shiftX;
+    double y1 = s->cy + (y - s->cy) * s->scale + s->shiftY;
+    double x2 = s->cx + (x + w - s->cx) * s->scale + s->shiftX;
+    double y2 = s->cy + (y + h - s->cy) * s->scale + s->shiftY;
+    struct wlr_box box;
+    box.x = (int)lround((x1 - t->ox) * t->scale);
+    box.y = (int)lround((y1 - t->oy) * t->scale);
+    box.width = (int)lround((x2 - t->ox) * t->scale) - box.x;
+    box.height = (int)lround((y2 - t->oy) * t->scale) - box.y;
+    wlr_box_transform(&box, &box, wlr_output_transform_invert(t->transform),
+                      t->width, t->height);
+    return box;
+}
+
+// A rounded rectangle as a region of one-pixel rows in the corners.
+static void roundedRegion(pixman_region32_t *region, struct wlr_box box, int radius)
+{
+    pixman_region32_init(region);
+    if (box.width <= 0 || box.height <= 0)
+        return;
+    if (radius * 2 > box.width)
+        radius = box.width / 2;
+    if (radius * 2 > box.height)
+        radius = box.height / 2;
+    if (radius <= 0) {
+        pixman_region32_union_rect(region, region, box.x, box.y,
+                                   (unsigned)box.width, (unsigned)box.height);
+        return;
+    }
+    pixman_region32_union_rect(region, region, box.x, box.y + radius,
+                               (unsigned)box.width, (unsigned)(box.height - 2 * radius));
+    for (int i = 0; i < radius; ++i) {
+        double dy = radius - i - 0.5;
+        int inset = (int)ceil(radius - sqrt((double)radius * radius - dy * dy));
+        if (box.width - 2 * inset <= 0)
+            continue;
+        pixman_region32_union_rect(region, region, box.x + inset, box.y + i,
+                                   (unsigned)(box.width - 2 * inset), 1);
+        pixman_region32_union_rect(region, region, box.x + inset,
+                                   box.y + box.height - 1 - i,
+                                   (unsigned)(box.width - 2 * inset), 1);
+    }
+}
+
+static void renderNode(struct Server *server, const struct RenderTarget *t,
+                       const struct RenderState *state, struct wlr_scene_node *node,
+                       double x, double y, bool force, struct FrameTextures *temp)
+{
+    if (!node->enabled && !force)
+        return;
+    x += node->x;
+    y += node->y;
+    switch (node->type) {
+    case WLR_SCENE_NODE_TREE: {
+        struct wlr_scene_tree *tree = wlr_scene_tree_from_node(node);
+        struct wlr_scene_node *child;
+        wl_list_for_each(child, &tree->children, link)
+            renderNode(server, t, state, child, x, y, false, temp);
+        break;
+    }
+    case WLR_SCENE_NODE_RECT: {
+        struct wlr_scene_rect *rect = wlr_scene_rect_from_node(node);
+        if (rect->width <= 0 || rect->height <= 0)
+            break;
+        struct wlr_box box = targetBox(t, state, x, y, rect->width, rect->height);
+        float a = (float)state->alpha;
+        wlr_render_pass_add_rect(t->pass, &(struct wlr_render_rect_options){
+            .box = box,
+            .color = {rect->color[0] * a, rect->color[1] * a, rect->color[2] * a,
+                      rect->color[3] * a},
+            .clip = state->clip,
+            .blend_mode = WLR_RENDER_BLEND_MODE_PREMULTIPLIED,
+        });
+        break;
+    }
+    case WLR_SCENE_NODE_BUFFER: {
+        struct wlr_scene_buffer *sceneBuffer = wlr_scene_buffer_from_node(node);
+        if (!sceneBuffer->buffer)
+            break;
+        struct wlr_texture *texture = NULL;
+        const pixman_region32_t *clip = state->clip;
+        struct wlr_scene_surface *sceneSurface = wlr_scene_surface_try_from_buffer(sceneBuffer);
+        if (sceneSurface) {
+            texture = wlr_surface_get_texture(sceneSurface->surface);
+            // Popups stick out of the window: never clip them.
+            if (clip && state->view
+                && wlr_surface_get_root_surface(sceneSurface->surface)
+                       != viewSurface(state->view))
+                clip = NULL;
+        } else {
+            texture = frameTexture(server, temp, sceneBuffer->buffer);
+        }
+        if (!texture)
+            break;
+        int width = sceneBuffer->dst_width > 0 ? sceneBuffer->dst_width : (int)texture->width;
+        int height = sceneBuffer->dst_height > 0 ? sceneBuffer->dst_height : (int)texture->height;
+        struct wlr_box box = targetBox(t, state, x, y, width, height);
+        if (box.width <= 0 || box.height <= 0)
+            break;
+        float alpha = (float)(sceneBuffer->opacity * state->alpha);
+        enum wl_output_transform transform = wlr_output_transform_compose(
+            wlr_output_transform_invert(sceneBuffer->transform), t->transform);
+        wlr_render_pass_add_texture(t->pass, &(struct wlr_render_texture_options){
+            .texture = texture,
+            .src_box = sceneBuffer->src_box,
+            .dst_box = box,
+            .alpha = &alpha,
+            .clip = clip,
+            .transform = transform,
+            .filter_mode = sceneBuffer->filter_mode,
+            .blend_mode = WLR_RENDER_BLEND_MODE_PREMULTIPLIED,
+        });
+        break;
+    }
+    }
+}
+
+static void renderViews(struct Server *server, const struct RenderTarget *t, uint64_t now,
+                        struct FrameTextures *temp)
+{
+    double slide = 0;
+    if (server->wsAnimating) {
+        double progress = (double)(now - server->wsStart) / server->wsDuration;
+        if (progress >= 1.0)
+            server->wsAnimating = false;
+        else
+            slide = easeOutCubic(progress);
+    }
+    struct wlr_scene_node *child;
+    wl_list_for_each(child, &server->toplevelTree->children, link) {
+        struct View *view = child->data;
+        struct RenderState state = {.alpha = 1, .scale = 1};
+        if (!view) {
+            renderNode(server, t, &state, child, 0, 0, false, temp);
+            continue;
+        }
+        bool visible = child->enabled;
+        if (server->wsAnimating && !view->overrideRedirect && view->mapped
+            && !view->minimized) {
+            double distance = t->logicalWidth * server->wsDirection;
+            if (view->workspace == server->wsFrom) {
+                visible = true;
+                state.shiftX = -distance * slide;
+            } else if (view->workspace == server->workspace) {
+                state.shiftX = distance * (1.0 - slide);
+            }
+        }
+        if (!visible)
+            continue;
+        double scale, alpha;
+        viewAnimationState(view, now, &scale, &alpha);
+        struct wlr_box outer = viewOuterBox(view);
+        state.alpha = alpha;
+        state.scale = scale;
+        state.cx = outer.x + outer.width / 2.0;
+        state.cy = outer.y + outer.height / 2.0;
+        state.view = view;
+        pixman_region32_t region;
+        bool clipped = false;
+        int radius = viewCornerRadius(view);
+        if (radius > 0) {
+            struct wlr_box box = targetBox(t, &state, outer.x, outer.y, outer.width,
+                                           outer.height);
+            roundedRegion(&region, box, (int)lround(radius * t->scale * scale));
+            state.clip = &region;
+            clipped = true;
+        }
+        renderNode(server, t, &state, child, 0, 0, true, temp);
+        if (clipped)
+            pixman_region32_fini(&region);
+    }
+
+    // Windows that just closed or minimized fade away.
+    struct Ghost *ghost;
+    struct Ghost *next;
+    wl_list_for_each_safe(ghost, next, &server->ghosts, link) {
+        double progress = (double)(now - ghost->start) / ghost->duration;
+        if (progress >= 1.0) {
+            destroyGhost(ghost);
+            continue;
+        }
+        if (ghost->workspace != server->workspace)
+            continue;
+        double e = easeOutCubic(progress);
+        struct RenderState state = {.alpha = 1.0 - e};
+        state.cx = ghost->frame.x + ghost->frame.width / 2.0;
+        state.cy = ghost->frame.y + ghost->frame.height / 2.0;
+        if (ghost->kind == GHOST_MINIMIZE) {
+            state.scale = 1.0 - 0.5 * e;
+            state.shiftY = (t->oy + t->height / t->scale - state.cy) * 0.7 * e;
+        } else {
+            state.scale = 1.0 - 0.08 * e;
+        }
+        pixman_region32_t region;
+        bool clipped = false;
+        if (ghost->radius > 0) {
+            struct wlr_box box = targetBox(t, &state, ghost->frame.x, ghost->frame.y,
+                                           ghost->frame.width, ghost->frame.height);
+            roundedRegion(&region, box, (int)lround(ghost->radius * t->scale * state.scale));
+            state.clip = &region;
+            clipped = true;
+        }
+        float alpha = (float)state.alpha;
+        if (ghost->titleBuffer) {
+            struct wlr_texture *title = frameTexture(server, temp, ghost->titleBuffer);
+            if (title) {
+                wlr_render_pass_add_texture(t->pass, &(struct wlr_render_texture_options){
+                    .texture = title,
+                    .dst_box = targetBox(t, &state, ghost->titleBox.x, ghost->titleBox.y,
+                                         ghost->titleBox.width, ghost->titleBox.height),
+                    .alpha = &alpha,
+                    .clip = state.clip,
+                    .transform = t->transform,
+                    .blend_mode = WLR_RENDER_BLEND_MODE_PREMULTIPLIED,
+                });
+            }
+        }
+        if (ghost->client && ghost->client->texture) {
+            wlr_render_pass_add_texture(t->pass, &(struct wlr_render_texture_options){
+                .texture = ghost->client->texture,
+                .dst_box = targetBox(t, &state, ghost->box.x, ghost->box.y,
+                                     ghost->box.width, ghost->box.height),
+                .alpha = &alpha,
+                .clip = state.clip,
+                .transform = t->transform,
+                .blend_mode = WLR_RENDER_BLEND_MODE_PREMULTIPLIED,
+            });
+        }
+        if (clipped)
+            pixman_region32_fini(&region);
+    }
+}
+
+static struct Layer *layerForNode(struct Server *server, struct wlr_scene_node *node)
+{
+    struct Layer *layer;
+    wl_list_for_each(layer, &server->layers, link) {
+        if (layer->scene && &layer->scene->tree->node == node)
+            return layer;
+    }
+    return NULL;
+}
+
+static struct BlurRegion *blurRegionFor(struct Server *server, struct Layer *layer)
+{
+    if (!layer || !layer->layer || !layer->layer->namespace || !layer->layer->output)
+        return NULL;
+    struct BlurRegion *region;
+    wl_list_for_each(region, &server->blurRegions, link) {
+        if (strcmp(region->ns, layer->layer->namespace) == 0
+            && strcmp(region->output, layer->layer->output->name) == 0)
+            return region;
+    }
+    return NULL;
+}
+
+// Top and overlay layers, each blur-enabled surface over the blurred copy
+// of what is below it.
+static void renderLayerTree(struct Server *server, const struct RenderTarget *t,
+                            struct wlr_scene_tree *tree, struct wlr_texture *blurred,
+                            struct FrameTextures *temp)
+{
+    struct wlr_scene_node *child;
+    wl_list_for_each(child, &tree->children, link) {
+        if (!child->enabled)
+            continue;
+        struct RenderState state = {.alpha = 1, .scale = 1};
+        if (blurred) {
+            struct BlurRegion *blur = blurRegionFor(server, layerForNode(server, child));
+            if (blur) {
+                struct wlr_box box = targetBox(t, &state, child->x + blur->box.x,
+                                               child->y + blur->box.y, blur->box.width,
+                                               blur->box.height);
+                pixman_region32_t region;
+                roundedRegion(&region, box, (int)lround(blur->radius * t->scale));
+                wlr_render_pass_add_texture(t->pass, &(struct wlr_render_texture_options){
+                    .texture = blurred,
+                    .dst_box = {0, 0, t->bufferWidth, t->bufferHeight},
+                    .clip = &region,
+                    .filter_mode = WLR_SCALE_FILTER_BILINEAR,
+                    .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+                });
+                pixman_region32_fini(&region);
+            }
+        }
+        renderNode(server, t, &state, child, 0, 0, false, temp);
+    }
+}
+
+static void renderBelowTop(struct Server *server, const struct RenderTarget *t, uint64_t now,
+                           struct FrameTextures *temp)
+{
+    struct RenderState state = {.alpha = 1, .scale = 1};
+    wlr_render_pass_add_rect(t->pass, &(struct wlr_render_rect_options){
+        .box = {0, 0, t->bufferWidth, t->bufferHeight},
+        .color = {0, 0, 0, 1},
+        .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+    });
+    renderNode(server, t, &state, &server->backgroundTree->node, 0, 0, false, temp);
+    renderNode(server, t, &state, &server->bottomTree->node, 0, 0, false, temp);
+    if (server->toplevelTree->node.enabled)
+        renderViews(server, t, now, temp);
+}
+
+static bool anyBlurOn(struct Server *server, struct Output *output)
+{
+    if (!server->config.blur || wl_list_empty(&server->blurRegions) || server->locked)
+        return false;
+    struct Layer *layer;
+    wl_list_for_each(layer, &server->layers, link) {
+        if (!layer->scene || !layer->scene->tree->node.enabled || layer->output != output)
+            continue;
+        if (blurRegionFor(server, layer))
+            return true;
+    }
+    return false;
+}
+
+static struct wlr_buffer *offscreenBuffer(struct Server *server, struct wlr_buffer **slot,
+                                          int width, int height)
+{
+    if (*slot && ((*slot)->width != width || (*slot)->height != height)) {
+        wlr_buffer_drop(*slot);
+        *slot = NULL;
+    }
+    if (!*slot) {
+        uint64_t modifiers[] = {DRM_FORMAT_MOD_INVALID, DRM_FORMAT_MOD_LINEAR};
+        struct wlr_drm_format format = {
+            .format = DRM_FORMAT_ARGB8888,
+            .len = 2,
+            .capacity = 2,
+            .modifiers = modifiers,
+        };
+        *slot = wlr_allocator_create_buffer(server->allocator, width, height, &format);
+    }
+    return *slot;
+}
+
+// What lies under the shell's surfaces, at a quarter of the resolution,
+// smoothed by repeatedly halving and doubling it (a cheap Kawase-like blur
+// that every renderer, pixman included, can do).
+static struct wlr_texture *renderBlurredBackdrop(struct Server *server, struct Output *output,
+                                                 const struct RenderTarget *full, uint64_t now,
+                                                 struct FrameTextures *temp)
+{
+    struct wlr_output *o = output->output;
+    int width = o->width / 4 > 0 ? o->width / 4 : 1;
+    int height = o->height / 4 > 0 ? o->height / 4 : 1;
+    struct wlr_buffer *large = offscreenBuffer(server, &output->blurBuffers[0], width, height);
+    struct wlr_buffer *small = offscreenBuffer(server, &output->blurBuffers[1],
+                                               width / 2 > 0 ? width / 2 : 1,
+                                               height / 2 > 0 ? height / 2 : 1);
+    if (!large || !small)
+        return NULL;
+
+    struct wlr_render_pass *pass = wlr_renderer_begin_buffer_pass(server->renderer, large, NULL);
+    if (!pass)
+        return NULL;
+    struct RenderTarget quarter = *full;
+    quarter.pass = pass;
+    quarter.scale = full->scale / 4.0;
+    quarter.width = full->width / 4 > 0 ? full->width / 4 : 1;
+    quarter.height = full->height / 4 > 0 ? full->height / 4 : 1;
+    quarter.bufferWidth = large->width;
+    quarter.bufferHeight = large->height;
+    struct FrameTextures sceneTextures = {.count = 0};
+    renderBelowTop(server, &quarter, now, &sceneTextures);
+    bool ok = wlr_render_pass_submit(pass);
+    releaseFrameTextures(&sceneTextures);
+    if (!ok)
+        return NULL;
+
+    for (int i = 0; i < server->config.blurStrength; ++i) {
+        // Each intermediate texture is released before its buffer is drawn
+        // into again (pixman holds the buffer while a texture reads it).
+        struct wlr_texture *source = wlr_texture_from_buffer(server->renderer, large);
+        if (!source)
+            return NULL;
+        pass = wlr_renderer_begin_buffer_pass(server->renderer, small, NULL);
+        if (pass) {
+            wlr_render_pass_add_texture(pass, &(struct wlr_render_texture_options){
+                .texture = source,
+                .dst_box = {0, 0, small->width, small->height},
+                .filter_mode = WLR_SCALE_FILTER_BILINEAR,
+                .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+            });
+            ok = wlr_render_pass_submit(pass);
+        }
+        wlr_texture_destroy(source);
+        if (!pass || !ok)
+            return NULL;
+        source = wlr_texture_from_buffer(server->renderer, small);
+        if (!source)
+            return NULL;
+        pass = wlr_renderer_begin_buffer_pass(server->renderer, large, NULL);
+        if (pass) {
+            wlr_render_pass_add_texture(pass, &(struct wlr_render_texture_options){
+                .texture = source,
+                .dst_box = {0, 0, large->width, large->height},
+                .filter_mode = WLR_SCALE_FILTER_BILINEAR,
+                .blend_mode = WLR_RENDER_BLEND_MODE_NONE,
+            });
+            ok = wlr_render_pass_submit(pass);
+        }
+        wlr_texture_destroy(source);
+        if (!pass || !ok)
+            return NULL;
+    }
+    (void)temp;
+    return wlr_texture_from_buffer(server->renderer, large);
+}
+
+static bool animationsRunning(struct Server *server)
+{
+    if (server->wsAnimating || !wl_list_empty(&server->ghosts))
+        return true;
+    struct View *view;
+    wl_list_for_each(view, &server->views, link) {
+        if (view->animating)
+            return true;
+    }
+    return false;
+}
+
+// Draws and commits one frame with effects. False: let the scene do it.
+static bool renderEffectsFrame(struct Output *output)
+{
+    struct Server *server = output->server;
+    struct wlr_output *o = output->output;
+    uint64_t now = nowMs();
+    struct wlr_box layoutBox = {0};
+    wlr_output_layout_get_box(server->outputLayout, o, &layoutBox);
+    int transformedWidth = 0, transformedHeight = 0;
+    wlr_output_transformed_resolution(o, &transformedWidth, &transformedHeight);
+
+    struct RenderTarget target = {
+        .scale = o->scale,
+        .transform = o->transform,
+        .width = transformedWidth,
+        .height = transformedHeight,
+        .ox = layoutBox.x,
+        .oy = layoutBox.y,
+        .logicalWidth = layoutBox.width > 0 ? layoutBox.width : transformedWidth,
+        .bufferWidth = o->width,
+        .bufferHeight = o->height,
+    };
+    struct FrameTextures temp = {.count = 0};
+
+    // The blurred backdrop is drawn into its own buffers first.
+    struct wlr_texture *blurred = NULL;
+    if (anyBlurOn(server, output))
+        blurred = renderBlurredBackdrop(server, output, &target, now, &temp);
+
+    struct wlr_output_state state;
+    wlr_output_state_init(&state);
+    struct wlr_render_pass *pass = wlr_output_begin_render_pass(o, &state, NULL, NULL);
+    if (!pass) {
+        wlr_output_state_finish(&state);
+        if (blurred)
+            wlr_texture_destroy(blurred);
+        return false;
+    }
+    target.pass = pass;
+
+    renderBelowTop(server, &target, now, &temp);
+    // A fullscreen window hides these trees.
+    if (server->topTree->node.enabled)
+        renderLayerTree(server, &target, server->topTree, blurred, &temp);
+    if (server->overlayTree->node.enabled)
+        renderLayerTree(server, &target, server->overlayTree, blurred, &temp);
+    struct RenderState plain = {.alpha = 1, .scale = 1};
+    renderNode(server, &target, &plain, &server->lockTree->node, 0, 0, false, &temp);
+    wlr_output_add_software_cursors_to_render_pass(o, pass, NULL);
+    bool submitted = wlr_render_pass_submit(pass);
+    releaseFrameTextures(&temp);
+    if (blurred)
+        wlr_texture_destroy(blurred);
+    if (!submitted) {
+        wlr_output_state_finish(&state);
+        return false;
+    }
+
+    if (output->gammaPending) {
+        output->gammaPending = false;
+        struct wlr_gamma_control_v1 *gamma =
+            wlr_gamma_control_manager_v1_get_control(server->gammaManager, o);
+        if (!wlr_gamma_control_v1_apply(gamma, &state) && gamma)
+            wlr_gamma_control_v1_send_failed_and_destroy(gamma);
+    }
+    bool committed = wlr_output_commit_state(o, &state);
+    wlr_output_state_finish(&state);
+    if (!committed)
+        return false;
+
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    wlr_scene_output_send_frame_done(output->sceneOutput, &ts);
+    if (animationsRunning(server))
+        wlr_output_schedule_frame(o);
+    return true;
+}
+
+static void setBlurRegion(struct Server *server, const char *ns, const char *output,
+                          struct wlr_box box, int radius)
+{
+    struct BlurRegion *region;
+    wl_list_for_each(region, &server->blurRegions, link) {
+        if (strcmp(region->ns, ns) == 0 && strcmp(region->output, output) == 0)
+            break;
+    }
+    if (&region->link == &server->blurRegions) {
+        region = xcalloc(1, sizeof(*region));
+        snprintf(region->ns, sizeof(region->ns), "%s", ns);
+        snprintf(region->output, sizeof(region->output), "%s", output);
+        wl_list_insert(&server->blurRegions, &region->link);
+    }
+    region->box = box;
+    region->radius = radius;
+    scheduleAllFrames(server);
+}
+
+static void clearBlurRegion(struct Server *server, const char *ns, const char *output)
+{
+    struct BlurRegion *region;
+    struct BlurRegion *next;
+    wl_list_for_each_safe(region, next, &server->blurRegions, link) {
+        if (strcmp(region->ns, ns) == 0 && strcmp(region->output, output) == 0) {
+            wl_list_remove(&region->link);
+            free(region);
+        }
+    }
+    scheduleAllFrames(server);
+}
+
+// ---------------------------------------------------------------------------
 // Output
 // ---------------------------------------------------------------------------
 
@@ -4127,6 +4956,8 @@ static void outputFrame(struct wl_listener *listener, void *data)
     (void)data;
     struct Output *output = wl_container_of(listener, output, frame);
     if (!output->sceneOutput)
+        return;
+    if (output->server->config.effects && renderEffectsFrame(output))
         return;
     if (output->gammaPending) {
         // A night light (wlsunset) changed the gamma ramp: commit it with
@@ -4178,6 +5009,10 @@ static void outputDestroy(struct wl_listener *listener, void *data)
         wl_list_remove(&output->sceneDestroy.link);
         wlr_scene_output_destroy(output->sceneOutput);
         output->sceneOutput = NULL;
+    }
+    for (int i = 0; i < 2; ++i) {
+        if (output->blurBuffers[i])
+            wlr_buffer_drop(output->blurBuffers[i]);
     }
     wl_list_remove(&output->frame.link);
     wl_list_remove(&output->requestState.link);
@@ -4285,8 +5120,10 @@ static void handleX11Map(struct wl_listener *listener, void *data)
     (void)data;
     struct View *view = wl_container_of(listener, view, map);
     view->mapped = true;
-    if (!view->overrideRedirect)
+    if (!view->overrideRedirect) {
         view->workspace = view->server->workspace;
+        viewAnimate(view, 0.94f, 0.0f, 200);
+    }
     viewSyncVisible(view);
     broadcastWorkspaces(view->server);
     view->ssd = x11WantsFrame(view);
@@ -4314,6 +5151,9 @@ static void handleX11Unmap(struct wl_listener *listener, void *data)
     (void)data;
     struct View *view = wl_container_of(listener, view, unmap);
     wlr_log(WLR_DEBUG, "xdg window unmapped: %s", viewTitle(view));
+    if (view->mapped && !view->minimized && viewOnWorkspace(view))
+        createGhost(view, GHOST_CLOSE);
+    view->animating = false;
     view->mapped = false;
     viewSyncVisible(view);
     if (view->server->switchTarget == view)
@@ -5097,6 +5937,25 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
                 moveViewToWorkspace(target, atoi(desktop), false);
             ipcSend(client, desktop ? "ok" : "error which desktop");
         }
+    } else if (strcmp(command, "blur") == 0 && argument) {
+        // blur <namespace> <output> <x> <y> <w> <h> <radius>
+        char *output = strtok(NULL, " \t\r");
+        char *x = strtok(NULL, " \t\r");
+        char *y = strtok(NULL, " \t\r");
+        char *w = strtok(NULL, " \t\r");
+        char *h = strtok(NULL, " \t\r");
+        char *radius = strtok(NULL, " \t\r");
+        if (!output || !x || !y || !w || !h || !radius) {
+            ipcSend(client, "error usage: blur NAMESPACE OUTPUT X Y W H RADIUS");
+            return;
+        }
+        setBlurRegion(server, argument, output,
+                      (struct wlr_box){atoi(x), atoi(y), atoi(w), atoi(h)}, atoi(radius));
+        ipcSend(client, "ok");
+    } else if (strcmp(command, "blur-clear") == 0 && argument) {
+        char *output = strtok(NULL, " \t\r");
+        clearBlurRegion(server, argument, output ? output : "");
+        ipcSend(client, "ok");
     } else if (strcmp(command, "outputs-detail") == 0) {
         ipcDescribeOutputsDetail(server, client);
     } else if (strcmp(command, "output-set") == 0 && argument) {
@@ -5564,6 +6423,8 @@ static int run(struct Server *server)
     wl_list_init(&server->pointers);
     wl_list_init(&server->lockSurfaces);
     wl_list_init(&server->ipcClients);
+    wl_list_init(&server->ghosts);
+    wl_list_init(&server->blurRegions);
     server->ipcFd = -1;
     loadConfig(server);
 
@@ -5689,6 +6550,16 @@ static int run(struct Server *server)
         wl_list_remove(&server->newXWaylandSurface.link);
         wlr_xwayland_destroy(server->xwayland);
         server->xwayland = NULL;
+    }
+    struct Ghost *ghost;
+    struct Ghost *nextGhost;
+    wl_list_for_each_safe(ghost, nextGhost, &server->ghosts, link)
+        destroyGhost(ghost);
+    struct BlurRegion *blurRegion;
+    struct BlurRegion *nextBlur;
+    wl_list_for_each_safe(blurRegion, nextBlur, &server->blurRegions, link) {
+        wl_list_remove(&blurRegion->link);
+        free(blurRegion);
     }
     wlr_log(WLR_DEBUG, "destroying clients");
     wl_display_destroy_clients(server->display);
