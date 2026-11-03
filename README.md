@@ -131,6 +131,22 @@ inside VirtualBox. The implemented pieces are:
   wlr-randr, kanshi) change resolution, refresh rate, scale, rotation and
   arrangement; NewTeller remembers the settings per monitor
   (`~/.config/newteller/outputs.conf`) and starts high-density panels at 200%.
+- **Title bars for every window.** Applications that want the window manager
+  to draw their frame (Qt/KDE apps, X11 programs, terminals, Chromium with
+  "system title bar") get one: title, minimize/maximize/close, double click to
+  maximize, drag to move, edges to resize. Buttons left or right, height,
+  border, font and colours (or the theme's) in Settings → Windows.
+- **Overview** (`Super+Tab`): every window of a desktop as a live thumbnail,
+  desktops along the top; click to switch, close, or move a window to
+  another desktop. Alt+Tab shows thumbnails too.
+- **Displays page**: resolution, refresh rate, scale, rotation, position and
+  on/off for each screen, with a 15-second "keep these settings?" revert.
+- **Bluetooth** in quick settings: power, connect, disconnect, pair, forget.
+- **Window behaviour and shortcuts**: focus follows mouse, placement of new
+  windows, edge snapping, Alt+Tab across desktops, wrapping desktops, and
+  your own key combinations for any command.
+- **Application look**: dark/light preference, GTK theme, icon theme,
+  application font and text size, cursor theme; lock screen colour.
 - **Wi-Fi networks** from quick settings: scan, join (with the password asked
   inline for new secured networks), disconnect; NetworkManager keeps them.
 - **Clipboard history** on `Super+V` (wl-clipboard): the texts copied in the

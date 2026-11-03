@@ -42,6 +42,11 @@ What a GNOME or KDE user expects from a desktop session, now in NewTeller:
 | Power | Power profiles, low-battery warnings |
 | Session services | XDG autostart, startup applications, polkit agent, portals for screen sharing, dark mode for GTK/Firefox/Chromium apps, VT switching, a crashed shell is restarted |
 | Shortcuts | `Super` tap (start menu), `Super+N/A/R/E/I/V`, as on Windows |
+| Window frames | Title bars for apps that ask (xdg-decoration, X11), configurable buttons, font, colours |
+| Overview | `Super+Tab` with live thumbnails per desktop; Alt+Tab thumbnails |
+| Displays | Native page: resolution, refresh, scale, rotation, position, with timed revert |
+| Bluetooth | Quick settings and device list over BlueZ |
+| Customization | Focus follows mouse, placement, snapping, own shortcuts, GTK/icon/cursor themes, app font and text size, lock screen colour |
 
 The compositor reads `~/.config/newteller/compositor.conf` (written by the shell) and is
 controlled through `newteller-compositor --msg` over `$NEWTELLER_IPC`. The CI session test
