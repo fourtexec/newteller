@@ -143,6 +143,16 @@ DropdownWindow {
                     function onVolumeChanged() { volumeSlider.value = Quick.volume }
                 }
             }
+            TaskButton {
+                visible: Session.soundSettingsTool.length > 0
+                width: 30
+                iconName: "chevron-right"
+                tooltipText: "Sound devices"
+                onClicked: {
+                    popup.hide();
+                    Session.openSoundSettings();
+                }
+            }
         }
 
         // --- brightness -------------------------------------------------

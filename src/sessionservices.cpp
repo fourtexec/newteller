@@ -473,6 +473,22 @@ void SessionServices::screenOff()
     sendCommand(QStringLiteral("dpms off"));
 }
 
+QString SessionServices::soundSettingsTool() const
+{
+    for (const char *tool : {"pavucontrol", "pwvucontrol", "pavucontrol-qt"}) {
+        if (!findProgram(QString::fromLatin1(tool)).isEmpty())
+            return QString::fromLatin1(tool);
+    }
+    return QString();
+}
+
+void SessionServices::openSoundSettings()
+{
+    const QString tool = soundSettingsTool();
+    if (!tool.isEmpty())
+        QProcess::startDetached(tool, {});
+}
+
 void SessionServices::openDisplaySettings()
 {
     const QString tool = displaySettingsTool();

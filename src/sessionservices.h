@@ -33,6 +33,8 @@ class SessionServices : public QObject
     Q_PROPERTY(bool nightLightRunning READ nightLightRunning NOTIFY nightLightChanged)
     Q_PROPERTY(QString polkitAgent READ polkitAgent CONSTANT)
     Q_PROPERTY(QString displaySettingsTool READ displaySettingsTool CONSTANT)
+    // The sound mixer for output/input devices (pavucontrol), if installed.
+    Q_PROPERTY(QString soundSettingsTool READ soundSettingsTool CONSTANT)
     Q_PROPERTY(int workspace READ workspace NOTIFY workspacesChanged)
     Q_PROPERTY(int workspaceCount READ workspaceCount NOTIFY workspacesChanged)
     // Bit n set: desktop n has windows.
@@ -66,6 +68,8 @@ public:
     bool nightLightRunning() const;
     QString polkitAgent() const { return m_polkitAgent; }
     QString displaySettingsTool() const;
+    QString soundSettingsTool() const;
+    Q_INVOKABLE void openSoundSettings();
     int workspace() const { return m_workspace; }
     int workspaceCount() const { return m_workspaceCount; }
     int workspaceOccupied() const { return m_workspaceOccupied; }

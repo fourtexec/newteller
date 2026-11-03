@@ -803,6 +803,11 @@ class Session(QObject):
     nightLightRunning = Property(bool, lambda self: False, notify=nightLightChanged)
     polkitAgent = Property(str, lambda self: "/usr/bin/lxpolkit", constant=True)
     displaySettingsTool = Property(str, lambda self: "wdisplays", constant=True)
+    soundSettingsTool = Property(str, lambda self: "pavucontrol", constant=True)
+
+    @Slot()
+    def openSoundSettings(self):
+        self.calls.append(("openSoundSettings",))
     workspacesChanged = Signal()
     switcherChanged = Signal()
     mediaKey = Signal(str)
