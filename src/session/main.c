@@ -201,6 +201,7 @@ static void viewRestoreGeometry(struct View *view, int x, int y, int width, int 
 static pid_t viewPid(struct View *view);
 static void updateIdleInhibited(struct Server *server);
 static bool surfaceLayoutPosition(struct Server *server, struct wlr_surface *surface, int *x, int *y);
+static bool shortcutsInhibited(struct Server *server);
 struct Keyboard;
 static struct wlr_input_method_keyboard_grab_v2 *keyboardImGrab(struct Keyboard *keyboard);
 
@@ -652,6 +653,10 @@ struct Server {
     struct wl_listener newPointerConstraint;
     // cursor-shape-v1: applications name their cursor (GTK 4, Firefox).
     struct wl_listener cursorShape;
+    // keyboard-shortcuts-inhibit: virtual machines and remote desktops get
+    // every key while focused. Super+Escape gives the shortcuts back.
+    struct wl_list shortcutsInhibitors; // struct ShortcutsInhibitor
+    struct wl_listener newShortcutsInhibitor;
     struct wl_listener newXdgToplevel;
     struct wl_listener newXdgPopup;
     struct wl_listener newLayerSurface;
@@ -3577,6 +3582,62 @@ static void broadcastSwitcher(struct Server *server)
     ipcBroadcast(server, line);
 }
 
+struct ShortcutsInhibitor {
+    struct wl_list link;
+    struct Server *server;
+    struct wlr_keyboard_shortcuts_inhibitor_v1 *inhibitor;
+    struct wl_listener destroy;
+};
+
+static bool shortcutsInhibited(struct Server *server)
+{
+    if (server->locked)
+        return false;
+    struct wlr_surface *focused = server->seat->keyboard_state.focused_surface;
+    struct ShortcutsInhibitor *entry;
+    wl_list_for_each(entry, &server->shortcutsInhibitors, link) {
+        if (entry->inhibitor->active && entry->inhibitor->surface == focused)
+            return true;
+    }
+    return false;
+}
+
+// Inhibitors are active only while their surface has the keyboard.
+static void updateShortcutsInhibitors(struct Server *server, struct wlr_surface *focused)
+{
+    struct ShortcutsInhibitor *entry;
+    wl_list_for_each(entry, &server->shortcutsInhibitors, link) {
+        const bool want = focused && entry->inhibitor->surface == focused && !server->locked;
+        if (want && !entry->inhibitor->active)
+            wlr_keyboard_shortcuts_inhibitor_v1_activate(entry->inhibitor);
+        else if (!want && entry->inhibitor->active)
+            wlr_keyboard_shortcuts_inhibitor_v1_deactivate(entry->inhibitor);
+    }
+}
+
+static void shortcutsInhibitorDestroy(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct ShortcutsInhibitor *entry = wl_container_of(listener, entry, destroy);
+    wl_list_remove(&entry->destroy.link);
+    wl_list_remove(&entry->link);
+    free(entry);
+}
+
+static void handleNewShortcutsInhibitor(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, newShortcutsInhibitor);
+    struct wlr_keyboard_shortcuts_inhibitor_v1 *inhibitor = data;
+    struct ShortcutsInhibitor *entry = xcalloc(1, sizeof(*entry));
+    entry->server = server;
+    entry->inhibitor = inhibitor;
+    entry->destroy.notify = shortcutsInhibitorDestroy;
+    wl_signal_add(&inhibitor->events.destroy, &entry->destroy);
+    wl_list_insert(&server->shortcutsInhibitors, &entry->link);
+    if (!server->locked && inhibitor->surface == server->seat->keyboard_state.focused_surface)
+        wlr_keyboard_shortcuts_inhibitor_v1_activate(inhibitor);
+}
+
 static bool keyHandled(struct Server *server, xkb_keysym_t sym,
                        uint32_t modifiers)
 {
@@ -3619,6 +3680,20 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
     // Everything else belongs to the screen locker while it runs.
     if (server->locked)
         return false;
+
+    // A virtual machine or remote desktop asked for every key. Super+Escape
+    // (as in GNOME) hands the shortcuts back; VT switching above always works.
+    if (shortcutsInhibited(server)) {
+        if (logo && sym == XKB_KEY_Escape) {
+            struct ShortcutsInhibitor *entry;
+            wl_list_for_each(entry, &server->shortcutsInhibitors, link) {
+                if (entry->inhibitor->active)
+                    wlr_keyboard_shortcuts_inhibitor_v1_deactivate(entry->inhibitor);
+            }
+            return true;
+        }
+        return false;
+    }
 
     // The user's own shortcuts (Settings -> Shortcuts) come first, so they
     // can also replace a built-in one.
@@ -3858,7 +3933,7 @@ static void keyboardKey(struct wl_listener *listener, void *data)
         uint32_t modifiers = wlr_keyboard_get_modifiers(keyboard->keyboard);
         // Super pressed on its own starts a tap; anything else cancels it.
         // Lock modifiers (Caps, Num) do not count as a chord.
-        server->logoTap = isLogo
+        server->logoTap = isLogo && !shortcutsInhibited(server)
             && !(modifiers & (WLR_MODIFIER_SHIFT | WLR_MODIFIER_CTRL
                               | WLR_MODIFIER_ALT));
         if (keyHandled(server, sym, modifiers))
@@ -6550,6 +6625,7 @@ static void handleKeyboardFocusChange(struct wl_listener *listener, void *data)
     struct Server *server = wl_container_of(listener, server, keyboardFocusChange);
     struct wlr_seat_keyboard_focus_change_event *event = data;
     textInputsSetFocus(server, event->new_surface);
+    updateShortcutsInhibitors(server, event->new_surface);
 }
 
 static void handleNewTextInput(struct wl_listener *listener, void *data)
@@ -7491,7 +7567,11 @@ static void setupProtocols(struct Server *server)
     wlr_viewporter_create(server->display);
     wlr_fractional_scale_manager_v1_create(server->display, 1);
     wlr_single_pixel_buffer_manager_v1_create(server->display);
-    wlr_keyboard_shortcuts_inhibit_v1_create(server->display);
+    wl_list_init(&server->shortcutsInhibitors);
+    struct wlr_keyboard_shortcuts_inhibit_manager_v1 *shortcutsInhibit =
+        wlr_keyboard_shortcuts_inhibit_v1_create(server->display);
+    server->newShortcutsInhibitor.notify = handleNewShortcutsInhibitor;
+    wl_signal_add(&shortcutsInhibit->events.new_inhibitor, &server->newShortcutsInhibitor);
     if (server->renderer) {
         wlr_linux_dmabuf_v1_create_with_renderer(server->display, 5,
                                                  server->renderer);
@@ -7852,6 +7932,7 @@ static int run(struct Server *server)
     wl_list_remove(&server->requestStartDrag.link);
     wl_list_remove(&server->newPointerConstraint.link);
     wl_list_remove(&server->cursorShape.link);
+    wl_list_remove(&server->newShortcutsInhibitor.link);
     wl_list_remove(&server->startDrag.link);
     detachLock(server);
     wl_list_remove(&server->newLock.link);

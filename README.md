@@ -135,6 +135,10 @@ inside VirtualBox. The implemented pieces are:
   polkit refuses the built-in agent (no login session, no polkit daemon) no
   external one is started either - it would fail the same way and only show
   an "Error" window. The Security settings page shows the reason.
+- **Virtual machines and remote desktops** can take every key
+  (keyboard-shortcuts-inhibit) while they have the focus, Super and
+  Alt+Tab included; `Super+Escape` gives the desktop its shortcuts back,
+  and `Ctrl+Alt+F1..F12` always works.
 - **Games and 3D views**: relative pointer motion and pointer locking or
   confinement (pointer-constraints), so mouse look works in Wayland and
   XWayland games, Blender and remote desktops.
