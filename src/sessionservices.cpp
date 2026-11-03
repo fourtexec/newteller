@@ -1266,6 +1266,11 @@ void SessionServices::startPolkitAgent()
         QStringLiteral("/usr/libexec/polkit-gnome-authentication-agent-1"),
         QStringLiteral("/usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1"),
         QStringLiteral("/usr/lib/x86_64-linux-gnu/libexec/polkit-kde-authentication-agent-1"),
+        // Arch and Fedora paths.
+        QStringLiteral("/usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1"),
+        QStringLiteral("/usr/lib/polkit-kde-authentication-agent-1"),
+        QStringLiteral("/usr/libexec/kf6/polkit-kde-authentication-agent-1"),
+        QStringLiteral("/usr/libexec/xfce-polkit"),
     };
     for (const QString &candidate : candidates) {
         if (QFileInfo(candidate).isExecutable()) {

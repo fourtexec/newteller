@@ -12,7 +12,7 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Qml Quick Svg DBus)
 # The compositor is what turns NewTeller from a panel that runs inside somebody
 # else's desktop into a real Wayland session. It only needs C libraries, not Qt.
 find_package(PkgConfig REQUIRED)
-pkg_search_module(WLROOTS REQUIRED IMPORTED_TARGET wlroots-0.19 wlroots-0.18)
+pkg_search_module(WLROOTS REQUIRED IMPORTED_TARGET wlroots-0.20 wlroots-0.19 wlroots-0.18)
 pkg_check_modules(LIBINPUT REQUIRED IMPORTED_TARGET libinput)
 # Title bars and window thumbnails are drawn with cairo and pango.
 pkg_check_modules(CAIRO REQUIRED IMPORTED_TARGET cairo pangocairo)

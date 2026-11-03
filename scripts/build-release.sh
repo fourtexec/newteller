@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Build and stage a native Debian 13 or Ubuntu 26.04 x86_64 release ZIP.
+# Build and stage a native x86_64 release ZIP for the detected system
+# (Debian 13, Ubuntu 26.04, Arch Linux or Fedora 42+).
 set -euo pipefail
 root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
 cd "$root"
@@ -38,7 +39,7 @@ if ! cmake -S "$root" -B "$build_dir" -G Ninja \
     -DNEWTELLER_WITH_RUST=ON; then
     cat >&2 <<'HELP'
 
-Release configuration failed. On Debian 13 or Ubuntu 26.04, install the build dependencies first:
+Release configuration failed. Install the build dependencies first:
     sudo bash scripts/install-build-deps.sh
 Then rerun scripts/build-release.sh as your normal user.
 

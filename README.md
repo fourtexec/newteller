@@ -1,6 +1,6 @@
 # NewTeller
 
-A complete Wayland desktop session for Debian 13 and Ubuntu 26.04. NewTeller owns the
+A complete Wayland desktop session for Debian 13, Ubuntu 26.04, Arch Linux and Fedora 42+. NewTeller owns the
 display: `newteller-compositor` takes over DRM/KMS (or a nested window for development),
 starts the QML desktop as its first client, and runs Wayland and X11 applications inside
 it. No GNOME, KDE or other desktop environment is needed.
@@ -170,15 +170,23 @@ inside VirtualBox. The implemented pieces are:
 - Rust core (application search index, metrics sampler, config, watcher) with a
   C++/Qt fallback, plus the `newteller-ctl` command line tool
 
-## Build (Debian 13 / Ubuntu 26.04 LTS)
+## Build (Debian 13 / Ubuntu 26.04 / Arch Linux / Fedora 42+)
 
-Release builds support Debian 13 and Ubuntu 26.04 LTS, with Qt 6 and wlroots development
+Release builds support Debian 13, Ubuntu 26.04 LTS, Arch Linux (and Arch-based
+systems such as EndeavourOS) and Fedora 42 or newer, with Qt 6 and wlroots development
 packages, not just the runtime libraries. Debian 12 / Ubuntu 24.04 ship Qt5 LayerShellQt
 and an older wlroots and are not supported by the release scripts.
 
-`newteller-compositor` needs `libwlroots-0.18-dev` on Debian 13 or
-`libwlroots-0.19-dev` on Ubuntu 26.04. `scripts/install-build-deps.sh` picks the right
-package for the detected distribution.
+`newteller-compositor` needs wlroots 0.18 or 0.19: `libwlroots-0.18-dev` on Debian 13,
+`libwlroots-0.19-dev` on Ubuntu 26.04, `wlroots0.19` (or `wlroots0.18`) on Arch,
+`pkgconfig(wlroots-0.19)` (or 0.18) on Fedora. `scripts/install-build-deps.sh` uses
+apt, pacman or dnf and picks the right packages for the detected distribution.
+
+Each distribution family has its own GitHub Actions workflow:
+`build-release.yml` (Debian 13, Ubuntu 26.04), `build-arch.yml` (Arch Linux,
+`archlinux:latest`) and `build-fedora.yml` (`fedora:latest`). Every one runs the Rust
+tests, the QML smoke test, the release build and the headless session test, and on
+`main` attaches its archive (`arch-x86_64`, `fedora<N>-x86_64`) to the commit release.
 
 From the repository root:
 

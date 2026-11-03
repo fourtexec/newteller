@@ -1,0 +1,111 @@
+name: Build NewTeller (Fedora)
+
+# The same checks as build-release.yml (Debian/Ubuntu), on Fedora: Rust
+# tests, the QML smoke test with the distribution's own Qt and PySide6, the
+# release build, and the headless session test. Pushes to main also attach
+# the Fedora archive to the commit release.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: newteller-fedora-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: fedora-x86_64
+    runs-on: ubuntu-24.04
+    container: fedora:latest
+    timeout-minutes: 45
+    steps:
+      - name: Install checkout prerequisites
+        run: dnf install -y git ca-certificates
+      - uses: actions/checkout@v4
+      - name: Install build and runtime dependencies
+        run: bash scripts/install-build-deps.sh
+      - name: Platform detection test
+        run: bash tests/platform.sh
+      - name: Rust tests
+        run: |
+          cd rust
+          cargo test --workspace
+      # PySide6 from PyPI, as on Debian/Ubuntu: its Qt has its own QML import
+      # path, so the test's stand-in for org.kde.layershell does not collide
+      # with the real module this system has installed.
+      - name: QML smoke test
+        run: |
+          python3 -m venv /tmp/newteller-venv
+          /tmp/newteller-venv/bin/pip install PySide6-Essentials
+          /tmp/newteller-venv/bin/python tests/qml_smoke.py
+      - name: Fetch IconKit (pinned)
+        run: |
+          git clone https://github.com/fourtexec/iconkit.git iconkit
+          git -C iconkit checkout --quiet 0ba06b922242c9dc99836a1dddd646e475ad4205
+      - name: Build and package
+        env:
+          NEWTELLER_ICONS_DIR: ${{ github.workspace }}/iconkit/icons
+        run: bash scripts/build-release.sh "$GITHUB_SHA"
+      - name: Session smoke test
+        shell: bash
+        run: |
+          log=/tmp/session-smoke.log
+          status=0
+          WLR_RENDERER=pixman PYTHON=/tmp/newteller-venv/bin/python \
+            bash -x tests/session_smoke.sh >"$log" 2>&1 || status=$?
+          if [[ $status -ne 0 ]]; then
+            cat "$log"
+            summary=$(awk '!/^\+ /' "$log" | tail -n 12 | tr '\n' '|' | sed -e 's/%/%25/g' -e 's/|/ | /g')
+            echo "::error title=Session smoke test (exit $status)::${summary: -900}"
+            exit "$status"
+          fi
+          awk '!/^\+ /' "$log"
+      - name: Preserve release archive
+        uses: actions/upload-artifact@v4
+        with:
+          name: newteller-fedora
+          path: |
+            dist/*.zip
+            dist/*.sha256
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Attach to the commit release
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: newteller-fedora
+          path: release-assets
+      - name: Upload to commit-${{ github.sha }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          COMMIT_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="commit-${COMMIT_SHA}"
+          # The Debian/Ubuntu workflow may be creating the same release right
+          # now; whoever comes second just uploads.
+          for attempt in 1 2 3 4 5; do
+            if gh release view "$tag" > /dev/null 2>&1; then
+              break
+            fi
+            gh release create "$tag" --target "$COMMIT_SHA" \
+              --title "commit ${COMMIT_SHA}" \
+              --notes "Automated build of commit ${COMMIT_SHA}. Extract the ZIP for your system and run sudo bash install.sh." \
+              --prerelease --latest=false && break || sleep $((attempt * 5))
+          done
+          gh release upload "$tag" release-assets/*.zip release-assets/*.sha256 --clobber
