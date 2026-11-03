@@ -32,6 +32,28 @@ QStringList listValue(QSettings &s, const QString &key)
     return textValue(s, key).split(QLatin1Char(';'), Qt::SkipEmptyParts);
 }
 
+// Localised keys: key[lang_COUNTRY], then key[lang], then key - for every
+// localisable field, not only Name (GenericName[ru], Comment[ru], ...).
+QString localizedText(QSettings &s, const QString &key, const QString &lang)
+{
+    QString value = textValue(s, QStringLiteral("%1[%2]").arg(key, lang));
+    if (value.isEmpty() && lang.contains(QLatin1Char('_')))
+        value = textValue(s, QStringLiteral("%1[%2]").arg(key, lang.section(QLatin1Char('_'), 0, 0)));
+    if (value.isEmpty())
+        value = textValue(s, key);
+    return value;
+}
+
+QStringList localizedList(QSettings &s, const QString &key, const QString &lang)
+{
+    QStringList value = listValue(s, QStringLiteral("%1[%2]").arg(key, lang));
+    if (value.isEmpty() && lang.contains(QLatin1Char('_')))
+        value = listValue(s, QStringLiteral("%1[%2]").arg(key, lang.section(QLatin1Char('_'), 0, 0)));
+    if (value.isEmpty())
+        value = listValue(s, key);
+    return value;
+}
+
 // Case folded name used for sorting and comparisons.
 QString foldName(const QString &name)
 {
@@ -306,23 +328,14 @@ bool AppModel::parseDesktop(const QString &path, AppEntry &out, const QString &l
     if (out.noDisplay || out.hidden)
         return false;
 
-    // Localisation: Name[lang_COUNTRY], then Name[lang], then Name.
-    QString name = textValue(s, QStringLiteral("Name[%1]").arg(lang));
-    if (name.isEmpty())
-        name = textValue(s, QStringLiteral("Name[%1]").arg(lang.section(QLatin1Char('_'), 0, 0)));
-    if (name.isEmpty())
-        name = textValue(s, QStringLiteral("Name"));
+    const QString name = localizedText(s, QStringLiteral("Name"), lang);
     if (name.isEmpty())
         return false;
 
     out.path = path;
     out.name = name;
-    out.genericName = textValue(s, QStringLiteral("GenericName[%1]").arg(lang));
-    if (out.genericName.isEmpty())
-        out.genericName = textValue(s, QStringLiteral("GenericName"));
-    out.comment = textValue(s, QStringLiteral("Comment[%1]").arg(lang));
-    if (out.comment.isEmpty())
-        out.comment = textValue(s, QStringLiteral("Comment"));
+    out.genericName = localizedText(s, QStringLiteral("GenericName"), lang);
+    out.comment = localizedText(s, QStringLiteral("Comment"), lang);
     out.exec = textValue(s, QStringLiteral("Exec"));
     out.tryExec = textValue(s, QStringLiteral("TryExec"));
     out.icon = textValue(s, QStringLiteral("Icon"));
@@ -331,9 +344,7 @@ bool AppModel::parseDesktop(const QString &path, AppEntry &out, const QString &l
     out.dbusActivatable = s.value(QStringLiteral("DBusActivatable"), false).toBool();
     out.startupWmClass = textValue(s, QStringLiteral("StartupWMClass"));
     out.categories = listValue(s, QStringLiteral("Categories"));
-    out.keywords = listValue(s, QStringLiteral("Keywords[%1]").arg(lang));
-    if (out.keywords.isEmpty())
-        out.keywords = listValue(s, QStringLiteral("Keywords"));
+    out.keywords = localizedList(s, QStringLiteral("Keywords"), lang);
     out.mimeTypes = listValue(s, QStringLiteral("MimeType"));
     out.onlyShowIn = listValue(s, QStringLiteral("OnlyShowIn"));
     out.notShowIn = listValue(s, QStringLiteral("NotShowIn"));
@@ -346,13 +357,12 @@ bool AppModel::parseDesktop(const QString &path, AppEntry &out, const QString &l
         if (!group.startsWith(QLatin1String("Desktop Action ")))
             continue;
         s.beginGroup(group);
-        const QString actionName = textValue(s, QStringLiteral("Name[%1]").arg(lang));
+        const QString actionName = localizedText(s, QStringLiteral("Name"), lang);
         const QString actionExec = textValue(s, QStringLiteral("Exec"));
         if (!actionExec.isEmpty()) {
             QVariantMap action;
             action.insert(QStringLiteral("id"), group.section(QLatin1Char(' '), 2));
-            action.insert(QStringLiteral("name"),
-                          actionName.isEmpty() ? textValue(s, QStringLiteral("Name")) : actionName);
+            action.insert(QStringLiteral("name"), actionName);
             action.insert(QStringLiteral("exec"), actionExec);
             action.insert(QStringLiteral("icon"), textValue(s, QStringLiteral("Icon")));
             out.actions.append(action);
