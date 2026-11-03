@@ -177,9 +177,9 @@ systems such as EndeavourOS) and Fedora 42 or newer, with Qt 6 and wlroots devel
 packages, not just the runtime libraries. Debian 12 / Ubuntu 24.04 ship Qt5 LayerShellQt
 and an older wlroots and are not supported by the release scripts.
 
-`newteller-compositor` needs wlroots 0.18 or 0.19: `libwlroots-0.18-dev` on Debian 13,
-`libwlroots-0.19-dev` on Ubuntu 26.04, `wlroots0.19` (or `wlroots0.18`) on Arch,
-`pkgconfig(wlroots-0.19)` (or 0.18) on Fedora. `scripts/install-build-deps.sh` uses
+`newteller-compositor` builds against wlroots 0.18, 0.19 or 0.20: `libwlroots-0.18-dev` on
+Debian 13, `libwlroots-0.19-dev` on Ubuntu 26.04, whichever of 0.20/0.19/0.18 Arch currently
+packages (`wlroots0.20` today), `pkgconfig(wlroots-0.19)` (or 0.18) on Fedora. `scripts/install-build-deps.sh` uses
 apt, pacman or dnf and picks the right packages for the detected distribution.
 
 Each distribution family has its own GitHub Actions workflow:

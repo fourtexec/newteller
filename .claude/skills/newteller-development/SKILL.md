@@ -16,9 +16,16 @@ and the checks that will fail if one is broken.
 - **Do not build locally.** The environment usually lacks the Debian/Ubuntu
   packages (Qt 6.8+, wlroots 0.18/0.19, LayerShellQt). Write code that is
   correct by inspection and verify it on GitHub Actions (see "Verifying").
-- Support **both wlroots 0.18 (Debian 13) and 0.19 (Ubuntu 26.04)**. Their
-  APIs differ (see "wlroots pitfalls"); guard with
-  `#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR >= 19`.
+- Support **wlroots 0.18 (Debian 13), 0.19 (Ubuntu 26.04, Fedora) and 0.20
+  (Arch)**. Their APIs differ (see "wlroots pitfalls"); guard with
+  `#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR >= 19` (0.20 takes the
+  0.19 branches; add `>= 20` guards when 0.20 needs its own).
+- Supported systems: Debian 13, Ubuntu 26.04 (apt), Arch Linux and
+  Arch-based (pacman), Fedora 42+ (dnf). `scripts/platform.sh` sets
+  `NEWTELLER_TARGET` and `NEWTELLER_FAMILY`; the install scripts branch on
+  the family. Arch renames wlroots packages over time, so
+  `newteller_arch_wlroots` picks the package by version; Fedora packages are
+  requested by `pkgconfig(...)` / soname provides.
 - Never use a wlroots struct field that 0.19 moves into `WLR_PRIVATE`.
 - C code compiles as C11 with GCC 14: an implicit function declaration is an
   **error**. Every function used before its definition needs a forward
@@ -166,8 +173,13 @@ logs, then delete the workflow in your next commit.
 
 ## Verifying (GitHub Actions)
 
-The workflow `.github/workflows/build-release.yml` runs on pull requests, on
-pushes to `main`, and on `workflow_dispatch` (use it for feature branches).
+Three workflows run on pull requests, pushes to `main` and
+`workflow_dispatch`: `build-release.yml` (Debian 13, Ubuntu 26.04),
+`build-arch.yml` (`archlinux:latest`) and `build-fedora.yml`
+(`fedora:latest`). A new workflow file can only be dispatched once it is on
+`main`; test it through a pull request. All of them use PySide6 from PyPI in
+a venv for the QML smoke test: a system PySide6 sees the installed
+`org.kde.layershell` module, which collides with the test's stand-in.
 Per target (Debian 13, Ubuntu 26.04) it runs, in order: dependency install,
 `cargo test`, **QML smoke (newest Qt)**, **QML smoke (Qt 6.8 parser)**, build
 and package, **session smoke test**. A failing QML smoke stops the job before
