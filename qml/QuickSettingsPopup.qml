@@ -29,6 +29,8 @@ DropdownWindow {
             rows++;
         if (System.batteryPresent)
             rows++;
+        if (Session.nightLightAvailable)
+            rows++;
         return rows + 1 /* dnd */ + 1 /* footer separator */;
     }
 
@@ -257,6 +259,40 @@ DropdownWindow {
             }
         }
 
+        // --- night light (wlsunset) ----------------------------------------
+        RowLayout {
+            objectName: "nightLightRow"
+            Layout.fillWidth: true
+            visible: Session.nightLightAvailable
+            spacing: 8
+
+            Item {
+                width: 34
+                height: 34
+                Image {
+                    anchors.centerIn: parent
+                    width: 18
+                    height: 18
+                    sourceSize.width: 36
+                    sourceSize.height: 36
+                    fillMode: Image.PreserveAspectFit
+                    source: Shell.tintedIcon(
+                                Settings.values["nightLight.enabled"] ? "moon" : "sun",
+                                Theme.foreground)
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                text: "Night light"
+                color: Theme.foreground
+                font.family: Theme.fontFamily
+                font.pointSize: Theme.fontSize
+            }
+            SettingsSwitch {
+                settingKey: "nightLight.enabled"
+            }
+        }
+
         // --- battery ----------------------------------------------------
         RowLayout {
             Layout.fillWidth: true
@@ -315,6 +351,12 @@ DropdownWindow {
                 onClicked: { Shell.openSettings(); popup.hide(); }
             }
             Item { Layout.fillWidth: true }
+            TaskButton {
+                objectName: "quickLockButton"
+                iconName: "lock"
+                label: "Lock"
+                onClicked: { popup.hide(); Shell.lock(); }
+            }
             TaskButton {
                 iconName: "bell"
                 label: "History"

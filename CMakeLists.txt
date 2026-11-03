@@ -94,6 +94,7 @@ qt_add_executable(newteller
     src/notifications.cpp
     src/tray.cpp
     src/quicksettings.cpp
+    src/sessionservices.cpp
 )
 
 target_compile_definitions(newteller PRIVATE NEWTELLER_VERSION="${PROJECT_VERSION}")

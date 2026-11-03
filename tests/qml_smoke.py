@@ -778,6 +778,61 @@ class Tray(QObject):
         self.calls.append(("menuEvent", item_id, menu_item_id, event))
 
 
+class Session(QObject):
+    """Stand-in for the Session context property (src/sessionservices.h)."""
+
+    compositorChanged = Signal()
+    keyboardChanged = Signal()
+    lockedChanged = Signal()
+    nightLightChanged = Signal()
+
+    compositorConnected = Property(bool, lambda self: True, notify=compositorChanged)
+    # Two layouts, so the panel shows its layout indicator.
+    keyboardLayouts = Property("QVariantList", lambda self: ["us", "ru"], notify=keyboardChanged)
+    keyboardLayout = Property(int, lambda self: 1, notify=keyboardChanged)
+    keyboardLayoutLabel = Property(str, lambda self: "RU", notify=keyboardChanged)
+    keyboardLayoutName = Property(str, lambda self: "Russian", notify=keyboardChanged)
+    locked = Property(bool, lambda self: False, notify=lockedChanged)
+    lockAvailable = Property(bool, lambda self: True, constant=True)
+    idleAvailable = Property(bool, lambda self: True, constant=True)
+    nightLightAvailable = Property(bool, lambda self: True, constant=True)
+    nightLightRunning = Property(bool, lambda self: False, notify=nightLightChanged)
+    polkitAgent = Property(str, lambda self: "/usr/bin/lxpolkit", constant=True)
+    displaySettingsTool = Property(str, lambda self: "wdisplays", constant=True)
+
+    def __init__(self):
+        super().__init__()
+        self.calls = []
+
+    @Slot()
+    def nextKeyboardLayout(self):
+        self.calls.append(("nextKeyboardLayout",))
+
+    @Slot(int)
+    def setKeyboardLayout(self, index):
+        self.calls.append(("setKeyboardLayout", index))
+
+    @Slot()
+    def lock(self):
+        self.calls.append(("lock",))
+
+    @Slot()
+    def screenOff(self):
+        self.calls.append(("screenOff",))
+
+    @Slot()
+    def openDisplaySettings(self):
+        self.calls.append(("openDisplaySettings",))
+
+    @Slot()
+    def logout(self):
+        self.calls.append(("logout",))
+
+    @Slot(str, result=str)
+    def layoutDisplayName(self, code):
+        return {"us": "English (US)", "ru": "Russian"}.get(code, code)
+
+
 class Quick(QObject):
     """Stand-in for the QuickSettings context property (src/quicksettings.h)."""
 
@@ -919,12 +974,12 @@ def main():
     shell, plugin_manager = Shell(desktop_dir, work), Plugins(plugins)
     system, window_list = System(), Windows()
     notifications, file_portal = Notifications(), FilePortal()
-    tray, quick = Tray(), Quick()
+    tray, quick, session = Tray(), Quick(), Session()
     engine = QQmlApplicationEngine()
     for name, obj in (("Settings", settings), ("Theme", theme), ("Apps", apps), ("Shell", shell),
                       ("Plugins", plugin_manager), ("System", system), ("Windows", window_list),
                       ("Notifications", notifications), ("FilePortal", file_portal),
-                      ("Tray", tray), ("Quick", quick)):
+                      ("Tray", tray), ("Quick", quick), ("Session", session)):
         engine.rootContext().setContextProperty(name, obj)
 
     failures = []
@@ -1544,6 +1599,13 @@ def main():
             check(bool(settings._values.get("notifications.doNotDisturb")) != dnd,
                   "right-clicking the bell toggles do-not-disturb")
             check(not centres[0].isVisible(), "and does not open the notification centre")
+
+            # With two layouts the panel shows the current one; a click asks
+            # the compositor for the next.
+            session.calls.clear()
+            press("layoutButton")
+            check(("nextKeyboardLayout",) in session.calls,
+                  "clicking the layout indicator switches the keyboard layout")
             settings._values["notifications.doNotDisturb"] = dnd
             settings.valuesChanged.emit()
             QTest.qWait(50)

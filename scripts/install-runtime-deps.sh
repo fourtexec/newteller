@@ -39,7 +39,7 @@ apt-get install -y --no-install-recommends "${packages[@]}"
 optional=(
     swaylock swayidle wlsunset
     xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk
-    lxpolkit procps
+    lxpolkit procps wdisplays
 )
 available=()
 for package in "${optional[@]}"; do

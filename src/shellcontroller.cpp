@@ -400,11 +400,27 @@ QVariantMap ShellController::diagnostics() const
 
 void ShellController::lock() const
 {
+    // Inside a NewTeller session the compositor starts the locker (and
+    // refuses a second one); elsewhere newteller-lock or logind does it.
+    if (!qEnvironmentVariableIsEmpty("NEWTELLER_IPC")
+        && QProcess::startDetached(QStringLiteral("newteller-compositor"),
+                                   {QStringLiteral("--msg"), QStringLiteral("lock")})) {
+        return;
+    }
+    if (QProcess::startDetached(QStringLiteral("newteller-lock"), {}))
+        return;
     QProcess::startDetached(QStringLiteral("loginctl"), {QStringLiteral("lock-session")});
 }
 
 void ShellController::logout() const
 {
+    // Ending the compositor ends the session cleanly (applications get
+    // their Wayland connection closed); terminate-user is the fallback.
+    if (!qEnvironmentVariableIsEmpty("NEWTELLER_IPC")
+        && QProcess::startDetached(QStringLiteral("newteller-compositor"),
+                                   {QStringLiteral("--msg"), QStringLiteral("exit")})) {
+        return;
+    }
     QProcess::startDetached(QStringLiteral("loginctl"), {QStringLiteral("terminate-user"), userName()});
 }
 

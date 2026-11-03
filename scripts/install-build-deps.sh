@@ -28,7 +28,7 @@ apt-get install -y --no-install-recommends \
     libxcb-render-util0-dev libxcb-shm0-dev libxcb-xfixes0-dev \
     libxcb-xinput-dev libxcb-composite0-dev libxcb-ewmh-dev \
     libxcb-errors-dev libxcb-icccm4-dev libxcb-res0-dev libxcb-image0-dev \
-    rustc cargo python3 python3-venv python3-pil grim wlrctl \
+    rustc cargo python3 python3-venv python3-pil grim wlrctl wlr-randr \
     "$wlroots_package"
 
 bash "$root/scripts/install-runtime-deps.sh"

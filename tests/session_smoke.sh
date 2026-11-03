@@ -126,6 +126,46 @@ sleep 2
 XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" grim -o HEADLESS-1 "$after"
 "$python" "$root/tests/session_check.py" "$before" "$after"
 
+# The control socket: the shell's settings, the idle manager (swayidle) and
+# scripts reach the compositor through `newteller-compositor --msg`.
+msg() {
+    XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" "$compositor" --msg "$@"
+}
+reply=$(msg ping || true)
+if [[ $reply != 'ok pong' ]]; then
+    echo "the control socket did not answer ping ($reply)" >&2
+    exit 1
+fi
+reply=$(msg outputs || true)
+if [[ $reply != *'HEADLESS-1:1280x800@'* ]]; then
+    echo "the control socket lists no headless output ($reply)" >&2
+    exit 1
+fi
+msg reload >/dev/null
+reply=$(msg locked || true)
+if [[ $reply != 'ok 0' ]]; then
+    echo "a fresh session reports itself locked ($reply)" >&2
+    exit 1
+fi
+# Blank and wake the screen the way the idle manager does.
+msg dpms off >/dev/null
+msg dpms on >/dev/null
+
+# wlr-output-management: a display tool changes the scale, the compositor
+# applies it and reports it back.
+if command -v wlr-randr >/dev/null 2>&1; then
+    XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" \
+        wlr-randr --output HEADLESS-1 --scale 2
+    reply=$(msg outputs || true)
+    if [[ $reply != *':2.00:on'* ]]; then
+        echo "wlr-randr could not change the output scale ($reply)" >&2
+        exit 1
+    fi
+    XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" \
+        wlr-randr --output HEADLESS-1 --scale 1
+fi
+sleep 1
+
 # Exercise the Print-key helper too: it captures the same output through
 # wlr-screencopy and writes a PNG under XDG_PICTURES_DIR/Screenshots.
 if command -v grim >/dev/null 2>&1; then

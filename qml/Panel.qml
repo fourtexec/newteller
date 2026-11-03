@@ -60,6 +60,9 @@ Window {
     readonly property int dockIconSize: Settings.values["dock.iconSize"] || 28
     // The quick settings cluster at the end of the bar (bell + indicators).
     readonly property bool showIndicators: Settings.values["panel.indicators"] !== false
+    // The layout indicator, when the compositor reports more than one layout.
+    readonly property bool showKeyboardLayout: Session.keyboardLayouts.length > 1
+                                               && Settings.values["keyboard.showIndicator"] !== false
     // The tray shows only when the shell won the StatusNotifierWatcher name
     // and at least one item registered.
     readonly property bool showTray: Tray.available
@@ -842,6 +845,53 @@ Window {
         }
     }
 
+    // --- keyboard layout: shown when more than one layout is configured -----
+    // Click (or Super+Space) switches to the next layout; the compositor owns
+    // the keyboard, the shell only shows and asks.
+    component LayoutButton: Rectangle {
+        id: layoutButton
+        objectName: "layoutButton"
+
+        Layout.alignment: Qt.AlignVCenter | Qt.AlignHCenter
+        implicitWidth: Math.max(30, layoutLabel.implicitWidth + 12)
+        height: Math.min(panel.barThickness - 10, 34)
+        radius: Theme.radius
+        color: layoutHover.hovered
+               ? Qt.rgba(panel.panelTextColor.r, panel.panelTextColor.g, panel.panelTextColor.b, 0.08)
+               : "transparent"
+        Behavior on color {
+            ColorAnimation { duration: motion.micro }
+        }
+
+        HoverHandler {
+            id: layoutHover
+            onHoveredChanged: {
+                if (hovered)
+                    panel.showToolTip(layoutButton, Session.keyboardLayoutName
+                                      + " - Super+Space switches");
+                else
+                    panel.hideToolTip();
+            }
+        }
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                panel.hideToolTip();
+                Session.nextKeyboardLayout();
+            }
+        }
+        Text {
+            id: layoutLabel
+            anchors.centerIn: parent
+            text: Session.keyboardLayoutLabel
+            color: panel.panelTextColor
+            font.family: Theme.fontFamily
+            font.pointSize: Theme.fontSize - 1
+            font.bold: true
+        }
+    }
+
     // --- bell: the notification centre --------------------------------------
     component BellButton: Rectangle {
         id: bellButton
@@ -1169,6 +1219,9 @@ Window {
                     PluginSlot {}
 
                     TrayBox {}
+                    LayoutButton {
+                        visible: panel.showKeyboardLayout
+                    }
                     BellButton {
                         visible: panel.showIndicators
                     }
@@ -1223,6 +1276,9 @@ Window {
                     PluginSlot {}
 
                     TrayBox {}
+                    LayoutButton {
+                        visible: panel.showKeyboardLayout
+                    }
                     BellButton {
                         visible: panel.showIndicators
                     }
