@@ -71,6 +71,8 @@ public:
     Q_INVOKABLE void toggleClipboard();
     // Super+Tab: the window overview.
     Q_INVOKABLE void toggleTaskView();
+    // Ctrl+Shift+Esc / Ctrl+Alt+Esc: the force-quit dialog.
+    Q_INVOKABLE void showForceQuit();
     Q_INVOKABLE void openConfig() const;
     // Opens the path in the file manager (or its handler for directories).
     Q_INVOKABLE void openPath(const QString &path) const;
@@ -115,6 +117,7 @@ signals:
     void quickSettingsToggleRequested();
     void clipboardToggleRequested();
     void taskViewToggleRequested();
+    void forceQuitRequested();
 
 private:
     QString expandHome(const QString &path) const;

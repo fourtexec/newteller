@@ -3,6 +3,6 @@ Type=Application
 Name=NewTeller
 Comment=Run the NewTeller shell inside an existing desktop (development)
 Exec=newteller
-Icon=preferences-desktop
+Icon=preferences-system
 Categories=System;
 NoDisplay=true

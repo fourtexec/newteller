@@ -27,7 +27,10 @@ Window {
     readonly property string panelPosition: Settings.values["panel.position"] || "bottom"
     readonly property bool vertical: panelPosition === "left" || panelPosition === "right"
     readonly property bool autoHide: Settings.values["panel.autoHide"] === true
-    readonly property int barThickness: Settings.values["panel.height"] || 48
+    // The bar is never thinner than its dock needs: a bigger icon size or
+    // more rows make it grow instead of clipping the icons.
+    readonly property int barThickness: Math.max(Settings.values["panel.height"] || 48,
+                                                 dockNeededThickness)
     readonly property int edgeMargin: Settings.values["panel.margin"] || 0
     readonly property int autoHideDelay: Math.max(0, Number(Settings.values["panel.autoHideDelay"] ?? 400))
     // Kept true for autoHideDelay after the pointer leaves, so the bar does
@@ -152,10 +155,22 @@ Window {
     readonly property bool dockMultiRow: Settings.values["dock.multiRow"] === true && !vertical
     readonly property bool dockScrollable: Settings.values["dock.scrollable"] !== false
     readonly property int dockIconSpacing: Math.max(0, Number(Settings.values["dock.iconSpacing"] ?? 4))
+    // Inside the bar: the floating pill is 4 px smaller than the bar and
+    // padded by dockPadding on each side.
+    readonly property int dockNeededThickness: dockMultiRow
+        ? dockRows * (dockIconSize + 8) + dockIconSpacing * (dockRows - 1) + 4 + 2 * dockPadding
+        : dockIconSize + 4 + 2 * dockPadding
     // Button height of a wrapped dock; -1 means "fill the strip".
     readonly property int dockButtonHeight: dockMultiRow
-        ? Math.max(24, Math.floor((barThickness - 8 - dockIconSpacing * (dockRows - 1)) / dockRows))
+        ? Math.max(20, Math.floor((barThickness - 4 - 2 * dockPadding
+                                   - dockIconSpacing * (dockRows - 1)) / dockRows))
         : -1
+    // A wrapped dock is as wide as its longest row, never wider than the
+    // room the bar has.
+    readonly property int dockWrapWidth: Math.ceil(Math.max(1, dockEntries.length) / dockRows)
+                                         * (effectiveIconSize + 16 + dockIconSpacing) + 8
+    // A vertical dock leaves room for the start button, tray and clock.
+    readonly property int dockMaxHeight: Math.max(120, panel.height - 220)
     // 0 = start of the strip, 1 = centred, 2 = end (dock.position/panel.centerDock).
     readonly property int dockAlign: {
         if (centerDock || dockPositionInPanel === "center")
@@ -562,6 +577,8 @@ Window {
     }
 
     Component.onCompleted: rebuildDock()
+    onDockIconSizeChanged: updateAdaptiveDock(dockEntries.length)
+    onVerticalChanged: updateAdaptiveDock(dockEntries.length)
     Connections {
         target: Windows
         function onWindowsChanged() { panel.rebuildDock(); dockMenu.refreshEntry(); }
@@ -610,6 +627,9 @@ Window {
     component DockApps: Repeater {
         id: dockAppsRepeater
         property bool backgroundZone: false
+        // Height of a button (and its width on a vertical bar, where the
+        // buttons are square), given by the strip.
+        property real extent: 32
         model: backgroundZone ? panel.dockBackgroundEntries : panel.dockMainEntries
 
         delegate: TaskButton {
@@ -620,7 +640,8 @@ Window {
             readonly property string appName: entry.app && entry.app.name ? entry.app.name
                                                                           : (entry.title || "Application")
 
-            height: panel.dockButtonHeight > 0 ? panel.dockButtonHeight : dockStrip.height
+            height: Math.round(dockAppsRepeater.extent)
+            width: panel.vertical ? Math.round(dockAppsRepeater.extent) : implicitWidth
             reorderable: entry.pinned === true
             reordering: panel.dockDraggingAppId.length > 0
                         && panel.dockDraggingAppId === entry.appId
@@ -629,9 +650,8 @@ Window {
             label: panel.showDockLabels && entry.title && entry.title.length > 0
                    ? entry.title : ""
             dockLabel: panel.dockShowAppLabels ? dockButton.appName : ""
-            iconSize: panel.dockMultiRow
-                       ? Math.min(panel.effectiveIconSize, Math.max(14, panel.dockButtonHeight - 14))
-                       : panel.effectiveIconSize
+            iconSize: Math.max(14, Math.min(panel.effectiveIconSize,
+                                            Math.round(dockAppsRepeater.extent) - 4))
             showDockLabels: panel.dockShowAppLabels
             dockIconColorMode: panel.dockIconColorMode
             dockCustomIconColor: panel.dockCustomIconColor
@@ -692,9 +712,10 @@ Window {
     component BackgroundSeparator: Rectangle {
         // Explicit size: the strip uses a Row/Column/Flow, where Layout hints
         // are ignored and the divider would collapse to zero pixels.
+        property real extent: 32
         visible: panel.separateBackground && panel.dockBackgroundEntries.length > 0
-        width: panel.vertical ? panel.dockIconSize + 8 : 1
-        height: panel.vertical ? 1 : Math.min(30, panel.dockIconSize + 8)
+        width: panel.vertical ? Math.round(extent) : 1
+        height: panel.vertical ? 1 : Math.round(Math.min(extent, panel.dockIconSize + 8))
         Layout.preferredWidth: width
         Layout.preferredHeight: height
         Layout.alignment: Qt.AlignVCenter
@@ -764,7 +785,7 @@ Window {
     component Separator: Rectangle {
         Layout.preferredWidth: panel.vertical ? 24 : 1
         Layout.preferredHeight: panel.vertical ? 1 : 24
-        Layout.alignment: Qt.AlignVCenter
+        Layout.alignment: Qt.AlignCenter
         color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.8)
     }
 
@@ -772,8 +793,11 @@ Window {
     // Icons of applications that registered with our StatusNotifierWatcher:
     // left click activates, middle click secondary-activates, right click
     // asks the item to open its own context menu, and the wheel scrolls.
-    component TrayBox: Row {
+    // A column on a vertical bar: a row there was wider than the bar and
+    // was cut off.
+    component TrayBox: Grid {
         spacing: 2
+        columns: panel.vertical ? 1 : Math.max(1, Tray.count)
         visible: panel.showTray
         Layout.alignment: Qt.AlignVCenter | Qt.AlignHCenter
 
@@ -1193,82 +1217,111 @@ Window {
     }
 
     // Scrollable dock strip: it only becomes interactive when the buttons do
-    // not fit, so nothing steals wheel events on a quiet desktop. The strip
-    // takes all the leftover width of the bar (like a spacer would), so the
-    // start button keeps its place at the very left. It always fills the bar
-    // height: a Flickable has no implicit height, and without fillHeight the
-    // whole dock once collapsed to zero-height, invisible buttons.
+    // not fit, so nothing steals wheel events on a quiet desktop.
+    //
+    // Only the layout in use is created (a Loader picks a Row, a Column or a
+    // Flow): the three used to exist at once, three times the buttons, and
+    // the hidden ones sized themselves from the strip that sized itself from
+    // them - a binding loop that kept a vertical dock busy and clipped.
     component DockStrip: Flickable {
         id: dockStrip
-        Layout.fillWidth: false
+        // Height of one button; on a vertical bar the buttons are squares as
+        // wide as the strip.
+        readonly property real buttonExtent: panel.vertical ? width
+                                             : (panel.dockButtonHeight > 0 ? panel.dockButtonHeight
+                                                                           : height)
+        Layout.fillWidth: panel.vertical
         Layout.fillHeight: !panel.vertical
-        Layout.alignment: Qt.AlignVCenter
-        Layout.leftMargin: Math.max(0, panel.panelSpacing - 4)
-        Layout.rightMargin: Math.max(0, panel.panelSpacing - 4)
+        Layout.alignment: Qt.AlignCenter
+        Layout.leftMargin: panel.vertical ? 0 : Math.max(0, panel.panelSpacing - 4)
+        Layout.rightMargin: panel.vertical ? 0 : Math.max(0, panel.panelSpacing - 4)
+        Layout.topMargin: panel.vertical ? Math.max(0, panel.panelSpacing - 4) : 0
+        Layout.bottomMargin: panel.vertical ? Math.max(0, panel.panelSpacing - 4) : 0
         Layout.preferredWidth: panel.vertical
-                               ? Math.max(24, panel.barThickness - 24)
+                               ? -1
                                : (panel.dockMultiRow
-                                  ? panel.dockMaxWidth
+                                  ? Math.min(panel.dockWrapWidth, panel.dockMaxWidth)
                                   : Math.min(contentWidth, panel.dockMaxWidth))
-        Layout.preferredHeight: panel.vertical ? Math.min(contentHeight, panel.height - 180) : -1
+        Layout.preferredHeight: panel.vertical ? Math.min(contentHeight, panel.dockMaxHeight) : -1
         Layout.minimumWidth: 0
-        Layout.maximumWidth: panel.dockMaxWidth
+        Layout.maximumWidth: panel.vertical ? Number.POSITIVE_INFINITY : panel.dockMaxWidth
         clip: true
-        contentWidth: panel.dockMultiRow ? width : (panel.vertical ? stripColumn.width : stripRow.width)
-        contentHeight: panel.dockMultiRow ? stripFlow.height
-                                          : (panel.vertical ? stripColumn.height : stripRow.height)
+        contentWidth: stripLoader.item ? stripLoader.item.width : 0
+        contentHeight: stripLoader.item ? stripLoader.item.height : 0
         // Only scroll when the setting allows it; when the buttons fit, the
         // wheel belongs to the application underneath.
-        readonly property bool overflowing: panel.vertical
-                                            ? contentHeight > height
-                                            : (panel.dockMultiRow ? contentHeight > height
-                                                                  : contentWidth > width)
+        readonly property bool overflowing: panel.vertical || panel.dockMultiRow
+                                            ? contentHeight > height + 1
+                                            : contentWidth > width + 1
         interactive: panel.dockScrollable && overflowing
+        flickableDirection: panel.vertical || panel.dockMultiRow ? Flickable.VerticalFlick
+                                                                 : Flickable.HorizontalFlick
 
         WheelHandler {
             enabled: dockStrip.interactive
-            orientation: panel.vertical ? Qt.Vertical : Qt.Horizontal
+            orientation: panel.vertical || panel.dockMultiRow ? Qt.Vertical : Qt.Horizontal
             acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
         }
 
-        // One row, aligned at the start, centre or end of the strip.
-        Row {
-            id: stripRow
-            visible: !panel.vertical && !panel.dockMultiRow
-            spacing: panel.dockIconSpacing
-            y: (dockStrip.height - height) / 2
-            x: panel.dockAlign === 1 ? Math.max(0, (dockStrip.width - width) / 2)
-               : panel.dockAlign === 2 ? Math.max(0, dockStrip.width - width) : 0
+        Loader {
+            id: stripLoader
+            sourceComponent: panel.vertical ? columnStrip
+                             : (panel.dockMultiRow ? flowStrip : rowStrip)
+            // Whole pixels, so the icons stay sharp and the dock sits exactly
+            // in the middle.
+            x: {
+                if (!item)
+                    return 0;
+                if (panel.vertical || panel.dockMultiRow)
+                    return Math.max(0, Math.round((dockStrip.width - item.width) / 2));
+                return panel.dockAlign === 1 ? Math.max(0, Math.round((dockStrip.width - item.width) / 2))
+                     : panel.dockAlign === 2 ? Math.max(0, Math.round(dockStrip.width - item.width)) : 0;
+            }
+            y: {
+                if (!item)
+                    return 0;
+                if (!panel.vertical)
+                    return Math.max(0, Math.round((dockStrip.height - item.height) / 2));
+                return panel.dockAlign === 1 ? Math.max(0, Math.round((dockStrip.height - item.height) / 2))
+                     : panel.dockAlign === 2 ? Math.max(0, Math.round(dockStrip.height - item.height)) : 0;
+            }
+        }
 
-            DockApps {}
-            BackgroundSeparator {}
-            DockApps { backgroundZone: true }
+        // One row, aligned at the start, centre or end of the strip.
+        Component {
+            id: rowStrip
+            Row {
+                spacing: panel.dockIconSpacing
+                DockApps { extent: dockStrip.buttonExtent }
+                BackgroundSeparator {
+                    extent: dockStrip.buttonExtent
+                    anchors.verticalCenter: parent.verticalCenter
+                }
+                DockApps { backgroundZone: true; extent: dockStrip.buttonExtent }
+            }
         }
 
         // Vertical panel: the dock runs down the edge.
-        Column {
-            id: stripColumn
-            visible: panel.vertical
-            spacing: panel.dockIconSpacing
-            x: (dockStrip.width - width) / 2
-            y: panel.dockAlign === 1 ? Math.max(0, (dockStrip.height - height) / 2)
-               : panel.dockAlign === 2 ? Math.max(0, dockStrip.height - height) : 0
-
-            DockApps {}
-            BackgroundSeparator {}
-            DockApps { backgroundZone: true }
+        Component {
+            id: columnStrip
+            Column {
+                spacing: panel.dockIconSpacing
+                DockApps { extent: dockStrip.buttonExtent }
+                BackgroundSeparator { extent: dockStrip.buttonExtent }
+                DockApps { backgroundZone: true; extent: dockStrip.buttonExtent }
+            }
         }
 
-        // Multi-row dock: the buttons wrap inside the bar height.
-        Flow {
-            id: stripFlow
-            visible: panel.dockMultiRow
-            width: dockStrip.width
-            spacing: panel.dockIconSpacing
-
-            DockApps {}
-            BackgroundSeparator {}
-            DockApps { backgroundZone: true }
+        // Multi-row dock: the buttons wrap inside the (taller) bar.
+        Component {
+            id: flowStrip
+            Flow {
+                width: dockStrip.width
+                spacing: panel.dockIconSpacing
+                DockApps { extent: dockStrip.buttonExtent }
+                BackgroundSeparator { extent: dockStrip.buttonExtent }
+                DockApps { backgroundZone: true; extent: dockStrip.buttonExtent }
+            }
         }
     }
 
@@ -1283,10 +1336,13 @@ Window {
             // dock material and the reserved edge strip remains full-width.
             Item {
                 id: dockCluster
-                anchors.centerIn: parent
-                width: Math.min(horizontalRoot.width - 8,
-                                dockLayout.implicitWidth + panel.dockPadding * 2)
+                // Whole pixels: centring a fractional width put the dock half
+                // a pixel off and blurred it.
+                width: Math.round(Math.min(horizontalRoot.width - 8,
+                                           dockLayout.implicitWidth + panel.dockPadding * 2))
                 height: Math.max(34, panel.barThickness - 4)
+                x: Math.round((horizontalRoot.width - width) / 2)
+                y: Math.round((horizontalRoot.height - height) / 2)
                 Component.onCompleted: {
                     panel.dockPill = dockCluster;
                     Qt.callLater(panel.updateBlur);
@@ -1313,6 +1369,8 @@ Window {
                     StartButton {
                         Layout.leftMargin: Math.max(0, panel.panelLeftSpacing - 4)
                     }
+                    // (The clock mirrors this margin, so both ends of the pill
+                    // have the same padding.)
                     WorkspaceStrip {
                         visible: panel.showWorkspaces
                     }
@@ -1335,8 +1393,7 @@ Window {
                     }
 
                     ClockButton {
-                        Layout.rightMargin: Math.max(4, panel.panelRightSpacing)
-                        Layout.leftMargin: 4
+                        Layout.rightMargin: Math.max(0, panel.panelRightSpacing - 4)
                     }
                 }
             }
@@ -1351,10 +1408,17 @@ Window {
 
             Item {
                 id: verticalDockCluster
-                anchors.centerIn: parent
                 width: Math.max(34, panel.barThickness - 4)
-                height: Math.min(verticalRoot.height - 8,
-                                 verticalLayout.implicitHeight + panel.dockPadding * 2)
+                height: Math.round(Math.min(verticalRoot.height - 8,
+                                            verticalLayout.implicitHeight + panel.dockPadding * 2))
+                x: Math.round((verticalRoot.width - width) / 2)
+                y: Math.round((verticalRoot.height - height) / 2)
+                Component.onCompleted: {
+                    panel.dockPill = verticalDockCluster;
+                    Qt.callLater(panel.updateBlur);
+                }
+                onHeightChanged: Qt.callLater(panel.updateBlur)
+                onYChanged: Qt.callLater(panel.updateBlur)
 
                 DockSurface {
                     anchors.fill: parent

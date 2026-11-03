@@ -125,6 +125,11 @@ QtObject {
         screen: Qt.application.screens[0]
     }
 
+    // Ctrl+Shift+Esc: end a frozen application.
+    readonly property ForceQuitWindow forceQuit: ForceQuitWindow {
+        screen: Qt.application.screens[0]
+    }
+
     readonly property WifiPopup wifiPopup: WifiPopup {
         screen: Qt.application.screens[0]
     }
@@ -220,6 +225,10 @@ QtObject {
         function onTaskViewToggleRequested() {
             root.startMenu.hide();
             root.taskView.toggle();
+        }
+        function onForceQuitRequested() {
+            root.startMenu.hide();
+            root.forceQuit.show();
         }
         function onClipboardToggleRequested() {
             root.startMenu.hide();

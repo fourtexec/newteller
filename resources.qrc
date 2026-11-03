@@ -41,6 +41,8 @@
     <file>qml/WifiPopup.qml</file>
     <file>qml/BluetoothPopup.qml</file>
     <file>qml/TaskView.qml</file>
+    <file>qml/ForceQuitWindow.qml</file>
+    <file>data/wallpapers/default.jpg</file>
     <file>themes/default.json</file>
     <file>themes/light.json</file>
     <file>themes/nord.json</file>

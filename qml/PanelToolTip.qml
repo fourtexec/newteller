@@ -77,6 +77,15 @@ Window {
             visible = true;
         }
         opacity = 1;
+        // A tooltip never stays up on its own: if the pointer left without
+        // a leave event (another surface took it), it goes after a while.
+        lingerTimer.restart();
+    }
+
+    Timer {
+        id: lingerTimer
+        interval: 4000
+        onTriggered: tipWindow.hide()
     }
 
     function hide() {

@@ -45,6 +45,11 @@ fi
 
 runtime=$(mktemp -d "${TMPDIR:-/tmp}/newteller-session-test.XXXXXX")
 chmod 700 "$runtime"
+# A private configuration: the frame checks look for the panel against the
+# plain themed gradient, so the default wallpaper is switched off here.
+export XDG_CONFIG_HOME="$runtime/config"
+mkdir -p "$XDG_CONFIG_HOME/newteller"
+printf '{\n    "desktop.defaultWallpaper": false\n}\n' > "$XDG_CONFIG_HOME/newteller/shell.json"
 socket=newteller-smoke
 log="$runtime/compositor.log"
 before="$runtime/before.png"

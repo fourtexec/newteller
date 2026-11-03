@@ -182,3 +182,4 @@ install(FILES data/org.newteller.Shell.desktop DESTINATION ${CMAKE_INSTALL_DATAD
 install(FILES data/newteller-session.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/wayland-sessions RENAME newteller.desktop)
 install(FILES data/newteller-autostart.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/newteller)
 install(FILES data/newteller-portals.conf DESTINATION ${CMAKE_INSTALL_DATADIR}/xdg-desktop-portal)
+install(FILES data/wallpapers/default.jpg DESTINATION ${CMAKE_INSTALL_DATADIR}/backgrounds/newteller)

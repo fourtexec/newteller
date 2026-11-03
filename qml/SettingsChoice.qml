@@ -10,6 +10,11 @@ Flow {
     property var value: null
     signal changed(var value)
 
+    // Without an explicit width a Flow never wraps; take the settings row's
+    // width (the row is the slot's parent), capped so the title keeps room.
+    readonly property real rowWidth: parent && parent.parent && parent.parent.width > 0
+                                     ? parent.parent.width : 480
+    width: Math.max(120, Math.min(480, rowWidth - 40))
     spacing: 6
 
     function refresh() {

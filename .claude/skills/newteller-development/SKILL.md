@@ -41,7 +41,7 @@ and the checks that will fail if one is broken.
 | `src/session/config.c/.h` | `compositor.conf` parser (`key = value`), `/etc/default/keyboard`, `outputs.conf`. Pure C, no wlroots. |
 | `src/main.cpp` | Shell entry point; creates the C++ services and exposes them to QML as context properties. |
 | `src/settings.cpp/.h` | `Settings` (shell.json). **Every key needs a default here.** |
-| `src/sessionservices.cpp/.h` | `Session`: talks to the compositor over the control socket, writes `compositor.conf` / `lock.conf`, runs swayidle, wlsunset, polkit agent, XDG autostart, Wi-Fi (nmcli), overview/display queries, blur regions. |
+| `src/sessionservices.cpp/.h` | `Session`: talks to the compositor over the control socket, writes `compositor.conf` / `lock.conf`, runs swayidle, wlsunset, polkit agent, XDG autostart, Wi-Fi (NetworkManager over D-Bus, with `wifiStatus` diagnostics), overview/display queries, blur regions, hung windows / force quit, `pointerPressed` (clicks anywhere, closes cards). |
 | `src/shellcontroller.cpp/.h` | `Shell`: D-Bus object `org.newteller.Shell` (the compositor calls it with `gdbus` for Super shortcuts), icons, lock/logout. |
 | `src/quicksettings.*` `bluetooth.*` `clipboardhistory.*` `tray.*` `notifications.*` `windowlist.*` `systemmonitor.*` `theme.*` `appmodel.*` `plugins.*` | `Quick`, `Bluetooth`, `Clipboard`, `Tray`, `Notifications`, `Windows`, `System`, `Theme`, `Apps`, `Plugins`. |
 | `qml/Main.qml` | Root object: instantiates every window and wires D-Bus signals (`Connections { target: Shell }`). |
@@ -62,9 +62,13 @@ and the checks that will fail if one is broken.
   one reply line (`ok ...` / `error ...`). `watch` subscribes to `event ...`
   lines. CLI: `newteller-compositor --msg <command>`. Commands include
   `ping reload lock locked dpms on|off layout [next|prev|N] workspace N
-  move-to-workspace N windows thumbnail activate close move-window outputs
+  move-to-workspace N windows thumbnail activate close move-window kill outputs
   outputs-detail output-set blur blur-clear effects exit`. Events: `layout`,
-  `workspace`, `switcher`, `locked`, `key` (media keys).
+  `workspace`, `switcher`, `locked`, `key` (media keys), `click X Y` (every
+  button press while unlocked), `hung ID` / `responsive ID` / `closed ID`
+  (ping timeouts). Never block the shell's UI thread on D-Bus or the socket
+  for long: the tray once froze the desktop for minutes with synchronous
+  scans; use async calls (`asyncCall` + `QDBusPendingCallWatcher`).
   Fields inside one reply are separated by `\x1e`, records by `\x1f`;
   sanitize titles with `ipcField()`.
 - **Shell → compositor settings**: `SessionServices::compositorConfigText()`
@@ -124,6 +128,20 @@ dependencies go into `scripts/install-build-deps.sh` and a
 `pkg_check_modules` + `target_link_libraries` entry. Link every library you
 call directly (pixman had to be added explicitly: "DSO missing from command
 line").
+
+## Dock and panel layout
+
+- Only the active dock layout exists: `DockStrip` loads a Row, a Column
+  (vertical bar) or a Flow (`dock.multiRow`) through a Loader. Never size a
+  button from a container that sizes itself from the buttons (binding loop,
+  CPU load, clipped dock); `DockApps.extent` is passed down explicitly.
+- `barThickness` = max(`panel.height`, what the icon size / rows need), so
+  `dock.iconSize` and `dock.rows` grow the bar (and its exclusive zone).
+- Position surfaces on whole pixels (`Math.round`) - fractional centring
+  made the dock look off-centre.
+- Popup cards close on `Session.pointerPressed` outside them (layer
+  surfaces do not always get keyboard focus, so focus loss alone is not
+  enough); tooltips hide on their own after a few seconds.
 
 ## Compositor invariants
 

@@ -4,7 +4,9 @@ import QtQuick.Layouts
 
 // Wi-Fi networks in range, opened from quick settings. Click a network to
 // join it; secured networks that are not saved yet ask for the password
-// inline. NetworkManager (through nmcli) stores what it learns.
+// inline. NetworkManager (over D-Bus) stores what it learns. When Wi-Fi cannot
+// work, Session.wifiStatus says why (no NetworkManager, no adapter, missing
+// firmware, switched off) instead of an empty list.
 DropdownWindow {
     id: popup
 
@@ -29,8 +31,8 @@ DropdownWindow {
         if (network.active)
             return;
         if (network.secure) {
-            // Try a saved connection first; nmcli fails fast without one and
-            // the password field opens then.
+            // Try a saved connection first; without one the password field
+            // opens right away.
             pendingSsid = network.ssid;
             passwordField.text = "";
             Session.connectWifi(network.ssid, "");
@@ -119,6 +121,29 @@ DropdownWindow {
             }
         }
 
+        // Why there is nothing to list.
+        Rectangle {
+            Layout.fillWidth: true
+            visible: Session.wifiStatus.length > 0
+            implicitHeight: diagnosis.implicitHeight + 20
+            radius: Theme.radius
+            color: Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.06)
+            border.color: Theme.border
+            border.width: 1
+
+            Text {
+                id: diagnosis
+                objectName: "wifiDiagnosis"
+                anchors.fill: parent
+                anchors.margins: 10
+                text: Session.wifiStatus
+                wrapMode: Text.WordWrap
+                color: Theme.foreground
+                font.family: Theme.fontFamily
+                font.pointSize: Theme.fontSize - 1
+            }
+        }
+
         ListView {
             id: networks
             objectName: "wifiList"
@@ -128,6 +153,15 @@ DropdownWindow {
             spacing: 2
             model: Session.wifiNetworks
             boundsBehavior: Flickable.StopAtBounds
+
+            Text {
+                anchors.centerIn: parent
+                visible: networks.count === 0 && Session.wifiStatus.length === 0
+                text: Session.wifiBusy ? "Searching for networks..." : "No networks found"
+                color: Theme.muted
+                font.family: Theme.fontFamily
+                font.pointSize: Theme.fontSize
+            }
 
             delegate: Rectangle {
                 required property var modelData

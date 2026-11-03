@@ -112,10 +112,22 @@ inside VirtualBox. The implemented pieces are:
   desktop with `Super+D`, and move or resize a window from anywhere inside it with
   `Super`+left or right mouse drag
 - **Lock screen.** `Super+L`, the start menu, quick settings, the idle timer and
-  suspend lock the session with swaylock over `ext-session-lock-v1`: while
-  locked the compositor draws and focuses nothing but the locker, and a
-  crashed locker is restarted instead of unlocking. The wallpaper is the lock
-  screen background (`power.lockAfter`, `power.lockOnSleep`).
+  suspend lock the session over `ext-session-lock-v1`: while locked the
+  compositor draws and focuses nothing but the locker, and a crashed locker
+  is restarted instead of unlocking. `newteller-lock` uses gtklock (3.0+:
+  clock, a password field with an Unlock button and a "wrong password"
+  message, styled dark) and falls back to swaylock (always-visible ring with
+  the typing state). The wallpaper is the lock screen background
+  (`power.lockAfter`, `power.lockOnSleep`).
+- **Force quit.** `Ctrl+Shift+Esc` (or `Ctrl+Alt+Esc`) lists every window
+  with "Not responding" next to frozen ones; End task kills the process,
+  Close asks it politely. The compositor pings windows when they are focused
+  or closed; when the focused one stops answering, the dialog opens itself.
+- **Touchpad gestures** (`touchpad.gestures`): three fingers sideways move
+  the active window, four fingers sideways switch desktops.
+- **Default wallpaper**: a dark, minimal picture (installed to
+  `share/backgrounds/newteller/default.jpg`) while no wallpaper is chosen
+  (`desktop.defaultWallpaper`).
 - **Idle and power.** The screen turns off after `power.screenOffAfter`
   minutes (swayidle); video players that inhibit idle keep it on.
 - **Keyboard layouts.** Pick layouts in Settings → Keyboard (or keep the system
@@ -152,7 +164,12 @@ inside VirtualBox. The implemented pieces are:
 - **Application look**: dark/light preference, GTK theme, icon theme,
   application font and text size, cursor theme; lock screen colour.
 - **Wi-Fi networks** from quick settings: scan, join (with the password asked
-  inline for new secured networks), disconnect; NetworkManager keeps them.
+  inline for new secured networks; WPA2/WPA3), disconnect; NetworkManager
+  keeps them. The shell talks to NetworkManager over D-Bus and, when Wi-Fi
+  cannot work, says why: NetworkManager not running, no adapter (driver or
+  firmware missing), adapter unmanaged, switched off or blocked. The
+  installer adds NetworkManager and, on real hardware, the common Wi-Fi
+  firmware packages, and starts NetworkManager.
 - **Clipboard history** on `Super+V` (wl-clipboard): the texts copied in the
   session, newest first; click one to copy it again. Kept in memory unless
   `clipboard.persistHistory` is on.
@@ -259,13 +276,18 @@ Setting `QT_QPA_PLATFORM` (or passing `-platform`) overrides the shell's automat
 when it runs inside another session. The compositor always selects its own backend.
 
 The login greeter is the system display manager; NewTeller does not ship its own greeter.
-The lock screen is swaylock, driven by the compositor through
-`ext-session-lock-v1` (`newteller-lock`); the installer adds it together with
-swayidle, wlsunset, the portals and a polkit agent when the distribution has them.
+The lock screen is gtklock or swaylock, driven by the compositor through
+`ext-session-lock-v1` (`newteller-lock`); the installer adds them together with
+swayidle, wlsunset, NetworkManager, the portals and a polkit agent when the
+distribution has them.
 
 The compositor reads `~/.config/newteller/compositor.conf`, which the shell
 writes from its settings, and listens on a control socket (`$NEWTELLER_IPC`):
-`newteller-compositor --msg reload|lock|locked|dpms on|dpms off|layout next|workspace N|outputs|exit`.
+`newteller-compositor --msg reload|lock|locked|dpms on|dpms off|layout next|workspace N|outputs|windows|kill ID|exit`.
+`windows` marks frozen windows with the `h` flag and reports each window's
+process id; `kill ID` force-quits one (never the compositor or the shell).
+Watchers get `event hung ID`, `event responsive ID`, `event closed ID` and
+`event click X Y` (any button press, so open shell cards can close).
 
 Windows use client-side decorations (title bars drawn by the toolkit), so every application
 gets a usable frame without a separate window-decorator process. The compositor handles
@@ -278,6 +300,7 @@ these shortcuts globally, even when an application has focus:
 `Super+V` (clipboard history), `Super+N` (notifications), `Super+A` (quick settings), `Super+R` (run), `Super+E` (home
 folder), `Super+I` (settings), `Super+Shift+S` (area screenshot),
 `Ctrl+Super+Left/Right` (switch desktop, with `Shift` to move the window),
+`Ctrl+Shift+Esc` or `Ctrl+Alt+Esc` (force quit),
 `Ctrl+Alt+F1…F12` (virtual terminals), `Print` (screenshot), a tap of `Super` on its own (open or close
 the start menu), and `Alt+Tab` (switch windows: keep Alt held and press Tab again to walk
 through every window, most recently used first, with the candidate raised as a preview;

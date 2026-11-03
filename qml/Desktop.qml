@@ -103,8 +103,13 @@ Window {
                               Math.max(16, Math.min(4096, Math.round(height / decodeScale))))
         source: {
             const wp = desk.wallpaper;
-            if (wp.length === 0)
-                return "";
+            if (wp.length === 0) {
+                // The bundled wallpaper, unless a plain colour was chosen or
+                // it is switched off.
+                return desk.desktopBackgroundColor.length === 0
+                       && Settings.values["desktop.defaultWallpaper"] !== false
+                       ? "qrc:/data/wallpapers/default.jpg" : "";
+            }
             if (wp.indexOf("://") > 0)
                 return wp;
             // Encode the path: a "#" or "%" in a file name must not become a
@@ -338,12 +343,16 @@ Window {
         }
     }
 
-    // Right-click menu: wallpaper, paste, terminal, settings.
+    // Right-click menu: wallpaper, paste, terminal, settings. Right button
+    // only, and below the icons and widgets (z -1): taking left clicks on
+    // top of everything swallowed every click meant for a desktop widget
+    // (the weather widget's settings button, for one).
     MouseArea {
         anchors.fill: parent
-        acceptedButtons: Qt.RightButton | Qt.LeftButton
+        z: -1
+        acceptedButtons: Qt.RightButton
         onClicked: (mouse) => {
-            if (mouse.button !== Qt.RightButton || !desk.contextMenuEnabled)
+            if (!desk.contextMenuEnabled)
                 return;
             contextMenu.x = Math.min(mouse.x, desk.width - contextMenu.width - 8);
             contextMenu.y = Math.min(mouse.y, desk.height - contextMenu.height - 8);

@@ -18,6 +18,23 @@ newteller_detect_platform
 
 # power-profiles-daemon conflicts with other power managers; never let the
 # package manager remove one the user chose.
+# Firmware packages are large; a container or a CI job has no Wi-Fi adapter
+# that could use them.
+wants_firmware() {
+    [[ -z ${CI:-} && -z ${GITHUB_ACTIONS:-} ]] || return 1
+    [[ ! -e /.dockerenv && ! -e /run/.containerenv ]] || return 1
+    return 0
+}
+
+# NetworkManager runs the Wi-Fi; start it on a booted systemd machine (not
+# in a container or a chroot).
+enable_network_manager() {
+    [[ -d /run/systemd/system ]] || return 0
+    command -v systemctl > /dev/null 2>&1 || return 0
+    systemctl enable --now NetworkManager.service > /dev/null 2>&1 \
+        || echo 'note: could not start NetworkManager' >&2
+}
+
 power_manager_installed() {
     local manager
     for manager in tlp laptop-mode-tools tuned tuned-ppd auto-cpufreq; do
@@ -55,11 +72,17 @@ install_debian() {
     apt-get install -y --no-install-recommends "${packages[@]}"
 
     local optional=(
-        swaylock swayidle wlsunset
+        gtklock swaylock swayidle wlsunset
         xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk
         lxpolkit procps wdisplays
-        network-manager-gnome blueman pavucontrol slurp wl-clipboard
+        network-manager wpasupplicant network-manager-gnome
+        blueman pavucontrol slurp wl-clipboard
     )
+    # Wi-Fi firmware for the common adapters (Debian: non-free-firmware;
+    # Ubuntu: linux-firmware). Missing firmware is the usual reason an
+    # adapter shows up but never finds a network.
+    wants_firmware && optional+=(linux-firmware firmware-iwlwifi firmware-realtek
+                                 firmware-atheros firmware-brcm80211 firmware-misc-nonfree)
     power_manager_installed || optional+=(power-profiles-daemon)
     local available=() package
     for package in "${optional[@]}"; do
@@ -89,11 +112,13 @@ install_arch() {
         cairo pango grim
 
     local optional=(
-        swaylock swayidle wlsunset
+        gtklock swaylock swayidle wlsunset
         xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk
         polkit-gnome procps-ng wdisplays
-        network-manager-applet blueman pavucontrol slurp wl-clipboard
+        networkmanager wpa_supplicant network-manager-applet
+        blueman pavucontrol slurp wl-clipboard
     )
+    wants_firmware && optional+=(linux-firmware)
     power_manager_installed || optional+=(power-profiles-daemon)
     local available=() package
     for package in "${optional[@]}"; do
@@ -122,11 +147,13 @@ install_fedora() {
         libinput libdrm mesa-libgbm mesa-libEGL mesa-libGLES cairo pango grim
 
     local optional=(
-        swaylock swayidle wlsunset
+        gtklock swaylock swayidle wlsunset
         xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk
         lxpolkit procps-ng wdisplays
-        network-manager-applet blueman pavucontrol slurp wl-clipboard
+        NetworkManager NetworkManager-wifi wpa_supplicant network-manager-applet
+        blueman pavucontrol slurp wl-clipboard
     )
+    wants_firmware && optional+=(linux-firmware)
     power_manager_installed || optional+=(power-profiles-daemon)
     # dnf5 skips what this release does not have.
     dnf install -y --skip-unavailable "${optional[@]}"
@@ -137,6 +164,7 @@ case "$NEWTELLER_FAMILY" in
     arch) install_arch ;;
     fedora) install_fedora ;;
 esac
+enable_network_manager
 
 if ! find /usr/lib /usr/lib64 -path '*/qt6/qml/org/kde/layershell/qmldir' -print -quit 2>/dev/null \
         | grep -q .; then

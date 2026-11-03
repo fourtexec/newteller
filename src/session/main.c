@@ -1882,6 +1882,12 @@ static void destroyView(struct View *view)
         server->gestureView = NULL;
         server->gestureKind = 0;
     }
+    if (view->hung) {
+        // The force-quit dialog stops listing it.
+        char line[48];
+        snprintf(line, sizeof(line), "event closed %u", view->id);
+        ipcBroadcast(server, line);
+    }
     if (view->xdgDecoration) {
         wl_list_remove(&view->xdgDecorationMode.link);
         wl_list_remove(&view->xdgDecorationDestroy.link);

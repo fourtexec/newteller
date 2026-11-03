@@ -1417,6 +1417,13 @@ Window {
 
                             SettingsRow {
                                 width: parent.width
+                                title: "Default wallpaper"
+                                subtitle: "Shown while no picture is chosen and no background colour is set."
+                                settingKey: "desktop.defaultWallpaper"
+                                SettingsSwitch { settingKey: "desktop.defaultWallpaper" }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: "Wallpaper mode"
                                 settingKey: "desktop.wallpaperMode"
                                 SettingsChoice {
@@ -3031,6 +3038,14 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: "Touchpad gestures"
+                                subtitle: "Three fingers sideways move the active window; four "
+                                          + "fingers sideways switch desktops."
+                                settingKey: "touchpad.gestures"
+                                SettingsSwitch { settingKey: "touchpad.gestures" }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: "Pointer speed"
                                 settingKey: "touchpad.speed"
                                 SettingsSlider { settingKey: "touchpad.speed"; from: -1; to: 1; step: 0.1 }
@@ -3467,7 +3482,7 @@ Window {
                             title: "Screen lock"
                             subtitle: Session.lockAvailable
                                       ? "Super+L locks the screen. Your password unlocks it."
-                                      : "The screen locker is not installed: sudo apt install swaylock"
+                                      : "The screen locker is not installed: install gtklock (or swaylock)"
 
                             SettingsRow {
                                 width: parent.width

@@ -213,6 +213,7 @@ Window {
             return;
         }
         card.prepareOpen();
+        root.shownAt = Date.now();
         visible = true;
         requestActivate();
         root.opened();
@@ -267,6 +268,28 @@ Window {
         interval: 200
         onTriggered: {
             if (!root.active)
+                root.hide();
+        }
+    }
+
+    // A click anywhere outside the card (reported by the compositor) closes
+    // it, whether or not the card ever had the keyboard. Clicks on the
+    // button that opened it are left to that button's toggle, and the click
+    // that opened the card (its event can arrive a moment later, e.g. from a
+    // button inside another card) does not close it again.
+    property double shownAt: 0
+    Connections {
+        target: Session
+        function onPointerPressed(px, py) {
+            if (!root.visible || card.closing || Date.now() - root.shownAt < 300)
+                return;
+            const p = root.placement;
+            const inCard = px >= p.x && px < p.x + root.width
+                           && py >= p.y && py < p.y + root.height;
+            const a = root.anchor;
+            const inAnchor = a.width > 0 && px >= a.x && px < a.x + a.width
+                             && py >= a.y && py < a.y + a.height;
+            if (!inCard && !inAnchor)
                 root.hide();
         }
     }
