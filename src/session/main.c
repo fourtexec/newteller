@@ -15,6 +15,7 @@
 
 #include <wlr/backend.h>
 #include <wlr/backend/headless.h>
+#include <wlr/backend/libinput.h>
 #include <wlr/backend/session.h>
 #include <wlr/backend/wayland.h>
 #include <wlr/render/allocator.h>
@@ -24,6 +25,7 @@
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_export_dmabuf_v1.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
+#include <wlr/types/wlr_gamma_control_v1.h>
 #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
 #include <wlr/types/wlr_idle_inhibit_v1.h>
 #include <wlr/types/wlr_idle_notify_v1.h>
@@ -44,6 +46,7 @@
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_screencopy_v1.h>
 #include <wlr/types/wlr_seat.h>
+#include <wlr/types/wlr_session_lock_v1.h>
 #include <wlr/types/wlr_server_decoration.h>
 #include <wlr/types/wlr_single_pixel_buffer_v1.h>
 #include <wlr/types/wlr_subcompositor.h>
@@ -61,7 +64,10 @@
 
 #include <xkbcommon/xkbcommon.h>
 
+#include <libinput.h>
+
 #include <errno.h>
+#include <fcntl.h>
 #include <limits.h>
 #include <signal.h>
 #include <stdarg.h>
@@ -70,11 +76,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/un.h>
 #include <sys/wait.h>
 #include <time.h>
 #include <unistd.h>
+
+#include "config.h"
 
 struct Server;
 struct Output;
@@ -83,6 +93,11 @@ struct Layer;
 
 static void spawnDetached(const char *program, const char *const argv[]);
 static void maybeStartShell(struct Server *server);
+static void ipcBroadcast(struct Server *server, const char *line);
+static void broadcastLayout(struct Server *server);
+static void lockFocusSurface(struct Server *server, struct wlr_surface *surface);
+static void spawnLocker(struct Server *server);
+static void setLayout(struct Server *server, int index);
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -177,6 +192,8 @@ struct Keyboard {
     struct wl_list link;
     struct Server *server;
     struct wlr_keyboard *keyboard;
+    // Virtual keyboards that bring their own keymap keep it on reload.
+    bool ownKeymap;
     struct wl_listener modifiers;
     struct wl_listener key;
     struct wl_listener destroy;
@@ -188,16 +205,56 @@ struct Output {
     struct wlr_output *output;
     struct wlr_scene_output *sceneOutput;
     struct wlr_box usable;
+    // Turned off by the user (output management), as opposed to blanked.
+    bool disabled;
+    // Blanked by `dpms off` (screen saver); comes back with `dpms on`.
+    bool poweredOff;
+    bool gammaPending;
 
     struct wl_listener frame;
     struct wl_listener requestState;
     struct wl_listener destroy;
+    struct wl_listener sceneDestroy;
 };
 
 struct Popup {
     struct wlr_xdg_popup *popup;
     struct wl_listener commit;
     struct wl_listener destroy;
+};
+
+// A pointer device, kept so libinput settings can be re-applied on reload.
+struct Pointer {
+    struct wl_list link;
+    struct Server *server;
+    struct wlr_input_device *device;
+    struct wl_listener destroy;
+};
+
+// One ext-session-lock surface (the locker's window on one output).
+struct LockSurface {
+    struct wl_list link;
+    struct Server *server;
+    struct wlr_session_lock_surface_v1 *lockSurface;
+    struct wlr_scene_tree *tree;
+    struct wl_listener map;
+    struct wl_listener destroy;
+};
+
+struct IdleInhibitor {
+    struct Server *server;
+    struct wl_listener destroy;
+};
+
+// A connection on the compositor's control socket ($NEWTELLER_IPC).
+struct IpcClient {
+    struct wl_list link;
+    struct Server *server;
+    int fd;
+    struct wl_event_source *source;
+    char buffer[1024];
+    size_t length;
+    bool watching;
 };
 
 enum CursorMode {
@@ -281,6 +338,40 @@ struct Server {
     uint32_t resizeEdges;
     int cascade;
 
+    struct CompositorConfig config;
+    struct wl_list pointers;
+    int layoutCount;
+    int layoutIndex;
+    char layoutNames[8][32];
+
+    struct wlr_session_lock_manager_v1 *lockManager;
+    struct wlr_session_lock_v1 *activeLock;
+    struct wlr_scene_tree *lockTree;
+    struct wl_list lockSurfaces;
+    bool locked;
+    int lockRespawns;
+    struct wl_event_source *lockRespawnTimer;
+
+    struct wlr_idle_notifier_v1 *idleNotifier;
+    int idleInhibitors;
+
+    struct wlr_output_manager_v1 *outputManager;
+    struct wlr_gamma_control_manager_v1 *gammaManager;
+
+    int ipcFd;
+    struct wl_event_source *ipcSource;
+    char ipcPath[PATH_MAX];
+    struct wl_list ipcClients;
+
+    struct wl_listener newLock;
+    struct wl_listener lockNewSurface;
+    struct wl_listener lockUnlock;
+    struct wl_listener lockDestroy;
+    struct wl_listener newIdleInhibitor;
+    struct wl_listener outputManagerApply;
+    struct wl_listener outputManagerTest;
+    struct wl_listener layoutChange;
+    struct wl_listener gammaSetGamma;
     struct wl_listener newOutput;
     struct wl_listener newInput;
     struct wl_listener cursorMotion;
@@ -305,6 +396,15 @@ struct Server {
 // Process and session startup
 // ---------------------------------------------------------------------------
 
+// The event loop blocks the signals it handles (signalfd); a child must not
+// inherit that mask, or SIGTERM/SIGINT would never reach it.
+static void resetChildSignals(void)
+{
+    sigset_t set;
+    sigemptyset(&set);
+    sigprocmask(SIG_SETMASK, &set, NULL);
+}
+
 static void spawnDetached(const char *program, const char *const argv[])
 {
     pid_t pid = fork();
@@ -313,10 +413,18 @@ static void spawnDetached(const char *program, const char *const argv[])
         return;
     }
     if (pid == 0) {
+        // Fork again so the program is re-parented to init: the compositor
+        // only reaps the shell, and this way no zombie is left behind.
+        resetChildSignals();
+        pid_t child = fork();
+        if (child != 0)
+            _exit(child < 0 ? 127 : 0);
+        setsid();
         execvp(program, (char *const *)argv);
         wlr_log_errno(WLR_ERROR, "failed to start %s", program);
         _exit(127);
     }
+    waitpid(pid, NULL, 0);
 }
 
 static void setChildEnvironment(struct Server *server)
@@ -327,6 +435,13 @@ static void setChildEnvironment(struct Server *server)
     setenv("XDG_SESSION_DESKTOP", "newteller", 1);
     setenv("XDG_CURRENT_DESKTOP", "NewTeller", 1);
     setenv("DESKTOP_SESSION", "newteller", 1);
+    if (server->ipcPath[0] != '\0')
+        setenv("NEWTELLER_IPC", server->ipcPath, 1);
+    if (server->config.cursorTheme[0] != '\0')
+        setenv("XCURSOR_THEME", server->config.cursorTheme, 1);
+    char cursorSize[16];
+    snprintf(cursorSize, sizeof(cursorSize), "%d", server->config.cursorSize);
+    setenv("XCURSOR_SIZE", cursorSize, 1);
     if (server->xwaylandReady && server->xwayland
         && server->xwayland->display_name) {
         setenv("DISPLAY", server->xwayland->display_name, 1);
@@ -347,6 +462,7 @@ static void updateActivationEnvironment(struct Server *server)
         "XDG_CURRENT_DESKTOP",
         "XDG_SESSION_DESKTOP",
         "XDG_SESSION_TYPE",
+        "NEWTELLER_IPC",
         NULL,
     };
     spawnDetached(argv[0], argv);
@@ -395,6 +511,7 @@ static void maybeStartShell(struct Server *server)
         return;
     }
     if (pid == 0) {
+        resetChildSignals();
         setenv("NEWTELLER_SESSION", "1", 1);
         execlp(program, program, (char *)NULL);
         wlr_log_errno(WLR_ERROR, "failed to start %s", program);
@@ -558,6 +675,9 @@ static void focusView(struct View *view, struct wlr_surface *surface)
         return;
 
     struct Server *server = view->server;
+    // Nothing takes the keyboard from the screen locker.
+    if (server->locked)
+        return;
     if (server->focusedLayer)
         server->focusedLayer = NULL;
     if (server->focusedView && server->focusedView != view) {
@@ -592,6 +712,8 @@ static void focusLayer(struct Layer *layer)
     if (!layer || !layer->layer || !layer->layer->surface)
         return;
     struct Server *server = layer->server;
+    if (server->locked)
+        return;
     if (!server->focusedView && server->focusedLayer == layer)
         return;
 
@@ -1362,6 +1484,27 @@ static struct Hit hitTest(struct Server *server, double lx, double ly)
 {
     struct Hit hit = {0};
 
+    if (server->locked) {
+        struct LockSurface *lock;
+        wl_list_for_each(lock, &server->lockSurfaces, link) {
+            struct wlr_surface *surface = lock->lockSurface->surface;
+            if (!surface || !surface->mapped || !lock->tree)
+                continue;
+            double sx = 0;
+            double sy = 0;
+            struct wlr_surface *found = wlr_surface_surface_at(
+                surface, lx - lock->tree->node.x, ly - lock->tree->node.y,
+                &sx, &sy);
+            if (found) {
+                hit.surface = found;
+                hit.sx = sx;
+                hit.sy = sy;
+                return hit;
+            }
+        }
+        return hit;
+    }
+
     const int topLayers[] = {
         ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY,
         ZWLR_LAYER_SHELL_V1_LAYER_TOP,
@@ -1459,10 +1602,19 @@ static void processCursorMotion(struct Server *server, uint32_t time)
     wlr_seat_pointer_notify_frame(server->seat);
 }
 
+// Every input event counts as activity for ext-idle-notify clients
+// (swayidle): without this the screen would blank while it is being used.
+static void notifyActivity(struct Server *server)
+{
+    if (server->idleNotifier)
+        wlr_idle_notifier_v1_notify_activity(server->idleNotifier, server->seat);
+}
+
 static void cursorMotion(struct wl_listener *listener, void *data)
 {
     struct Server *server = wl_container_of(listener, server, cursorMotion);
     struct wlr_pointer_motion_event *event = data;
+    notifyActivity(server);
     wlr_cursor_move(server->cursor, &event->pointer->base,
                     event->delta_x, event->delta_y);
     processCursorMotion(server, event->time_msec);
@@ -1472,6 +1624,7 @@ static void cursorMotionAbsolute(struct wl_listener *listener, void *data)
 {
     struct Server *server = wl_container_of(listener, server, cursorMotionAbsolute);
     struct wlr_pointer_motion_absolute_event *event = data;
+    notifyActivity(server);
     wlr_cursor_warp_absolute(server->cursor, &event->pointer->base,
                              event->x, event->y);
     processCursorMotion(server, event->time_msec);
@@ -1483,6 +1636,20 @@ static void cursorButton(struct wl_listener *listener, void *data)
     struct wlr_pointer_button_event *event = data;
     // Super+click is a chord, not a tap of Super.
     server->logoTap = false;
+    notifyActivity(server);
+
+    if (server->locked) {
+        // Only the locker gets pointer input; a click also gives it the
+        // keyboard (one lock surface per output).
+        struct Hit hit = hitTest(server, server->cursor->x, server->cursor->y);
+        if (hit.surface && event->state == WL_POINTER_BUTTON_STATE_PRESSED)
+            lockFocusSurface(server, wlr_surface_get_root_surface(hit.surface));
+        pointerFocus(server, &hit);
+        wlr_seat_pointer_notify_button(server->seat, event->time_msec,
+                                       event->button, event->state);
+        wlr_seat_pointer_notify_frame(server->seat);
+        return;
+    }
 
     if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
         if (server->cursorMode == CURSOR_MOVE && server->grabbedView) {
@@ -1543,6 +1710,7 @@ static void cursorAxis(struct wl_listener *listener, void *data)
 {
     struct Server *server = wl_container_of(listener, server, cursorAxis);
     struct wlr_pointer_axis_event *event = data;
+    notifyActivity(server);
     wlr_seat_pointer_notify_axis(server->seat, event->time_msec,
                                  event->orientation, event->delta,
                                  event->delta_discrete, event->source,
@@ -1597,6 +1765,230 @@ static void shellAction(const char *method)
         "--method", call, NULL,
     };
     spawnDetached(argv[0], argv);
+}
+
+// ---------------------------------------------------------------------------
+// Keyboard layouts and input device settings (compositor.conf)
+// ---------------------------------------------------------------------------
+
+static struct xkb_keymap *buildKeymap(struct Server *server)
+{
+    struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+    if (!context)
+        return NULL;
+    const struct CompositorConfig *config = &server->config;
+    struct xkb_rule_names rules = {0};
+    rules.layout = config->keyboardLayout[0] ? config->keyboardLayout : NULL;
+    rules.variant = config->keyboardVariant[0] ? config->keyboardVariant : NULL;
+    rules.options = config->keyboardOptions[0] ? config->keyboardOptions : NULL;
+    rules.model = config->keyboardModel[0] ? config->keyboardModel : NULL;
+    struct xkb_keymap *keymap = xkb_keymap_new_from_names(
+        context, &rules, XKB_KEYMAP_COMPILE_NO_FLAGS);
+    if (!keymap) {
+        wlr_log(WLR_ERROR,
+                "keyboard layout '%s' (variant '%s', options '%s') does not "
+                "compile; using the default layout",
+                config->keyboardLayout, config->keyboardVariant,
+                config->keyboardOptions);
+        struct xkb_rule_names fallback = {0};
+        keymap = xkb_keymap_new_from_names(context, &fallback,
+                                           XKB_KEYMAP_COMPILE_NO_FLAGS);
+    }
+    xkb_context_unref(context);
+    return keymap;
+}
+
+// Short names for the panel indicator: the codes from the configured list
+// ("us", "ru"), or the keymap's own names when no list is configured.
+static void updateLayoutNames(struct Server *server, struct xkb_keymap *keymap)
+{
+    char codes[8][32];
+    int codeCount = ntConfigSplitList(server->config.keyboardLayout, codes, 8);
+    xkb_layout_index_t count = xkb_keymap_num_layouts(keymap);
+    if (count > 8)
+        count = 8;
+    server->layoutCount = (int)count;
+    for (xkb_layout_index_t i = 0; i < count; ++i) {
+        const char *name = NULL;
+        if ((int)i < codeCount && codes[i][0] != '\0')
+            name = codes[i];
+        else
+            name = xkb_keymap_layout_get_name(keymap, i);
+        snprintf(server->layoutNames[i], sizeof(server->layoutNames[i]), "%s",
+                 name ? name : "?");
+        for (char *p = server->layoutNames[i]; *p; ++p) {
+            if (*p == '|' || *p == '\n')
+                *p = ' ';
+        }
+    }
+    if (server->layoutIndex >= server->layoutCount)
+        server->layoutIndex = 0;
+}
+
+static void configureKeyboard(struct Server *server, struct Keyboard *keyboard,
+                              struct xkb_keymap *keymap)
+{
+    if (!keyboard->ownKeymap && keymap) {
+        wlr_keyboard_set_keymap(keyboard->keyboard, keymap);
+        xkb_mod_mask_t locked = 0;
+        if (server->config.numlock) {
+            xkb_mod_index_t num = xkb_keymap_mod_get_index(keymap, XKB_MOD_NAME_NUM);
+            if (num != XKB_MOD_INVALID)
+                locked |= (xkb_mod_mask_t)1 << num;
+        }
+        if (locked || server->layoutIndex > 0) {
+            wlr_keyboard_notify_modifiers(keyboard->keyboard, 0, 0, locked,
+                                          (uint32_t)server->layoutIndex);
+        }
+    }
+    wlr_keyboard_set_repeat_info(keyboard->keyboard, server->config.repeatRate,
+                                 server->config.repeatDelay);
+}
+
+static void applyKeyboardConfig(struct Server *server)
+{
+    struct xkb_keymap *keymap = buildKeymap(server);
+    if (!keymap)
+        return;
+    updateLayoutNames(server, keymap);
+    struct wlr_keyboard *active = wlr_seat_get_keyboard(server->seat);
+    struct Keyboard *keyboard;
+    wl_list_for_each(keyboard, &server->keyboards, link)
+        configureKeyboard(server, keyboard, keymap);
+    xkb_keymap_unref(keymap);
+    if (active) {
+        wlr_seat_set_keyboard(server->seat, active);
+        wlr_seat_keyboard_notify_modifiers(server->seat, &active->modifiers);
+    }
+    broadcastLayout(server);
+}
+
+static void setLayout(struct Server *server, int index)
+{
+    if (server->layoutCount <= 0)
+        return;
+    index = ((index % server->layoutCount) + server->layoutCount)
+            % server->layoutCount;
+    struct wlr_keyboard *active = wlr_seat_get_keyboard(server->seat);
+    server->layoutIndex = index;
+    struct Keyboard *keyboard;
+    wl_list_for_each(keyboard, &server->keyboards, link) {
+        if (keyboard->ownKeymap || !keyboard->keyboard->keymap)
+            continue;
+        const struct wlr_keyboard_modifiers *mods = &keyboard->keyboard->modifiers;
+        wlr_keyboard_notify_modifiers(keyboard->keyboard, mods->depressed,
+                                      mods->latched, mods->locked,
+                                      (uint32_t)index);
+    }
+    if (active) {
+        wlr_seat_set_keyboard(server->seat, active);
+        wlr_seat_keyboard_notify_modifiers(server->seat, &active->modifiers);
+    }
+    broadcastLayout(server);
+}
+
+static void broadcastLayout(struct Server *server)
+{
+    char line[400];
+    int used = snprintf(line, sizeof(line), "event layout %d ",
+                        server->layoutIndex);
+    for (int i = 0; i < server->layoutCount && used < (int)sizeof(line) - 40; ++i) {
+        used += snprintf(line + used, sizeof(line) - (size_t)used, "%s%s",
+                         i > 0 ? "|" : "", server->layoutNames[i]);
+    }
+    ipcBroadcast(server, line);
+}
+
+static void configurePointer(struct Server *server, struct wlr_input_device *device)
+{
+    if (!wlr_input_device_is_libinput(device))
+        return;
+    struct libinput_device *handle = wlr_libinput_get_device_handle(device);
+    if (!handle)
+        return;
+    const struct CompositorConfig *config = &server->config;
+    bool touchpad = libinput_device_config_tap_get_finger_count(handle) > 0;
+    if (touchpad) {
+        libinput_device_config_tap_set_enabled(
+            handle, config->touchpadTap ? LIBINPUT_CONFIG_TAP_ENABLED
+                                        : LIBINPUT_CONFIG_TAP_DISABLED);
+        if (libinput_device_config_dwt_is_available(handle)) {
+            libinput_device_config_dwt_set_enabled(
+                handle, config->touchpadDisableWhileTyping
+                            ? LIBINPUT_CONFIG_DWT_ENABLED
+                            : LIBINPUT_CONFIG_DWT_DISABLED);
+        }
+    }
+    if (libinput_device_config_scroll_has_natural_scroll(handle)) {
+        libinput_device_config_scroll_set_natural_scroll_enabled(
+            handle, touchpad ? config->touchpadNaturalScroll
+                             : config->mouseNaturalScroll);
+    }
+    if (libinput_device_config_accel_is_available(handle)) {
+        libinput_device_config_accel_set_speed(
+            handle, touchpad ? config->touchpadSpeed : config->mouseSpeed);
+    }
+    if (libinput_device_config_left_handed_is_available(handle))
+        libinput_device_config_left_handed_set(handle, config->leftHanded ? 1 : 0);
+}
+
+static void loadConfig(struct Server *server)
+{
+    struct CompositorConfig config;
+    ntConfigDefaults(&config);
+    char path[PATH_MAX];
+    ntConfigPath(path, sizeof(path), "compositor.conf");
+    ntConfigLoadFile(&config, path);
+    // No layout of our own: use the system keyboard configuration (what the
+    // installer or `dpkg-reconfigure keyboard-configuration` wrote).
+    if (config.keyboardLayout[0] == '\0')
+        ntConfigLoadSystemKeyboard(&config, "/etc/default/keyboard");
+    server->config = config;
+}
+
+static void applyCursorTheme(struct Server *server)
+{
+    const char *theme = server->config.cursorTheme[0]
+                            ? server->config.cursorTheme : NULL;
+    struct wlr_xcursor_manager *manager = wlr_xcursor_manager_create(
+        theme, (uint32_t)server->config.cursorSize);
+    if (!manager)
+        return;
+    struct Output *output;
+    wl_list_for_each(output, &server->outputs, link)
+        wlr_xcursor_manager_load(manager, output->output->scale);
+    struct wlr_xcursor_manager *old = server->cursorManager;
+    server->cursorManager = manager;
+    if (server->cursor)
+        wlr_cursor_set_xcursor(server->cursor, manager, "left_ptr");
+    if (old)
+        wlr_xcursor_manager_destroy(old);
+}
+
+static void reloadConfig(struct Server *server)
+{
+    char oldTheme[NT_CONFIG_TEXT];
+    snprintf(oldTheme, sizeof(oldTheme), "%s", server->config.cursorTheme);
+    int oldSize = server->config.cursorSize;
+
+    loadConfig(server);
+    applyKeyboardConfig(server);
+    struct Pointer *pointer;
+    wl_list_for_each(pointer, &server->pointers, link)
+        configurePointer(server, pointer->device);
+    if (strcmp(oldTheme, server->config.cursorTheme) != 0
+        || oldSize != server->config.cursorSize) {
+        applyCursorTheme(server);
+    }
+    wlr_log(WLR_INFO, "configuration reloaded (layout '%s')",
+            server->config.keyboardLayout);
+}
+
+static int reloadSignalHandler(int signal, void *data)
+{
+    (void)signal;
+    reloadConfig(data);
+    return 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -1681,6 +2073,28 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
 {
     bool logo = (modifiers & WLR_MODIFIER_LOGO) != 0;
     bool alt = (modifiers & WLR_MODIFIER_ALT) != 0;
+
+    // Ctrl+Alt+F1..F12: switch virtual terminals. This must keep working
+    // while the screen is locked (it is how one reaches a text console).
+    if (sym >= XKB_KEY_XF86Switch_VT_1 && sym <= XKB_KEY_XF86Switch_VT_12) {
+        if (server->session) {
+            wlr_session_change_vt(server->session,
+                                  (unsigned)(sym - XKB_KEY_XF86Switch_VT_1 + 1));
+        }
+        return true;
+    }
+    // Everything else belongs to the screen locker while it runs.
+    if (server->locked)
+        return false;
+
+    if (logo && (sym == XKB_KEY_l || sym == XKB_KEY_L)) {
+        spawnLocker(server);
+        return true;
+    }
+    if (logo && sym == XKB_KEY_space && server->layoutCount > 1) {
+        setLayout(server, server->layoutIndex + 1);
+        return true;
+    }
     if (logo)
         wlr_log(WLR_DEBUG, "logo key sym=%u shift=%d focus=%p", sym,
                 (modifiers & WLR_MODIFIER_SHIFT) != 0,
@@ -1775,6 +2189,16 @@ static void keyboardModifiers(struct wl_listener *listener, void *data)
     if (server->switching
         && !(wlr_keyboard_get_modifiers(keyboard->keyboard) & WLR_MODIFIER_ALT))
         switcherCommit(server);
+    // A layout switch through an xkb option (grp:alt_shift_toggle, ...)
+    // only shows up as a new effective group.
+    if (!keyboard->ownKeymap && keyboard->keyboard->xkb_state) {
+        int group = (int)xkb_state_serialize_layout(keyboard->keyboard->xkb_state,
+                                                    XKB_STATE_LAYOUT_EFFECTIVE);
+        if (group != server->layoutIndex && group < server->layoutCount) {
+            server->layoutIndex = group;
+            broadcastLayout(server);
+        }
+    }
     wlr_seat_set_keyboard(keyboard->server->seat, keyboard->keyboard);
     wlr_seat_keyboard_notify_modifiers(keyboard->server->seat,
                                        &keyboard->keyboard->modifiers);
@@ -1791,6 +2215,7 @@ static void keyboardKey(struct wl_listener *listener, void *data)
             (int)event->state,
             (void *)server->seat->keyboard_state.focused_surface);
 
+    notifyActivity(server);
     xkb_keysym_t sym = xkb_state_key_get_one_sym(
         keyboard->keyboard->xkb_state, event->keycode + 8);
     bool isLogo = sym == XKB_KEY_Super_L || sym == XKB_KEY_Super_R;
@@ -1805,7 +2230,7 @@ static void keyboardKey(struct wl_listener *listener, void *data)
             return;
     } else if (isLogo && server->logoTap) {
         server->logoTap = false;
-        if (!server->switching)
+        if (!server->switching && !server->locked)
             shellAction("toggleStartMenu");
     }
 
@@ -1832,16 +2257,13 @@ static void addKeyboard(struct Server *server, struct wlr_keyboard *wlrKeyboard,
     keyboard->server = server;
     keyboard->keyboard = wlrKeyboard;
 
-    if (!hasKeymap) {
-        struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
-        struct xkb_rule_names rules = {0};
-        struct xkb_keymap *keymap = xkb_keymap_new_from_names(
-            context, &rules, XKB_KEYMAP_COMPILE_NO_FLAGS);
-        wlr_keyboard_set_keymap(wlrKeyboard, keymap);
+    keyboard->ownKeymap = hasKeymap;
+    struct xkb_keymap *keymap = hasKeymap ? NULL : buildKeymap(server);
+    if (keymap && server->layoutCount == 0)
+        updateLayoutNames(server, keymap);
+    configureKeyboard(server, keyboard, keymap);
+    if (keymap)
         xkb_keymap_unref(keymap);
-        xkb_context_unref(context);
-    }
-    wlr_keyboard_set_repeat_info(wlrKeyboard, 25, 600);
 
     keyboard->modifiers.notify = keyboardModifiers;
     wl_signal_add(&wlrKeyboard->events.modifiers, &keyboard->modifiers);
@@ -1871,6 +2293,15 @@ static void addKeyboard(struct Server *server, struct wlr_keyboard *wlrKeyboard,
     }
 }
 
+static void pointerDestroy(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct Pointer *pointer = wl_container_of(listener, pointer, destroy);
+    wl_list_remove(&pointer->destroy.link);
+    wl_list_remove(&pointer->link);
+    free(pointer);
+}
+
 static void newInput(struct wl_listener *listener, void *data)
 {
     struct Server *server = wl_container_of(listener, server, newInput);
@@ -1881,6 +2312,13 @@ static void newInput(struct wl_listener *listener, void *data)
     } else if (device->type == WLR_INPUT_DEVICE_POINTER) {
         wlr_cursor_attach_input_device(server->cursor, device);
         wlr_seat_set_capabilities(server->seat, WL_SEAT_CAPABILITY_POINTER);
+        struct Pointer *pointer = xcalloc(1, sizeof(*pointer));
+        pointer->server = server;
+        pointer->device = device;
+        pointer->destroy.notify = pointerDestroy;
+        wl_signal_add(&device->events.destroy, &pointer->destroy);
+        wl_list_insert(&server->pointers, &pointer->link);
+        configurePointer(server, device);
     }
 }
 
@@ -2142,6 +2580,333 @@ static void handleNewXdgToplevel(struct wl_listener *listener, void *data)
 }
 
 // ---------------------------------------------------------------------------
+// Output configuration: saved layouts and wlr-output-management
+// ---------------------------------------------------------------------------
+
+#define NT_MAX_SAVED_OUTPUTS 32
+
+// Monitors are remembered by make/model/serial, so a laptop panel and an
+// external screen keep their settings whatever connector they appear on.
+static void outputKey(struct wlr_output *output, char *key, size_t size)
+{
+    const char *make = output->make ? output->make : "";
+    const char *model = output->model ? output->model : "";
+    const char *serial = output->serial ? output->serial : "";
+    if (make[0] == '\0' && model[0] == '\0' && serial[0] == '\0')
+        snprintf(key, size, "%s", output->name);
+    else
+        snprintf(key, size, "%s %s %s", make, model, serial);
+}
+
+static void outputsConfigPath(char *path, size_t size)
+{
+    ntConfigPath(path, size, "outputs.conf");
+}
+
+static bool findSavedOutput(struct wlr_output *output, struct SavedOutput *found)
+{
+    struct SavedOutput saved[NT_MAX_SAVED_OUTPUTS];
+    char path[PATH_MAX];
+    outputsConfigPath(path, sizeof(path));
+    int count = ntOutputsLoad(path, saved, NT_MAX_SAVED_OUTPUTS);
+    char key[NT_CONFIG_TEXT];
+    outputKey(output, key, sizeof(key));
+    for (int i = 0; i < count; ++i) {
+        if (strcmp(saved[i].key, key) == 0) {
+            *found = saved[i];
+            return true;
+        }
+    }
+    return false;
+}
+
+static struct Output *outputFromWlr(struct Server *server, struct wlr_output *wlrOutput)
+{
+    struct Output *output;
+    wl_list_for_each(output, &server->outputs, link) {
+        if (output->output == wlrOutput)
+            return output;
+    }
+    return NULL;
+}
+
+// Writes the current state of every connected output into outputs.conf,
+// keeping the entries of monitors that are not connected right now.
+static void saveOutputs(struct Server *server)
+{
+    struct SavedOutput saved[NT_MAX_SAVED_OUTPUTS];
+    char path[PATH_MAX];
+    outputsConfigPath(path, sizeof(path));
+    int count = ntOutputsLoad(path, saved, NT_MAX_SAVED_OUTPUTS);
+
+    struct Output *output;
+    wl_list_for_each(output, &server->outputs, link) {
+        struct wlr_output *o = output->output;
+        struct SavedOutput entry = {0};
+        outputKey(o, entry.key, sizeof(entry.key));
+        entry.enabled = !output->disabled;
+        entry.width = o->width;
+        entry.height = o->height;
+        entry.refresh = o->refresh;
+        if (o->current_mode) {
+            entry.width = o->current_mode->width;
+            entry.height = o->current_mode->height;
+            entry.refresh = o->current_mode->refresh;
+        }
+        struct wlr_box box = {0};
+        wlr_output_layout_get_box(server->outputLayout, o, &box);
+        entry.x = box.x;
+        entry.y = box.y;
+        entry.scale = o->scale;
+        entry.transform = (int)o->transform;
+
+        int slot = -1;
+        for (int i = 0; i < count; ++i) {
+            if (strcmp(saved[i].key, entry.key) == 0) {
+                slot = i;
+                break;
+            }
+        }
+        if (slot < 0) {
+            if (count < NT_MAX_SAVED_OUTPUTS) {
+                slot = count++;
+            } else {
+                memmove(&saved[0], &saved[1], sizeof(saved[0]) * (NT_MAX_SAVED_OUTPUTS - 1));
+                slot = NT_MAX_SAVED_OUTPUTS - 1;
+            }
+        }
+        if (!entry.enabled && slot < count && saved[slot].width > 0) {
+            // A disabled output keeps the mode it had while enabled.
+            entry.width = saved[slot].width;
+            entry.height = saved[slot].height;
+            entry.refresh = saved[slot].refresh;
+        }
+        saved[slot] = entry;
+    }
+    if (!ntOutputsSave(path, saved, count))
+        wlr_log(WLR_ERROR, "could not write %s", path);
+}
+
+static struct wlr_output_mode *findMode(struct wlr_output *output, int width,
+                                        int height, int refresh)
+{
+    struct wlr_output_mode *best = NULL;
+    struct wlr_output_mode *mode;
+    wl_list_for_each(mode, &output->modes, link) {
+        if (mode->width != width || mode->height != height)
+            continue;
+        if (refresh <= 0)
+            return mode;
+        if (abs(mode->refresh - refresh) <= 500)
+            return mode;
+        if (!best || abs(mode->refresh - refresh) < abs(best->refresh - refresh))
+            best = mode;
+    }
+    return best;
+}
+
+// The scale a new monitor starts with: 2 on high-density panels, as GNOME
+// and KDE do, 1 everywhere else (and in nested/headless sessions).
+static float automaticScale(struct wlr_output *output, int width, int height)
+{
+    if (output->phys_width <= 0 || output->phys_height <= 0)
+        return 1.0f;
+    double dpi = width / (output->phys_width / 25.4);
+    if (dpi >= 192.0 && height >= 1200)
+        return 2.0f;
+    return 1.0f;
+}
+
+static void outputSceneDestroy(struct wl_listener *listener, void *data);
+
+// Puts an output into the layout (and the scene) or takes it out.
+static void placeOutput(struct Server *server, struct Output *output,
+                        bool enabled, bool automatic, int x, int y)
+{
+    if (!enabled) {
+        wlr_output_layout_remove(server->outputLayout, output->output);
+        return;
+    }
+    bool wasPlaced = wlr_output_layout_get(server->outputLayout, output->output) != NULL;
+    struct wlr_output_layout_output *layoutOutput = automatic
+        ? wlr_output_layout_add_auto(server->outputLayout, output->output)
+        : wlr_output_layout_add(server->outputLayout, output->output, x, y);
+    if (!layoutOutput)
+        return;
+    // Moving an output that is already placed keeps its scene association.
+    if (wasPlaced && output->sceneOutput)
+        return;
+    if (!output->sceneOutput) {
+        output->sceneOutput = wlr_scene_output_create(server->scene, output->output);
+        if (!output->sceneOutput)
+            return;
+        output->sceneDestroy.notify = outputSceneDestroy;
+        wl_signal_add(&output->sceneOutput->events.destroy, &output->sceneDestroy);
+    }
+    wlr_scene_output_layout_add_output(server->sceneLayout, layoutOutput,
+                                       output->sceneOutput);
+}
+
+static void updateOutputManager(struct Server *server)
+{
+    if (!server->outputManager)
+        return;
+    struct wlr_output_configuration_v1 *config = wlr_output_configuration_v1_create();
+    if (!config)
+        return;
+    struct Output *output;
+    wl_list_for_each(output, &server->outputs, link) {
+        struct wlr_output_configuration_head_v1 *head =
+            wlr_output_configuration_head_v1_create(config, output->output);
+        if (!head)
+            continue;
+        head->state.enabled = !output->disabled;
+        struct wlr_box box = {0};
+        wlr_output_layout_get_box(server->outputLayout, output->output, &box);
+        head->state.x = box.x;
+        head->state.y = box.y;
+    }
+    wlr_output_manager_v1_set_configuration(server->outputManager, config);
+}
+
+static void arrangeAllOutputs(struct Server *server)
+{
+    struct Output *output;
+    wl_list_for_each(output, &server->outputs, link) {
+        if (output->disabled)
+            continue;
+        wlr_output_layout_get_box(server->outputLayout, output->output, &output->usable);
+        arrangeOutput(server, output);
+    }
+}
+
+// Windows left on a monitor that went away come back to a visible one.
+static void rescueViews(struct Server *server)
+{
+    struct View *view;
+    wl_list_for_each(view, &server->views, link) {
+        if (!view->mapped || view->overrideRedirect)
+            continue;
+        double cx = view->x + view->width / 2.0;
+        double cy = view->y + view->height / 2.0;
+        if (wlr_output_layout_output_at(server->outputLayout, cx, cy))
+            continue;
+        struct Output *output;
+        wl_list_for_each(output, &server->outputs, link) {
+            if (output->disabled)
+                continue;
+            viewSetPosition(view, output->usable.x + 40, output->usable.y + 40);
+            break;
+        }
+    }
+}
+
+static bool applyOutputConfiguration(struct Server *server,
+                                     struct wlr_output_configuration_v1 *config,
+                                     bool testOnly)
+{
+    // Never let a configuration switch every monitor off.
+    bool anyEnabled = false;
+    struct wlr_output_configuration_head_v1 *head;
+    wl_list_for_each(head, &config->heads, link) {
+        if (head->state.enabled)
+            anyEnabled = true;
+    }
+    if (!anyEnabled)
+        return false;
+
+    bool ok = true;
+    wl_list_for_each(head, &config->heads, link) {
+        struct wlr_output_state state;
+        wlr_output_state_init(&state);
+        wlr_output_head_v1_state_apply(&head->state, &state);
+        if (testOnly) {
+            if (!wlr_output_test_state(head->state.output, &state))
+                ok = false;
+        } else if (wlr_output_commit_state(head->state.output, &state)) {
+            struct Output *output = outputFromWlr(server, head->state.output);
+            if (output) {
+                output->disabled = !head->state.enabled;
+                output->poweredOff = false;
+                placeOutput(server, output, head->state.enabled, false,
+                            head->state.x, head->state.y);
+                if (head->state.enabled) {
+                    wlr_xcursor_manager_load(server->cursorManager,
+                                             head->state.output->scale);
+                }
+            }
+        } else {
+            ok = false;
+        }
+        wlr_output_state_finish(&state);
+    }
+    if (!testOnly) {
+        arrangeAllOutputs(server);
+        rescueViews(server);
+        updateOutputManager(server);
+        if (ok)
+            saveOutputs(server);
+    }
+    return ok;
+}
+
+static void handleOutputManagerApply(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, outputManagerApply);
+    struct wlr_output_configuration_v1 *config = data;
+    if (applyOutputConfiguration(server, config, false))
+        wlr_output_configuration_v1_send_succeeded(config);
+    else
+        wlr_output_configuration_v1_send_failed(config);
+    wlr_output_configuration_v1_destroy(config);
+}
+
+static void handleOutputManagerTest(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, outputManagerTest);
+    struct wlr_output_configuration_v1 *config = data;
+    if (applyOutputConfiguration(server, config, true))
+        wlr_output_configuration_v1_send_succeeded(config);
+    else
+        wlr_output_configuration_v1_send_failed(config);
+    wlr_output_configuration_v1_destroy(config);
+}
+
+static void handleLayoutChange(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct Server *server = wl_container_of(listener, server, layoutChange);
+    updateOutputManager(server);
+}
+
+// `dpms off|on`: blank the monitors without forgetting their configuration.
+static void setOutputsPower(struct Server *server, bool on)
+{
+    struct Output *output;
+    wl_list_for_each(output, &server->outputs, link) {
+        if (output->disabled || output->poweredOff == !on)
+            continue;
+        struct wlr_output_state state;
+        wlr_output_state_init(&state);
+        wlr_output_state_set_enabled(&state, on);
+        if (wlr_output_commit_state(output->output, &state))
+            output->poweredOff = !on;
+        wlr_output_state_finish(&state);
+    }
+}
+
+static void handleGammaSet(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, gammaSetGamma);
+    const struct wlr_gamma_control_manager_v1_set_gamma_event *event = data;
+    struct Output *output = outputFromWlr(server, event->output);
+    if (!output)
+        return;
+    output->gammaPending = true;
+    wlr_output_schedule_frame(event->output);
+}
+
+// ---------------------------------------------------------------------------
 // Output
 // ---------------------------------------------------------------------------
 
@@ -2151,6 +2916,28 @@ static void outputFrame(struct wl_listener *listener, void *data)
     struct Output *output = wl_container_of(listener, output, frame);
     if (!output->sceneOutput)
         return;
+    if (output->gammaPending) {
+        // A night light (wlsunset) changed the gamma ramp: commit it with
+        // the next frame.
+        struct Server *server = output->server;
+        output->gammaPending = false;
+        struct wlr_output_state state;
+        wlr_output_state_init(&state);
+        if (wlr_scene_output_build_state(output->sceneOutput, &state, NULL)) {
+            struct wlr_gamma_control_v1 *gamma =
+                wlr_gamma_control_manager_v1_get_control(server->gammaManager,
+                                                         output->output);
+            if (wlr_gamma_control_v1_apply(gamma, &state)
+                && !wlr_output_commit_state(output->output, &state) && gamma) {
+                wlr_gamma_control_v1_send_failed_and_destroy(gamma);
+            }
+        }
+        wlr_output_state_finish(&state);
+        struct timespec now = {0};
+        clock_gettime(CLOCK_MONOTONIC, &now);
+        wlr_scene_output_send_frame_done(output->sceneOutput, &now);
+        return;
+    }
     bool committed = wlr_scene_output_commit(output->sceneOutput, NULL);
     wlr_log(WLR_DEBUG, "frame %s committed=%d", output->output->name, committed);
     struct timespec now = {0};
@@ -2175,13 +2962,26 @@ static void outputDestroy(struct wl_listener *listener, void *data)
         if (layer->output == output)
             layer->output = NULL;
     }
-    if (output->sceneOutput)
+    if (output->sceneOutput) {
+        wl_list_remove(&output->sceneDestroy.link);
         wlr_scene_output_destroy(output->sceneOutput);
+        output->sceneOutput = NULL;
+    }
     wl_list_remove(&output->frame.link);
     wl_list_remove(&output->requestState.link);
     wl_list_remove(&output->destroy.link);
     wl_list_remove(&output->link);
     free(output);
+    rescueViews(server);
+    updateOutputManager(server);
+}
+
+static void outputSceneDestroy(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct Output *output = wl_container_of(listener, output, sceneDestroy);
+    wl_list_remove(&output->sceneDestroy.link);
+    output->sceneOutput = NULL;
 }
 
 static void handleNewOutput(struct wl_listener *listener, void *data)
@@ -2194,30 +2994,56 @@ static void handleNewOutput(struct wl_listener *listener, void *data)
         return;
     }
 
+    struct SavedOutput saved = {0};
+    bool haveSaved = findSavedOutput(wlrOutput, &saved);
+    // A monitor saved as "off" stays off, unless it is the only one.
+    bool enabled = !haveSaved || saved.enabled || wl_list_empty(&server->outputs);
+
     struct wlr_output_state state;
     wlr_output_state_init(&state);
     wlr_output_state_set_enabled(&state, true);
-    struct wlr_output_mode *mode = wlr_output_preferred_mode(wlrOutput);
+    struct wlr_output_mode *mode = NULL;
+    if (haveSaved)
+        mode = findMode(wlrOutput, saved.width, saved.height, saved.refresh);
+    if (!mode)
+        mode = wlr_output_preferred_mode(wlrOutput);
     if (mode)
         wlr_output_state_set_mode(&state, mode);
-    wlr_output_commit_state(wlrOutput, &state);
-    wlr_output_state_finish(&state);
-
-    struct wlr_output_layout_output *layoutOutput =
-        wlr_output_layout_add_auto(server->outputLayout, wlrOutput);
-    struct wlr_scene_output *sceneOutput = wlr_scene_output_create(
-        server->scene, wlrOutput);
-    if (!sceneOutput) {
-        wlr_log(WLR_ERROR, "failed to create scene output");
-        return;
+    if (haveSaved) {
+        wlr_output_state_set_scale(&state, (float)saved.scale);
+        wlr_output_state_set_transform(&state, (enum wl_output_transform)saved.transform);
+    } else if (mode) {
+        wlr_output_state_set_scale(&state, automaticScale(wlrOutput, mode->width,
+                                                          mode->height));
     }
-    wlr_scene_output_layout_add_output(server->sceneLayout, layoutOutput,
-                                       sceneOutput);
+    if (!wlr_output_commit_state(wlrOutput, &state)) {
+        // A saved mode the monitor no longer accepts: fall back to defaults.
+        wlr_output_state_finish(&state);
+        wlr_output_state_init(&state);
+        wlr_output_state_set_enabled(&state, true);
+        struct wlr_output_mode *preferred = wlr_output_preferred_mode(wlrOutput);
+        if (preferred)
+            wlr_output_state_set_mode(&state, preferred);
+        wlr_output_commit_state(wlrOutput, &state);
+        haveSaved = false;
+        enabled = true;
+    }
+    wlr_output_state_finish(&state);
 
     struct Output *output = xcalloc(1, sizeof(*output));
     output->server = server;
     output->output = wlrOutput;
-    output->sceneOutput = sceneOutput;
+    output->disabled = !enabled;
+    placeOutput(server, output, enabled, !haveSaved, saved.x, saved.y);
+    if (!enabled) {
+        struct wlr_output_state off;
+        wlr_output_state_init(&off);
+        wlr_output_state_set_enabled(&off, false);
+        wlr_output_commit_state(wlrOutput, &off);
+        wlr_output_state_finish(&off);
+    } else if (!output->sceneOutput) {
+        wlr_log(WLR_ERROR, "failed to create scene output");
+    }
     output->frame.notify = outputFrame;
     wl_signal_add(&wlrOutput->events.frame, &output->frame);
     output->requestState.notify = outputRequestState;
@@ -2227,7 +3053,9 @@ static void handleNewOutput(struct wl_listener *listener, void *data)
 
     wl_list_insert(&server->outputs, &output->link);
     wlr_output_layout_get_box(server->outputLayout, wlrOutput, &output->usable);
-    wlr_scene_output_commit(sceneOutput, NULL);
+    if (output->sceneOutput)
+        wlr_scene_output_commit(output->sceneOutput, NULL);
+    updateOutputManager(server);
 
     wlr_xcursor_manager_load(server->cursorManager, wlrOutput->scale);
     wlr_cursor_set_xcursor(server->cursor, server->cursorManager, "left_ptr");
@@ -2495,6 +3323,504 @@ static void handleXWaylandReady(struct wl_listener *listener, void *data)
 }
 
 // ---------------------------------------------------------------------------
+// Screen lock (ext-session-lock-v1)
+// ---------------------------------------------------------------------------
+//
+// The locker (swaylock, started through newteller-lock) asks for the lock.
+// From then on only its surfaces are drawn and receive input; everything
+// else sits under an opaque backdrop. If the locker dies without unlocking,
+// the session stays locked and a new locker is started.
+
+static void spawnLocker(struct Server *server)
+{
+    const char *argv[] = {"newteller-lock", NULL};
+    setChildEnvironment(server);
+    spawnDetached(argv[0], argv);
+}
+
+static void lockFocusSurface(struct Server *server, struct wlr_surface *surface)
+{
+    if (!surface)
+        return;
+    struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
+    if (keyboard) {
+        wlr_seat_keyboard_notify_enter(server->seat, surface, keyboard->keycodes,
+                                       keyboard->num_keycodes, &keyboard->modifiers);
+    } else {
+        wlr_seat_keyboard_notify_enter(server->seat, surface, NULL, 0, NULL);
+    }
+}
+
+static void lockSurfaceMap(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct LockSurface *lock = wl_container_of(listener, lock, map);
+    struct Server *server = lock->server;
+    struct wlr_surface *focused = server->seat->keyboard_state.focused_surface;
+    // The first locker surface (or the one under the cursor) takes the keys.
+    if (!focused || !wlr_session_lock_surface_v1_try_from_wlr_surface(focused))
+        lockFocusSurface(server, lock->lockSurface->surface);
+    struct Hit hit = hitTest(server, server->cursor->x, server->cursor->y);
+    pointerFocus(server, &hit);
+}
+
+static void lockSurfaceDestroy(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct LockSurface *lock = wl_container_of(listener, lock, destroy);
+    struct Server *server = lock->server;
+    struct wlr_surface *surface = lock->lockSurface->surface;
+    wl_list_remove(&lock->map.link);
+    wl_list_remove(&lock->destroy.link);
+    wl_list_remove(&lock->link);
+    free(lock);
+    if (server->seat->keyboard_state.focused_surface == surface) {
+        wlr_seat_keyboard_notify_clear_focus(server->seat);
+        struct LockSurface *other;
+        wl_list_for_each(other, &server->lockSurfaces, link) {
+            if (other->lockSurface->surface && other->lockSurface->surface->mapped) {
+                lockFocusSurface(server, other->lockSurface->surface);
+                break;
+            }
+        }
+    }
+}
+
+static void handleLockNewSurface(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, lockNewSurface);
+    struct wlr_session_lock_surface_v1 *lockSurface = data;
+    struct LockSurface *lock = xcalloc(1, sizeof(*lock));
+    lock->server = server;
+    lock->lockSurface = lockSurface;
+    lock->tree = wlr_scene_subsurface_tree_create(server->lockTree,
+                                                  lockSurface->surface);
+    struct wlr_box box = {0, 0, 1280, 800};
+    wlr_output_layout_get_box(server->outputLayout, lockSurface->output, &box);
+    if (lock->tree)
+        wlr_scene_node_set_position(&lock->tree->node, box.x, box.y);
+    wlr_session_lock_surface_v1_configure(lockSurface, (uint32_t)box.width,
+                                          (uint32_t)box.height);
+    lock->map.notify = lockSurfaceMap;
+    wl_signal_add(&lockSurface->surface->events.map, &lock->map);
+    lock->destroy.notify = lockSurfaceDestroy;
+    wl_signal_add(&lockSurface->events.destroy, &lock->destroy);
+    wl_list_insert(&server->lockSurfaces, &lock->link);
+}
+
+static void setDesktopVisible(struct Server *server, bool visible)
+{
+    wlr_scene_node_set_enabled(&server->backgroundTree->node, visible);
+    wlr_scene_node_set_enabled(&server->bottomTree->node, visible);
+    wlr_scene_node_set_enabled(&server->toplevelTree->node, visible);
+    bool overlays = visible && !server->fullscreenView;
+    wlr_scene_node_set_enabled(&server->topTree->node, overlays);
+    wlr_scene_node_set_enabled(&server->overlayTree->node, overlays);
+}
+
+static void detachLock(struct Server *server)
+{
+    if (!server->activeLock)
+        return;
+    wl_list_remove(&server->lockNewSurface.link);
+    wl_list_remove(&server->lockUnlock.link);
+    wl_list_remove(&server->lockDestroy.link);
+    server->activeLock = NULL;
+}
+
+static int lockRespawnCallback(void *data)
+{
+    struct Server *server = data;
+    if (server->lockRespawnTimer) {
+        wl_event_source_remove(server->lockRespawnTimer);
+        server->lockRespawnTimer = NULL;
+    }
+    if (server->locked && !server->activeLock && server->lockRespawns < 5) {
+        ++server->lockRespawns;
+        wlr_log(WLR_INFO, "starting the screen locker again (attempt %d)",
+                server->lockRespawns);
+        spawnLocker(server);
+    }
+    return 0;
+}
+
+static void handleLockUnlock(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct Server *server = wl_container_of(listener, server, lockUnlock);
+    detachLock(server);
+    server->locked = false;
+    server->lockRespawns = 0;
+    wlr_scene_node_set_enabled(&server->lockTree->node, false);
+    setDesktopVisible(server, true);
+    wlr_seat_keyboard_notify_clear_focus(server->seat);
+    restoreFocus(server);
+    struct Hit hit = hitTest(server, server->cursor->x, server->cursor->y);
+    pointerFocus(server, &hit);
+    ipcBroadcast(server, "event locked 0");
+    wlr_log(WLR_INFO, "session unlocked");
+}
+
+static void handleLockDestroy(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct Server *server = wl_container_of(listener, server, lockDestroy);
+    detachLock(server);
+    if (!server->locked || !server->running)
+        return;
+    wlr_log(WLR_ERROR, "the screen locker went away without unlocking; "
+                       "the session stays locked");
+    if (!server->lockRespawnTimer) {
+        server->lockRespawnTimer = wl_event_loop_add_timer(
+            server->eventLoop, lockRespawnCallback, server);
+        if (server->lockRespawnTimer)
+            wl_event_source_timer_update(server->lockRespawnTimer, 1000);
+    }
+}
+
+static void handleNewLock(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, newLock);
+    struct wlr_session_lock_v1 *lock = data;
+    if (server->activeLock) {
+        wlr_log(WLR_INFO, "refusing a second screen locker");
+        wlr_session_lock_v1_destroy(lock);
+        return;
+    }
+
+    server->activeLock = lock;
+    server->lockNewSurface.notify = handleLockNewSurface;
+    wl_signal_add(&lock->events.new_surface, &server->lockNewSurface);
+    server->lockUnlock.notify = handleLockUnlock;
+    wl_signal_add(&lock->events.unlock, &server->lockUnlock);
+    server->lockDestroy.notify = handleLockDestroy;
+    wl_signal_add(&lock->events.destroy, &server->lockDestroy);
+
+    if (!server->locked) {
+        server->locked = true;
+        switcherCancel(server);
+        server->cursorMode = CURSOR_PASSTHROUGH;
+        server->grabbedView = NULL;
+        server->logoTap = false;
+        if (server->focusedView)
+            server->previousView = server->focusedView;
+        clearKeyboardFocus(server);
+        wlr_seat_pointer_clear_focus(server->seat);
+        wlr_scene_node_raise_to_top(&server->lockTree->node);
+        wlr_scene_node_set_enabled(&server->lockTree->node, true);
+        setDesktopVisible(server, false);
+        ipcBroadcast(server, "event locked 1");
+        wlr_log(WLR_INFO, "session locked");
+    }
+    if (server->lockRespawnTimer) {
+        wl_event_source_remove(server->lockRespawnTimer);
+        server->lockRespawnTimer = NULL;
+    }
+    wlr_session_lock_v1_send_locked(lock);
+}
+
+// ---------------------------------------------------------------------------
+// Idle inhibition (video players, presentations)
+// ---------------------------------------------------------------------------
+
+static void idleInhibitorDestroy(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct IdleInhibitor *inhibitor = wl_container_of(listener, inhibitor, destroy);
+    struct Server *server = inhibitor->server;
+    wl_list_remove(&inhibitor->destroy.link);
+    free(inhibitor);
+    if (server->idleInhibitors > 0)
+        --server->idleInhibitors;
+    wlr_idle_notifier_v1_set_inhibited(server->idleNotifier, server->idleInhibitors > 0);
+}
+
+static void handleNewIdleInhibitor(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, newIdleInhibitor);
+    struct wlr_idle_inhibitor_v1 *wlrInhibitor = data;
+    struct IdleInhibitor *inhibitor = xcalloc(1, sizeof(*inhibitor));
+    inhibitor->server = server;
+    inhibitor->destroy.notify = idleInhibitorDestroy;
+    wl_signal_add(&wlrInhibitor->events.destroy, &inhibitor->destroy);
+    ++server->idleInhibitors;
+    wlr_idle_notifier_v1_set_inhibited(server->idleNotifier, true);
+}
+
+// ---------------------------------------------------------------------------
+// Control socket
+// ---------------------------------------------------------------------------
+//
+// $XDG_RUNTIME_DIR/newteller-<WAYLAND_DISPLAY>.sock, exported to every child
+// as NEWTELLER_IPC. One command per line, one reply line per command
+// ("ok ..." or "error ..."). After `watch`, the connection also receives
+// "event ..." lines (keyboard layout, lock state).
+// `newteller-compositor --msg "<command>"` is the command-line client.
+
+static void ipcClientDestroy(struct IpcClient *client)
+{
+    if (client->source)
+        wl_event_source_remove(client->source);
+    close(client->fd);
+    wl_list_remove(&client->link);
+    free(client);
+}
+
+static void ipcSend(struct IpcClient *client, const char *line)
+{
+    char buffer[2048];
+    int length = snprintf(buffer, sizeof(buffer), "%s\n", line);
+    if (length <= 0)
+        return;
+    if ((size_t)length >= sizeof(buffer))
+        length = (int)sizeof(buffer) - 1;
+    // Non-blocking: a client that stops reading loses events, it never
+    // blocks the compositor.
+    ssize_t written = send(client->fd, buffer, (size_t)length, MSG_NOSIGNAL);
+    (void)written;
+}
+
+static void ipcBroadcast(struct Server *server, const char *line)
+{
+    if (!server->ipcClients.next)
+        return;
+    struct IpcClient *client;
+    wl_list_for_each(client, &server->ipcClients, link) {
+        if (client->watching)
+            ipcSend(client, line);
+    }
+}
+
+static void ipcDescribeOutputs(struct Server *server, char *out, size_t size)
+{
+    int used = snprintf(out, size, "ok");
+    struct Output *output;
+    wl_list_for_each(output, &server->outputs, link) {
+        struct wlr_output *o = output->output;
+        struct wlr_box box = {0};
+        wlr_output_layout_get_box(server->outputLayout, o, &box);
+        int written = snprintf(out + used, size - (size_t)used,
+                               " %s:%dx%d@%d:%d,%d:%.2f:%s", o->name, o->width,
+                               o->height, o->refresh, box.x, box.y, o->scale,
+                               output->disabled ? "off" : "on");
+        if (written < 0 || (size_t)(used + written) >= size)
+            break;
+        used += written;
+    }
+}
+
+static void ipcHandleCommand(struct IpcClient *client, char *line)
+{
+    struct Server *server = client->server;
+    char *command = strtok(line, " \t\r");
+    char *argument = strtok(NULL, " \t\r");
+    if (!command)
+        return;
+
+    if (strcmp(command, "ping") == 0) {
+        ipcSend(client, "ok pong");
+    } else if (strcmp(command, "reload") == 0) {
+        reloadConfig(server);
+        ipcSend(client, "ok");
+    } else if (strcmp(command, "watch") == 0) {
+        client->watching = true;
+        ipcSend(client, "ok");
+        broadcastLayout(server);
+        ipcSend(client, server->locked ? "event locked 1" : "event locked 0");
+    } else if (strcmp(command, "layout") == 0) {
+        if (!argument) {
+            char reply[64];
+            snprintf(reply, sizeof(reply), "ok %d %d", server->layoutIndex,
+                     server->layoutCount);
+            ipcSend(client, reply);
+            return;
+        }
+        if (strcmp(argument, "next") == 0)
+            setLayout(server, server->layoutIndex + 1);
+        else if (strcmp(argument, "prev") == 0)
+            setLayout(server, server->layoutIndex - 1);
+        else
+            setLayout(server, atoi(argument));
+        ipcSend(client, "ok");
+    } else if (strcmp(command, "dpms") == 0 && argument) {
+        setOutputsPower(server, strcmp(argument, "off") != 0);
+        ipcSend(client, "ok");
+    } else if (strcmp(command, "lock") == 0) {
+        if (!server->locked)
+            spawnLocker(server);
+        ipcSend(client, "ok");
+    } else if (strcmp(command, "locked") == 0) {
+        ipcSend(client, server->locked ? "ok 1" : "ok 0");
+    } else if (strcmp(command, "outputs") == 0) {
+        char reply[1536];
+        ipcDescribeOutputs(server, reply, sizeof(reply));
+        ipcSend(client, reply);
+    } else if (strcmp(command, "exit") == 0) {
+        ipcSend(client, "ok");
+        wlr_log(WLR_INFO, "session exit requested over the control socket");
+        server->running = false;
+        wl_display_terminate(server->display);
+    } else {
+        ipcSend(client, "error unknown command");
+    }
+}
+
+static int ipcClientReadable(int fd, uint32_t mask, void *data)
+{
+    struct IpcClient *client = data;
+    if (mask & (WL_EVENT_HANGUP | WL_EVENT_ERROR)) {
+        ipcClientDestroy(client);
+        return 0;
+    }
+    ssize_t received = recv(fd, client->buffer + client->length,
+                            sizeof(client->buffer) - 1 - client->length, 0);
+    if (received <= 0) {
+        if (received < 0 && (errno == EAGAIN || errno == EINTR))
+            return 0;
+        ipcClientDestroy(client);
+        return 0;
+    }
+    client->length += (size_t)received;
+    client->buffer[client->length] = '\0';
+    char *newline;
+    while ((newline = memchr(client->buffer, '\n', client->length)) != NULL) {
+        *newline = '\0';
+        char line[sizeof(client->buffer)];
+        snprintf(line, sizeof(line), "%s", client->buffer);
+        size_t consumed = (size_t)(newline - client->buffer) + 1;
+        memmove(client->buffer, newline + 1, client->length - consumed);
+        client->length -= consumed;
+        client->buffer[client->length] = '\0';
+        ipcHandleCommand(client, line);
+        // `exit` stops the display; the client is cleaned up with the rest.
+        if (!client->server->running)
+            return 0;
+    }
+    if (client->length >= sizeof(client->buffer) - 1)
+        ipcClientDestroy(client);
+    return 0;
+}
+
+static int ipcAccept(int fd, uint32_t mask, void *data)
+{
+    (void)mask;
+    struct Server *server = data;
+    int clientFd = accept4(fd, NULL, NULL, SOCK_NONBLOCK | SOCK_CLOEXEC);
+    if (clientFd < 0)
+        return 0;
+    struct ucred credentials = {0};
+    socklen_t length = sizeof(credentials);
+    if (getsockopt(clientFd, SOL_SOCKET, SO_PEERCRED, &credentials, &length) != 0
+        || credentials.uid != getuid()) {
+        close(clientFd);
+        return 0;
+    }
+    struct IpcClient *client = xcalloc(1, sizeof(*client));
+    client->server = server;
+    client->fd = clientFd;
+    client->source = wl_event_loop_add_fd(server->eventLoop, clientFd,
+                                          WL_EVENT_READABLE, ipcClientReadable,
+                                          client);
+    wl_list_insert(&server->ipcClients, &client->link);
+    return 0;
+}
+
+static void ipcSocketPath(char *path, size_t size, const char *display)
+{
+    const char *runtime = getenv("XDG_RUNTIME_DIR");
+    snprintf(path, size, "%s/newteller-%s.sock", runtime ? runtime : "/tmp",
+             display && display[0] ? display : "wayland-0");
+}
+
+static void setupIpc(struct Server *server)
+{
+    server->ipcFd = -1;
+    char path[PATH_MAX];
+    ipcSocketPath(path, sizeof(path), server->socketName);
+    struct sockaddr_un address = {0};
+    address.sun_family = AF_UNIX;
+    if (strlen(path) >= sizeof(address.sun_path)) {
+        wlr_log(WLR_ERROR, "control socket path is too long: %s", path);
+        return;
+    }
+    snprintf(address.sun_path, sizeof(address.sun_path), "%s", path);
+    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
+    if (fd < 0)
+        return;
+    unlink(path);
+    if (bind(fd, (struct sockaddr *)&address, sizeof(address)) != 0
+        || listen(fd, 16) != 0) {
+        wlr_log_errno(WLR_ERROR, "cannot listen on %s", path);
+        close(fd);
+        return;
+    }
+    chmod(path, 0600);
+    server->ipcFd = fd;
+    snprintf(server->ipcPath, sizeof(server->ipcPath), "%s", path);
+    server->ipcSource = wl_event_loop_add_fd(server->eventLoop, fd,
+                                             WL_EVENT_READABLE, ipcAccept, server);
+    setenv("NEWTELLER_IPC", path, 1);
+}
+
+static void teardownIpc(struct Server *server)
+{
+    struct IpcClient *client;
+    struct IpcClient *next;
+    wl_list_for_each_safe(client, next, &server->ipcClients, link)
+        ipcClientDestroy(client);
+    if (server->ipcSource) {
+        wl_event_source_remove(server->ipcSource);
+        server->ipcSource = NULL;
+    }
+    if (server->ipcFd >= 0) {
+        close(server->ipcFd);
+        server->ipcFd = -1;
+        unlink(server->ipcPath);
+    }
+}
+
+// `newteller-compositor --msg "<command>"`: send one command, print the reply.
+static int sendCommand(const char *command)
+{
+    char path[PATH_MAX];
+    const char *explicitPath = getenv("NEWTELLER_IPC");
+    if (explicitPath && explicitPath[0])
+        snprintf(path, sizeof(path), "%s", explicitPath);
+    else
+        ipcSocketPath(path, sizeof(path), getenv("WAYLAND_DISPLAY"));
+    struct sockaddr_un address = {0};
+    address.sun_family = AF_UNIX;
+    snprintf(address.sun_path, sizeof(address.sun_path), "%s", path);
+    int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC, 0);
+    if (fd < 0 || connect(fd, (struct sockaddr *)&address, sizeof(address)) != 0) {
+        fprintf(stderr, "newteller-compositor: no compositor at %s\n", path);
+        if (fd >= 0)
+            close(fd);
+        return 1;
+    }
+    char line[1024];
+    int length = snprintf(line, sizeof(line), "%s\n", command);
+    if (length < 0 || write(fd, line, (size_t)length) != length) {
+        close(fd);
+        return 1;
+    }
+    char reply[2048];
+    size_t used = 0;
+    while (used < sizeof(reply) - 1) {
+        ssize_t n = read(fd, reply + used, sizeof(reply) - 1 - used);
+        if (n <= 0)
+            break;
+        used += (size_t)n;
+        if (memchr(reply, '\n', used))
+            break;
+    }
+    close(fd);
+    reply[used] = '\0';
+    fputs(reply, stdout);
+    return strncmp(reply, "ok", 2) == 0 ? 0 : 1;
+}
+
+// ---------------------------------------------------------------------------
 // Protocol setup
 // ---------------------------------------------------------------------------
 
@@ -2536,6 +3862,15 @@ static void setupProtocols(struct Server *server)
     server->toplevelTree = wlr_scene_tree_create(&server->scene->tree);
     server->topTree = wlr_scene_tree_create(&server->scene->tree);
     server->overlayTree = wlr_scene_tree_create(&server->scene->tree);
+    // The screen locker draws above everything, over an opaque backdrop that
+    // hides the desktop even where a lock surface is missing or late.
+    server->lockTree = wlr_scene_tree_create(&server->scene->tree);
+    static const float lockBackdrop[4] = {0.05f, 0.05f, 0.07f, 1.0f};
+    struct wlr_scene_rect *backdrop = wlr_scene_rect_create(
+        server->lockTree, 65536, 65536, lockBackdrop);
+    if (backdrop)
+        wlr_scene_node_set_position(&backdrop->node, -32768, -32768);
+    wlr_scene_node_set_enabled(&server->lockTree->node, false);
 
     server->xdgShell = wlr_xdg_shell_create(server->display, 5);
     server->layerShell = wlr_layer_shell_v1_create(server->display, 4);
@@ -2558,9 +3893,24 @@ static void setupProtocols(struct Server *server)
     wlr_screencopy_manager_v1_create(server->display);
     wlr_export_dmabuf_manager_v1_create(server->display);
     wlr_xdg_output_manager_v1_create(server->display, server->outputLayout);
-    wlr_output_manager_v1_create(server->display);
-    wlr_idle_notifier_v1_create(server->display);
-    wlr_idle_inhibit_v1_create(server->display);
+    server->outputManager = wlr_output_manager_v1_create(server->display);
+    server->outputManagerApply.notify = handleOutputManagerApply;
+    wl_signal_add(&server->outputManager->events.apply, &server->outputManagerApply);
+    server->outputManagerTest.notify = handleOutputManagerTest;
+    wl_signal_add(&server->outputManager->events.test, &server->outputManagerTest);
+    server->layoutChange.notify = handleLayoutChange;
+    wl_signal_add(&server->outputLayout->events.change, &server->layoutChange);
+    server->gammaManager = wlr_gamma_control_manager_v1_create(server->display);
+    server->gammaSetGamma.notify = handleGammaSet;
+    wl_signal_add(&server->gammaManager->events.set_gamma, &server->gammaSetGamma);
+    server->idleNotifier = wlr_idle_notifier_v1_create(server->display);
+    struct wlr_idle_inhibit_manager_v1 *idleInhibit =
+        wlr_idle_inhibit_v1_create(server->display);
+    server->newIdleInhibitor.notify = handleNewIdleInhibitor;
+    wl_signal_add(&idleInhibit->events.new_inhibitor, &server->newIdleInhibitor);
+    server->lockManager = wlr_session_lock_manager_v1_create(server->display);
+    server->newLock.notify = handleNewLock;
+    wl_signal_add(&server->lockManager->events.new_lock, &server->newLock);
     wlr_relative_pointer_manager_v1_create(server->display);
     wlr_viewporter_create(server->display);
     wlr_fractional_scale_manager_v1_create(server->display, 1);
@@ -2588,7 +3938,9 @@ static void setupInput(struct Server *server)
     server->cursor = wlr_cursor_create();
     wlr_cursor_attach_output_layout(server->cursor, server->outputLayout);
 
-    server->cursorManager = wlr_xcursor_manager_create(NULL, 24);
+    server->cursorManager = wlr_xcursor_manager_create(
+        server->config.cursorTheme[0] ? server->config.cursorTheme : NULL,
+        (uint32_t)server->config.cursorSize);
     server->newInput.notify = newInput;
     wl_signal_add(&server->backend->events.new_input, &server->newInput);
 
@@ -2670,6 +4022,9 @@ static void printUsage(void)
         "  --no-shell                 Do not start the shell\n"
         "  --no-xwayland              Do not start XWayland\n"
         "  --socket <name>            Use an explicit Wayland socket name\n"
+        "  --msg <command>            Send a command to the running compositor\n"
+        "                             (reload, lock, dpms on|off, layout next,\n"
+        "                             outputs, exit) and print the reply\n"
         "  --debug                    Verbose wlroots logging\n");
 }
 
@@ -2726,6 +4081,11 @@ static int run(struct Server *server)
     wl_list_init(&server->views);
     wl_list_init(&server->layers);
     wl_list_init(&server->keyboards);
+    wl_list_init(&server->pointers);
+    wl_list_init(&server->lockSurfaces);
+    wl_list_init(&server->ipcClients);
+    server->ipcFd = -1;
+    loadConfig(server);
 
     if (server->headless) {
         server->backend = wlr_headless_backend_create(server->eventLoop);
@@ -2783,6 +4143,7 @@ static int run(struct Server *server)
         snprintf(server->socketName, sizeof(server->socketName), "%s", socket);
     }
     setenv("WAYLAND_DISPLAY", server->socketName, 1);
+    setupIpc(server);
 
     if (!wlr_backend_start(server->backend)) {
         wlr_log(WLR_ERROR, "failed to start the wlroots backend");
@@ -2803,6 +4164,10 @@ static int run(struct Server *server)
                              terminateHandler, server);
     wl_event_loop_add_signal(server->eventLoop, SIGTERM,
                              terminateHandler, server);
+    // `kill -HUP` (or `newteller-compositor --msg reload`) re-reads
+    // compositor.conf.
+    wl_event_loop_add_signal(server->eventLoop, SIGHUP,
+                             reloadSignalHandler, server);
 
     wlr_log(WLR_INFO, "NewTeller session ready on WAYLAND_DISPLAY=%s",
             server->socketName);
@@ -2833,6 +4198,11 @@ static int run(struct Server *server)
     }
 
     wl_log_set_handler_server(NULL);
+    teardownIpc(server);
+    if (server->lockRespawnTimer) {
+        wl_event_source_remove(server->lockRespawnTimer);
+        server->lockRespawnTimer = NULL;
+    }
     wlr_log(WLR_DEBUG, "destroying XWayland");
     if (server->xwayland) {
         wl_list_remove(&server->xwaylandReadyListener.link);
@@ -2858,6 +4228,13 @@ static int run(struct Server *server)
     wl_list_remove(&server->requestCursor.link);
     wl_list_remove(&server->requestSetSelection.link);
     wl_list_remove(&server->requestSetPrimarySelection.link);
+    detachLock(server);
+    wl_list_remove(&server->newLock.link);
+    wl_list_remove(&server->newIdleInhibitor.link);
+    wl_list_remove(&server->outputManagerApply.link);
+    wl_list_remove(&server->outputManagerTest.link);
+    wl_list_remove(&server->layoutChange.link);
+    wl_list_remove(&server->gammaSetGamma.link);
     wlr_log(WLR_DEBUG, "destroying cursor");
     if (server->cursorManager)
         wlr_xcursor_manager_destroy(server->cursorManager);
@@ -2960,6 +4337,23 @@ static int parseArguments(struct Server *server, int argc, char **argv)
 
 int main(int argc, char **argv)
 {
+    if (argc >= 2 && strcmp(argv[1], "--msg") == 0) {
+        if (argc < 3) {
+            fprintf(stderr, "newteller-compositor: --msg needs a command\n");
+            return 2;
+        }
+        char command[1024] = "";
+        size_t used = 0;
+        for (int i = 2; i < argc && used < sizeof(command) - 1; ++i) {
+            int n = snprintf(command + used, sizeof(command) - used, "%s%s",
+                             i > 2 ? " " : "", argv[i]);
+            if (n < 0)
+                break;
+            used += (size_t)n;
+        }
+        return sendCommand(command);
+    }
+
     wlr_log_init(WLR_INFO, NULL);
     prepareRuntimeDir();
 

@@ -32,6 +32,27 @@ if apt-cache show qml6-module-org-kde-layershell > /dev/null 2>&1; then
 fi
 apt-get install -y --no-install-recommends "${packages[@]}"
 
+# Desktop services the session starts when they are installed: the screen
+# locker and idle manager, night light, screen sharing portals and a polkit
+# agent for administrator prompts. Each one is optional, so a package that a
+# release of the distribution renamed or dropped never blocks the install.
+optional=(
+    swaylock swayidle wlsunset
+    xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk
+    lxpolkit procps
+)
+available=()
+for package in "${optional[@]}"; do
+    if apt-cache show "$package" > /dev/null 2>&1; then
+        available+=("$package")
+    else
+        echo "note: optional package $package is not available here" >&2
+    fi
+done
+if [[ ${#available[@]} -gt 0 ]]; then
+    apt-get install -y --no-install-recommends "${available[@]}"
+fi
+
 if ! find /usr/lib -path '*/qt6/qml/org/kde/layershell/qmldir' -print -quit | grep -q .; then
     echo 'The org.kde.layershell Qt6 QML module is missing.' >&2
     exit 1

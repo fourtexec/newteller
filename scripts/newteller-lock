@@ -1,0 +1,43 @@
+#!/bin/sh
+# Lock the NewTeller session.
+#
+# Started by Super+L, the start menu's Lock button, the idle timeout and
+# before suspend (through swayidle). swaylock speaks ext-session-lock-v1, so
+# the compositor shows nothing but the locker until the password is right,
+# and keeps the screen locked even if the locker crashes.
+set -u
+
+# One locker at a time.
+if pgrep -u "$(id -u)" -x swaylock >/dev/null 2>&1; then
+    exit 0
+fi
+if ! command -v swaylock >/dev/null 2>&1; then
+    echo 'newteller-lock: swaylock is not installed (apt install swaylock)' >&2
+    exit 1
+fi
+
+# Written by the shell from its settings: the wallpaper and accent colour.
+config="${XDG_CONFIG_HOME:-$HOME/.config}/newteller/lock.conf"
+image=''
+color='1e1e2e'
+ring='3584e4'
+if [ -r "$config" ]; then
+    while IFS='=' read -r key value; do
+        case "$key" in
+            image) image=$value ;;
+            color) color=$value ;;
+            accent) ring=$value ;;
+        esac
+    done < "$config"
+fi
+color=${color#\#}
+ring=${ring#\#}
+
+set -- --daemonize --show-failed-attempts --indicator-caps-lock \
+    --ignore-empty-password --color "$color" \
+    --ring-color "$ring" --key-hl-color "${ring}ff" \
+    --inside-color 00000088 --line-color 00000000 --separator-color 00000000
+if [ -n "$image" ] && [ -r "$image" ]; then
+    set -- "$@" --image "$image" --scaling fill
+fi
+exec swaylock "$@"
