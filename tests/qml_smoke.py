@@ -1309,8 +1309,10 @@ def main():
         text = open(qml, encoding="utf-8").read()
         # Both `iconName: "x"` (TaskButton and friends) and the `icon:` field
         # of models (the settings pages sidebar) name bundled icons.
-        literal_icons.update(re.findall(r'\biconName:\s*"([^"]+)"', text))
-        literal_icons.update(re.findall(r'\bicon:\s*"([^"]+)"', text))
+        # A quote right before the name means it is inside a string (e.g. the
+        # desktop grid keys "icon:<file>"), not a property, so skip it.
+        literal_icons.update(re.findall(r'(?<!")\biconName:\s*"([^"]+)"', text))
+        literal_icons.update(re.findall(r'(?<!")\bicon:\s*"([^"]+)"', text))
         literal_icons.update(re.findall(r'\bShell\.(?:iconUrl|tintedIcon)\(\s*"([^"]+)"', text))
     missing_files = sorted(name for name in literal_icons
                            if not os.path.exists(os.path.join(icon_dir, name + ".svg")))
