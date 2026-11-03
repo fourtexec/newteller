@@ -1,0 +1,32 @@
+# Temporary: prints wlroots headers so the compositor code can match them.
+name: Probe wlroots headers
+on:
+  push:
+    branches: ['claude/**']
+    paths: ['.github/workflows/probe-headers.yml']
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        include:
+          - image: debian:13
+            pkg: libwlroots-0.18-dev
+          - image: ubuntu:26.04
+            pkg: libwlroots-0.19-dev
+    container: ${{ matrix.image }}
+    steps:
+      - run: |
+          apt-get update >/dev/null
+          apt-get install -y --no-install-recommends ${{ matrix.pkg }} >/dev/null
+          inc=$(find /usr/include -maxdepth 2 -type d -name 'wlroots-0.1*' | head -1)
+          echo "INCLUDE=$inc"
+          strip() { grep -v '^\s*\*\|^\s*/\*\|^\s*$' "$1"; }
+          echo "=========== pass.h"; strip $inc/wlr/render/pass.h
+          echo "=========== output render/frame"; grep -n "render_pass\|software_cursors\|transformed_resolution\|transform_invert\|transform_compose\|wlr_output_effective_resolution\|configure_primary_swapchain" $inc/wlr/types/wlr_output.h
+          echo "=========== box"; grep -n "^void\|^bool\|^struct" $inc/wlr/util/box.h
+          echo "=========== scene structs"; sed -n '/^struct wlr_scene_rect {/,/^};/p;/^struct wlr_scene_buffer {/,/^};/p' $inc/wlr/types/wlr_scene.h
+          grep -n "from_node\|try_from_buffer\|scene_output_send_frame_done\|wlr_scene_output_commit\|wlr_scene_output_needs_frame\|wlr_scene_get_scene_output" $inc/wlr/types/wlr_scene.h
+          echo "=========== allocator/renderer"; grep -n "^struct\|^bool\|^const\|^void\|^int\|^uint" $inc/wlr/render/allocator.h $inc/wlr/render/wlr_renderer.h $inc/wlr/render/drm_format_set.h
+          echo "=========== client buffer"; sed -n '/^struct wlr_client_buffer {/,/^};/p' $inc/wlr/types/wlr_buffer.h
+          echo "=========== surface"; sed -n '/^struct wlr_surface_state {/,/^};/p' $inc/wlr/types/wlr_compositor.h | head -60
