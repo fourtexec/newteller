@@ -320,6 +320,13 @@ exports `org.newteller.Shell` on the session bus;
 scripts can call `showStartMenu`, `toggleStartMenu`, `showRunDialog`, `openSettings`, `lock`, `logout`
 and the other session methods with `gdbus call`.
 
+## Installation images (ISO)
+
+`iso/build-iso.sh` builds a bootable live ISO for Debian 13, Ubuntu 26.04,
+Arch Linux or Fedora with NewTeller and a graphical installer that starts on
+its own and installs the system with NewTeller as the only desktop:
+`sudo iso/build-iso.sh debian|ubuntu|arch|fedora`. See [iso/README.md](iso/README.md).
+
 ## Automated builds and commit releases
 
 `.github/workflows/build-release.yml` builds separate native x86_64 archives on
