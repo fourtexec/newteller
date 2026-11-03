@@ -424,7 +424,20 @@ Window {
                 required property bool fileIsDir
 
                 readonly property string gridKey: "icon:" + fileName
-                readonly property string resolvedIconName: fileIsDir ? "folder" : "file-text"
+                // A launcher of an installed application shows that
+                // application's icon and name, and a double-click starts it.
+                readonly property bool isLauncher: !fileIsDir && fileName.toLowerCase().endsWith(".desktop")
+                readonly property var launcherApp: {
+                    if (!isLauncher)
+                        return ({});
+                    const app = Apps.byId(fileName);
+                    return app && app.id !== undefined ? app : Apps.byId(fileName.slice(0, -8));
+                }
+                readonly property bool knownLauncher: !!launcherApp && launcherApp.id !== undefined
+                readonly property string resolvedIconName: fileIsDir ? "folder"
+                    : knownLauncher && launcherApp.icon ? launcherApp.icon
+                    : isLauncher ? "app-window" : "file-text"
+                readonly property string label: knownLauncher && launcherApp.name ? launcherApp.name : fileBaseName
                 // While dragging, x/y follow the pointer; otherwise they are
                 // the element's grid cell.
                 property real dragX: 0
@@ -494,7 +507,7 @@ Window {
                     wrapMode: Text.Wrap
                     elide: Text.ElideRight
                     maximumLineCount: 2
-                    text: fileBaseName
+                    text: iconDelegate.label
                     color: desk.iconColor && desk.iconColor.length > 0 ? desk.iconColor : "white"
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize
@@ -539,7 +552,11 @@ Window {
                         iconDelegate.dragging = false;
                     }
                     onDoubleClicked: {
-                        if (!iconDelegate.dragging)
+                        if (iconDelegate.dragging)
+                            return;
+                        if (iconDelegate.knownLauncher)
+                            Apps.launch(iconDelegate.launcherApp.id);
+                        else
                             Shell.openUrl(iconDelegate.fileUrl.toString());
                     }
                 }
@@ -665,8 +682,9 @@ Window {
                     const text = Shell.clipboardText();
                     if (text.length > 0) {
                         const stamp = Qt.formatDateTime(Shell.now, "yyyyMMdd-hhmmss");
-                        Shell.saveTextFile(Shell.desktopUrl.replace("file://", "")
-                                           + "/Pasted " + stamp + ".txt", text);
+                        // The URL as is: the shell decodes it (spaces, Cyrillic,
+                        // '#' in the folder name), cutting "file://" off did not.
+                        Shell.saveTextFile(Shell.desktopUrl + "/Pasted " + stamp + ".txt", text);
                     }
                 }
             }

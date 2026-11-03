@@ -1221,6 +1221,10 @@ def main():
     os.makedirs(os.path.join(work, "Pictures"))
     for name in ("notes.txt", "photo.png"):
         open(os.path.join(desktop_dir, name), "w").close()
+    # A launcher of an installed application (the desktop shows it as that
+    # application and starts it on a double-click).
+    with open(os.path.join(desktop_dir, "firefox.desktop"), "w") as f:
+        f.write("[Desktop Entry]\nType=Application\nName=Firefox\nExec=firefox\n")
     panel_plugin = os.path.join(work, "PanelWidget.qml")
     with open(panel_plugin, "w") as f:
         f.write("import QtQuick\nRectangle { width: 30; height: 30; color: Theme.accent }\n")
@@ -1700,6 +1704,20 @@ def main():
         check(not overlaps, f"desktop widgets and icons do not overlap ({overlaps})")
         offgrid = [w.property("gridKey") for w in widgets if w.x() < -1000]
         check(not offgrid, f"every desktop element has a grid cell ({offgrid})")
+
+        launcher = next((w for w in widgets if w.property("gridKey") == "icon:firefox.desktop"), None)
+        check(launcher is not None and launcher.property("label") == "Firefox"
+              and launcher.property("resolvedIconName") == "firefox",
+              "a launcher on the desktop shows its application's name and icon "
+              f"({launcher and launcher.property('label')}, "
+              f"{launcher and launcher.property('resolvedIconName')})")
+        if launcher is not None:
+            centre = launcher.mapToScene(QPointF(launcher.width() / 2, 10)).toPoint()
+            apps.launched.clear()
+            QTest.mouseDClick(desktop, Qt.LeftButton, Qt.NoModifier, centre)
+            QTest.qWait(20)
+            check(apps.launched == ["firefox"],
+                  f"double-clicking a launcher starts its application ({apps.launched})")
 
     # One dock menu per panel.
     dock_menus = windows_of_kind("DockMenu")

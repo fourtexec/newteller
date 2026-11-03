@@ -65,7 +65,10 @@ inside VirtualBox. The implemented pieces are:
 - Desktop icons and widgets share one invisible grid: an icon takes a cell,
   a widget the cells its size needs, nothing overlaps, and dragging snaps to
   the nearest free cells. The layout is saved in `desktop.gridPositions`
-  (right-click the desktop to auto-arrange or reset it)
+  (right-click the desktop to auto-arrange or reset it). A launcher
+  (`.desktop` file) of an installed application shows that application's
+  icon and name and starts it on a double-click; other launchers start only
+  when they are marked executable (otherwise they open as text)
 - **Notification centre: the bell at the end of the panel.** The history of the
   built-in notification daemon, newest first, with per-entry removal, a clear-all
   button and the do-not-disturb switch; the bell counts what arrived while it

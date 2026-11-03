@@ -149,6 +149,10 @@ QString ShellController::expandHome(const QString &path) const
 {
     if (path.startsWith(QLatin1String("~/")))
         return QDir::homePath() + path.mid(1);
+    // QML often has a file:// URL at hand (Shell.desktopUrl); its path may be
+    // percent-encoded, so let QUrl decode it instead of cutting the scheme off.
+    if (path.startsWith(QLatin1String("file:")))
+        return QUrl(path).toLocalFile();
     return path;
 }
 
@@ -300,7 +304,24 @@ QUrl ShellController::tintedIcon(const QString &name, const QColor &color) const
 
 void ShellController::openUrl(const QString &url) const
 {
-    QDesktopServices::openUrl(QUrl(url));
+    const QUrl target(url);
+    // A launcher (.desktop file) on the desktop starts its program instead of
+    // opening in a text editor - but only when it is marked executable, as
+    // KDE does, so a downloaded file cannot run a command by a double-click.
+    if (target.isLocalFile()) {
+        const QFileInfo info(target.toLocalFile());
+        if (info.isFile() && info.suffix().compare(QLatin1String("desktop"), Qt::CaseInsensitive) == 0
+            && info.isExecutable()) {
+            const QString gio = QStandardPaths::findExecutable(QStringLiteral("gio"));
+            if (!gio.isEmpty()
+                && QProcess::startDetached(gio, {QStringLiteral("launch"), info.absoluteFilePath()}))
+                return;
+            const QString dex = QStandardPaths::findExecutable(QStringLiteral("dex"));
+            if (!dex.isEmpty() && QProcess::startDetached(dex, {info.absoluteFilePath()}))
+                return;
+        }
+    }
+    QDesktopServices::openUrl(target);
 }
 
 void ShellController::openSettings()
