@@ -90,6 +90,7 @@ void ntConfigDefaults(struct CompositorConfig *config)
     config->mouseSpeed = 0.0;
     config->leftHanded = false;
     config->cursorSize = 24;
+    config->workspaceCount = 4;
 }
 
 void ntConfigLoadSystemKeyboard(struct CompositorConfig *config, const char *path)
@@ -170,6 +171,8 @@ bool ntConfigLoadFile(struct CompositorConfig *config, const char *path)
             copyText(config->cursorTheme, sizeof(config->cursorTheme), value);
         else if (strcmp(key, "cursor.size") == 0)
             config->cursorSize = parseInt(value, config->cursorSize, 8, 256);
+        else if (strcmp(key, "workspaces.count") == 0)
+            config->workspaceCount = parseInt(value, config->workspaceCount, 1, 9);
     }
     fclose(file);
     return true;

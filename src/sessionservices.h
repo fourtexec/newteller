@@ -5,6 +5,7 @@
 #include <QProcess>
 #include <QStringList>
 #include <QTimer>
+#include <QVariant>
 
 class Settings;
 
@@ -32,6 +33,14 @@ class SessionServices : public QObject
     Q_PROPERTY(bool nightLightRunning READ nightLightRunning NOTIFY nightLightChanged)
     Q_PROPERTY(QString polkitAgent READ polkitAgent CONSTANT)
     Q_PROPERTY(QString displaySettingsTool READ displaySettingsTool CONSTANT)
+    Q_PROPERTY(int workspace READ workspace NOTIFY workspacesChanged)
+    Q_PROPERTY(int workspaceCount READ workspaceCount NOTIFY workspacesChanged)
+    // Bit n set: desktop n has windows.
+    Q_PROPERTY(int workspaceOccupied READ workspaceOccupied NOTIFY workspacesChanged)
+    // Alt+Tab overlay: the windows (appId, title) in most-recently-used order
+    // and the selected one; -1 while the switcher is closed.
+    Q_PROPERTY(QVariantList switcherEntries READ switcherEntries NOTIFY switcherChanged)
+    Q_PROPERTY(int switcherIndex READ switcherIndex NOTIFY switcherChanged)
 
 public:
     explicit SessionServices(Settings *settings, QObject *parent = nullptr);
@@ -49,7 +58,15 @@ public:
     bool nightLightRunning() const;
     QString polkitAgent() const { return m_polkitAgent; }
     QString displaySettingsTool() const;
+    int workspace() const { return m_workspace; }
+    int workspaceCount() const { return m_workspaceCount; }
+    int workspaceOccupied() const { return m_workspaceOccupied; }
+    QVariantList switcherEntries() const { return m_switcherEntries; }
+    int switcherIndex() const { return m_switcherIndex; }
 
+    Q_INVOKABLE void switchWorkspace(int index);
+    // Moves the focused window to another desktop.
+    Q_INVOKABLE void moveToWorkspace(int index);
     Q_INVOKABLE void nextKeyboardLayout();
     Q_INVOKABLE void setKeyboardLayout(int index);
     Q_INVOKABLE void lock();
@@ -69,6 +86,8 @@ signals:
     void keyboardChanged();
     void lockedChanged();
     void nightLightChanged();
+    void workspacesChanged();
+    void switcherChanged();
 
 private:
     void connectCompositor();
@@ -93,6 +112,11 @@ private:
     QStringList m_layouts;
     int m_layout = 0;
     bool m_locked = false;
+    int m_workspace = 0;
+    int m_workspaceCount = 1;
+    int m_workspaceOccupied = 0;
+    QVariantList m_switcherEntries;
+    int m_switcherIndex = -1;
     QProcess m_idle;
     QProcess m_nightLight;
     QProcess m_polkit;

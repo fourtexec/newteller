@@ -192,6 +192,38 @@ void SessionServices::handleEvent(const QString &line)
             m_layout = index;
             emit keyboardChanged();
         }
+    } else if (line.startsWith(QLatin1String("workspace "))) {
+        // workspace <current> <count> <occupied mask>
+        const QStringList parts = line.mid(10).split(QLatin1Char(' '), Qt::SkipEmptyParts);
+        if (parts.size() >= 3) {
+            const int current = parts.at(0).toInt();
+            const int count = qMax(1, parts.at(1).toInt());
+            const int occupied = int(parts.at(2).toUInt());
+            if (current != m_workspace || count != m_workspaceCount
+                || occupied != m_workspaceOccupied) {
+                m_workspace = current;
+                m_workspaceCount = count;
+                m_workspaceOccupied = occupied;
+                emit workspacesChanged();
+            }
+        }
+    } else if (line.startsWith(QLatin1String("switcher "))) {
+        // switcher <selected> <appId>\x1e<title>\x1f<appId>\x1e<title>...
+        const QString rest = line.mid(9);
+        const int space = rest.indexOf(QLatin1Char(' '));
+        m_switcherIndex = (space < 0 ? rest : rest.left(space)).toInt();
+        m_switcherEntries.clear();
+        if (m_switcherIndex >= 0 && space >= 0) {
+            const QStringList entries = rest.mid(space + 1).split(QChar(0x1f), Qt::SkipEmptyParts);
+            for (const QString &entry : entries) {
+                const int separator = entry.indexOf(QChar(0x1e));
+                QVariantMap item;
+                item.insert(QStringLiteral("appId"), separator < 0 ? entry : entry.left(separator));
+                item.insert(QStringLiteral("title"), separator < 0 ? QString() : entry.mid(separator + 1));
+                m_switcherEntries.append(item);
+            }
+        }
+        emit switcherChanged();
     } else if (line.startsWith(QLatin1String("locked "))) {
         const bool locked = line.mid(7).trimmed() == QLatin1String("1");
         if (locked != m_locked) {
@@ -261,6 +293,16 @@ QString SessionServices::layoutDisplayName(const QString &code) const
     return names.value(key, code);
 }
 
+void SessionServices::switchWorkspace(int index)
+{
+    sendCommand(QStringLiteral("workspace %1").arg(index));
+}
+
+void SessionServices::moveToWorkspace(int index)
+{
+    sendCommand(QStringLiteral("move-to-workspace %1").arg(index));
+}
+
 void SessionServices::nextKeyboardLayout()
 {
     sendCommand(QStringLiteral("layout next"));
@@ -317,6 +359,7 @@ void SessionServices::settingChanged(const QString &key)
 {
     const bool all = key.isEmpty();
     if (all || key.startsWith(QLatin1String("keyboard.")) || key.startsWith(QLatin1String("touchpad."))
+        || key.startsWith(QLatin1String("workspaces."))
         || key.startsWith(QLatin1String("mouse.")) || key.startsWith(QLatin1String("cursor."))
         || key == QLatin1String("desktop.wallpaper")) {
         m_configDebounce.start();
@@ -370,6 +413,8 @@ QString SessionServices::compositorConfigText() const
         text += confLine(QStringLiteral("cursor.theme"), cursorTheme);
     text += confLine(QStringLiteral("cursor.size"),
                      QString::number(qBound(8, value("cursor.size").toInt(), 256)));
+    text += confLine(QStringLiteral("workspaces.count"),
+                     QString::number(qBound(1, value("workspaces.count").toInt(), 9)));
     return text;
 }
 

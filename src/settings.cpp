@@ -232,6 +232,11 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("mouse.leftHanded"), false);
     m_defaults.insert(QStringLiteral("cursor.theme"), QString());
     m_defaults.insert(QStringLiteral("cursor.size"), 24);
+    // Virtual desktops (Ctrl+Super+Left/Right) and their panel indicator.
+    m_defaults.insert(QStringLiteral("workspaces.count"), 4);
+    m_defaults.insert(QStringLiteral("workspaces.showOnPanel"), true);
+    // The Alt+Tab overlay with the windows and their titles.
+    m_defaults.insert(QStringLiteral("switcher.showOverlay"), true);
     // Clipboard
     m_defaults.insert(QStringLiteral("clipboard.historyEnabled"), true);
     m_defaults.insert(QStringLiteral("clipboard.historySize"), 100);

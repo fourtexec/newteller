@@ -99,6 +99,11 @@ static void broadcastLayout(struct Server *server);
 static void lockFocusSurface(struct Server *server, struct wlr_surface *surface);
 static void spawnLocker(struct Server *server);
 static void setLayout(struct Server *server, int index);
+static void switchWorkspace(struct Server *server, int index);
+static void broadcastWorkspaces(struct Server *server);
+static void broadcastSwitcher(struct Server *server);
+static void switcherCancel(struct Server *server);
+static void refreshPointerFocus(struct Server *server);
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -151,6 +156,8 @@ struct View {
     bool overrideRedirect;
     bool positioned;
     bool hiddenByShowDesktop;
+    // The virtual desktop the window lives on.
+    int workspace;
     int snapEdges;
     int snapSavedX;
     int snapSavedY;
@@ -340,6 +347,7 @@ struct Server {
     int cascade;
 
     struct CompositorConfig config;
+    int workspace;
     struct wl_list pointers;
     int layoutCount;
     int layoutIndex;
@@ -603,6 +611,22 @@ static const char *viewAppId(struct View *view)
     return "";
 }
 
+// Override-redirect X11 windows (menus, tooltips) follow their parent and
+// are never hidden by a workspace switch.
+static bool viewOnWorkspace(struct View *view)
+{
+    return view->overrideRedirect || view->workspace == view->server->workspace;
+}
+
+static void viewSyncVisible(struct View *view)
+{
+    if (view->tree) {
+        wlr_scene_node_set_enabled(&view->tree->node,
+                                   view->mapped && !view->minimized
+                                       && viewOnWorkspace(view));
+    }
+}
+
 static void updateForeignToplevel(struct View *view)
 {
     if (!view->handle)
@@ -679,6 +703,10 @@ static void focusView(struct View *view, struct wlr_surface *surface)
     // Nothing takes the keyboard from the screen locker.
     if (server->locked)
         return;
+    // Activating a window on another desktop (from the dock, or a link that
+    // raises the browser) goes to that desktop.
+    if (!viewOnWorkspace(view))
+        switchWorkspace(server, view->workspace);
     if (server->focusedLayer)
         server->focusedLayer = NULL;
     if (server->focusedView && server->focusedView != view) {
@@ -748,15 +776,19 @@ static void clearKeyboardFocus(struct Server *server)
 static void restoreFocus(struct Server *server)
 {
     if (server->previousView && server->previousView->mapped
-        && !server->previousView->minimized) {
+        && !server->previousView->minimized
+        && !server->previousView->overrideRedirect
+        && viewOnWorkspace(server->previousView)) {
         struct View *view = server->previousView;
         server->previousView = NULL;
         focusView(view, NULL);
         return;
     }
-    if (!wl_list_empty(&server->views)) {
-        struct View *view = wl_container_of(server->views.next, view, link);
-        if (view->mapped && !view->minimized) {
+    // The most recently used window of the current desktop.
+    struct View *view;
+    wl_list_for_each(view, &server->views, link) {
+        if (view->mapped && !view->minimized && !view->overrideRedirect
+            && viewOnWorkspace(view)) {
             focusView(view, NULL);
             return;
         }
@@ -769,8 +801,7 @@ static void viewSetMinimized(struct View *view, bool minimized)
     if (view->minimized == minimized || view->overrideRedirect)
         return;
     view->minimized = minimized;
-    if (view->tree)
-        wlr_scene_node_set_enabled(&view->tree->node, !minimized);
+    viewSyncVisible(view);
     if (minimized) {
         if (view->server->focusedView == view) {
             view->server->focusedView = NULL;
@@ -927,7 +958,8 @@ static void toggleShowDesktop(struct Server *server)
         server->showDesktop = true;
         struct View *view;
         wl_list_for_each(view, &server->views, link) {
-            if (view->mapped && !view->minimized && !view->overrideRedirect) {
+            if (view->mapped && !view->minimized && !view->overrideRedirect
+                && viewOnWorkspace(view)) {
                 view->hiddenByShowDesktop = true;
                 viewSetMinimized(view, true);
             }
@@ -942,6 +974,78 @@ static void toggleShowDesktop(struct Server *server)
             }
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Workspaces (virtual desktops)
+// ---------------------------------------------------------------------------
+
+// The panel and menus hide behind a fullscreen window only while that window
+// is on the desktop being shown.
+static void updateFullscreenLayers(struct Server *server)
+{
+    if (server->locked)
+        return;
+    bool covered = server->fullscreenView && server->fullscreenView->mapped
+                   && viewOnWorkspace(server->fullscreenView);
+    wlr_scene_node_set_enabled(&server->topTree->node, !covered);
+    wlr_scene_node_set_enabled(&server->overlayTree->node, !covered);
+}
+
+static void broadcastWorkspaces(struct Server *server)
+{
+    unsigned occupied = 0;
+    struct View *view;
+    wl_list_for_each(view, &server->views, link) {
+        if (view->mapped && !view->overrideRedirect && view->workspace >= 0
+            && view->workspace < 31)
+            occupied |= 1u << view->workspace;
+    }
+    char line[64];
+    snprintf(line, sizeof(line), "event workspace %d %d %u", server->workspace,
+             server->config.workspaceCount, occupied);
+    ipcBroadcast(server, line);
+}
+
+static void switchWorkspace(struct Server *server, int index)
+{
+    int count = server->config.workspaceCount;
+    if (index < 0 || index >= count || index == server->workspace)
+        return;
+    switcherCancel(server);
+    if (server->focusedView)
+        clearKeyboardFocus(server);
+    server->previousView = NULL;
+    server->workspace = index;
+    struct View *view;
+    wl_list_for_each(view, &server->views, link)
+        viewSyncVisible(view);
+    updateFullscreenLayers(server);
+    if (!server->locked && !server->focusedLayer)
+        restoreFocus(server);
+    refreshPointerFocus(server);
+    broadcastWorkspaces(server);
+}
+
+static void moveViewToWorkspace(struct View *view, int index, bool follow)
+{
+    struct Server *server = view->server;
+    if (index < 0 || index >= server->config.workspaceCount
+        || view->overrideRedirect || index == view->workspace)
+        return;
+    bool wasFocused = server->focusedView == view;
+    view->workspace = index;
+    viewSyncVisible(view);
+    if (follow) {
+        switchWorkspace(server, index);
+        focusView(view, NULL);
+    } else if (wasFocused) {
+        server->focusedView = NULL;
+        viewSetActivated(view, false);
+        restoreFocus(server);
+    }
+    updateFullscreenLayers(server);
+    broadcastWorkspaces(server);
 }
 
 static void viewSetMaximized(struct View *view, bool maximized)
@@ -1458,7 +1562,7 @@ static bool layerAt(struct Layer *layer, double lx, double ly, struct Hit *hit)
 
 static bool viewAt(struct View *view, double lx, double ly, struct Hit *hit)
 {
-    if (!view->mapped || view->minimized || !view->tree)
+    if (!view->mapped || view->minimized || !view->tree || !viewOnWorkspace(view))
         return false;
     int nodeX = view->tree->node.x;
     int nodeY = view->tree->node.y;
@@ -1556,6 +1660,15 @@ static void pointerFocus(struct Server *server, const struct Hit *hit)
     wlr_log(WLR_DEBUG, "pointer enter %s at %.0f,%.0f", role,
             hit->sx, hit->sy);
     wlr_seat_pointer_notify_enter(server->seat, hit->surface, hit->sx, hit->sy);
+}
+
+// Re-evaluates which surface is under the pointer after the scene changed
+// under it (workspace switch), without waiting for the next motion.
+static void refreshPointerFocus(struct Server *server)
+{
+    struct Hit hit = hitTest(server, server->cursor->x, server->cursor->y);
+    pointerFocus(server, &hit);
+    wlr_seat_pointer_notify_frame(server->seat);
 }
 
 // ---------------------------------------------------------------------------
@@ -1974,6 +2087,20 @@ static void reloadConfig(struct Server *server)
 
     loadConfig(server);
     applyKeyboardConfig(server);
+    // Fewer desktops than before: their windows move to the last one.
+    int last = server->config.workspaceCount - 1;
+    struct View *view;
+    wl_list_for_each(view, &server->views, link) {
+        if (view->workspace > last)
+            view->workspace = last;
+    }
+    if (server->workspace > last) {
+        server->workspace = last;
+        wl_list_for_each(view, &server->views, link)
+            viewSyncVisible(view);
+        updateFullscreenLayers(server);
+    }
+    broadcastWorkspaces(server);
     struct Pointer *pointer;
     wl_list_for_each(pointer, &server->pointers, link)
         configurePointer(server, pointer->device);
@@ -1999,7 +2126,7 @@ static int reloadSignalHandler(int signal, void *data)
 static bool switcherCandidate(struct View *view)
 {
     return view && view->mapped && !view->minimized && !view->overrideRedirect
-        && viewSurface(view);
+        && viewOnWorkspace(view) && viewSurface(view);
 }
 
 // The view after (or before) `from` in server->views, wrapping around and
@@ -2048,6 +2175,7 @@ static void switcherStep(struct Server *server, bool backwards)
     switcherRestoreStacking(server);
     if (next->tree)
         wlr_scene_node_raise_to_top(&next->tree->node);
+    broadcastSwitcher(server);
 }
 
 static void switcherCommit(struct Server *server)
@@ -2058,15 +2186,62 @@ static void switcherCommit(struct Server *server)
     server->switching = false;
     server->switchTarget = NULL;
     switcherRestoreStacking(server);
+    broadcastSwitcher(server);
     if (switcherCandidate(target))
         focusView(target, NULL);
 }
 
 static void switcherCancel(struct Server *server)
 {
+    bool wasSwitching = server->switching;
     server->switching = false;
     server->switchTarget = NULL;
     switcherRestoreStacking(server);
+    if (wasSwitching)
+        broadcastSwitcher(server);
+}
+
+// "event switcher <selected> <entries>": the shell draws the Alt+Tab
+// overlay from it. Entries are "<app id>\x1e<title>" joined by \x1f, most
+// recently used first; <selected> is -1 when the switcher closes.
+static void broadcastSwitcher(struct Server *server)
+{
+    if (!server->switching) {
+        ipcBroadcast(server, "event switcher -1");
+        return;
+    }
+    char line[1800];
+    int selected = -1;
+    int index = 0;
+    char entries[1700] = "";
+    size_t used = 0;
+    struct View *view;
+    wl_list_for_each(view, &server->views, link) {
+        if (!switcherCandidate(view))
+            continue;
+        if (view == server->switchTarget)
+            selected = index;
+        char title[96];
+        snprintf(title, sizeof(title), "%s", viewTitle(view));
+        for (char *p = title; *p; ++p) {
+            if (*p == '\n' || *p == '\r' || *p == '\x1e' || *p == '\x1f')
+                *p = ' ';
+        }
+        char appId[96];
+        snprintf(appId, sizeof(appId), "%s", viewAppId(view));
+        for (char *p = appId; *p; ++p) {
+            if (*p == '\n' || *p == '\r' || *p == '\x1e' || *p == '\x1f' || *p == ' ')
+                *p = '_';
+        }
+        int written = snprintf(entries + used, sizeof(entries) - used, "%s%s\x1e%s",
+                               index > 0 ? "\x1f" : "", appId, title);
+        if (written < 0 || used + (size_t)written >= sizeof(entries))
+            break;
+        used += (size_t)written;
+        ++index;
+    }
+    snprintf(line, sizeof(line), "event switcher %d %s", selected, entries);
+    ipcBroadcast(server, line);
 }
 
 static bool keyHandled(struct Server *server, xkb_keysym_t sym,
@@ -2090,6 +2265,27 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
 
     if (logo && (sym == XKB_KEY_l || sym == XKB_KEY_L)) {
         spawnLocker(server);
+        return true;
+    }
+    // Workspaces: Ctrl+Super+Left/Right (as on Windows), Super+Page Up/Down
+    // (as on GNOME); with Shift the focused window moves along.
+    bool ctrl = (modifiers & WLR_MODIFIER_CTRL) != 0;
+    bool shift = (modifiers & WLR_MODIFIER_SHIFT) != 0;
+    int workspaceStep = 0;
+    if (logo && ctrl && sym == XKB_KEY_Left)
+        workspaceStep = -1;
+    else if (logo && ctrl && sym == XKB_KEY_Right)
+        workspaceStep = 1;
+    else if (logo && (sym == XKB_KEY_Page_Up || sym == XKB_KEY_KP_Page_Up))
+        workspaceStep = -1;
+    else if (logo && (sym == XKB_KEY_Page_Down || sym == XKB_KEY_KP_Page_Down))
+        workspaceStep = 1;
+    if (workspaceStep != 0) {
+        int target = server->workspace + workspaceStep;
+        if (shift && server->focusedView)
+            moveViewToWorkspace(server->focusedView, target, true);
+        else
+            switchWorkspace(server, target);
         return true;
     }
     if (logo && sym == XKB_KEY_space && server->layoutCount > 1) {
@@ -2419,8 +2615,10 @@ static void handleXdgMap(struct wl_listener *listener, void *data)
     (void)data;
     struct View *view = wl_container_of(listener, view, map);
     view->mapped = true;
-    if (view->tree)
-        wlr_scene_node_set_enabled(&view->tree->node, true);
+    // A window maps on the desktop that is shown when it appears.
+    view->workspace = view->server->workspace;
+    viewSyncVisible(view);
+    broadcastWorkspaces(view->server);
     wlr_log(WLR_DEBUG, "xdg window mapped: %s", viewTitle(view));
     centerView(view);
     wlr_log(WLR_DEBUG, "xdg window at %d,%d %dx%d", view->x, view->y,
@@ -2444,13 +2642,15 @@ static void handleXdgUnmap(struct wl_listener *listener, void *data)
     struct View *view = wl_container_of(listener, view, unmap);
     wlr_log(WLR_DEBUG, "xdg window unmapped: %s", viewTitle(view));
     view->mapped = false;
-    if (view->tree)
-        wlr_scene_node_set_enabled(&view->tree->node, false);
+    viewSyncVisible(view);
+    if (view->server->switchTarget == view)
+        switcherCancel(view->server);
     if (view->server->focusedView == view) {
         view->server->focusedView = NULL;
         viewSetActivated(view, false);
         restoreFocus(view->server);
     }
+    broadcastWorkspaces(view->server);
     if (view->handle)
         wlr_foreign_toplevel_handle_v1_set_activated(view->handle, false);
 }
@@ -2545,6 +2745,7 @@ static void handleNewXdgToplevel(struct wl_listener *listener, void *data)
 
     struct View *view = xcalloc(1, sizeof(*view));
     view->server = server;
+    view->workspace = server->workspace;
     view->xdg = toplevel;
     view->tree = wlr_scene_xdg_surface_create(server->toplevelTree, toplevel->base);
     if (!view->tree) {
@@ -3074,8 +3275,10 @@ static void handleX11Map(struct wl_listener *listener, void *data)
     (void)data;
     struct View *view = wl_container_of(listener, view, map);
     view->mapped = true;
-    if (view->tree)
-        wlr_scene_node_set_enabled(&view->tree->node, true);
+    if (!view->overrideRedirect)
+        view->workspace = view->server->workspace;
+    viewSyncVisible(view);
+    broadcastWorkspaces(view->server);
     if (view->x11) {
         view->width = view->x11->width;
         view->height = view->x11->height;
@@ -3101,13 +3304,15 @@ static void handleX11Unmap(struct wl_listener *listener, void *data)
     struct View *view = wl_container_of(listener, view, unmap);
     wlr_log(WLR_DEBUG, "xdg window unmapped: %s", viewTitle(view));
     view->mapped = false;
-    if (view->tree)
-        wlr_scene_node_set_enabled(&view->tree->node, false);
+    viewSyncVisible(view);
+    if (view->server->switchTarget == view)
+        switcherCancel(view->server);
     if (view->server->focusedView == view) {
         view->server->focusedView = NULL;
         viewSetActivated(view, false);
         restoreFocus(view->server);
     }
+    broadcastWorkspaces(view->server);
 }
 
 static void handleX11Destroy(struct wl_listener *listener, void *data)
@@ -3269,6 +3474,7 @@ static void handleNewXWaylandSurface(struct wl_listener *listener, void *data)
 
     struct View *view = xcalloc(1, sizeof(*view));
     view->server = server;
+    view->workspace = server->workspace;
     view->x11 = xsurface;
     view->overrideRedirect = xsurface->override_redirect;
     view->x = xsurface->x;
@@ -3627,6 +3833,7 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
         client->watching = true;
         ipcSend(client, "ok");
         broadcastLayout(server);
+        broadcastWorkspaces(server);
         ipcSend(client, server->locked ? "event locked 1" : "event locked 0");
     } else if (strcmp(command, "layout") == 0) {
         if (!argument) {
@@ -3642,6 +3849,18 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
             setLayout(server, server->layoutIndex - 1);
         else
             setLayout(server, atoi(argument));
+        ipcSend(client, "ok");
+    } else if (strcmp(command, "workspace") == 0 && argument) {
+        if (strcmp(argument, "next") == 0)
+            switchWorkspace(server, server->workspace + 1);
+        else if (strcmp(argument, "prev") == 0)
+            switchWorkspace(server, server->workspace - 1);
+        else
+            switchWorkspace(server, atoi(argument));
+        ipcSend(client, "ok");
+    } else if (strcmp(command, "move-to-workspace") == 0 && argument) {
+        if (server->focusedView)
+            moveViewToWorkspace(server->focusedView, atoi(argument), false);
         ipcSend(client, "ok");
     } else if (strcmp(command, "dpms") == 0 && argument) {
         setOutputsPower(server, strcmp(argument, "off") != 0);

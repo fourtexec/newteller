@@ -31,6 +31,8 @@ struct CompositorConfig {
 
     char cursorTheme[NT_CONFIG_TEXT];
     int cursorSize;
+
+    int workspaceCount;                    // 1 .. 9
 };
 
 void ntConfigDefaults(struct CompositorConfig *config);
