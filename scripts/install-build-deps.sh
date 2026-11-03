@@ -34,10 +34,11 @@ debian)
         "$wlroots_package"
     ;;
 arch)
-    wlroots=wlroots0.19
     pacman -Sy --noconfirm > /dev/null
-    if ! pacman -Si wlroots0.19 > /dev/null 2>&1; then
-        wlroots=wlroots0.18
+    if ! wlroots=$(newteller_arch_wlroots); then
+        echo 'Arch packages neither wlroots 0.19 nor 0.18 right now:' >&2
+        pacman -Sl | awk '$2 ~ /^wlroots/' >&2
+        exit 1
     fi
     # Arch ships headers with the libraries; base-devel brings the compiler.
     pacman -Syu --noconfirm --needed \
@@ -45,7 +46,7 @@ arch)
         qt6-base qt6-declarative qt6-svg qt6-wayland layer-shell-qt \
         wayland wayland-protocols libxkbcommon libinput seatd libdrm mesa \
         cairo pango pixman libxcb xcb-util-wm xcb-util-renderutil xcb-util-errors \
-        "$wlroots" rust python python-pillow pyside6 grim wlr-randr
+        "$wlroots" rust python python-pillow grim wlr-randr
     # Test helpers that are not in every snapshot of the repositories.
     for helper in wlrctl; do
         if pacman -Si "$helper" > /dev/null 2>&1; then
@@ -68,7 +69,7 @@ fedora)
         'pkgconfig(xkbcommon)' 'pkgconfig(libinput)' 'pkgconfig(libseat)' 'pkgconfig(libdrm)' \
         'pkgconfig(gbm)' 'pkgconfig(cairo)' 'pkgconfig(pangocairo)' 'pkgconfig(pixman-1)' \
         'pkgconfig(xcb)' \
-        "$wlroots" rust cargo python3 python3-pyside6 python3-pillow grim wlr-randr
+        "$wlroots" rust cargo python3 python3-pillow grim wlr-randr
     dnf install -y --skip-unavailable wlrctl
     ;;
 esac

@@ -77,9 +77,11 @@ install_debian() {
 install_arch() {
     # Arch keeps wlroots versions side by side (wlroots0.18, wlroots0.19);
     # the build picks 0.19 when it is there, so the runtime does too.
-    local wlroots=wlroots0.19
-    if ! pacman -Si wlroots0.19 > /dev/null 2>&1; then
-        wlroots=wlroots0.18
+    pacman -Sy --noconfirm > /dev/null
+    local wlroots
+    if ! wlroots=$(newteller_arch_wlroots); then
+        echo 'Arch packages neither wlroots 0.19 nor 0.18 right now.' >&2
+        exit 1
     fi
     pacman -Syu --noconfirm --needed \
         qt6-base qt6-declarative qt6-svg qt6-wayland qt6-imageformats layer-shell-qt \
