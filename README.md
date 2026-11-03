@@ -135,6 +135,12 @@ inside VirtualBox. The implemented pieces are:
   polkit refuses the built-in agent (no login session, no polkit daemon) no
   external one is started either - it would fail the same way and only show
   an "Error" window. The Security settings page shows the reason.
+- **Input methods (IBus, fcitx5).** The compositor relays text fields
+  (text-input-v3) to the input method (input-method-v2): composed text,
+  pre-edit and the candidate window under the text cursor work in Wayland
+  applications. Without an input method, text fields are left alone, so GTK
+  keeps handling dead keys and compose itself; the lock screen never goes
+  through an input method.
 - **Video keeps the screen awake.** The shell serves
   `org.freedesktop.ScreenSaver` (Inhibit / UnInhibit), which VLC, browsers
   and XWayland applications use while they play; Wayland applications use

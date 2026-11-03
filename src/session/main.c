@@ -196,6 +196,8 @@ static void clearBlurRegion(struct Server *server, const char *ns, const char *o
 static void destroyGhost(struct Ghost *ghost);
 static void viewRestoreGeometry(struct View *view, int x, int y, int width, int height);
 static pid_t viewPid(struct View *view);
+struct Keyboard;
+static struct wlr_input_method_keyboard_grab_v2 *keyboardImGrab(struct Keyboard *keyboard);
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -336,6 +338,35 @@ struct Keyboard {
     struct wl_listener destroy;
 };
 
+// A text field client (zwp_text_input_v3). The relay below passes its state
+// to the input method (IBus, fcitx5) and the composed text back.
+struct TextInput {
+    struct wl_list link;
+    struct Server *server;
+    struct wlr_text_input_v3 *input;
+    // The surface it gets once an input method exists: without one, GTK
+    // must not see the focus, or it stops handling dead keys itself.
+    struct wlr_surface *pendingFocus;
+    struct wl_listener pendingFocusDestroy;
+    struct wl_listener enable;
+    struct wl_listener commit;
+    struct wl_listener disable;
+    struct wl_listener destroy;
+};
+
+// The input method's candidate window, shown under the text cursor.
+struct InputPopup {
+    struct wl_list link;
+    struct Server *server;
+    struct wlr_input_popup_surface_v2 *popup;
+    struct wlr_scene_tree *tree;
+    struct wlr_box sentRectangle;
+    struct wl_listener map;
+    struct wl_listener unmap;
+    struct wl_listener commit;
+    struct wl_listener destroy;
+};
+
 struct Output {
     struct wl_list link;
     struct Server *server;
@@ -433,6 +464,8 @@ struct Server {
     struct wlr_scene_tree *toplevelTree;
     struct wlr_scene_tree *topTree;
     struct wlr_scene_tree *overlayTree;
+    // Input method candidate windows, above everything but the lock screen.
+    struct wlr_scene_tree *inputPopupTree;
 
     struct wlr_compositor *compositor;
     struct wlr_xdg_shell *xdgShell;
@@ -559,6 +592,18 @@ struct Server {
     struct wlr_idle_notifier_v1 *idleNotifier;
     int idleInhibitors;
     int ipcIdleInhibitors;
+    // Input methods (text-input-v3 <-> input-method-v2 relay).
+    struct wl_list textInputs;   // struct TextInput
+    struct wl_list inputPopups;  // struct InputPopup
+    struct wlr_input_method_v2 *inputMethod;
+    struct wl_listener newTextInput;
+    struct wl_listener newInputMethod;
+    struct wl_listener inputMethodCommit;
+    struct wl_listener inputMethodNewPopup;
+    struct wl_listener inputMethodGrabKeyboard;
+    struct wl_listener inputMethodDestroy;
+    struct wl_listener inputMethodGrabDestroy;
+    struct wl_listener keyboardFocusChange;
 
     struct wlr_output_manager_v1 *outputManager;
     struct wlr_gamma_control_manager_v1 *gammaManager;
@@ -3573,6 +3618,12 @@ static void keyboardModifiers(struct wl_listener *listener, void *data)
             broadcastLayout(server);
         }
     }
+    struct wlr_input_method_keyboard_grab_v2 *grab = keyboardImGrab(keyboard);
+    if (grab) {
+        wlr_input_method_keyboard_grab_v2_set_keyboard(grab, keyboard->keyboard);
+        wlr_input_method_keyboard_grab_v2_send_modifiers(grab, &keyboard->keyboard->modifiers);
+        return;
+    }
     wlr_seat_set_keyboard(keyboard->server->seat, keyboard->keyboard);
     wlr_seat_keyboard_notify_modifiers(keyboard->server->seat,
                                        &keyboard->keyboard->modifiers);
@@ -3623,6 +3674,15 @@ static void keyboardKey(struct wl_listener *listener, void *data)
             shellAction("toggleStartMenu");
     }
 
+    // An input method that grabbed the keyboard composes the text itself
+    // (shortcuts above still win); it types through its virtual keyboard.
+    struct wlr_input_method_keyboard_grab_v2 *grab = keyboardImGrab(keyboard);
+    if (grab) {
+        wlr_input_method_keyboard_grab_v2_set_keyboard(grab, keyboard->keyboard);
+        wlr_input_method_keyboard_grab_v2_send_key(grab, event->time_msec, event->keycode,
+                                                   event->state);
+        return;
+    }
     wlr_seat_keyboard_notify_key(server->seat, event->time_msec,
                                  event->keycode, event->state);
 }
@@ -5937,6 +5997,472 @@ static void handleNewIdleInhibitor(struct wl_listener *listener, void *data)
 }
 
 // ---------------------------------------------------------------------------
+// Input methods (IBus, fcitx5): a relay between the text fields of
+// applications (text-input-v3) and the input method (input-method-v2).
+// ---------------------------------------------------------------------------
+
+#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR >= 20
+#define NT_NEW_TEXT_INPUT_EVENT new_text_input
+#define NT_NEW_INPUT_METHOD_EVENT new_input_method
+#else
+#define NT_NEW_TEXT_INPUT_EVENT text_input
+#define NT_NEW_INPUT_METHOD_EVENT input_method
+#endif
+
+static struct wlr_input_method_keyboard_grab_v2 *keyboardImGrab(struct Keyboard *keyboard)
+{
+    struct Server *server = keyboard->server;
+    struct wlr_input_method_v2 *method = server->inputMethod;
+    // The lock screen's password never goes through an input method.
+    if (!method || !method->keyboard_grab || server->locked)
+        return NULL;
+    // The input method's own virtual keyboard types into the application.
+    struct wlr_virtual_keyboard_v1 *virtual =
+        wlr_input_device_get_virtual_keyboard(&keyboard->keyboard->base);
+    if (virtual && wl_resource_get_client(virtual->resource)
+                       == wl_resource_get_client(method->keyboard_grab->resource))
+        return NULL;
+    return method->keyboard_grab;
+}
+
+// The text field that has the focus (preferably an enabled one).
+static struct TextInput *focusedTextInput(struct Server *server)
+{
+    struct TextInput *textInput;
+    struct TextInput *fallback = NULL;
+    wl_list_for_each(textInput, &server->textInputs, link) {
+        if (!textInput->input->focused_surface)
+            continue;
+        if (textInput->input->current_enabled)
+            return textInput;
+        if (!fallback)
+            fallback = textInput;
+    }
+    return fallback;
+}
+
+struct SurfaceSearch {
+    struct wlr_surface *surface;
+    int x;
+    int y;
+    bool found;
+};
+
+static void findSurfaceBuffer(struct wlr_scene_buffer *buffer, int sx, int sy, void *data)
+{
+    struct SurfaceSearch *search = data;
+    if (search->found)
+        return;
+    struct wlr_scene_surface *sceneSurface = wlr_scene_surface_try_from_buffer(buffer);
+    if (sceneSurface && sceneSurface->surface == search->surface) {
+        search->x = sx;
+        search->y = sy;
+        search->found = true;
+    }
+}
+
+// Where a surface is drawn, in layout coordinates.
+static bool surfaceLayoutPosition(struct Server *server, struct wlr_surface *surface, int *x, int *y)
+{
+    struct SurfaceSearch search = {.surface = surface};
+    if (!surface)
+        return false;
+    wlr_scene_node_for_each_buffer(&server->scene->tree.node, findSurfaceBuffer, &search);
+    *x = search.x;
+    *y = search.y;
+    return search.found;
+}
+
+static void updateInputPopup(struct InputPopup *popup)
+{
+    struct Server *server = popup->server;
+    struct TextInput *textInput = focusedTextInput(server);
+    int surfaceX = 0;
+    int surfaceY = 0;
+    if (!textInput || !textInput->input->current_enabled || server->locked
+        || !popup->popup->surface->mapped
+        || !surfaceLayoutPosition(server, textInput->input->focused_surface, &surfaceX, &surfaceY)) {
+        wlr_scene_node_set_enabled(&popup->tree->node, false);
+        return;
+    }
+    // Under the text cursor; above it when there is no room below, and
+    // always on the screen that shows the cursor.
+    struct wlr_box cursor = textInput->input->current.cursor_rectangle;
+    int width = popup->popup->surface->current.width;
+    int height = popup->popup->surface->current.height;
+    int cursorX = surfaceX + cursor.x;
+    int cursorY = surfaceY + cursor.y;
+    int x = cursorX;
+    int y = cursorY + cursor.height;
+    struct wlr_output *output = wlr_output_layout_output_at(server->outputLayout, cursorX, cursorY);
+    if (output) {
+        struct wlr_box box;
+        wlr_output_layout_get_box(server->outputLayout, output, &box);
+        if (x + width > box.x + box.width)
+            x = box.x + box.width - width;
+        if (x < box.x)
+            x = box.x;
+        if (y + height > box.y + box.height)
+            y = cursorY - height;
+        if (y < box.y)
+            y = box.y;
+    }
+    wlr_scene_node_set_position(&popup->tree->node, x, y);
+    wlr_scene_node_set_enabled(&popup->tree->node, true);
+    // The cursor relative to the popup, sent only when it changed: the
+    // input method may commit again on every rectangle.
+    struct wlr_box rectangle = {
+        .x = cursorX - x, .y = cursorY - y, .width = cursor.width, .height = cursor.height};
+    if (memcmp(&rectangle, &popup->sentRectangle, sizeof(rectangle)) != 0) {
+        popup->sentRectangle = rectangle;
+        wlr_input_popup_surface_v2_send_text_input_rectangle(popup->popup, &rectangle);
+    }
+    scheduleAllFrames(server);
+}
+
+static void updateInputPopups(struct Server *server)
+{
+    struct InputPopup *popup;
+    wl_list_for_each(popup, &server->inputPopups, link)
+        updateInputPopup(popup);
+}
+
+static void inputPopupMap(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct InputPopup *popup = wl_container_of(listener, popup, map);
+    updateInputPopup(popup);
+}
+
+static void inputPopupUnmap(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct InputPopup *popup = wl_container_of(listener, popup, unmap);
+    wlr_scene_node_set_enabled(&popup->tree->node, false);
+    scheduleAllFrames(popup->server);
+}
+
+static void inputPopupCommit(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct InputPopup *popup = wl_container_of(listener, popup, commit);
+    if (popup->popup->surface->mapped)
+        updateInputPopup(popup);
+}
+
+static void inputPopupDestroy(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct InputPopup *popup = wl_container_of(listener, popup, destroy);
+    wl_list_remove(&popup->map.link);
+    wl_list_remove(&popup->unmap.link);
+    wl_list_remove(&popup->commit.link);
+    wl_list_remove(&popup->destroy.link);
+    wl_list_remove(&popup->link);
+    wlr_scene_node_destroy(&popup->tree->node);
+    scheduleAllFrames(popup->server);
+    free(popup);
+}
+
+static void handleInputMethodNewPopup(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, inputMethodNewPopup);
+    struct wlr_input_popup_surface_v2 *surface = data;
+    struct InputPopup *popup = xcalloc(1, sizeof(*popup));
+    popup->server = server;
+    popup->popup = surface;
+    // An own tree around the surface tree: the latter goes away with the
+    // surface by itself, ours with the popup.
+    popup->tree = wlr_scene_tree_create(server->inputPopupTree);
+    wlr_scene_subsurface_tree_create(popup->tree, surface->surface);
+    wlr_scene_node_set_enabled(&popup->tree->node, false);
+    popup->sentRectangle.x = -1;
+    popup->map.notify = inputPopupMap;
+    wl_signal_add(&surface->surface->events.map, &popup->map);
+    popup->unmap.notify = inputPopupUnmap;
+    wl_signal_add(&surface->surface->events.unmap, &popup->unmap);
+    popup->commit.notify = inputPopupCommit;
+    wl_signal_add(&surface->surface->events.commit, &popup->commit);
+    popup->destroy.notify = inputPopupDestroy;
+    wl_signal_add(&surface->events.destroy, &popup->destroy);
+    wl_list_insert(&server->inputPopups, &popup->link);
+}
+
+static void sendTextInputState(struct Server *server, struct TextInput *textInput)
+{
+    struct wlr_input_method_v2 *method = server->inputMethod;
+    struct wlr_text_input_v3 *input = textInput->input;
+    if (input->active_features & WLR_TEXT_INPUT_V3_FEATURE_SURROUNDING_TEXT) {
+        wlr_input_method_v2_send_surrounding_text(method,
+                                                  input->current.surrounding.text
+                                                      ? input->current.surrounding.text
+                                                      : "",
+                                                  input->current.surrounding.cursor,
+                                                  input->current.surrounding.anchor);
+    }
+    wlr_input_method_v2_send_text_change_cause(method, input->current.text_change_cause);
+    if (input->active_features & WLR_TEXT_INPUT_V3_FEATURE_CONTENT_TYPE) {
+        wlr_input_method_v2_send_content_type(method, input->current.content_type.hint,
+                                              input->current.content_type.purpose);
+    }
+    wlr_input_method_v2_send_done(method);
+}
+
+static void disableTextInput(struct Server *server, struct TextInput *textInput)
+{
+    if (!server->inputMethod)
+        return;
+    wlr_input_method_v2_send_deactivate(server->inputMethod);
+    sendTextInputState(server, textInput);
+}
+
+static void textInputPendingFocusDestroy(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct TextInput *textInput = wl_container_of(listener, textInput, pendingFocusDestroy);
+    wl_list_remove(&textInput->pendingFocusDestroy.link);
+    wl_list_init(&textInput->pendingFocusDestroy.link);
+    textInput->pendingFocus = NULL;
+}
+
+static void textInputSetPendingFocus(struct TextInput *textInput, struct wlr_surface *surface)
+{
+    wl_list_remove(&textInput->pendingFocusDestroy.link);
+    wl_list_init(&textInput->pendingFocusDestroy.link);
+    textInput->pendingFocus = surface;
+    if (surface)
+        wl_signal_add(&surface->events.destroy, &textInput->pendingFocusDestroy);
+}
+
+static void textInputEnable(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct TextInput *textInput = wl_container_of(listener, textInput, enable);
+    struct Server *server = textInput->server;
+    if (!server->inputMethod)
+        return;
+    wlr_input_method_v2_send_activate(server->inputMethod);
+    sendTextInputState(server, textInput);
+    updateInputPopups(server);
+}
+
+static void textInputCommit(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct TextInput *textInput = wl_container_of(listener, textInput, commit);
+    struct Server *server = textInput->server;
+    if (!server->inputMethod || !textInput->input->current_enabled)
+        return;
+    sendTextInputState(server, textInput);
+    updateInputPopups(server);
+}
+
+static void textInputDisable(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct TextInput *textInput = wl_container_of(listener, textInput, disable);
+    disableTextInput(textInput->server, textInput);
+    updateInputPopups(textInput->server);
+}
+
+static void textInputDestroy(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct TextInput *textInput = wl_container_of(listener, textInput, destroy);
+    struct Server *server = textInput->server;
+    if (textInput->input->current_enabled)
+        disableTextInput(server, textInput);
+    textInputSetPendingFocus(textInput, NULL);
+    wl_list_remove(&textInput->pendingFocusDestroy.link);
+    wl_list_remove(&textInput->enable.link);
+    wl_list_remove(&textInput->commit.link);
+    wl_list_remove(&textInput->disable.link);
+    wl_list_remove(&textInput->destroy.link);
+    wl_list_remove(&textInput->link);
+    free(textInput);
+    updateInputPopups(server);
+}
+
+static bool sameClient(struct wlr_text_input_v3 *input, struct wlr_surface *surface)
+{
+    return surface && wl_resource_get_client(input->resource) == wl_resource_get_client(surface->resource);
+}
+
+// The keyboard focus moved: text fields follow it. Without an input method
+// the focus is only remembered (see TextInput.pendingFocus).
+static void textInputsSetFocus(struct Server *server, struct wlr_surface *surface)
+{
+    if (server->locked)
+        surface = NULL;
+    struct TextInput *textInput;
+    wl_list_for_each(textInput, &server->textInputs, link) {
+        struct wlr_text_input_v3 *input = textInput->input;
+        if (textInput->pendingFocus) {
+            if (surface != textInput->pendingFocus)
+                textInputSetPendingFocus(textInput, NULL);
+        } else if (input->focused_surface) {
+            if (surface == input->focused_surface)
+                continue;
+            if (input->current_enabled)
+                disableTextInput(server, textInput);
+            wlr_text_input_v3_send_leave(input);
+        }
+        if (sameClient(input, surface)) {
+            if (server->inputMethod)
+                wlr_text_input_v3_send_enter(input, surface);
+            else
+                textInputSetPendingFocus(textInput, surface);
+        }
+    }
+    updateInputPopups(server);
+}
+
+static void handleKeyboardFocusChange(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, keyboardFocusChange);
+    struct wlr_seat_keyboard_focus_change_event *event = data;
+    textInputsSetFocus(server, event->new_surface);
+}
+
+static void handleNewTextInput(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, newTextInput);
+    struct wlr_text_input_v3 *input = data;
+    struct TextInput *textInput = xcalloc(1, sizeof(*textInput));
+    textInput->server = server;
+    textInput->input = input;
+    wl_list_init(&textInput->pendingFocusDestroy.link);
+    textInput->pendingFocusDestroy.notify = textInputPendingFocusDestroy;
+    textInput->enable.notify = textInputEnable;
+    wl_signal_add(&input->events.enable, &textInput->enable);
+    textInput->commit.notify = textInputCommit;
+    wl_signal_add(&input->events.commit, &textInput->commit);
+    textInput->disable.notify = textInputDisable;
+    wl_signal_add(&input->events.disable, &textInput->disable);
+    textInput->destroy.notify = textInputDestroy;
+    wl_signal_add(&input->events.destroy, &textInput->destroy);
+    wl_list_insert(&server->textInputs, &textInput->link);
+    // Its window may already have the keyboard.
+    struct wlr_surface *focused = server->seat->keyboard_state.focused_surface;
+    if (!server->locked && sameClient(input, focused)) {
+        if (server->inputMethod)
+            wlr_text_input_v3_send_enter(input, focused);
+        else
+            textInputSetPendingFocus(textInput, focused);
+    }
+}
+
+static void handleInputMethodCommit(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, inputMethodCommit);
+    struct wlr_input_method_v2 *method = data;
+    struct TextInput *textInput = focusedTextInput(server);
+    if (!textInput)
+        return;
+    struct wlr_text_input_v3 *input = textInput->input;
+    if (method->current.preedit.text) {
+        wlr_text_input_v3_send_preedit_string(input, method->current.preedit.text,
+                                              method->current.preedit.cursor_begin,
+                                              method->current.preedit.cursor_end);
+    }
+    if (method->current.commit_text)
+        wlr_text_input_v3_send_commit_string(input, method->current.commit_text);
+    if (method->current.delete.before_length || method->current.delete.after_length) {
+        wlr_text_input_v3_send_delete_surrounding_text(input, method->current.delete.before_length,
+                                                       method->current.delete.after_length);
+    }
+    wlr_text_input_v3_send_done(input);
+}
+
+static void handleInputMethodGrabDestroy(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, inputMethodGrabDestroy);
+    struct wlr_input_method_keyboard_grab_v2 *grab = data;
+    wl_list_remove(&server->inputMethodGrabDestroy.link);
+    wl_list_init(&server->inputMethodGrabDestroy.link);
+    // The application gets the modifiers the input method had.
+    if (grab->keyboard)
+        wlr_seat_keyboard_notify_modifiers(server->seat, &grab->keyboard->modifiers);
+}
+
+static void handleInputMethodGrabKeyboard(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, inputMethodGrabKeyboard);
+    struct wlr_input_method_keyboard_grab_v2 *grab = data;
+    wlr_input_method_keyboard_grab_v2_set_keyboard(grab, wlr_seat_get_keyboard(server->seat));
+    wl_list_remove(&server->inputMethodGrabDestroy.link);
+    server->inputMethodGrabDestroy.notify = handleInputMethodGrabDestroy;
+    wl_signal_add(&grab->events.destroy, &server->inputMethodGrabDestroy);
+}
+
+static void handleInputMethodDestroy(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct Server *server = wl_container_of(listener, server, inputMethodDestroy);
+    wl_list_remove(&server->inputMethodCommit.link);
+    wl_list_remove(&server->inputMethodNewPopup.link);
+    wl_list_remove(&server->inputMethodGrabKeyboard.link);
+    wl_list_remove(&server->inputMethodDestroy.link);
+    wl_list_remove(&server->inputMethodGrabDestroy.link);
+    wl_list_init(&server->inputMethodGrabDestroy.link);
+    server->inputMethod = NULL;
+    // Text fields wait for the next input method.
+    struct TextInput *textInput;
+    wl_list_for_each(textInput, &server->textInputs, link) {
+        struct wlr_surface *focused = textInput->input->focused_surface;
+        if (focused) {
+            textInputSetPendingFocus(textInput, focused);
+            wlr_text_input_v3_send_leave(textInput->input);
+        }
+    }
+    wlr_log(WLR_INFO, "input method went away");
+}
+
+static void handleNewInputMethod(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, newInputMethod);
+    struct wlr_input_method_v2 *method = data;
+    if (server->inputMethod) {
+        wlr_input_method_v2_send_unavailable(method);
+        return;
+    }
+    server->inputMethod = method;
+    server->inputMethodCommit.notify = handleInputMethodCommit;
+    wl_signal_add(&method->events.commit, &server->inputMethodCommit);
+    server->inputMethodNewPopup.notify = handleInputMethodNewPopup;
+    wl_signal_add(&method->events.new_popup_surface, &server->inputMethodNewPopup);
+    server->inputMethodGrabKeyboard.notify = handleInputMethodGrabKeyboard;
+    wl_signal_add(&method->events.grab_keyboard, &server->inputMethodGrabKeyboard);
+    server->inputMethodDestroy.notify = handleInputMethodDestroy;
+    wl_signal_add(&method->events.destroy, &server->inputMethodDestroy);
+    // Text fields that got the focus before the input method started.
+    struct TextInput *textInput;
+    wl_list_for_each(textInput, &server->textInputs, link) {
+        struct wlr_surface *surface = textInput->pendingFocus;
+        if (surface) {
+            textInputSetPendingFocus(textInput, NULL);
+            wlr_text_input_v3_send_enter(textInput->input, surface);
+        }
+    }
+    wlr_log(WLR_INFO, "input method connected");
+}
+
+static void setupInputMethods(struct Server *server)
+{
+    wl_list_init(&server->textInputs);
+    wl_list_init(&server->inputPopups);
+    wl_list_init(&server->inputMethodGrabDestroy.link);
+    struct wlr_text_input_manager_v3 *textInputs = wlr_text_input_manager_v3_create(server->display);
+    server->newTextInput.notify = handleNewTextInput;
+    wl_signal_add(&textInputs->events.NT_NEW_TEXT_INPUT_EVENT, &server->newTextInput);
+    struct wlr_input_method_manager_v2 *methods = wlr_input_method_manager_v2_create(server->display);
+    server->newInputMethod.notify = handleNewInputMethod;
+    wl_signal_add(&methods->events.NT_NEW_INPUT_METHOD_EVENT, &server->newInputMethod);
+    server->keyboardFocusChange.notify = handleKeyboardFocusChange;
+    wl_signal_add(&server->seat->keyboard_state.events.focus_change, &server->keyboardFocusChange);
+}
+
+// ---------------------------------------------------------------------------
 // Control socket
 // ---------------------------------------------------------------------------
 //
@@ -6661,6 +7187,7 @@ static void setupProtocols(struct Server *server)
     server->toplevelTree = wlr_scene_tree_create(&server->scene->tree);
     server->topTree = wlr_scene_tree_create(&server->scene->tree);
     server->overlayTree = wlr_scene_tree_create(&server->scene->tree);
+    server->inputPopupTree = wlr_scene_tree_create(&server->scene->tree);
     // The screen locker draws above everything, over an opaque backdrop that
     // hides the desktop even where a lock surface is missing or late.
     server->lockTree = wlr_scene_tree_create(&server->scene->tree);
@@ -6728,8 +7255,6 @@ static void setupProtocols(struct Server *server)
     wlr_fractional_scale_manager_v1_create(server->display, 1);
     wlr_single_pixel_buffer_manager_v1_create(server->display);
     wlr_keyboard_shortcuts_inhibit_v1_create(server->display);
-    wlr_text_input_manager_v3_create(server->display);
-    wlr_input_method_manager_v2_create(server->display);
     if (server->renderer) {
         wlr_linux_dmabuf_v1_create_with_renderer(server->display, 5,
                                                  server->renderer);
@@ -6768,6 +7293,7 @@ static void setupInput(struct Server *server)
                   &server->newVirtualPointer);
 
     server->seat = wlr_seat_create(server->display, "seat0");
+    setupInputMethods(server);
     server->requestCursor.notify = seatRequestCursor;
     wl_signal_add(&server->seat->events.request_set_cursor, &server->requestCursor);
     server->requestSetSelection.notify = seatRequestSetSelection;
@@ -7059,6 +7585,9 @@ static int run(struct Server *server)
     wl_list_remove(&server->newOutput.link);
     wl_list_remove(&server->newInput.link);
     wl_list_remove(&server->newVirtualKeyboard.link);
+    wl_list_remove(&server->newTextInput.link);
+    wl_list_remove(&server->newInputMethod.link);
+    wl_list_remove(&server->keyboardFocusChange.link);
     wl_list_remove(&server->newVirtualPointer.link);
     wl_list_remove(&server->newXdgToplevel.link);
     wl_list_remove(&server->newXdgPopup.link);
