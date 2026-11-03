@@ -141,6 +141,9 @@ static void switcherCancel(struct Server *server);
 static void refreshPointerFocus(struct Server *server);
 static void viewUpdateDecoration(struct View *view);
 static void applyDecorationMode(struct View *view);
+static void compileBindings(struct Server *server);
+static bool captureThumbnail(struct View *view, int maxSize);
+static bool x11WantsFrame(struct View *view);
 
 // ---------------------------------------------------------------------------
 // Small helpers

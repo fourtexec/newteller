@@ -15,6 +15,7 @@
 #include <QStandardPaths>
 #include <QTime>
 #include <QUrl>
+#include <QDateTime>
 
 #include <csignal>
 #include <sys/prctl.h>
@@ -230,6 +231,17 @@ SessionServices::SessionServices(Settings *settings, QObject *parent)
     }
 }
 
+void SessionServices::setTheme(QObject *theme)
+{
+    m_theme = theme;
+    if (!m_theme)
+        return;
+    // Title bars that follow the theme are redrawn with it; the lock screen
+    // ring takes the accent.
+    connect(m_theme, SIGNAL(themeChanged()), &m_configDebounce, SLOT(start()));
+    m_configDebounce.start();
+}
+
 SessionServices::~SessionServices()
 {
     for (QProcess *process : {&m_idle, &m_nightLight, &m_polkit}) {
@@ -354,10 +366,12 @@ void SessionServices::handleEvent(const QString &line)
         if (m_switcherIndex >= 0 && space >= 0) {
             const QStringList entries = rest.mid(space + 1).split(QChar(0x1f), Qt::SkipEmptyParts);
             for (const QString &entry : entries) {
-                const int separator = entry.indexOf(QChar(0x1e));
+                // <id>\x1e<app id>\x1e<title>
+                const QStringList fields = entry.split(QChar(0x1e));
                 QVariantMap item;
-                item.insert(QStringLiteral("appId"), separator < 0 ? entry : entry.left(separator));
-                item.insert(QStringLiteral("title"), separator < 0 ? QString() : entry.mid(separator + 1));
+                item.insert(QStringLiteral("id"), fields.value(0).toInt());
+                item.insert(QStringLiteral("appId"), fields.value(1));
+                item.insert(QStringLiteral("title"), fields.value(2));
                 m_switcherEntries.append(item);
             }
         }
@@ -515,12 +529,15 @@ void SessionServices::settingChanged(const QString &key)
 {
     const bool all = key.isEmpty();
     if (all || key.startsWith(QLatin1String("keyboard.")) || key.startsWith(QLatin1String("touchpad."))
-        || key.startsWith(QLatin1String("workspaces."))
+        || key.startsWith(QLatin1String("workspaces.")) || key.startsWith(QLatin1String("decorations."))
+        || key.startsWith(QLatin1String("shortcuts.")) || key.startsWith(QLatin1String("switcher."))
+        || key.startsWith(QLatin1String("lock.")) || key == QLatin1String("windows.focusFollowsMouse")
+        || key == QLatin1String("windows.placement") || key == QLatin1String("windows.snapping")
         || key.startsWith(QLatin1String("mouse.")) || key.startsWith(QLatin1String("cursor."))
         || key == QLatin1String("desktop.wallpaper")) {
         m_configDebounce.start();
     }
-    if (inSession() && (all || key.startsWith(QLatin1String("apps.colorScheme"))
+    if (inSession() && (all || key.startsWith(QLatin1String("apps."))
                         || key.startsWith(QLatin1String("cursor."))))
         applyAppearance();
     if (inSession() && (all || key.startsWith(QLatin1String("power."))))
@@ -574,6 +591,64 @@ QString SessionServices::compositorConfigText() const
                      QString::number(qBound(8, value("cursor.size").toInt(), 256)));
     text += confLine(QStringLiteral("workspaces.count"),
                      QString::number(qBound(1, value("workspaces.count").toInt(), 9)));
+    text += confLine(QStringLiteral("workspaces.wrap"), boolText(value("workspaces.wrap")));
+
+    // Title bars drawn by the compositor.
+    text += confLine(QStringLiteral("decorations.server"), boolText(value("decorations.server")));
+    text += confLine(QStringLiteral("decorations.titleHeight"),
+                     QString::number(qBound(16, value("decorations.titleHeight").toInt(), 64)));
+    text += confLine(QStringLiteral("decorations.border"),
+                     QString::number(qBound(0, value("decorations.border").toInt(), 8)));
+    text += confLine(QStringLiteral("decorations.buttonsLeft"), boolText(value("decorations.buttonsLeft")));
+    text += confLine(QStringLiteral("decorations.titleCentered"),
+                     boolText(value("decorations.titleCentered")));
+    text += confLine(QStringLiteral("decorations.showMinimize"), boolText(value("decorations.showMinimize")));
+    text += confLine(QStringLiteral("decorations.showMaximize"), boolText(value("decorations.showMaximize")));
+    QString font = value("decorations.font").toString().trimmed();
+    QString activeBackground = value("decorations.activeBackground").toString();
+    QString activeForeground = value("decorations.activeForeground").toString();
+    QString inactiveBackground = value("decorations.inactiveBackground").toString();
+    QString inactiveForeground = value("decorations.inactiveForeground").toString();
+    if (value("decorations.followTheme").toBool() && m_theme) {
+        auto themeColor = [this](const char *name) {
+            return m_theme->property(name).value<QColor>().name(QColor::HexRgb);
+        };
+        activeBackground = themeColor("surface");
+        activeForeground = themeColor("foreground");
+        inactiveBackground = themeColor("background");
+        inactiveForeground = themeColor("muted");
+        if (font.isEmpty()) {
+            font = m_theme->property("fontFamily").toString() + QStringLiteral(" Bold ")
+                   + QString::number(qMax(8, m_theme->property("fontSize").toInt()));
+        }
+    }
+    if (!font.isEmpty())
+        text += confLine(QStringLiteral("decorations.font"), font);
+    text += confLine(QStringLiteral("decorations.activeBackground"), activeBackground);
+    text += confLine(QStringLiteral("decorations.activeForeground"), activeForeground);
+    text += confLine(QStringLiteral("decorations.inactiveBackground"), inactiveBackground);
+    text += confLine(QStringLiteral("decorations.inactiveForeground"), inactiveForeground);
+    text += confLine(QStringLiteral("decorations.closeHover"), value("decorations.closeHover").toString());
+
+    // Window behaviour.
+    text += confLine(QStringLiteral("windows.focusFollowsMouse"),
+                     boolText(value("windows.focusFollowsMouse")));
+    text += confLine(QStringLiteral("windows.placement"), value("windows.placement").toString());
+    text += confLine(QStringLiteral("windows.snapping"), boolText(value("windows.snapping")));
+    text += confLine(QStringLiteral("switcher.allWorkspaces"), boolText(value("switcher.allWorkspaces")));
+
+    // The user's shortcuts: [{keys, command}].
+    const QVariantList shortcuts = value("shortcuts.custom").toList();
+    int index = 0;
+    for (const QVariant &item : shortcuts) {
+        const QVariantMap shortcut = item.toMap();
+        QString keys = shortcut.value(QStringLiteral("keys")).toString().trimmed();
+        QString command = shortcut.value(QStringLiteral("command")).toString().trimmed();
+        keys.remove(QLatin1Char('|'));
+        if (keys.isEmpty() || command.isEmpty())
+            continue;
+        text += confLine(QStringLiteral("bind.%1").arg(index++), keys + QLatin1Char('|') + command);
+    }
     return text;
 }
 
@@ -606,6 +681,8 @@ void SessionServices::writeLockConfig()
         image = QDir::homePath() + image.mid(1);
     if (!image.isEmpty() && !QFileInfo(image).isFile())
         image.clear();
+    if (!m_settings->value(QStringLiteral("lock.useWallpaper")).toBool())
+        image.clear();
     const QString path = Settings::configDir() + QStringLiteral("/lock.conf");
     QDir().mkpath(QFileInfo(path).absolutePath());
     QSaveFile file(path);
@@ -614,6 +691,14 @@ void SessionServices::writeLockConfig()
     QString text = QStringLiteral("# Written by the NewTeller shell for newteller-lock.\n");
     if (!image.isEmpty())
         text += QStringLiteral("image=") + image + QLatin1Char('\n');
+    const QString lockColor = m_settings->value(QStringLiteral("lock.color")).toString();
+    if (QColor::isValidColorName(lockColor))
+        text += QStringLiteral("color=") + QColor(lockColor).name(QColor::HexRgb).mid(1) + QLatin1Char('\n');
+    if (m_theme) {
+        text += QStringLiteral("accent=")
+                + m_theme->property("accent").value<QColor>().name(QColor::HexRgb).mid(1)
+                + QLatin1Char('\n');
+    }
     file.write(text.toUtf8());
     file.commit();
 }
@@ -717,6 +802,21 @@ void SessionServices::applyAppearance()
         QProcess::startDetached(gsettings, {QStringLiteral("set"), schema,
                                             QStringLiteral("gtk-theme"), QStringLiteral("Adwaita")});
     }
+    auto setKey = [&](const QString &key, const QString &value) {
+        QProcess::startDetached(gsettings, {QStringLiteral("set"), schema, key, value});
+    };
+    const QString gtkTheme = m_settings->value(QStringLiteral("apps.gtkTheme")).toString().trimmed();
+    if (!gtkTheme.isEmpty())
+        setKey(QStringLiteral("gtk-theme"), gtkTheme);
+    const QString iconTheme = m_settings->value(QStringLiteral("apps.iconTheme")).toString().trimmed();
+    if (!iconTheme.isEmpty())
+        setKey(QStringLiteral("icon-theme"), iconTheme);
+    const QString appFont = m_settings->value(QStringLiteral("apps.font")).toString().trimmed();
+    if (!appFont.isEmpty())
+        setKey(QStringLiteral("font-name"), appFont);
+    const double textScale = m_settings->value(QStringLiteral("apps.textScale")).toDouble();
+    if (textScale >= 0.5 && textScale <= 3.0)
+        setKey(QStringLiteral("text-scaling-factor"), QString::number(textScale, 'f', 2));
     const QString cursorTheme = m_settings->value(QStringLiteral("cursor.theme")).toString().trimmed();
     if (!cursorTheme.isEmpty()) {
         QProcess::startDetached(gsettings, {QStringLiteral("set"), schema,
@@ -900,6 +1000,201 @@ void SessionServices::disconnectWifi()
                                network.value(QStringLiteral("ssid")).toString()});
         return;
     }
+}
+
+// ---------------------------------------------------------------------------
+// Synchronous queries (overview, displays)
+// ---------------------------------------------------------------------------
+
+QString SessionServices::query(const QString &command) const
+{
+    const QString path = qEnvironmentVariable("NEWTELLER_IPC");
+    if (path.isEmpty())
+        return QString();
+    QLocalSocket socket;
+    socket.connectToServer(path);
+    if (!socket.waitForConnected(300))
+        return QString();
+    socket.write(command.toUtf8() + '\n');
+    socket.flush();
+    QByteArray data;
+    while (!data.contains('\n') && socket.waitForReadyRead(2000))
+        data += socket.readAll();
+    return QString::fromUtf8(data).trimmed();
+}
+
+QVariantList SessionServices::windows() const
+{
+    QVariantList list;
+    const QString reply = query(QStringLiteral("windows"));
+    if (!reply.startsWith(QLatin1String("ok")))
+        return list;
+    const QStringList entries = reply.mid(3).split(QChar(0x1f), Qt::SkipEmptyParts);
+    for (const QString &entry : entries) {
+        const QStringList f = entry.split(QChar(0x1e));
+        if (f.size() < 5)
+            continue;
+        QVariantMap window;
+        window.insert(QStringLiteral("id"), f.at(0).toInt());
+        window.insert(QStringLiteral("workspace"), f.at(1).toInt());
+        window.insert(QStringLiteral("appId"), f.at(2));
+        window.insert(QStringLiteral("title"), f.at(3));
+        window.insert(QStringLiteral("focused"), f.at(4).contains(QLatin1Char('f')));
+        window.insert(QStringLiteral("minimized"), f.at(4).contains(QLatin1Char('m')));
+        window.insert(QStringLiteral("maximized"), f.at(4).contains(QLatin1Char('x')));
+        list.append(window);
+    }
+    return list;
+}
+
+QString SessionServices::thumbnail(int id, int size)
+{
+    const QString reply = query(QStringLiteral("thumbnail %1 %2").arg(id).arg(size));
+    if (!reply.startsWith(QLatin1String("ok ")))
+        return QString();
+    // A new query string each time: QML caches images by URL.
+    return QUrl::fromLocalFile(reply.mid(3)).toString() + QStringLiteral("?v=")
+           + QString::number(++m_thumbnailSerial);
+}
+
+QString SessionServices::cachedThumbnail(int id) const
+{
+    const QString path = qEnvironmentVariable("XDG_RUNTIME_DIR")
+                         + QStringLiteral("/newteller-thumbs/%1.png").arg(id);
+    if (!QFileInfo::exists(path))
+        return QString();
+    return QUrl::fromLocalFile(path).toString() + QStringLiteral("?v=")
+           + QString::number(QFileInfo(path).lastModified().toMSecsSinceEpoch());
+}
+
+void SessionServices::activateWindow(int id)
+{
+    query(QStringLiteral("activate %1").arg(id));
+}
+
+void SessionServices::closeWindow(int id)
+{
+    query(QStringLiteral("close %1").arg(id));
+}
+
+void SessionServices::moveWindow(int id, int workspace)
+{
+    query(QStringLiteral("move-window %1 %2").arg(id).arg(workspace));
+}
+
+QVariantList SessionServices::outputs() const
+{
+    QVariantList list;
+    const QString reply = query(QStringLiteral("outputs-detail"));
+    if (!reply.startsWith(QLatin1String("ok")))
+        return list;
+    const QStringList entries = reply.mid(3).split(QChar(0x1f), Qt::SkipEmptyParts);
+    for (const QString &entry : entries) {
+        const QStringList f = entry.split(QChar(0x1e));
+        if (f.size() < 8)
+            continue;
+        QVariantMap output;
+        output.insert(QStringLiteral("name"), f.at(0));
+        output.insert(QStringLiteral("description"), f.at(1).trimmed());
+        output.insert(QStringLiteral("enabled"), f.at(2) == QLatin1String("on"));
+        const QString mode = f.at(3);
+        output.insert(QStringLiteral("width"), mode.section(QLatin1Char('x'), 0, 0).toInt());
+        output.insert(QStringLiteral("height"),
+                      mode.section(QLatin1Char('x'), 1).section(QLatin1Char('@'), 0, 0).toInt());
+        output.insert(QStringLiteral("refresh"), mode.section(QLatin1Char('@'), 1).toInt());
+        output.insert(QStringLiteral("x"), f.at(4).section(QLatin1Char(','), 0, 0).toInt());
+        output.insert(QStringLiteral("y"), f.at(4).section(QLatin1Char(','), 1).toInt());
+        output.insert(QStringLiteral("scale"), f.at(5).toDouble());
+        output.insert(QStringLiteral("transform"), f.at(6).toInt());
+        QVariantList modes;
+        for (const QString &item : f.at(7).split(QLatin1Char(','), Qt::SkipEmptyParts)) {
+            QVariantMap m;
+            m.insert(QStringLiteral("width"), item.section(QLatin1Char('x'), 0, 0).toInt());
+            m.insert(QStringLiteral("height"),
+                     item.section(QLatin1Char('x'), 1).section(QLatin1Char('@'), 0, 0).toInt());
+            m.insert(QStringLiteral("refresh"), item.section(QLatin1Char('@'), 1).toInt());
+            modes.append(m);
+        }
+        output.insert(QStringLiteral("modes"), modes);
+        list.append(output);
+    }
+    return list;
+}
+
+QString SessionServices::setOutput(const QString &name, bool enabled, int width, int height,
+                                   int refresh, int x, int y, double scale, int transform)
+{
+    if (name.contains(QLatin1Char(' ')) || name.isEmpty())
+        return QStringLiteral("unknown screen");
+    const QString reply = query(QStringLiteral("output-set %1 %2 %3x%4@%5 %6 %7 %8 %9")
+                                    .arg(name, enabled ? QStringLiteral("on") : QStringLiteral("off"))
+                                    .arg(width).arg(height).arg(refresh).arg(x).arg(y)
+                                    .arg(scale, 0, 'f', 2).arg(transform));
+    if (reply == QLatin1String("ok"))
+        return QString();
+    if (reply.isEmpty())
+        return QStringLiteral("The compositor did not answer.");
+    return reply.startsWith(QLatin1String("error ")) ? reply.mid(6) : reply;
+}
+
+namespace {
+
+QStringList dataDirectories(const QString &sub)
+{
+    QStringList dirs{QDir::homePath() + QStringLiteral("/.local/share/") + sub,
+                     QDir::homePath() + QLatin1Char('/') + QLatin1Char('.') + sub};
+    QString dataDirs = qEnvironmentVariable("XDG_DATA_DIRS");
+    if (dataDirs.isEmpty())
+        dataDirs = QStringLiteral("/usr/local/share:/usr/share");
+    for (const QString &dir : dataDirs.split(QLatin1Char(':'), Qt::SkipEmptyParts))
+        dirs << dir + QLatin1Char('/') + sub;
+    return dirs;
+}
+
+QStringList themesWith(const QString &sub, const QString &marker)
+{
+    QStringList names;
+    for (const QString &dir : dataDirectories(sub)) {
+        const QStringList entries = QDir(dir).entryList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Name);
+        for (const QString &entry : entries) {
+            if (!names.contains(entry) && QFileInfo::exists(dir + QLatin1Char('/') + entry + marker))
+                names << entry;
+        }
+    }
+    names.sort(Qt::CaseInsensitive);
+    return names;
+}
+
+} // namespace
+
+QStringList SessionServices::gtkThemes() const
+{
+    return themesWith(QStringLiteral("themes"), QStringLiteral("/gtk-3.0"));
+}
+
+QStringList SessionServices::iconThemes() const
+{
+    QStringList names;
+    for (const QString &name : themesWith(QStringLiteral("icons"), QStringLiteral("/index.theme"))) {
+        // Cursor-only themes also have an index.theme; skip them.
+        bool hasIcons = false;
+        for (const QString &dir : dataDirectories(QStringLiteral("icons"))) {
+            const QStringList subdirs = QDir(dir + QLatin1Char('/') + name)
+                                            .entryList(QDir::Dirs | QDir::NoDotAndDotDot);
+            if (subdirs.size() > (subdirs.contains(QStringLiteral("cursors")) ? 1 : 0)) {
+                hasIcons = true;
+                break;
+            }
+        }
+        if (hasIcons && name != QLatin1String("default"))
+            names << name;
+    }
+    return names;
+}
+
+QStringList SessionServices::cursorThemes() const
+{
+    return themesWith(QStringLiteral("icons"), QStringLiteral("/cursors"));
 }
 
 void SessionServices::runAutostart()

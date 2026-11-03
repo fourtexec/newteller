@@ -69,6 +69,8 @@ public:
     Q_INVOKABLE void toggleQuickSettings();
     // Super+V: the clipboard history.
     Q_INVOKABLE void toggleClipboard();
+    // Super+Tab: the window overview.
+    Q_INVOKABLE void toggleTaskView();
     Q_INVOKABLE void openConfig() const;
     // Opens the path in the file manager (or its handler for directories).
     Q_INVOKABLE void openPath(const QString &path) const;
@@ -112,6 +114,7 @@ signals:
     void notificationsToggleRequested();
     void quickSettingsToggleRequested();
     void clipboardToggleRequested();
+    void taskViewToggleRequested();
 
 private:
     QString expandHome(const QString &path) const;

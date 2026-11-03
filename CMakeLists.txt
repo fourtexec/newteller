@@ -99,6 +99,7 @@ qt_add_executable(newteller
     src/quicksettings.cpp
     src/sessionservices.cpp
     src/clipboardhistory.cpp
+    src/bluetooth.cpp
 )
 
 target_compile_definitions(newteller PRIVATE NEWTELLER_VERSION="${PROJECT_VERSION}")

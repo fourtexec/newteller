@@ -14,8 +14,8 @@ Window {
     readonly property bool wanted: selected >= 0 && entries.length > 1
                                    && Settings.values["switcher.showOverlay"] !== false
 
-    readonly property int tileWidth: 104
-    readonly property int tileHeight: 96
+    readonly property int tileWidth: 200
+    readonly property int tileHeight: 168
     readonly property int columns: Math.max(1, Math.min(entries.length,
                                                         Math.floor((Screen.width - 120) / (tileWidth + 6))))
     readonly property int rows: Math.ceil(entries.length / columns)
@@ -76,13 +76,27 @@ Window {
                     border.width: current ? 2 : 0
                     border.color: Theme.accent
 
+                    // The window as it looks (written by the compositor when
+                    // Alt+Tab started), the app icon on top of it.
                     Image {
+                        id: thumb
                         anchors.horizontalCenter: parent.horizontalCenter
-                        y: 12
-                        width: 48
-                        height: 48
-                        sourceSize.width: 96
-                        sourceSize.height: 96
+                        y: 10
+                        width: parent.width - 20
+                        height: parent.height - 46
+                        fillMode: Image.PreserveAspectFit
+                        asynchronous: true
+                        cache: false
+                        source: modelData.id !== undefined ? Session.cachedThumbnail(modelData.id) : ""
+                    }
+                    Image {
+                        x: thumb.status === Image.Ready ? 14 : (parent.width - width) / 2
+                        y: thumb.status === Image.Ready ? thumb.y + thumb.height - height - 4
+                                                        : thumb.y + (thumb.height - height) / 2
+                        width: thumb.status === Image.Ready ? 32 : 56
+                        height: width
+                        sourceSize.width: 112
+                        sourceSize.height: 112
                         fillMode: Image.PreserveAspectFit
                         source: overlay.iconFor(modelData)
                     }

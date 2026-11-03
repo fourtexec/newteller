@@ -18,6 +18,8 @@ DropdownWindow {
     property var notificationCenter: null
     // The Wi-Fi network list, opened from the network row.
     property var wifiPopup: null
+    // The Bluetooth device list.
+    property var bluetoothPopup: null
     // Rows that are on right now, for the height computation.
     readonly property int visibleRows: {
         var rows = 0;
@@ -32,6 +34,8 @@ DropdownWindow {
         if (System.batteryPresent)
             rows++;
         if (Session.nightLightAvailable)
+            rows++;
+        if (Bluetooth.available)
             rows++;
         if (Session.powerProfiles.length > 0)
             rows++;
@@ -247,6 +251,73 @@ DropdownWindow {
                 Connections {
                     target: Quick
                     function onNetworkChanged() { wifiSwitch.checked = Quick.wifiEnabled }
+                }
+            }
+        }
+
+        // --- bluetooth ---------------------------------------------------
+        RowLayout {
+            objectName: "bluetoothRow"
+            Layout.fillWidth: true
+            visible: Bluetooth.available
+            spacing: 8
+
+            Item {
+                width: 34
+                height: 34
+                Image {
+                    anchors.centerIn: parent
+                    width: 18
+                    height: 18
+                    sourceSize.width: 36
+                    sourceSize.height: 36
+                    fillMode: Image.PreserveAspectFit
+                    opacity: Bluetooth.powered ? 1.0 : 0.5
+                    source: Shell.tintedIcon("bluetooth", Theme.foreground)
+                }
+            }
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 0
+                Text {
+                    text: "Bluetooth"
+                    color: Theme.foreground
+                    font.family: Theme.fontFamily
+                    font.pointSize: Theme.fontSize
+                }
+                Text {
+                    text: {
+                        if (!Bluetooth.powered)
+                            return "Off";
+                        var names = [];
+                        for (var i = 0; i < Bluetooth.devices.length; ++i) {
+                            if (Bluetooth.devices[i].connected)
+                                names.push(Bluetooth.devices[i].name);
+                        }
+                        return names.length > 0 ? names.join(", ") : "On";
+                    }
+                    color: Theme.muted
+                    font.family: Theme.fontFamily
+                    font.pointSize: Theme.fontSize - 1
+                    elide: Text.ElideRight
+                    Layout.fillWidth: true
+                }
+            }
+            TaskButton {
+                visible: popup.bluetoothPopup !== null && Bluetooth.powered
+                width: 30
+                iconName: "chevron-right"
+                tooltipText: "Devices"
+                onClicked: {
+                    popup.hide();
+                    popup.bluetoothPopup.show();
+                }
+            }
+            SettingsSwitch {
+                checked: Bluetooth.powered
+                onChanged: (v) => {
+                    if (v !== Bluetooth.powered)
+                        Bluetooth.setPowered(v);
                 }
             }
         }

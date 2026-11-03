@@ -29,6 +29,7 @@ Window {
         { id: "plugins", label: "Plugins", icon: "puzzle" },
         { id: "hotkeys", label: "Hotkeys", icon: "keyboard" },
         { id: "animations", label: "Animations", icon: "sparkles" },
+        { id: "windows", label: "Windows", icon: "app-window" },
         { id: "keyboard", label: "Keyboard", icon: "keyboard" },
         { id: "mouse", label: "Mouse & touchpad", icon: "mouse" },
         { id: "display", label: "Displays", icon: "monitor" },
@@ -413,6 +414,46 @@ Window {
                                         { value: "system", label: "Leave as is" }
                                     ]
                                 }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "GTK theme"
+                                subtitle: "Installed in /usr/share/themes or ~/.themes. Overrides the colour scheme's default theme."
+                                settingKey: "apps.gtkTheme"
+                                height: Math.max(44, gtkFlow.implicitHeight + 12)
+                                SettingsChoice {
+                                    id: gtkFlow
+                                    width: Math.min(420, appearanceColumn.width * 0.6)
+                                    settingKey: "apps.gtkTheme"
+                                    model: [{ value: "", label: "Default" }].concat(
+                                        Session.gtkThemes().map(function (t) { return { value: t, label: t }; }))
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Icon theme"
+                                settingKey: "apps.iconTheme"
+                                height: Math.max(44, iconFlow.implicitHeight + 12)
+                                SettingsChoice {
+                                    id: iconFlow
+                                    width: Math.min(420, appearanceColumn.width * 0.6)
+                                    settingKey: "apps.iconTheme"
+                                    model: [{ value: "", label: "Default" }].concat(
+                                        Session.iconThemes().map(function (t) { return { value: t, label: t }; }))
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Application font"
+                                subtitle: "Name and size, e.g. \"Noto Sans 11\". Empty: unchanged."
+                                settingKey: "apps.font"
+                                SettingsTextField { settingKey: "apps.font"; placeholder: "(unchanged)" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Text size in applications"
+                                settingKey: "apps.textScale"
+                                SettingsSlider { settingKey: "apps.textScale"; from: 0.8; to: 1.6; step: 0.05; suffix: "x" }
                             }
                         }
 
@@ -2494,6 +2535,231 @@ Window {
                 }
             }
 
+            // ---- Windows ----------------------------------------------------
+            Item {
+                Flickable {
+                    id: windowsScroll
+                    anchors.fill: parent
+                    contentHeight: windowsColumn.implicitHeight + 24
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Column {
+                        id: windowsColumn
+                        x: 16
+                        y: 12
+                        width: windowsScroll.width - 32
+                        spacing: 16
+
+                        readonly property var shortcuts: {
+                            const v = Settings.values["shortcuts.custom"];
+                            return v && v.length !== undefined ? v : [];
+                        }
+                        function setShortcuts(list) {
+                            Settings.setValue("shortcuts.custom", list);
+                        }
+
+                        SettingsSection {
+                            title: "Title bars"
+                            subtitle: "Drawn by NewTeller for applications that ask for them (Qt and KDE apps, X11 programs, terminals). GTK and GNOME apps draw their own."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Title bars for apps without a preference"
+                                subtitle: "Off: such apps draw their own frame."
+                                settingKey: "decorations.server"
+                                SettingsSwitch { settingKey: "decorations.server" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Buttons"
+                                settingKey: "decorations.buttonsLeft"
+                                SettingsChoice {
+                                    settingKey: "decorations.buttonsLeft"
+                                    model: [
+                                        { value: false, label: "Right (Windows, GNOME)" },
+                                        { value: true, label: "Left (macOS)" }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Minimize button"
+                                settingKey: "decorations.showMinimize"
+                                SettingsSwitch { settingKey: "decorations.showMinimize" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Maximize button"
+                                settingKey: "decorations.showMaximize"
+                                SettingsSwitch { settingKey: "decorations.showMaximize" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Centre the title"
+                                settingKey: "decorations.titleCentered"
+                                SettingsSwitch { settingKey: "decorations.titleCentered" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Title bar height"
+                                settingKey: "decorations.titleHeight"
+                                SettingsSlider { settingKey: "decorations.titleHeight"; from: 20; to: 48; step: 1; suffix: " px" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Border width"
+                                settingKey: "decorations.border"
+                                SettingsStepper { settingKey: "decorations.border"; from: 0; to: 8; step: 1; suffix: " px" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Title font"
+                                subtitle: "Pango name, e.g. \"Inter Bold 10\". Empty: the theme font."
+                                settingKey: "decorations.font"
+                                SettingsTextField { settingKey: "decorations.font"; placeholder: "(theme font)" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Colours follow the theme"
+                                settingKey: "decorations.followTheme"
+                                SettingsSwitch { settingKey: "decorations.followTheme" }
+                            }
+                            Repeater {
+                                model: [
+                                    { key: "decorations.activeBackground", label: "Active title bar" },
+                                    { key: "decorations.activeForeground", label: "Active title text" },
+                                    { key: "decorations.inactiveBackground", label: "Inactive title bar" },
+                                    { key: "decorations.inactiveForeground", label: "Inactive title text" },
+                                    { key: "decorations.closeHover", label: "Close button highlight" }
+                                ]
+                                delegate: SettingsRow {
+                                    required property var modelData
+                                    width: parent ? parent.width : 320
+                                    visible: modelData.key === "decorations.closeHover"
+                                             || Settings.values["decorations.followTheme"] === false
+                                    title: modelData.label
+                                    settingKey: modelData.key
+                                    Row {
+                                        spacing: 8
+                                        Rectangle {
+                                            width: 26
+                                            height: 26
+                                            radius: 6
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            color: Settings.values[modelData.key] || "transparent"
+                                            border.width: 1
+                                            border.color: Theme.border
+                                        }
+                                        SettingsTextField { width: 110; settingKey: modelData.key; placeholder: "#rrggbb" }
+                                    }
+                                }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Behaviour"
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Focus follows the mouse"
+                                subtitle: "The window under the pointer gets the keyboard, without being raised."
+                                settingKey: "windows.focusFollowsMouse"
+                                SettingsSwitch { settingKey: "windows.focusFollowsMouse" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "New windows open"
+                                settingKey: "windows.placement"
+                                SettingsChoice {
+                                    settingKey: "windows.placement"
+                                    model: [
+                                        { value: "center", label: "Centred" },
+                                        { value: "cascade", label: "Cascaded" },
+                                        { value: "mouse", label: "Under the pointer" }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Snap windows dragged to a screen edge"
+                                settingKey: "windows.snapping"
+                                SettingsSwitch { settingKey: "windows.snapping" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Alt+Tab shows windows of every desktop"
+                                settingKey: "switcher.allWorkspaces"
+                                SettingsSwitch { settingKey: "switcher.allWorkspaces" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Desktop switching wraps around"
+                                settingKey: "workspaces.wrap"
+                                SettingsSwitch { settingKey: "workspaces.wrap" }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "Your shortcuts"
+                            subtitle: "Run any command from a key combination, e.g. Super+T -> konsole, Ctrl+Alt+F -> firefox. They take priority over the built-in ones."
+
+                            Repeater {
+                                model: windowsColumn.shortcuts
+                                delegate: SettingsRow {
+                                    required property var modelData
+                                    required property int index
+                                    width: parent ? parent.width : 320
+                                    title: modelData.keys
+                                    subtitle: modelData.command
+                                    TaskButton {
+                                        width: 28
+                                        iconName: "trash"
+                                        onClicked: {
+                                            const list = windowsColumn.shortcuts.slice();
+                                            list.splice(index, 1);
+                                            windowsColumn.setShortcuts(list);
+                                        }
+                                    }
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Add a shortcut"
+                                Row {
+                                    spacing: 6
+                                    SettingsTextField {
+                                        id: shortcutKeys
+                                        width: 140
+                                        placeholder: "Super+T"
+                                    }
+                                    SettingsTextField {
+                                        id: shortcutCommand
+                                        width: 200
+                                        placeholder: "command"
+                                    }
+                                    TaskButton {
+                                        iconName: "plus"
+                                        label: "Add"
+                                        onClicked: {
+                                            const keys = shortcutKeys.text.trim();
+                                            const command = shortcutCommand.text.trim();
+                                            if (keys.length === 0 || command.length === 0)
+                                                return;
+                                            const list = windowsColumn.shortcuts.slice();
+                                            list.push({ keys: keys, command: command });
+                                            windowsColumn.setShortcuts(list);
+                                            shortcutKeys.text = "";
+                                            shortcutCommand.text = "";
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // ---- Keyboard ---------------------------------------------------
             Item {
                 Flickable {
@@ -2759,6 +3025,18 @@ Window {
                                 settingKey: "cursor.theme"
                                 SettingsTextField { settingKey: "cursor.theme"; placeholder: "(default)" }
                             }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Installed cursor themes"
+                                height: Math.max(44, cursorFlow.implicitHeight + 12)
+                                SettingsChoice {
+                                    id: cursorFlow
+                                    width: Math.min(420, mouseColumn.width * 0.6)
+                                    settingKey: "cursor.theme"
+                                    model: [{ value: "", label: "Default" }].concat(
+                                        Session.cursorThemes().map(function (t) { return { value: t, label: t }; }))
+                                }
+                            }
                         }
                     }
                 }
@@ -2780,19 +3058,266 @@ Window {
                         width: displayScroll.width - 32
                         spacing: 16
 
-                        SettingsSection {
-                            title: "Monitors"
-                            subtitle: "Resolution, refresh rate, scale, rotation and arrangement. NewTeller remembers them for every monitor; high-density panels start at 200%."
+                        // The monitors, read from the compositor when the page opens.
+                        property var screens: []
+                        property var previous: null
+                        property int revertIn: 0
+                        property string displayError: ""
 
+                        function reloadScreens() {
+                            screens = Session.outputs();
+                        }
+                        function logicalWidth(o) {
+                            const w = (o.transform % 2 === 1 ? o.height : o.width) / (o.scale || 1);
+                            return Math.round(w);
+                        }
+                        function logicalHeight(o) {
+                            const h = (o.transform % 2 === 1 ? o.width : o.height) / (o.scale || 1);
+                            return Math.round(h);
+                        }
+                        // Applies one change; risky ones (mode, scale, rotation) can be
+                        // undone automatically if the user cannot see the screen anymore.
+                        function apply(o, change, risky) {
+                            const next = Object.assign({}, o, change);
+                            const error = Session.setOutput(next.name, next.enabled, next.width, next.height,
+                                                            next.refresh, next.x, next.y, next.scale,
+                                                            next.transform);
+                            displayError = error;
+                            if (error.length === 0 && risky) {
+                                previous = o;
+                                revertIn = 15;
+                                revertTimer.restart();
+                            }
+                            reloadScreens();
+                        }
+                        function keep() {
+                            previous = null;
+                            revertTimer.stop();
+                        }
+                        function revert() {
+                            const o = previous;
+                            keep();
+                            if (o)
+                                Session.setOutput(o.name, o.enabled, o.width, o.height, o.refresh,
+                                                  o.x, o.y, o.scale, o.transform);
+                            reloadScreens();
+                        }
+                        function resolutions(o) {
+                            const seen = {};
+                            const list = [];
+                            for (var i = 0; i < o.modes.length; ++i) {
+                                const key = o.modes[i].width + "x" + o.modes[i].height;
+                                if (!seen[key]) {
+                                    seen[key] = true;
+                                    list.push({ width: o.modes[i].width, height: o.modes[i].height });
+                                }
+                            }
+                            list.sort(function (a, b) { return b.width * b.height - a.width * a.height; });
+                            return list;
+                        }
+                        function refreshRates(o) {
+                            return o.modes.filter(function (m) {
+                                return m.width === o.width && m.height === o.height;
+                            });
+                        }
+
+                        Component.onCompleted: reloadScreens()
+                        onVisibleChanged: if (visible) reloadScreens()
+
+                        Timer {
+                            id: revertTimer
+                            interval: 1000
+                            repeat: true
+                            onTriggered: {
+                                displayColumn.revertIn -= 1;
+                                if (displayColumn.revertIn <= 0)
+                                    displayColumn.revert();
+                            }
+                        }
+
+                        // "Keep these settings?" while a risky change is on trial.
+                        Rectangle {
+                            width: parent.width
+                            height: 52
+                            visible: displayColumn.previous !== null
+                            radius: Theme.radius
+                            color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.22)
+                            Row {
+                                anchors.verticalCenter: parent.verticalCenter
+                                x: 12
+                                spacing: 10
+                                Text {
+                                    anchors.verticalCenter: parent.verticalCenter
+                                    text: "Keep these display settings? Reverting in " + displayColumn.revertIn + " s"
+                                    color: Theme.foreground
+                                    font.family: Theme.fontFamily
+                                    font.pointSize: Theme.fontSize
+                                }
+                                TaskButton { label: "Keep"; onClicked: displayColumn.keep() }
+                                TaskButton { label: "Revert"; onClicked: displayColumn.revert() }
+                            }
+                        }
+                        Text {
+                            width: parent.width
+                            visible: displayColumn.displayError.length > 0
+                            text: displayColumn.displayError
+                            color: Theme.accent
+                            wrapMode: Text.WordWrap
+                            font.family: Theme.fontFamily
+                            font.pointSize: Theme.fontSize
+                        }
+                        Text {
+                            width: parent.width
+                            visible: displayColumn.screens.length === 0
+                            text: "The screens are managed by the NewTeller session; this page needs it running."
+                            color: Theme.muted
+                            wrapMode: Text.WordWrap
+                            font.family: Theme.fontFamily
+                            font.pointSize: Theme.fontSize
+                        }
+
+                        Repeater {
+                            model: displayColumn.screens
+
+                            delegate: SettingsSection {
+                                id: screenSection
+                                required property var modelData
+                                width: displayColumn.width
+                                title: (modelData.description.length > 0 ? modelData.description : modelData.name)
+                                subtitle: modelData.name + " - " + modelData.width + " x " + modelData.height
+                                          + " at " + Math.round(modelData.refresh / 1000) + " Hz, "
+                                          + Math.round(modelData.scale * 100) + "%"
+
+                                SettingsRow {
+                                    width: parent.width
+                                    title: "Use this screen"
+                                    SettingsSwitch {
+                                        checked: screenSection.modelData.enabled
+                                        onChanged: (v) => displayColumn.apply(screenSection.modelData, { enabled: v }, true)
+                                    }
+                                }
+                                SettingsRow {
+                                    width: parent.width
+                                    visible: screenSection.modelData.enabled
+                                    title: "Resolution"
+                                    height: Math.max(44, resolutionFlow.implicitHeight + 12)
+                                    Flow {
+                                        id: resolutionFlow
+                                        width: Math.min(420, displayColumn.width * 0.6)
+                                        spacing: 4
+                                        Repeater {
+                                            model: displayColumn.resolutions(screenSection.modelData)
+                                            delegate: TaskButton {
+                                                required property var modelData
+                                                label: modelData.width + " x " + modelData.height
+                                                active: modelData.width === screenSection.modelData.width
+                                                        && modelData.height === screenSection.modelData.height
+                                                onClicked: displayColumn.apply(screenSection.modelData,
+                                                                               { width: modelData.width, height: modelData.height, refresh: 0 },
+                                                                               true)
+                                            }
+                                        }
+                                    }
+                                }
+                                SettingsRow {
+                                    width: parent.width
+                                    visible: screenSection.modelData.enabled
+                                             && displayColumn.refreshRates(screenSection.modelData).length > 1
+                                    title: "Refresh rate"
+                                    Flow {
+                                        width: Math.min(420, displayColumn.width * 0.6)
+                                        spacing: 4
+                                        Repeater {
+                                            model: displayColumn.refreshRates(screenSection.modelData)
+                                            delegate: TaskButton {
+                                                required property var modelData
+                                                label: (modelData.refresh / 1000).toFixed(modelData.refresh % 1000 === 0 ? 0 : 2) + " Hz"
+                                                active: Math.abs(modelData.refresh - screenSection.modelData.refresh) < 500
+                                                onClicked: displayColumn.apply(screenSection.modelData,
+                                                                               { refresh: modelData.refresh }, true)
+                                            }
+                                        }
+                                    }
+                                }
+                                SettingsRow {
+                                    width: parent.width
+                                    visible: screenSection.modelData.enabled
+                                    title: "Scale"
+                                    subtitle: "Bigger text and controls on high-density screens."
+                                    SettingsChoice {
+                                        value: Math.round(screenSection.modelData.scale * 100)
+                                        model: [
+                                            { value: 100, label: "100%" }, { value: 125, label: "125%" },
+                                            { value: 150, label: "150%" }, { value: 175, label: "175%" },
+                                            { value: 200, label: "200%" }, { value: 250, label: "250%" },
+                                            { value: 300, label: "300%" }
+                                        ]
+                                        onChanged: (v) => displayColumn.apply(screenSection.modelData, { scale: v / 100 }, true)
+                                    }
+                                }
+                                SettingsRow {
+                                    width: parent.width
+                                    visible: screenSection.modelData.enabled
+                                    title: "Rotation"
+                                    SettingsChoice {
+                                        value: screenSection.modelData.transform
+                                        model: [
+                                            { value: 0, label: "Normal" }, { value: 1, label: "90°" },
+                                            { value: 2, label: "180°" }, { value: 3, label: "270°" }
+                                        ]
+                                        onChanged: (v) => displayColumn.apply(screenSection.modelData, { transform: v }, true)
+                                    }
+                                }
+                                SettingsRow {
+                                    width: parent.width
+                                    visible: screenSection.modelData.enabled && displayColumn.screens.length > 1
+                                    title: "Position"
+                                    subtitle: "Relative to the other screen."
+                                    SettingsChoice {
+                                        readonly property var other: {
+                                            for (var i = 0; i < displayColumn.screens.length; ++i) {
+                                                const o = displayColumn.screens[i];
+                                                if (o.name !== screenSection.modelData.name && o.enabled)
+                                                    return o;
+                                            }
+                                            return null;
+                                        }
+                                        model: [
+                                            { value: "left", label: "Left of it" }, { value: "right", label: "Right of it" },
+                                            { value: "above", label: "Above" }, { value: "below", label: "Below" }
+                                        ]
+                                        onChanged: (v) => {
+                                            const o = other;
+                                            const me = screenSection.modelData;
+                                            if (!o)
+                                                return;
+                                            var x = o.x, y = o.y;
+                                            if (v === "left")
+                                                x = o.x - displayColumn.logicalWidth(me);
+                                            else if (v === "right")
+                                                x = o.x + displayColumn.logicalWidth(o);
+                                            else if (v === "above")
+                                                y = o.y - displayColumn.logicalHeight(me);
+                                            else
+                                                y = o.y + displayColumn.logicalHeight(o);
+                                            displayColumn.apply(me, { x: x, y: y }, false);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: "More"
                             SettingsRow {
                                 width: parent.width
-                                title: "Display arrangement"
+                                title: "Advanced arrangement"
                                 subtitle: Session.displaySettingsTool.length > 0
-                                          ? "Opens the display configuration tool."
-                                          : "Install wdisplays (sudo apt install wdisplays) for a graphical editor; wlr-randr and kanshi work too."
+                                          ? "Drag screens freely in wdisplays."
+                                          : "wlr-randr and kanshi also work with NewTeller."
                                 TaskButton {
                                     iconName: "monitor"
-                                    label: "Configure displays"
+                                    label: "wdisplays"
                                     dimmed: Session.displaySettingsTool.length === 0
                                     onClicked: Session.openDisplaySettings()
                                 }
@@ -2907,6 +3432,31 @@ Window {
                                 title: "Lock before suspend"
                                 settingKey: "power.lockOnSleep"
                                 SettingsSwitch { settingKey: "power.lockOnSleep" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Wallpaper on the lock screen"
+                                settingKey: "lock.useWallpaper"
+                                SettingsSwitch { settingKey: "lock.useWallpaper" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Lock screen colour"
+                                subtitle: "Behind the wallpaper, or the whole background without one."
+                                settingKey: "lock.color"
+                                Row {
+                                    spacing: 8
+                                    Rectangle {
+                                        width: 26
+                                        height: 26
+                                        radius: 6
+                                        anchors.verticalCenter: parent.verticalCenter
+                                        color: Settings.values["lock.color"] || "transparent"
+                                        border.width: 1
+                                        border.color: Theme.border
+                                    }
+                                    SettingsTextField { width: 110; settingKey: "lock.color"; placeholder: "#1e1e2e" }
+                                }
                             }
                             SettingsRow {
                                 width: parent.width
