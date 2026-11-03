@@ -61,6 +61,7 @@
 #include <wlr/types/wlr_text_input_v3.h>
 #include <wlr/types/wlr_viewporter.h>
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
+#include <wlr/types/wlr_touch.h>
 #include <wlr/types/wlr_virtual_pointer_v1.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_activation_v1.h>
@@ -407,6 +408,13 @@ struct Pointer {
     struct wl_listener destroy;
 };
 
+// A touchscreen.
+struct TouchDevice {
+    struct wl_list link;
+    struct Server *server;
+    struct wl_listener destroy;
+};
+
 // One ext-session-lock surface (the locker's window on one output).
 // A KDE server-decoration object: GTK 3 drops its own title bar when the
 // compositor offers to draw one this way (it does not speak xdg-decoration).
@@ -657,6 +665,12 @@ struct Server {
     // every key while focused. Super+Escape gives the shortcuts back.
     struct wl_list shortcutsInhibitors; // struct ShortcutsInhibitor
     struct wl_listener newShortcutsInhibitor;
+    // Touchscreens: touch points go to the surface under them.
+    struct wl_list touchDevices; // struct TouchDevice
+    struct wl_listener touchDown;
+    struct wl_listener touchUp;
+    struct wl_listener touchMotion;
+    struct wl_listener touchFrame;
     struct wl_listener newXdgToplevel;
     struct wl_listener newXdgPopup;
     struct wl_listener newLayerSurface;
@@ -3957,15 +3971,31 @@ static void keyboardKey(struct wl_listener *listener, void *data)
                                  event->keycode, event->state);
 }
 
+// The seat offers what is plugged in. Setting POINTER alone when a mouse
+// arrived (USB, Bluetooth, a virtual pointer from wayvnc or ydotool) used
+// to drop KEYBOARD, and wlroots then disables every client's keyboard.
+static void updateSeatCapabilities(struct Server *server)
+{
+    uint32_t capabilities = WL_SEAT_CAPABILITY_POINTER; // the cursor is always there
+    if (!wl_list_empty(&server->keyboards))
+        capabilities |= WL_SEAT_CAPABILITY_KEYBOARD;
+    if (!wl_list_empty(&server->touchDevices))
+        capabilities |= WL_SEAT_CAPABILITY_TOUCH;
+    wlr_seat_set_capabilities(server->seat, capabilities);
+}
+
 static void keyboardDestroy(struct wl_listener *listener, void *data)
 {
     (void)data;
     struct Keyboard *keyboard = wl_container_of(listener, keyboard, destroy);
+    struct Server *server = keyboard->server;
     wl_list_remove(&keyboard->modifiers.link);
     wl_list_remove(&keyboard->key.link);
     wl_list_remove(&keyboard->destroy.link);
     wl_list_remove(&keyboard->link);
     free(keyboard);
+    if (server->running)
+        updateSeatCapabilities(server);
 }
 
 
@@ -3993,9 +4023,7 @@ static void addKeyboard(struct Server *server, struct wlr_keyboard *wlrKeyboard,
 
     wl_list_insert(&server->keyboards, &keyboard->link);
     wlr_seat_set_keyboard(server->seat, wlrKeyboard);
-    wlr_seat_set_capabilities(server->seat,
-                              WL_SEAT_CAPABILITY_POINTER
-                                  | WL_SEAT_CAPABILITY_KEYBOARD);
+    updateSeatCapabilities(server);
     // A keyboard plugin (or a virtual keyboard) can appear after a layer
     // surface already owns the keyboard. Send it the keymap and enter event,
     // otherwise it sees no keys until focus moves.
@@ -4021,6 +4049,79 @@ static void pointerDestroy(struct wl_listener *listener, void *data)
     free(pointer);
 }
 
+static void touchDeviceDestroy(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct TouchDevice *touch = wl_container_of(listener, touch, destroy);
+    struct Server *server = touch->server;
+    wl_list_remove(&touch->destroy.link);
+    wl_list_remove(&touch->link);
+    free(touch);
+    if (server->running)
+        updateSeatCapabilities(server);
+}
+
+// A finger touches down: the surface under it gets the touch point, and its
+// window the focus, as a click would. Shell cards close on a touch outside.
+static void handleTouchDown(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, touchDown);
+    struct wlr_touch_down_event *event = data;
+    notifyActivity(server);
+    double lx = 0;
+    double ly = 0;
+    wlr_cursor_absolute_to_layout_coords(server->cursor, &event->touch->base, event->x, event->y,
+                                         &lx, &ly);
+    if (!server->locked) {
+        char line[64];
+        snprintf(line, sizeof(line), "event click %d %d", (int)lx, (int)ly);
+        ipcBroadcast(server, line);
+    }
+    struct Hit hit = hitTest(server, lx, ly);
+    if (!server->locked && hit.view && !hit.view->overrideRedirect)
+        focusView(hit.view, NULL);
+    if (hit.surface)
+        wlr_seat_touch_notify_down(server->seat, hit.surface, event->time_msec, event->touch_id,
+                                   hit.sx, hit.sy);
+}
+
+static void handleTouchMotion(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, touchMotion);
+    struct wlr_touch_motion_event *event = data;
+    notifyActivity(server);
+    struct wlr_touch_point *point = wlr_seat_touch_get_point(server->seat, event->touch_id);
+    if (!point || !point->surface)
+        return;
+    double lx = 0;
+    double ly = 0;
+    wlr_cursor_absolute_to_layout_coords(server->cursor, &event->touch->base, event->x, event->y,
+                                         &lx, &ly);
+    // Coordinates stay relative to the surface the finger went down on.
+    int originX = 0;
+    int originY = 0;
+    if (!surfaceLayoutPosition(server, point->surface, &originX, &originY))
+        return;
+    wlr_seat_touch_notify_motion(server->seat, event->time_msec, event->touch_id, lx - originX,
+                                 ly - originY);
+}
+
+static void handleTouchUp(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, touchUp);
+    struct wlr_touch_up_event *event = data;
+    notifyActivity(server);
+    if (wlr_seat_touch_get_point(server->seat, event->touch_id))
+        wlr_seat_touch_notify_up(server->seat, event->time_msec, event->touch_id);
+}
+
+static void handleTouchFrame(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct Server *server = wl_container_of(listener, server, touchFrame);
+    wlr_seat_touch_notify_frame(server->seat);
+}
+
 static void newInput(struct wl_listener *listener, void *data)
 {
     struct Server *server = wl_container_of(listener, server, newInput);
@@ -4030,7 +4131,7 @@ static void newInput(struct wl_listener *listener, void *data)
         addKeyboard(server, wlr_keyboard_from_input_device(device), false);
     } else if (device->type == WLR_INPUT_DEVICE_POINTER) {
         wlr_cursor_attach_input_device(server->cursor, device);
-        wlr_seat_set_capabilities(server->seat, WL_SEAT_CAPABILITY_POINTER);
+        updateSeatCapabilities(server);
         struct Pointer *pointer = xcalloc(1, sizeof(*pointer));
         pointer->server = server;
         pointer->device = device;
@@ -4038,6 +4139,16 @@ static void newInput(struct wl_listener *listener, void *data)
         wl_signal_add(&device->events.destroy, &pointer->destroy);
         wl_list_insert(&server->pointers, &pointer->link);
         configurePointer(server, device);
+    } else if (device->type == WLR_INPUT_DEVICE_TOUCH) {
+        // Touch points are mapped over the whole layout like the pointer.
+        wlr_cursor_attach_input_device(server->cursor, device);
+        struct TouchDevice *touch = xcalloc(1, sizeof(*touch));
+        touch->server = server;
+        touch->destroy.notify = touchDeviceDestroy;
+        wl_signal_add(&device->events.destroy, &touch->destroy);
+        wl_list_insert(&server->touchDevices, &touch->link);
+        updateSeatCapabilities(server);
+        wlr_log(WLR_INFO, "touchscreen connected: %s", device->name ? device->name : "?");
     }
 }
 
@@ -4056,7 +4167,7 @@ static void newVirtualPointer(struct wl_listener *listener, void *data)
                                             newVirtualPointer);
     struct wlr_virtual_pointer_v1_new_pointer_event *event = data;
     wlr_cursor_attach_input_device(server->cursor, &event->new_pointer->pointer.base);
-    wlr_seat_set_capabilities(server->seat, WL_SEAT_CAPABILITY_POINTER);
+    updateSeatCapabilities(server);
     wlr_log(WLR_DEBUG, "virtual pointer connected");
 }
 
@@ -7635,6 +7746,14 @@ static void setupInput(struct Server *server)
     wl_signal_add(&server->cursor->events.axis, &server->cursorAxis);
     server->cursorFrame.notify = cursorFrame;
     wl_signal_add(&server->cursor->events.frame, &server->cursorFrame);
+    server->touchDown.notify = handleTouchDown;
+    wl_signal_add(&server->cursor->events.touch_down, &server->touchDown);
+    server->touchUp.notify = handleTouchUp;
+    wl_signal_add(&server->cursor->events.touch_up, &server->touchUp);
+    server->touchMotion.notify = handleTouchMotion;
+    wl_signal_add(&server->cursor->events.touch_motion, &server->touchMotion);
+    server->touchFrame.notify = handleTouchFrame;
+    wl_signal_add(&server->cursor->events.touch_frame, &server->touchFrame);
 
     server->pointerGestures = wlr_pointer_gestures_v1_create(server->display);
     server->swipeBegin.notify = handleSwipeBegin;
@@ -7760,6 +7879,7 @@ static int run(struct Server *server)
     wl_list_init(&server->layers);
     wl_list_init(&server->keyboards);
     wl_list_init(&server->pointers);
+    wl_list_init(&server->touchDevices);
     wl_list_init(&server->lockSurfaces);
     wl_list_init(&server->ipcClients);
     wl_list_init(&server->ghosts);
@@ -7918,6 +8038,10 @@ static int run(struct Server *server)
     wl_list_remove(&server->cursorButton.link);
     wl_list_remove(&server->cursorAxis.link);
     wl_list_remove(&server->cursorFrame.link);
+    wl_list_remove(&server->touchDown.link);
+    wl_list_remove(&server->touchUp.link);
+    wl_list_remove(&server->touchMotion.link);
+    wl_list_remove(&server->touchFrame.link);
     wl_list_remove(&server->swipeBegin.link);
     wl_list_remove(&server->swipeUpdate.link);
     wl_list_remove(&server->swipeEnd.link);
