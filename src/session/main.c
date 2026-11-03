@@ -881,12 +881,13 @@ static struct CairoBuffer *cairoBufferCreate(cairo_surface_t *surface)
     return buffer;
 }
 
+// Every window that asked for a server-side frame gets one - the shell's own
+// windows (Settings) too: Qt asks for one and then draws nothing itself, so
+// leaving them out left them without a title bar, buttons or a way to move.
+// The shell's popups are frameless and never ask.
 static bool viewDecorated(struct View *view)
 {
-    if (!view->ssd || view->fullscreen || view->overrideRedirect || !view->mapped)
-        return false;
-    // The shell's own windows draw their own frame.
-    return strcmp(viewAppId(view), "org.newteller.Shell") != 0;
+    return view->ssd && !view->fullscreen && !view->overrideRedirect && view->mapped;
 }
 
 // Frame thickness around the window content: title bar on top, border on
@@ -3552,6 +3553,21 @@ static void keyboardKey(struct wl_listener *listener, void *data)
             (void *)server->seat->keyboard_state.focused_surface);
 
     notifyActivity(server);
+    // While locked, keys always go to a lock surface: if the locker's
+    // window has not got the keyboard yet (it mapped late, focus was lost),
+    // the first key press hands it over instead of typing into nothing.
+    if (server->locked) {
+        struct wlr_surface *focused = server->seat->keyboard_state.focused_surface;
+        if (!focused || !wlr_session_lock_surface_v1_try_from_wlr_surface(focused)) {
+            struct LockSurface *lock;
+            wl_list_for_each(lock, &server->lockSurfaces, link) {
+                if (lock->lockSurface->surface && lock->lockSurface->surface->mapped) {
+                    lockFocusSurface(server, lock->lockSurface->surface);
+                    break;
+                }
+            }
+        }
+    }
     xkb_keysym_t sym = xkb_state_key_get_one_sym(
         keyboard->keyboard->xkb_state, event->keycode + 8);
     bool isLogo = sym == XKB_KEY_Super_L || sym == XKB_KEY_Super_R;

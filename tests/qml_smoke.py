@@ -1639,6 +1639,27 @@ def main():
         settings.setValue("panel.position", "bottom")
         QTest.qWait(300)
 
+    # Desktop widgets are laid out so that none covers another.
+    QTest.qWait(200)
+    for desktop in desktops[:1]:
+        root_item = desktop.property("contentItem")
+        widgets = []
+        if root_item is not None:
+            stack = [root_item]
+            while stack:
+                item = stack.pop()
+                if item.objectName() == "desktopWidget" and item.width() > 0 and item.height() > 0:
+                    widgets.append(item)
+                stack.extend(item.childItems())
+        overlaps = []
+        for i, a in enumerate(widgets):
+            for b in widgets[i + 1:]:
+                if (a.x() < b.x() + b.width() and b.x() < a.x() + a.width()
+                        and a.y() < b.y() + b.height() and b.y() < a.y() + a.height()):
+                    overlaps.append((a.property("pluginId"), b.property("pluginId")))
+        check(len(widgets) >= 2, f"the desktop shows its widgets ({len(widgets)})")
+        check(not overlaps, f"desktop widgets do not overlap ({overlaps})")
+
     # One dock menu per panel.
     dock_menus = windows_of_kind("DockMenu")
     check(len(dock_menus) == len(panels),

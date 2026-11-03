@@ -72,6 +72,8 @@ Settings::Settings(QObject *parent)
     // Without a chosen wallpaper the desktop shows the bundled one (false:
     // the plain themed gradient).
     m_defaults.insert(QStringLiteral("desktop.defaultWallpaper"), true);
+    // Desktop widgets the user dragged somewhere: plugin id -> {x, y}.
+    m_defaults.insert(QStringLiteral("desktop.widgetPositions"), QVariantMap());
     m_defaults.insert(QStringLiteral("desktop.showIcons"), true);
     m_defaults.insert(QStringLiteral("desktop.iconSize"), 48);
     m_defaults.insert(QStringLiteral("desktop.cellWidth"), 96);

@@ -157,13 +157,15 @@ Window {
 
         readonly property var savedPositions: Settings.values["desktop.iconPositions"] || ({})
         readonly property bool autoArrange: Settings.values["desktop.autoArrangeIcons"] !== false
-        readonly property int columns: Math.max(1, Math.floor(width / Math.max(1, desk.cellWidth)))
+        // Icons fill columns from the top-left corner downwards (as on
+        // Windows), so the right side stays free for the widgets.
+        readonly property int rows: Math.max(1, Math.floor(height / Math.max(1, desk.cellHeight)))
 
         function gridX(index) {
-            return (index % columns) * desk.cellWidth;
+            return Math.floor(index / rows) * desk.cellWidth;
         }
         function gridY(index) {
-            return Math.floor(index / columns) * desk.cellHeight;
+            return (index % rows) * desk.cellHeight;
         }
         function savedX(name, fallback) {
             const entry = savedPositions[name];
@@ -332,14 +334,113 @@ Window {
         }
     }
 
+    // --- desktop widgets ----------------------------------------------------
+    // Every widget either sits where the user dragged it
+    // (desktop.widgetPositions) or in a column along the right edge, one
+    // under the other, wrapping into the next column to the left when the
+    // screen is full - they never overlap each other or the icons.
+    readonly property var widgetSaved: Settings.values["desktop.widgetPositions"] || ({})
+    property var widgetAuto: ({})
+    readonly property string panelEdge: Settings.values["panel.position"] || "bottom"
+    readonly property int panelSize: (Settings.values["panel.height"] || 48) + (Settings.values["panel.margin"] || 0)
+    readonly property int widgetMargin: 24
+    readonly property int widgetGap: 16
+    readonly property int widgetTop: widgetMargin + (panelEdge === "top" ? panelSize : 0)
+    readonly property int widgetBottom: height - widgetMargin - (panelEdge === "bottom" ? panelSize : 0)
+    readonly property int widgetRight: width - widgetMargin - (panelEdge === "right" ? panelSize : 0)
+    readonly property int widgetLeft: widgetMargin + (panelEdge === "left" ? panelSize : 0)
+
+    function layoutWidgets() {
+        const next = {};
+        var right = widgetRight;
+        var y = widgetTop;
+        var columnWidth = 0;
+        for (var i = 0; i < widgetRepeater.count; ++i) {
+            const loader = widgetRepeater.itemAt(i);
+            if (!loader || !loader.item || loader.width <= 0 || loader.height <= 0)
+                continue;
+            if (y > widgetTop && y + loader.height > widgetBottom) {
+                right -= columnWidth + widgetGap;
+                y = widgetTop;
+                columnWidth = 0;
+            }
+            columnWidth = Math.max(columnWidth, loader.width);
+            next[loader.pluginId] = { x: Math.max(widgetLeft, Math.round(right - loader.width)), y: Math.round(y) };
+            y += loader.height + widgetGap;
+        }
+        widgetAuto = next;
+    }
+    function scheduleWidgetLayout() {
+        widgetLayoutTimer.restart();
+    }
+    function widgetPosition(id, axis, size, fallback) {
+        const saved = widgetSaved[id];
+        if (saved && saved[axis] !== undefined) {
+            const limit = axis === "x" ? width : height;
+            return Math.max(0, Math.min(Number(saved[axis]), limit - Math.max(40, size)));
+        }
+        const auto = widgetAuto[id];
+        return auto ? auto[axis] : fallback;
+    }
+    function saveWidget(id, x, y) {
+        const copy = {};
+        for (const key in widgetSaved)
+            copy[key] = widgetSaved[key];
+        copy[id] = { "x": Math.round(x), "y": Math.round(y) };
+        Settings.setValue("desktop.widgetPositions", copy);
+    }
+    function resetWidgets() {
+        Settings.setValue("desktop.widgetPositions", ({}));
+        scheduleWidgetLayout();
+    }
+
+    onWidthChanged: scheduleWidgetLayout()
+    onHeightChanged: scheduleWidgetLayout()
+    onPanelEdgeChanged: scheduleWidgetLayout()
+    onPanelSizeChanged: scheduleWidgetLayout()
+
+    Timer {
+        id: widgetLayoutTimer
+        interval: 50
+        onTriggered: desk.layoutWidgets()
+    }
+
     Repeater {
+        id: widgetRepeater
         model: desk.desktopPlugins
+        onCountChanged: desk.scheduleWidgetLayout()
 
         delegate: Loader {
+            id: widgetLoader
+            objectName: "desktopWidget"
             required property var modelData
+            readonly property string pluginId: modelData.id
             source: modelData.entry
-            x: modelData.x
-            y: modelData.y
+            x: desk.widgetPosition(pluginId, "x", width, desk.widgetRight - width)
+            y: desk.widgetPosition(pluginId, "y", height, desk.widgetTop)
+            onLoaded: desk.scheduleWidgetLayout()
+            onWidthChanged: desk.scheduleWidgetLayout()
+            onHeightChanged: desk.scheduleWidgetLayout()
+
+            // Drag a widget anywhere on the desktop; it stays there.
+            DragHandler {
+                id: widgetDrag
+                target: widgetLoader
+                xAxis.minimum: 0
+                xAxis.maximum: desk.width - widgetLoader.width
+                yAxis.minimum: 0
+                yAxis.maximum: desk.height - widgetLoader.height
+                onActiveChanged: {
+                    if (active)
+                        return;
+                    desk.saveWidget(widgetLoader.pluginId, widgetLoader.x, widgetLoader.y);
+                    widgetLoader.x = Qt.binding(() => desk.widgetPosition(widgetLoader.pluginId, "x",
+                                                                          widgetLoader.width,
+                                                                          desk.widgetRight - widgetLoader.width));
+                    widgetLoader.y = Qt.binding(() => desk.widgetPosition(widgetLoader.pluginId, "y",
+                                                                          widgetLoader.height, desk.widgetTop));
+                }
+            }
         }
     }
 
@@ -464,6 +565,16 @@ Window {
                 onClicked: {
                     contextMenu.visible = false;
                     iconLayer.resetPositions();
+                }
+            }
+            TaskButton {
+                width: parent.width
+                fillWidth: true
+                iconName: "layout-grid"
+                label: "Arrange widgets"
+                onClicked: {
+                    contextMenu.visible = false;
+                    desk.resetWidgets();
                 }
             }
             TaskButton {
