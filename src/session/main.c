@@ -636,6 +636,10 @@ struct Server {
     struct wl_listener requestCursor;
     struct wl_listener requestSetSelection;
     struct wl_listener requestSetPrimarySelection;
+    // Drag and drop between (and inside) applications.
+    struct wl_listener requestStartDrag;
+    struct wl_listener startDrag;
+    struct wlr_scene_tree *dragIconTree;
     struct wl_listener newXdgToplevel;
     struct wl_listener newXdgPopup;
     struct wl_listener newLayerSurface;
@@ -2446,6 +2450,12 @@ static void refreshPointerFocus(struct Server *server)
 
 static void processCursorMotion(struct Server *server, uint32_t time)
 {
+    // A dragged icon follows the pointer.
+    if (server->seat->drag) {
+        wlr_scene_node_set_position(&server->dragIconTree->node, (int)server->cursor->x,
+                                    (int)server->cursor->y);
+        scheduleAllFrames(server);
+    }
     if (server->cursorMode == CURSOR_MOVE && server->grabbedView) {
         struct View *view = server->grabbedView;
         viewSetPosition(view,
@@ -2812,6 +2822,57 @@ static void seatRequestSetPrimarySelection(struct wl_listener *listener, void *d
     struct Server *server = wl_container_of(listener, server, requestSetPrimarySelection);
     struct wlr_seat_request_set_primary_selection_event *event = data;
     wlr_seat_set_primary_selection(server->seat, event->source, event->serial);
+}
+
+// ---------------------------------------------------------------------------
+// Drag and drop
+// ---------------------------------------------------------------------------
+
+struct DragIcon {
+    struct Server *server;
+    struct wl_listener destroy;
+};
+
+// A client asks to start dragging (files, text, tabs). Without this
+// handler wlroots never starts a drag, so nothing could be dropped
+// anywhere. The request must come from a real button press.
+static void seatRequestStartDrag(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, requestStartDrag);
+    struct wlr_seat_request_start_drag_event *event = data;
+    if (!server->locked
+        && wlr_seat_validate_pointer_grab_serial(server->seat, event->origin, event->serial)) {
+        wlr_seat_start_pointer_drag(server->seat, event->drag, event->serial);
+        return;
+    }
+    if (event->drag->source)
+        wlr_data_source_destroy(event->drag->source);
+}
+
+static void dragIconDestroy(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct DragIcon *icon = wl_container_of(listener, icon, destroy);
+    wl_list_remove(&icon->destroy.link);
+    scheduleAllFrames(icon->server);
+    free(icon);
+}
+
+static void seatStartDrag(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, startDrag);
+    struct wlr_drag *drag = data;
+    wlr_scene_node_set_position(&server->dragIconTree->node, (int)server->cursor->x,
+                                (int)server->cursor->y);
+    if (!drag->icon)
+        return;
+    // The scene helper follows the icon's own offsets and goes away with it.
+    wlr_scene_drag_icon_create(server->dragIconTree, drag->icon);
+    struct DragIcon *icon = xcalloc(1, sizeof(*icon));
+    icon->server = server;
+    icon->destroy.notify = dragIconDestroy;
+    wl_signal_add(&drag->icon->events.destroy, &icon->destroy);
+    scheduleAllFrames(server);
 }
 
 // ---------------------------------------------------------------------------
@@ -7227,6 +7288,8 @@ static void setupProtocols(struct Server *server)
     server->topTree = wlr_scene_tree_create(&server->scene->tree);
     server->overlayTree = wlr_scene_tree_create(&server->scene->tree);
     server->inputPopupTree = wlr_scene_tree_create(&server->scene->tree);
+    // The icon under the pointer while something is dragged.
+    server->dragIconTree = wlr_scene_tree_create(&server->scene->tree);
     // The screen locker draws above everything, over an opaque backdrop that
     // hides the desktop even where a lock surface is missing or late.
     server->lockTree = wlr_scene_tree_create(&server->scene->tree);
@@ -7342,6 +7405,10 @@ static void setupInput(struct Server *server)
     server->requestSetPrimarySelection.notify = seatRequestSetPrimarySelection;
     wl_signal_add(&server->seat->events.request_set_primary_selection,
                   &server->requestSetPrimarySelection);
+    server->requestStartDrag.notify = seatRequestStartDrag;
+    wl_signal_add(&server->seat->events.request_start_drag, &server->requestStartDrag);
+    server->startDrag.notify = seatStartDrag;
+    wl_signal_add(&server->seat->events.start_drag, &server->startDrag);
 
     server->cursorMotion.notify = cursorMotion;
     wl_signal_add(&server->cursor->events.motion, &server->cursorMotion);
@@ -7648,6 +7715,8 @@ static int run(struct Server *server)
     wl_list_remove(&server->requestCursor.link);
     wl_list_remove(&server->requestSetSelection.link);
     wl_list_remove(&server->requestSetPrimarySelection.link);
+    wl_list_remove(&server->requestStartDrag.link);
+    wl_list_remove(&server->startDrag.link);
     detachLock(server);
     wl_list_remove(&server->newLock.link);
     wl_list_remove(&server->newIdleInhibitor.link);
