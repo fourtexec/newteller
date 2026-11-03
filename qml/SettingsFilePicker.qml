@@ -330,7 +330,7 @@ Window {
                         sourceSize.height: 400
                         visible: picker.selectedPath.length > 0
                         source: picker.selectedPath.length > 0
-                                ? "file://" + picker.selectedPath : ""
+                                ? picker.fileUrlFor(picker.selectedPath) : ""
                     }
                     Text {
                         anchors.centerIn: parent
