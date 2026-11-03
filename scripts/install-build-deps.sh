@@ -21,7 +21,7 @@ apt-get install -y --no-install-recommends \
     qt6-base-dev qt6-declarative-dev qt6-svg-dev \
     liblayershellqtinterface-dev libwayland-dev libxcb1-dev \
     pkg-config libxkbcommon-dev libseat-dev libdrm-dev libgbm-dev \
-    libinput-dev libpixman-1-dev libdisplay-info-dev libliftoff-dev \
+    libinput-dev libcairo2-dev libpango1.0-dev libpixman-1-dev libdisplay-info-dev libliftoff-dev \
     libudev-dev libvulkan-dev libegl-dev libgles-dev wayland-protocols \
     libx11-xcb-dev libxcb-randr0-dev libxcb-shape0-dev libxcb-sync-dev \
     libxcb-dri3-dev libxcb-present-dev libxcb-render0-dev \

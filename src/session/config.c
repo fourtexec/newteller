@@ -91,6 +91,50 @@ void ntConfigDefaults(struct CompositorConfig *config)
     config->leftHanded = false;
     config->cursorSize = 24;
     config->workspaceCount = 4;
+    config->workspaceWrap = false;
+
+    config->decorationsServer = true;
+    config->titleHeight = 30;
+    config->borderWidth = 1;
+    config->buttonsLeft = false;
+    config->titleCentered = true;
+    config->showMinimize = true;
+    config->showMaximize = true;
+    snprintf(config->titleFont, sizeof(config->titleFont), "%s", "Sans Bold 10");
+    ntConfigParseColor("#2b2e3b", config->activeBackground);
+    ntConfigParseColor("#f2f2f5", config->activeForeground);
+    ntConfigParseColor("#1f212b", config->inactiveBackground);
+    ntConfigParseColor("#8c8f9c", config->inactiveForeground);
+    ntConfigParseColor("#e5484d", config->closeHover);
+
+    config->focusFollowsMouse = false;
+    config->snapping = true;
+    config->switcherAllWorkspaces = false;
+    snprintf(config->placement, sizeof(config->placement), "%s", "center");
+    config->bindingCount = 0;
+}
+
+bool ntConfigParseColor(const char *text, float out[4])
+{
+    if (!text || text[0] != '#')
+        return false;
+    size_t length = strlen(text + 1);
+    unsigned long value = strtoul(text + 1, NULL, 16);
+    if (length == 6) {
+        out[0] = ((value >> 16) & 0xff) / 255.0f;
+        out[1] = ((value >> 8) & 0xff) / 255.0f;
+        out[2] = (value & 0xff) / 255.0f;
+        out[3] = 1.0f;
+        return true;
+    }
+    if (length == 8) {
+        out[3] = ((value >> 24) & 0xff) / 255.0f;
+        out[0] = ((value >> 16) & 0xff) / 255.0f;
+        out[1] = ((value >> 8) & 0xff) / 255.0f;
+        out[2] = (value & 0xff) / 255.0f;
+        return true;
+    }
+    return false;
 }
 
 void ntConfigLoadSystemKeyboard(struct CompositorConfig *config, const char *path)
@@ -173,6 +217,52 @@ bool ntConfigLoadFile(struct CompositorConfig *config, const char *path)
             config->cursorSize = parseInt(value, config->cursorSize, 8, 256);
         else if (strcmp(key, "workspaces.count") == 0)
             config->workspaceCount = parseInt(value, config->workspaceCount, 1, 9);
+        else if (strcmp(key, "workspaces.wrap") == 0)
+            config->workspaceWrap = parseBool(value, config->workspaceWrap);
+        else if (strcmp(key, "decorations.server") == 0)
+            config->decorationsServer = parseBool(value, config->decorationsServer);
+        else if (strcmp(key, "decorations.titleHeight") == 0)
+            config->titleHeight = parseInt(value, config->titleHeight, 16, 64);
+        else if (strcmp(key, "decorations.border") == 0)
+            config->borderWidth = parseInt(value, config->borderWidth, 0, 8);
+        else if (strcmp(key, "decorations.buttonsLeft") == 0)
+            config->buttonsLeft = parseBool(value, config->buttonsLeft);
+        else if (strcmp(key, "decorations.titleCentered") == 0)
+            config->titleCentered = parseBool(value, config->titleCentered);
+        else if (strcmp(key, "decorations.showMinimize") == 0)
+            config->showMinimize = parseBool(value, config->showMinimize);
+        else if (strcmp(key, "decorations.showMaximize") == 0)
+            config->showMaximize = parseBool(value, config->showMaximize);
+        else if (strcmp(key, "decorations.font") == 0 && value[0])
+            copyText(config->titleFont, sizeof(config->titleFont), value);
+        else if (strcmp(key, "decorations.activeBackground") == 0)
+            ntConfigParseColor(value, config->activeBackground);
+        else if (strcmp(key, "decorations.activeForeground") == 0)
+            ntConfigParseColor(value, config->activeForeground);
+        else if (strcmp(key, "decorations.inactiveBackground") == 0)
+            ntConfigParseColor(value, config->inactiveBackground);
+        else if (strcmp(key, "decorations.inactiveForeground") == 0)
+            ntConfigParseColor(value, config->inactiveForeground);
+        else if (strcmp(key, "decorations.closeHover") == 0)
+            ntConfigParseColor(value, config->closeHover);
+        else if (strcmp(key, "windows.focusFollowsMouse") == 0)
+            config->focusFollowsMouse = parseBool(value, config->focusFollowsMouse);
+        else if (strcmp(key, "windows.snapping") == 0)
+            config->snapping = parseBool(value, config->snapping);
+        else if (strcmp(key, "switcher.allWorkspaces") == 0)
+            config->switcherAllWorkspaces = parseBool(value, config->switcherAllWorkspaces);
+        else if (strcmp(key, "windows.placement") == 0)
+            copyText(config->placement, sizeof(config->placement), value);
+        else if (strncmp(key, "bind.", 5) == 0 && config->bindingCount < NT_MAX_BINDINGS) {
+            // bind.N = Super+Shift+T|command
+            char *bar = strchr(value, '|');
+            if (bar && bar != value && bar[1] != '\0') {
+                *bar = '\0';
+                struct NtBinding *binding = &config->bindings[config->bindingCount++];
+                copyText(binding->keys, sizeof(binding->keys), trim(value));
+                copyText(binding->command, sizeof(binding->command), trim(bar + 1));
+            }
+        }
     }
     fclose(file);
     return true;

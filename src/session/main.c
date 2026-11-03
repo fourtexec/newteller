@@ -18,6 +18,7 @@
 #include <wlr/backend/libinput.h>
 #include <wlr/backend/session.h>
 #include <wlr/backend/wayland.h>
+#include <wlr/interfaces/wlr_buffer.h>
 #include <wlr/interfaces/wlr_keyboard.h>
 #include <wlr/render/allocator.h>
 #include <wlr/render/wlr_renderer.h>
@@ -58,6 +59,7 @@
 #include <wlr/types/wlr_virtual_pointer_v1.h>
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_activation_v1.h>
+#include <wlr/types/wlr_xdg_decoration_v1.h>
 #include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
@@ -68,7 +70,11 @@
 
 #include <libinput.h>
 
+#include <cairo.h>
+#include <pango/pangocairo.h>
+
 #include <errno.h>
+#include <math.h>
 #include <linux/input-event-codes.h>
 #include <fcntl.h>
 #include <limits.h>
@@ -79,6 +85,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -88,6 +95,31 @@
 #include <unistd.h>
 
 #include "config.h"
+
+// DRM fourcc codes (drm_fourcc.h), for reading window textures.
+#ifndef DRM_FORMAT_ARGB8888
+#define DRM_FORMAT_ARGB8888 0x34325241
+#endif
+#ifndef DRM_FORMAT_ABGR8888
+#define DRM_FORMAT_ABGR8888 0x34324241
+#endif
+
+// The parts of a compositor-drawn window frame under the pointer.
+enum FramePart {
+    FRAME_NONE = 0,
+    FRAME_TITLE,
+    FRAME_CLOSE,
+    FRAME_MAXIMIZE,
+    FRAME_MINIMIZE,
+    FRAME_EDGE,
+};
+
+// A user shortcut compiled from compositor.conf.
+struct Binding {
+    uint32_t modifiers;
+    xkb_keysym_t sym;
+    char command[NT_CONFIG_TEXT];
+};
 
 struct Server;
 struct Output;
@@ -107,6 +139,8 @@ static void broadcastWorkspaces(struct Server *server);
 static void broadcastSwitcher(struct Server *server);
 static void switcherCancel(struct Server *server);
 static void refreshPointerFocus(struct Server *server);
+static void viewUpdateDecoration(struct View *view);
+static void applyDecorationMode(struct View *view);
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -161,6 +195,27 @@ struct View {
     bool hiddenByShowDesktop;
     // The virtual desktop the window lives on.
     int workspace;
+    // A stable number for the control socket (thumbnails, overview).
+    uint32_t id;
+
+    // Server-side decoration: title bar and border drawn by the compositor
+    // for windows that ask for one (xdg-decoration, X11 without Motif hints).
+    bool ssd;
+    struct wlr_scene_tree *decoTree;
+    struct wlr_scene_buffer *decoTitle;
+    struct wlr_scene_rect *decoBorder[3];
+    int decoWidth;
+    int decoHeight;
+    bool decoFocused;
+    bool decoMaximized;
+    float decoScale;
+    int decoHover;
+    int decoRenderedHover;
+    char decoTitleText[160];
+    struct wlr_xdg_toplevel_decoration_v1 *xdgDecoration;
+    struct wl_listener xdgDecorationMode;
+    struct wl_listener xdgDecorationDestroy;
+    struct wl_listener x11SetDecorations;
     int snapEdges;
     int snapSavedX;
     int snapSavedY;
@@ -361,6 +416,17 @@ struct Server {
 
     struct CompositorConfig config;
     int workspace;
+    uint32_t nextViewId;
+    struct Binding bindings[NT_MAX_BINDINGS];
+    int bindingCount;
+    struct wlr_xdg_decoration_manager_v1 *xdgDecorationManager;
+    struct wl_listener newXdgDecoration;
+    // Pointer state over compositor-drawn frames.
+    const char *cursorImage;
+    struct View *hoverView;
+    struct View *lastTitleView;
+    uint32_t lastTitleClick;
+    bool suppressRaise;
     struct wl_list pointers;
     int layoutCount;
     int layoutIndex;
@@ -666,8 +732,309 @@ static void viewSyncVisible(struct View *view)
     }
 }
 
+// ---------------------------------------------------------------------------
+// Window decorations (server side)
+// ---------------------------------------------------------------------------
+
+// A cairo image surface as a wlroots buffer, for the scene graph.
+struct CairoBuffer {
+    struct wlr_buffer base;
+    cairo_surface_t *surface;
+};
+
+static void cairoBufferDestroy(struct wlr_buffer *buffer)
+{
+    struct CairoBuffer *cairoBuffer = wl_container_of(buffer, cairoBuffer, base);
+    cairo_surface_destroy(cairoBuffer->surface);
+    free(cairoBuffer);
+}
+
+static bool cairoBufferBeginAccess(struct wlr_buffer *buffer, uint32_t flags,
+                                   void **data, uint32_t *format, size_t *stride)
+{
+    struct CairoBuffer *cairoBuffer = wl_container_of(buffer, cairoBuffer, base);
+    if (flags & WLR_BUFFER_DATA_PTR_ACCESS_WRITE)
+        return false;
+    *format = DRM_FORMAT_ARGB8888;
+    *data = cairo_image_surface_get_data(cairoBuffer->surface);
+    *stride = (size_t)cairo_image_surface_get_stride(cairoBuffer->surface);
+    return true;
+}
+
+static void cairoBufferEndAccess(struct wlr_buffer *buffer)
+{
+    (void)buffer;
+}
+
+static const struct wlr_buffer_impl cairoBufferImpl = {
+    .destroy = cairoBufferDestroy,
+    .begin_data_ptr_access = cairoBufferBeginAccess,
+    .end_data_ptr_access = cairoBufferEndAccess,
+};
+
+static struct CairoBuffer *cairoBufferCreate(cairo_surface_t *surface)
+{
+    struct CairoBuffer *buffer = xcalloc(1, sizeof(*buffer));
+    wlr_buffer_init(&buffer->base, &cairoBufferImpl,
+                    cairo_image_surface_get_width(surface),
+                    cairo_image_surface_get_height(surface));
+    buffer->surface = surface;
+    return buffer;
+}
+
+static bool viewDecorated(struct View *view)
+{
+    if (!view->ssd || view->fullscreen || view->overrideRedirect || !view->mapped)
+        return false;
+    // The shell's own windows draw their own frame.
+    return strcmp(viewAppId(view), "org.newteller.Shell") != 0;
+}
+
+// Frame thickness around the window content: title bar on top, border on
+// the other sides (none while maximized).
+static void viewFrame(struct View *view, int *top, int *side, int *bottom)
+{
+    *top = *side = *bottom = 0;
+    if (!viewDecorated(view))
+        return;
+    const struct CompositorConfig *config = &view->server->config;
+    *top = config->titleHeight;
+    if (!view->maximized) {
+        *side = config->borderWidth;
+        *bottom = config->borderWidth;
+    }
+}
+
+// The content box of a window whose frame should fill `outer`.
+static struct wlr_box frameContentBox(struct View *view, struct wlr_box outer)
+{
+    int top, side, bottom;
+    viewFrame(view, &top, &side, &bottom);
+    outer.x += side;
+    outer.y += top;
+    outer.width -= 2 * side;
+    outer.height -= top + bottom;
+    return outer;
+}
+
+struct ButtonSlot {
+    int part;
+    int x;
+};
+
+// The title bar buttons, left to right, in title-bar coordinates.
+static int decorationButtons(struct View *view, int width, struct ButtonSlot slots[3])
+{
+    const struct CompositorConfig *config = &view->server->config;
+    int size = config->titleHeight;
+    int parts[3];
+    int count = 0;
+    if (config->buttonsLeft) {
+        parts[count++] = FRAME_CLOSE;
+        if (config->showMinimize)
+            parts[count++] = FRAME_MINIMIZE;
+        if (config->showMaximize)
+            parts[count++] = FRAME_MAXIMIZE;
+        for (int i = 0; i < count; ++i)
+            slots[i] = (struct ButtonSlot){parts[i], i * size};
+    } else {
+        if (config->showMinimize)
+            parts[count++] = FRAME_MINIMIZE;
+        if (config->showMaximize)
+            parts[count++] = FRAME_MAXIMIZE;
+        parts[count++] = FRAME_CLOSE;
+        for (int i = 0; i < count; ++i)
+            slots[i] = (struct ButtonSlot){parts[i], width - (count - i) * size};
+    }
+    return count;
+}
+
+static void setSourceColor(cairo_t *cr, const float color[4], double alpha)
+{
+    cairo_set_source_rgba(cr, color[0], color[1], color[2], color[3] * alpha);
+}
+
+static void renderDecorationTitle(struct View *view, int width, bool focused,
+                                  float scale, const char *title)
+{
+    const struct CompositorConfig *config = &view->server->config;
+    int height = config->titleHeight;
+    int pixelWidth = (int)ceilf((float)width * scale);
+    int pixelHeight = (int)ceilf((float)height * scale);
+    if (pixelWidth <= 0 || pixelHeight <= 0)
+        return;
+    cairo_surface_t *surface = cairo_image_surface_create(CAIRO_FORMAT_ARGB32,
+                                                          pixelWidth, pixelHeight);
+    if (cairo_surface_status(surface) != CAIRO_STATUS_SUCCESS) {
+        cairo_surface_destroy(surface);
+        return;
+    }
+    cairo_t *cr = cairo_create(surface);
+    cairo_scale(cr, scale, scale);
+    const float *background = focused ? config->activeBackground : config->inactiveBackground;
+    const float *foreground = focused ? config->activeForeground : config->inactiveForeground;
+    setSourceColor(cr, background, 1.0);
+    cairo_paint(cr);
+
+    struct ButtonSlot slots[3];
+    int count = decorationButtons(view, width, slots);
+    double glyph = height * 0.16;
+    for (int i = 0; i < count; ++i) {
+        double cx = slots[i].x + height / 2.0;
+        double cy = height / 2.0;
+        if (view->decoHover == slots[i].part) {
+            if (slots[i].part == FRAME_CLOSE)
+                setSourceColor(cr, config->closeHover, 1.0);
+            else
+                setSourceColor(cr, foreground, 0.16);
+            cairo_rectangle(cr, slots[i].x, 0, height, height);
+            cairo_fill(cr);
+        }
+        setSourceColor(cr, foreground, 1.0);
+        if (view->decoHover == slots[i].part && slots[i].part == FRAME_CLOSE)
+            cairo_set_source_rgba(cr, 1, 1, 1, 1);
+        cairo_set_line_width(cr, 1.4);
+        switch (slots[i].part) {
+        case FRAME_CLOSE:
+            cairo_move_to(cr, cx - glyph, cy - glyph);
+            cairo_line_to(cr, cx + glyph, cy + glyph);
+            cairo_move_to(cr, cx + glyph, cy - glyph);
+            cairo_line_to(cr, cx - glyph, cy + glyph);
+            break;
+        case FRAME_MAXIMIZE:
+            if (view->maximized) {
+                cairo_rectangle(cr, cx - glyph, cy - glyph + 2, glyph * 2 - 2, glyph * 2 - 2);
+                cairo_move_to(cr, cx - glyph + 2, cy - glyph);
+                cairo_line_to(cr, cx + glyph, cy - glyph);
+                cairo_line_to(cr, cx + glyph, cy + glyph - 2);
+            } else {
+                cairo_rectangle(cr, cx - glyph, cy - glyph, glyph * 2, glyph * 2);
+            }
+            break;
+        case FRAME_MINIMIZE:
+            cairo_move_to(cr, cx - glyph, cy);
+            cairo_line_to(cr, cx + glyph, cy);
+            break;
+        default:
+            break;
+        }
+        cairo_stroke(cr);
+    }
+
+    // The title, ellipsized between the button groups.
+    int buttonsWidth = count * height;
+    int left = config->buttonsLeft ? buttonsWidth + 8 : 12;
+    int right = config->buttonsLeft ? 12 : buttonsWidth + 8;
+    if (config->titleCentered) {
+        int margin = left > right ? left : right;
+        left = right = margin;
+    }
+    int available = width - left - right;
+    if (available > 8 && title && title[0]) {
+        PangoLayout *layout = pango_cairo_create_layout(cr);
+        PangoFontDescription *font = pango_font_description_from_string(config->titleFont);
+        pango_layout_set_font_description(layout, font);
+        pango_layout_set_text(layout, title, -1);
+        pango_layout_set_single_paragraph_mode(layout, TRUE);
+        pango_layout_set_ellipsize(layout, PANGO_ELLIPSIZE_END);
+        pango_layout_set_width(layout, available * PANGO_SCALE);
+        pango_layout_set_alignment(layout, config->titleCentered ? PANGO_ALIGN_CENTER
+                                                                 : PANGO_ALIGN_LEFT);
+        int textWidth = 0;
+        int textHeight = 0;
+        pango_layout_get_pixel_size(layout, &textWidth, &textHeight);
+        setSourceColor(cr, foreground, 1.0);
+        cairo_move_to(cr, left, (height - textHeight) / 2.0);
+        pango_cairo_show_layout(cr, layout);
+        pango_font_description_free(font);
+        g_object_unref(layout);
+    }
+    cairo_destroy(cr);
+    cairo_surface_flush(surface);
+
+    struct CairoBuffer *buffer = cairoBufferCreate(surface);
+    wlr_scene_buffer_set_buffer(view->decoTitle, &buffer->base);
+    wlr_scene_buffer_set_dest_size(view->decoTitle, width, height);
+    wlr_buffer_drop(&buffer->base);
+}
+
+static float viewOutputScale(struct View *view)
+{
+    struct wlr_output *output = wlr_output_layout_output_at(
+        view->server->outputLayout, view->x + view->width / 2.0,
+        view->y + view->height / 2.0);
+    return output ? output->scale : 1.0f;
+}
+
+// Creates, updates or hides the frame. Cheap when nothing changed, so it is
+// called from every place that might matter (commit, focus, title, state).
+static void viewUpdateDecoration(struct View *view)
+{
+    if (!view->tree)
+        return;
+    if (!viewDecorated(view)) {
+        if (view->decoTree)
+            wlr_scene_node_set_enabled(&view->decoTree->node, false);
+        return;
+    }
+    const struct CompositorConfig *config = &view->server->config;
+    if (!view->decoTree) {
+        view->decoTree = wlr_scene_tree_create(view->tree);
+        if (!view->decoTree)
+            return;
+        wlr_scene_node_lower_to_bottom(&view->decoTree->node);
+        view->decoTitle = wlr_scene_buffer_create(view->decoTree, NULL);
+        for (int i = 0; i < 3; ++i)
+            view->decoBorder[i] = wlr_scene_rect_create(view->decoTree, 0, 0,
+                                                        config->activeBackground);
+        view->decoWidth = -1;
+    }
+    wlr_scene_node_set_enabled(&view->decoTree->node, true);
+
+    struct wlr_box geometry = viewGeometry(view);
+    int contentWidth = geometry.width > 0 ? geometry.width : view->width;
+    int contentHeight = geometry.height > 0 ? geometry.height : view->height;
+    int top, side, bottom;
+    viewFrame(view, &top, &side, &bottom);
+    int outer = contentWidth + 2 * side;
+    bool focused = view->server->focusedView == view;
+    const float *frameColor = focused ? config->activeBackground : config->inactiveBackground;
+
+    if (view->decoTitle)
+        wlr_scene_node_set_position(&view->decoTitle->node, -side, -top);
+    if (view->decoBorder[0]) {
+        wlr_scene_rect_set_size(view->decoBorder[0], side, contentHeight);
+        wlr_scene_node_set_position(&view->decoBorder[0]->node, -side, 0);
+        wlr_scene_rect_set_size(view->decoBorder[1], side, contentHeight);
+        wlr_scene_node_set_position(&view->decoBorder[1]->node, contentWidth, 0);
+        wlr_scene_rect_set_size(view->decoBorder[2], outer, bottom);
+        wlr_scene_node_set_position(&view->decoBorder[2]->node, -side, contentHeight);
+        for (int i = 0; i < 3; ++i)
+            wlr_scene_rect_set_color(view->decoBorder[i], frameColor);
+    }
+
+    char title[sizeof(view->decoTitleText)];
+    snprintf(title, sizeof(title), "%s", viewTitle(view));
+    float scale = viewOutputScale(view);
+    if (outer != view->decoWidth || focused != view->decoFocused
+        || scale != view->decoScale || view->decoHover != view->decoRenderedHover
+        || view->maximized != view->decoMaximized || contentHeight != view->decoHeight
+        || strcmp(title, view->decoTitleText) != 0) {
+        view->decoWidth = outer;
+        view->decoHeight = contentHeight;
+        view->decoFocused = focused;
+        view->decoScale = scale;
+        view->decoRenderedHover = view->decoHover;
+        view->decoMaximized = view->maximized;
+        snprintf(view->decoTitleText, sizeof(view->decoTitleText), "%s", title);
+        if (view->decoTitle)
+            renderDecorationTitle(view, outer, focused, scale, title);
+    }
+}
+
 static void updateForeignToplevel(struct View *view)
 {
+    viewUpdateDecoration(view);
     if (!view->handle)
         return;
     wlr_foreign_toplevel_handle_v1_set_title(view->handle, viewTitle(view));
@@ -706,6 +1073,7 @@ static void viewSetSize(struct View *view, int width, int height)
     } else if (view->x11) {
         wlr_xwayland_surface_configure(view->x11, view->x, view->y,
                                        (uint16_t)width, (uint16_t)height);
+        viewUpdateDecoration(view);
     }
 }
 
@@ -722,6 +1090,7 @@ static void viewSetActivated(struct View *view, bool activated)
         wlr_xwayland_surface_activate(view->x11, activated);
     if (view->handle)
         wlr_foreign_toplevel_handle_v1_set_activated(view->handle, activated);
+    viewUpdateDecoration(view);
 }
 
 static void viewRaise(struct View *view)
@@ -762,7 +1131,8 @@ static void focusView(struct View *view, struct wlr_surface *surface)
 
     server->focusedView = view;
     server->previousView = view;
-    viewRaise(view);
+    if (!server->suppressRaise)
+        viewRaise(view);
     viewSetActivated(view, true);
 
     struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
@@ -929,9 +1299,11 @@ static void viewSnap(struct View *view, uint32_t edge)
 
     const struct wlr_box area = usableBoxForView(view);
     const int half = area.width / 2;
-    viewSetPosition(view, edge == WLR_EDGE_LEFT ? area.x : area.x + area.width - half,
-                    area.y);
-    viewSetSize(view, half, area.height);
+    struct wlr_box outer = {edge == WLR_EDGE_LEFT ? area.x : area.x + area.width - half,
+                            area.y, half, area.height};
+    struct wlr_box content = frameContentBox(view, outer);
+    viewSetPosition(view, content.x, content.y);
+    viewSetSize(view, content.width, content.height);
     view->snapEdges = edge;
     wlr_log(WLR_DEBUG, "snapped to %d,%d %dx%d (area %d,%d %dx%d)",
             view->x, view->y, view->width, view->height,
@@ -984,6 +1356,7 @@ static void moveViewToOutput(struct View *view, int direction)
     struct wlr_box area = {0, 0, 1280, 800};
     wlr_output_layout_get_box(view->server->outputLayout, target, &area);
     viewClearSnap(view);
+    area = frameContentBox(view, area);
     int width = view->width > area.width ? area.width : view->width;
     int height = view->height > area.height ? area.height : view->height;
     viewSetSize(view, width, height);
@@ -1046,9 +1419,18 @@ static void broadcastWorkspaces(struct Server *server)
     ipcBroadcast(server, line);
 }
 
+static int wrapWorkspace(struct Server *server, int index)
+{
+    int count = server->config.workspaceCount;
+    if (server->config.workspaceWrap && count > 0)
+        return ((index % count) + count) % count;
+    return index;
+}
+
 static void switchWorkspace(struct Server *server, int index)
 {
     int count = server->config.workspaceCount;
+    index = wrapWorkspace(server, index);
     if (index < 0 || index >= count || index == server->workspace)
         return;
     switcherCancel(server);
@@ -1069,6 +1451,7 @@ static void switchWorkspace(struct Server *server, int index)
 static void moveViewToWorkspace(struct View *view, int index, bool follow)
 {
     struct Server *server = view->server;
+    index = wrapWorkspace(server, index);
     if (index < 0 || index >= server->config.workspaceCount
         || view->overrideRedirect || index == view->workspace)
         return;
@@ -1101,7 +1484,10 @@ static void viewSetMaximized(struct View *view, bool maximized)
         view->savedY = view->y;
         view->savedWidth = view->width;
         view->savedHeight = view->height;
-        struct wlr_box box = usableBoxForView(view);
+        // Maximized windows keep their title bar but lose the side borders;
+        // set the flag first so the frame size matches.
+        view->maximized = true;
+        struct wlr_box box = frameContentBox(view, usableBoxForView(view));
         viewSetPosition(view, box.x, box.y);
         viewSetSize(view, box.width, box.height);
     } else {
@@ -1208,9 +1594,18 @@ static void centerView(struct View *view)
         }
     }
 
-    int offset = (view->server->cascade++ % 8) * 28;
+    // New windows: centred (GNOME), cascaded (Windows) or under the pointer.
+    area = frameContentBox(view, area);
+    const char *placement = view->server->config.placement;
+    int offset = 0;
+    if (strcmp(placement, "cascade") == 0)
+        offset = (view->server->cascade++ % 8) * 28;
     int x = area.x + (area.width - view->width) / 2 + offset;
     int y = area.y + (area.height - view->height) / 2 + offset;
+    if (strcmp(placement, "mouse") == 0) {
+        x = (int)view->server->cursor->x - view->width / 2;
+        y = (int)view->server->cursor->y - view->height / 2;
+    }
     if (x + view->width > area.x + area.width)
         x = area.x + area.width - view->width;
     if (y + view->height > area.y + area.height)
@@ -1310,6 +1705,15 @@ static void destroyView(struct View *view)
         server->grabbedView = NULL;
     if (server->switchTarget == view)
         server->switchTarget = NULL;
+    if (server->hoverView == view)
+        server->hoverView = NULL;
+    if (server->lastTitleView == view)
+        server->lastTitleView = NULL;
+    if (view->xdgDecoration) {
+        wl_list_remove(&view->xdgDecorationMode.link);
+        wl_list_remove(&view->xdgDecorationDestroy.link);
+        view->xdgDecoration = NULL;
+    }
 
     if (view->handle) {
         wl_list_remove(&view->foreignActivate.link);
@@ -1574,7 +1978,70 @@ struct Hit {
     double sy;
     struct View *view;
     struct Layer *layer;
+    // Set when the pointer is over a compositor-drawn frame instead of a
+    // surface: which part, and for FRAME_EDGE the edges.
+    int frame;
+    uint32_t frameEdges;
 };
+
+// Which part of the frame is at layout point (lx, ly); false when the point
+// is outside it. A few pixels around the frame also grab its edges.
+static bool viewFrameAt(struct View *view, double lx, double ly, struct Hit *hit)
+{
+    int top, side, bottom;
+    viewFrame(view, &top, &side, &bottom);
+    if (top == 0 || !view->tree)
+        return false;
+    const int grace = 4;
+    double rx = lx - view->tree->node.x;
+    double ry = ly - view->tree->node.y;
+    struct wlr_box geometry = viewGeometry(view);
+    int width = geometry.width > 0 ? geometry.width : view->width;
+    int height = geometry.height > 0 ? geometry.height : view->height;
+    int resizeGrace = view->maximized ? 0 : grace;
+    if (rx < -side - resizeGrace || rx >= width + side + resizeGrace
+        || ry < -top - resizeGrace || ry >= height + bottom + resizeGrace)
+        return false;
+    if (rx >= 0 && rx < width && ry >= 0 && ry < height)
+        return false;  // the content area, but not the surface's input region
+
+    hit->view = view;
+    hit->surface = NULL;
+    uint32_t edges = 0;
+    if (!view->maximized) {
+        if (rx < 0)
+            edges |= WLR_EDGE_LEFT;
+        else if (rx >= width)
+            edges |= WLR_EDGE_RIGHT;
+        if (ry < -top + 3)
+            edges |= WLR_EDGE_TOP;
+        else if (ry >= height)
+            edges |= WLR_EDGE_BOTTOM;
+        // A corner is the edge band plus a stretch along the neighbour.
+        if ((edges == WLR_EDGE_TOP || edges == WLR_EDGE_BOTTOM) && rx < 12)
+            edges |= WLR_EDGE_LEFT;
+        if ((edges == WLR_EDGE_TOP || edges == WLR_EDGE_BOTTOM) && rx >= width - 12)
+            edges |= WLR_EDGE_RIGHT;
+    }
+    if (edges) {
+        hit->frame = FRAME_EDGE;
+        hit->frameEdges = edges;
+        return true;
+    }
+    hit->frame = FRAME_TITLE;
+    if (ry < 0) {
+        struct ButtonSlot slots[3];
+        int count = decorationButtons(view, width + 2 * side, slots);
+        double bx = rx + side;
+        for (int i = 0; i < count; ++i) {
+            if (bx >= slots[i].x && bx < slots[i].x + top) {
+                hit->frame = slots[i].part;
+                break;
+            }
+        }
+    }
+    return true;
+}
 
 static bool layerAt(struct Layer *layer, double lx, double ly, struct Hit *hit)
 {
@@ -1616,7 +2083,7 @@ static bool viewAt(struct View *view, double lx, double ly, struct Hit *hit)
                                          ly - nodeY, &sx, &sy);
     }
     if (!surface)
-        return false;
+        return viewFrameAt(view, lx, ly, hit);
     hit->surface = surface;
     hit->sx = sx;
     hit->sy = sy;
@@ -1755,6 +2222,56 @@ static void processCursorMotion(struct Server *server, uint32_t time)
     if (hit.surface && focused == hit.surface)
         wlr_seat_pointer_notify_motion(server->seat, time, hit.sx, hit.sy);
     wlr_seat_pointer_notify_frame(server->seat);
+
+    // Over a compositor-drawn frame (or nothing at all) the compositor owns
+    // the cursor image; over a surface the client sets it.
+    if (!hit.surface) {
+        const char *image = "left_ptr";
+        if (hit.view && hit.frame == FRAME_EDGE) {
+            uint32_t e = hit.frameEdges;
+            image = e == (WLR_EDGE_TOP | WLR_EDGE_LEFT) ? "top_left_corner"
+                  : e == (WLR_EDGE_TOP | WLR_EDGE_RIGHT) ? "top_right_corner"
+                  : e == (WLR_EDGE_BOTTOM | WLR_EDGE_LEFT) ? "bottom_left_corner"
+                  : e == (WLR_EDGE_BOTTOM | WLR_EDGE_RIGHT) ? "bottom_right_corner"
+                  : (e & WLR_EDGE_LEFT) ? "left_side"
+                  : (e & WLR_EDGE_RIGHT) ? "right_side"
+                  : (e & WLR_EDGE_TOP) ? "top_side" : "bottom_side";
+        }
+        if (server->cursorImage != image) {
+            wlr_cursor_set_xcursor(server->cursor, server->cursorManager, image);
+            server->cursorImage = image;
+        }
+    } else {
+        server->cursorImage = NULL;
+    }
+
+    // Title bar buttons light up under the pointer.
+    struct View *hoverView = NULL;
+    int hoverPart = FRAME_NONE;
+    if (hit.view && (hit.frame == FRAME_CLOSE || hit.frame == FRAME_MAXIMIZE
+                     || hit.frame == FRAME_MINIMIZE)) {
+        hoverView = hit.view;
+        hoverPart = hit.frame;
+    }
+    if (server->hoverView && (server->hoverView != hoverView
+                              || server->hoverView->decoHover != hoverPart)) {
+        server->hoverView->decoHover = FRAME_NONE;
+        viewUpdateDecoration(server->hoverView);
+        server->hoverView = NULL;
+    }
+    if (hoverView && hoverView->decoHover != hoverPart) {
+        hoverView->decoHover = hoverPart;
+        viewUpdateDecoration(hoverView);
+        server->hoverView = hoverView;
+    }
+
+    // Focus follows the mouse (without raising), when chosen.
+    if (server->config.focusFollowsMouse && hit.view && !hit.view->overrideRedirect
+        && hit.view != server->focusedView && !server->focusedLayer && !server->locked) {
+        server->suppressRaise = true;
+        focusView(hit.view, NULL);
+        server->suppressRaise = false;
+    }
 }
 
 // Every input event counts as activity for ext-idle-notify clients
@@ -1807,7 +2324,8 @@ static void cursorButton(struct wl_listener *listener, void *data)
     }
 
     if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
-        if (server->cursorMode == CURSOR_MOVE && server->grabbedView) {
+        if (server->cursorMode == CURSOR_MOVE && server->grabbedView
+            && server->config.snapping) {
             struct View *view = server->grabbedView;
             const struct wlr_box area = usableBoxForView(view);
             if (server->cursor->x <= area.x + 12)
@@ -1869,6 +2387,79 @@ static void cursorButton(struct wl_listener *listener, void *data)
     }
 
     struct Hit hit = hitTest(server, server->cursor->x, server->cursor->y);
+
+    // The compositor-drawn frame: buttons, title drag/double click, edges.
+    if (hit.view && hit.frame != FRAME_NONE) {
+        struct View *view = hit.view;
+        if (server->focusedLayer) {
+            server->focusedLayer = NULL;
+            wlr_seat_keyboard_notify_clear_focus(server->seat);
+        }
+        focusView(view, NULL);
+        server->superGrab = true;  // the client never sees this click
+        switch (hit.frame) {
+        case FRAME_CLOSE:
+            viewClose(view);
+            break;
+        case FRAME_MAXIMIZE:
+            viewSetMaximized(view, !view->maximized);
+            break;
+        case FRAME_MINIMIZE:
+            viewSetMinimized(view, true);
+            break;
+        case FRAME_TITLE:
+            if (event->button == BTN_MIDDLE) {
+                viewSetMinimized(view, true);
+                break;
+            }
+            if (event->button != BTN_LEFT)
+                break;
+            if (server->lastTitleView == view
+                && event->time_msec - server->lastTitleClick < 400) {
+                server->lastTitleView = NULL;
+                viewSetMaximized(view, !view->maximized);
+                break;
+            }
+            server->lastTitleView = view;
+            server->lastTitleClick = event->time_msec;
+            if (view->maximized) {
+                // Dragging a maximized window off its title restores it
+                // under the pointer.
+                double ratio = view->width > 0
+                    ? (server->cursor->x - view->x) / view->width : 0.5;
+                viewSetMaximized(view, false);
+                viewSetPosition(view, (int)(server->cursor->x - ratio * view->width),
+                                (int)server->cursor->y + server->config.titleHeight / 2);
+            }
+            viewClearSnap(view);
+            server->grabbedView = view;
+            server->cursorMode = CURSOR_MOVE;
+            server->grabX = server->cursor->x - view->x;
+            server->grabY = server->cursor->y - view->y;
+            break;
+        case FRAME_EDGE:
+            viewClearSnap(view);
+            server->grabbedView = view;
+            server->cursorMode = CURSOR_RESIZE;
+            server->resizeEdges = hit.frameEdges;
+            server->grabWidth = view->width;
+            server->grabHeight = view->height;
+            server->grabX = view->x;
+            server->grabY = view->y;
+            server->resizeOffsetX = server->cursor->x
+                - ((hit.frameEdges & WLR_EDGE_LEFT) ? view->x
+                   : (hit.frameEdges & WLR_EDGE_RIGHT) ? view->x + view->width
+                   : server->cursor->x);
+            server->resizeOffsetY = server->cursor->y
+                - ((hit.frameEdges & WLR_EDGE_TOP) ? view->y
+                   : (hit.frameEdges & WLR_EDGE_BOTTOM) ? view->y + view->height
+                   : server->cursor->y);
+            break;
+        default:
+            break;
+        }
+        return;
+    }
     wlr_log(WLR_DEBUG, "button %u at %.0f,%.0f view=%p layer=%s focused=%p",
             event->button, server->cursor->x, server->cursor->y,
             (void *)hit.view,
@@ -2143,6 +2734,52 @@ static void loadConfig(struct Server *server)
     if (config.keyboardLayout[0] == '\0')
         ntConfigLoadSystemKeyboard(&config, "/etc/default/keyboard");
     server->config = config;
+    compileBindings(server);
+}
+
+// "Super+Shift+T" -> modifier mask and keysym.
+static bool parseBinding(const char *keys, uint32_t *modifiers, xkb_keysym_t *sym)
+{
+    char copy[64];
+    snprintf(copy, sizeof(copy), "%s", keys);
+    *modifiers = 0;
+    *sym = XKB_KEY_NoSymbol;
+    char *save = NULL;
+    for (char *token = strtok_r(copy, "+", &save); token; token = strtok_r(NULL, "+", &save)) {
+        while (*token == ' ')
+            ++token;
+        char *end = token + strlen(token);
+        while (end > token && end[-1] == ' ')
+            *--end = '\0';
+        if (strcasecmp(token, "super") == 0 || strcasecmp(token, "meta") == 0
+            || strcasecmp(token, "win") == 0 || strcasecmp(token, "logo") == 0)
+            *modifiers |= WLR_MODIFIER_LOGO;
+        else if (strcasecmp(token, "ctrl") == 0 || strcasecmp(token, "control") == 0)
+            *modifiers |= WLR_MODIFIER_CTRL;
+        else if (strcasecmp(token, "alt") == 0)
+            *modifiers |= WLR_MODIFIER_ALT;
+        else if (strcasecmp(token, "shift") == 0)
+            *modifiers |= WLR_MODIFIER_SHIFT;
+        else
+            *sym = xkb_keysym_to_lower(xkb_keysym_from_name(token, XKB_KEYSYM_CASE_INSENSITIVE));
+    }
+    return *sym != XKB_KEY_NoSymbol;
+}
+
+static void compileBindings(struct Server *server)
+{
+    server->bindingCount = 0;
+    for (int i = 0; i < server->config.bindingCount; ++i) {
+        struct Binding *binding = &server->bindings[server->bindingCount];
+        if (!parseBinding(server->config.bindings[i].keys, &binding->modifiers, &binding->sym)) {
+            wlr_log(WLR_ERROR, "ignoring shortcut '%s': unknown key",
+                    server->config.bindings[i].keys);
+            continue;
+        }
+        snprintf(binding->command, sizeof(binding->command), "%s",
+                 server->config.bindings[i].command);
+        ++server->bindingCount;
+    }
 }
 
 static void applyCursorTheme(struct Server *server)
@@ -2186,6 +2823,14 @@ static void reloadConfig(struct Server *server)
         updateFullscreenLayers(server);
     }
     broadcastWorkspaces(server);
+    // New frame colours, sizes or button layout.
+    wl_list_for_each(view, &server->views, link) {
+        view->decoWidth = -1;
+        if (view->xdg && view->xdgDecoration && view->mapped)
+            applyDecorationMode(view);
+        else
+            viewUpdateDecoration(view);
+    }
     struct Pointer *pointer;
     wl_list_for_each(pointer, &server->pointers, link)
         configurePointer(server, pointer->device);
@@ -2211,7 +2856,8 @@ static int reloadSignalHandler(int signal, void *data)
 static bool switcherCandidate(struct View *view)
 {
     return view && view->mapped && !view->minimized && !view->overrideRedirect
-        && viewOnWorkspace(view) && viewSurface(view);
+        && (view->server->config.switcherAllWorkspaces || viewOnWorkspace(view))
+        && viewSurface(view);
 }
 
 // The view after (or before) `from` in server->views, wrapping around and
@@ -2253,6 +2899,17 @@ static void switcherStep(struct Server *server, bool backwards)
     struct View *next = switcherNeighbour(server, from, backwards);
     if (!next)
         return;
+    if (!server->switching) {
+        // Fresh thumbnails for the overlay, once per Alt+Tab.
+        int captured = 0;
+        struct View *view;
+        wl_list_for_each(view, &server->views, link) {
+            if (captured >= 16)
+                break;
+            if (switcherCandidate(view) && captureThumbnail(view, 240))
+                ++captured;
+        }
+    }
     server->switching = true;
     server->switchTarget = next;
     // Preview: lift the candidate to the top of the stack without moving
@@ -2302,9 +2959,121 @@ static void trimUtf8(char *text)
         text[start - 1] = '\0';
 }
 
+// ---------------------------------------------------------------------------
+// Window thumbnails (overview, Alt+Tab)
+// ---------------------------------------------------------------------------
+
+static void thumbnailPath(struct View *view, char *path, size_t size)
+{
+    const char *runtime = getenv("XDG_RUNTIME_DIR");
+    snprintf(path, size, "%s/newteller-thumbs/%u.png", runtime ? runtime : "/tmp", view->id);
+}
+
+// Reads the window's current buffer back from the renderer and writes a
+// scaled PNG next to the control socket. Subsurfaces (video overlays,
+// some toolkits' popovers) are not included; the main surface is.
+static bool captureThumbnail(struct View *view, int maxSize)
+{
+    struct wlr_surface *surface = viewSurface(view);
+    if (!surface)
+        return false;
+    struct wlr_texture *texture = wlr_surface_get_texture(surface);
+    if (!texture)
+        return false;
+    int width = (int)texture->width;
+    int height = (int)texture->height;
+    if (width <= 0 || height <= 0 || width > 16384 || height > 16384)
+        return false;
+    uint8_t *pixels = malloc((size_t)width * (size_t)height * 4);
+    if (!pixels)
+        return false;
+    bool swap = false;
+    struct wlr_texture_read_pixels_options argb = {
+        .data = pixels, .format = DRM_FORMAT_ARGB8888, .stride = (uint32_t)width * 4,
+    };
+    if (!wlr_texture_read_pixels(texture, &argb)) {
+        // GLES without BGRA reads: RGBA always works, swap afterwards.
+        struct wlr_texture_read_pixels_options abgr = {
+            .data = pixels, .format = DRM_FORMAT_ABGR8888, .stride = (uint32_t)width * 4,
+        };
+        if (!wlr_texture_read_pixels(texture, &abgr)) {
+            free(pixels);
+            return false;
+        }
+        swap = true;
+    }
+    if (swap) {
+        for (size_t i = 0; i < (size_t)width * (size_t)height; ++i) {
+            uint8_t r = pixels[i * 4];
+            pixels[i * 4] = pixels[i * 4 + 2];
+            pixels[i * 4 + 2] = r;
+        }
+    }
+
+    // Crop client-side shadows: the window geometry, in buffer pixels.
+    struct wlr_box geometry = viewGeometry(view);
+    double bufferScale = surface->current.width > 0
+                             ? (double)width / surface->current.width : 1.0;
+    double cropX = 0, cropY = 0, cropWidth = width, cropHeight = height;
+    if (geometry.width > 0 && geometry.height > 0) {
+        cropX = geometry.x * bufferScale;
+        cropY = geometry.y * bufferScale;
+        cropWidth = geometry.width * bufferScale;
+        cropHeight = geometry.height * bufferScale;
+    }
+    double factor = maxSize / (cropWidth > cropHeight ? cropWidth : cropHeight);
+    if (factor > 1.0)
+        factor = 1.0;
+    int outWidth = (int)ceil(cropWidth * factor);
+    int outHeight = (int)ceil(cropHeight * factor);
+    bool ok = false;
+    cairo_surface_t *source = cairo_image_surface_create_for_data(
+        pixels, CAIRO_FORMAT_ARGB32, width, height, width * 4);
+    cairo_surface_t *out = cairo_image_surface_create(CAIRO_FORMAT_ARGB32,
+                                                      outWidth > 0 ? outWidth : 1,
+                                                      outHeight > 0 ? outHeight : 1);
+    if (cairo_surface_status(source) == CAIRO_STATUS_SUCCESS
+        && cairo_surface_status(out) == CAIRO_STATUS_SUCCESS) {
+        cairo_t *cr = cairo_create(out);
+        cairo_scale(cr, factor, factor);
+        cairo_set_source_surface(cr, source, -cropX, -cropY);
+        cairo_pattern_set_filter(cairo_get_source(cr), CAIRO_FILTER_GOOD);
+        cairo_paint(cr);
+        cairo_destroy(cr);
+        char path[PATH_MAX];
+        thumbnailPath(view, path, sizeof(path));
+        char directory[PATH_MAX];
+        snprintf(directory, sizeof(directory), "%s", path);
+        char *slash = strrchr(directory, '/');
+        if (slash) {
+            *slash = '\0';
+            mkdir(directory, 0700);
+        }
+        ok = cairo_surface_write_to_png(out, path) == CAIRO_STATUS_SUCCESS;
+    }
+    cairo_surface_destroy(out);
+    cairo_surface_destroy(source);
+    free(pixels);
+    return ok;
+}
+
+// Copies a title or app id into an IPC field: no separators, no newlines,
+// cut on a UTF-8 boundary.
+static void ipcField(char *out, size_t size, const char *text, bool noSpaces)
+{
+    snprintf(out, size, "%s", text ? text : "");
+    trimUtf8(out);
+    for (char *p = out; *p; ++p) {
+        if (*p == '\n' || *p == '\r' || *p == '\x1e' || *p == '\x1f'
+            || (noSpaces && *p == ' '))
+            *p = noSpaces ? '_' : ' ';
+    }
+}
+
 // "event switcher <selected> <entries>": the shell draws the Alt+Tab
-// overlay from it. Entries are "<app id>\x1e<title>" joined by \x1f, most
-// recently used first; <selected> is -1 when the switcher closes.
+// overlay from it. Entries are "<id>\x1e<app id>\x1e<title>" joined by
+// \x1f, most recently used first; <selected> is -1 when the switcher
+// closes. Thumbnails are in $XDG_RUNTIME_DIR/newteller-thumbs/<id>.png.
 static void broadcastSwitcher(struct Server *server)
 {
     if (!server->switching) {
@@ -2323,20 +3092,11 @@ static void broadcastSwitcher(struct Server *server)
         if (view == server->switchTarget)
             selected = index;
         char title[96];
-        snprintf(title, sizeof(title), "%s", viewTitle(view));
-        trimUtf8(title);
-        for (char *p = title; *p; ++p) {
-            if (*p == '\n' || *p == '\r' || *p == '\x1e' || *p == '\x1f')
-                *p = ' ';
-        }
+        ipcField(title, sizeof(title), viewTitle(view), false);
         char appId[96];
-        snprintf(appId, sizeof(appId), "%s", viewAppId(view));
-        for (char *p = appId; *p; ++p) {
-            if (*p == '\n' || *p == '\r' || *p == '\x1e' || *p == '\x1f' || *p == ' ')
-                *p = '_';
-        }
-        int written = snprintf(entries + used, sizeof(entries) - used, "%s%s\x1e%s",
-                               index > 0 ? "\x1f" : "", appId, title);
+        ipcField(appId, sizeof(appId), viewAppId(view), true);
+        int written = snprintf(entries + used, sizeof(entries) - used, "%s%u\x1e%s\x1e%s",
+                               index > 0 ? "\x1f" : "", view->id, appId, title);
         if (written < 0 || used + (size_t)written >= sizeof(entries))
             break;
         used += (size_t)written;
@@ -2389,6 +3149,24 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
     if (server->locked)
         return false;
 
+    // The user's own shortcuts (Settings -> Shortcuts) come first, so they
+    // can also replace a built-in one.
+    uint32_t chord = modifiers & (WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL
+                                  | WLR_MODIFIER_ALT | WLR_MODIFIER_SHIFT);
+    xkb_keysym_t lower = xkb_keysym_to_lower(sym);
+    for (int i = 0; i < server->bindingCount; ++i) {
+        if (server->bindings[i].sym == lower && server->bindings[i].modifiers == chord) {
+            const char *argv[] = {"sh", "-c", server->bindings[i].command, NULL};
+            setChildEnvironment(server);
+            spawnDetached(argv[0], argv);
+            return true;
+        }
+    }
+    if (logo && (sym == XKB_KEY_Tab || sym == XKB_KEY_ISO_Left_Tab) && !alt) {
+        // Super+Tab: the overview of every window (as Windows' Task View).
+        shellAction("toggleTaskView");
+        return true;
+    }
     if (logo && (sym == XKB_KEY_l || sym == XKB_KEY_L)) {
         spawnLocker(server);
         return true;
@@ -2767,9 +3545,13 @@ static void handleXdgCommit(struct wl_listener *listener, void *data)
         && view->xdg->base->initialized) {
         // xdg-shell requires the compositor to answer the first commit with a
         // configure event; otherwise the client never maps its window.
+        applyDecorationMode(view);
         wlr_xdg_toplevel_set_size(view->xdg, 0, 0);
         wlr_log(WLR_DEBUG, "sent initial xdg configure for %s", viewTitle(view));
     }
+    // The client may have resized itself: keep the frame around it.
+    if (view->mapped)
+        viewUpdateDecoration(view);
 }
 
 static void handleXdgMap(struct wl_listener *listener, void *data)
@@ -2897,6 +3679,68 @@ static void handleXdgSetAppId(struct wl_listener *listener, void *data)
     updateForeignToplevel(view);
 }
 
+// xdg-decoration: what the window asked for, else the configured default.
+static enum wlr_xdg_toplevel_decoration_v1_mode decorationModeFor(struct View *view)
+{
+    struct wlr_xdg_toplevel_decoration_v1 *decoration = view->xdgDecoration;
+    if (decoration && decoration->requested_mode != WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_NONE)
+        return decoration->requested_mode;
+    return view->server->config.decorationsServer
+               ? WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE
+               : WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE;
+}
+
+static void applyDecorationMode(struct View *view)
+{
+    if (!view->xdgDecoration || !view->xdg->base->initialized)
+        return;
+    enum wlr_xdg_toplevel_decoration_v1_mode mode = decorationModeFor(view);
+    wlr_xdg_toplevel_decoration_v1_set_mode(view->xdgDecoration, mode);
+    view->ssd = mode == WLR_XDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE;
+    viewUpdateDecoration(view);
+}
+
+static void handleXdgDecorationMode(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct View *view = wl_container_of(listener, view, xdgDecorationMode);
+    applyDecorationMode(view);
+}
+
+static void handleXdgDecorationDestroy(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct View *view = wl_container_of(listener, view, xdgDecorationDestroy);
+    wl_list_remove(&view->xdgDecorationMode.link);
+    wl_list_remove(&view->xdgDecorationDestroy.link);
+    view->xdgDecoration = NULL;
+    view->ssd = false;
+    // Only touch the scene while the window is mapped: during teardown the
+    // tree may already be gone.
+    if (view->mapped)
+        viewUpdateDecoration(view);
+}
+
+static void handleNewXdgDecoration(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, newXdgDecoration);
+    struct wlr_xdg_toplevel_decoration_v1 *decoration = data;
+    struct View *view;
+    wl_list_for_each(view, &server->views, link) {
+        if (view->xdg != decoration->toplevel || view->xdgDecoration)
+            continue;
+        view->xdgDecoration = decoration;
+        view->xdgDecorationMode.notify = handleXdgDecorationMode;
+        wl_signal_add(&decoration->events.request_mode, &view->xdgDecorationMode);
+        view->xdgDecorationDestroy.notify = handleXdgDecorationDestroy;
+        wl_signal_add(&decoration->events.destroy, &view->xdgDecorationDestroy);
+        // Before the first commit the mode goes out with the initial
+        // configure (handleXdgCommit).
+        applyDecorationMode(view);
+        return;
+    }
+}
+
 static void handleNewXdgToplevel(struct wl_listener *listener, void *data)
 {
     struct Server *server = wl_container_of(listener, server, newXdgToplevel);
@@ -2916,6 +3760,7 @@ static void handleNewXdgToplevel(struct wl_listener *listener, void *data)
     }
     toplevel->base->data = view->tree;
     view->tree->node.data = view;
+    view->id = ++server->nextViewId;
 
     wl_list_insert(&server->views, &view->link);
 
@@ -3441,6 +4286,7 @@ static void handleX11Map(struct wl_listener *listener, void *data)
         view->workspace = view->server->workspace;
     viewSyncVisible(view);
     broadcastWorkspaces(view->server);
+    view->ssd = x11WantsFrame(view);
     if (view->x11) {
         view->width = view->x11->width;
         view->height = view->x11->height;
@@ -3502,7 +4348,10 @@ static void handleX11Destroy(struct wl_listener *listener, void *data)
     wl_list_remove(&view->x11RequestActivate.link);
     wl_list_remove(&view->setTitle.link);
     wl_list_remove(&view->setAppId.link);
+    wl_list_remove(&view->x11SetDecorations.link);
     view->tree = NULL;
+    view->decoTree = NULL;
+    view->decoTitle = NULL;
     destroyView(view);
 }
 
@@ -3597,6 +4446,22 @@ static void handleX11SetClass(struct wl_listener *listener, void *data)
     updateForeignToplevel(view);
 }
 
+// X11 windows get a frame unless they asked for none (Motif hints), as a
+// window manager would draw one.
+static bool x11WantsFrame(struct View *view)
+{
+    return view->x11 && !view->overrideRedirect
+           && view->x11->decorations == WLR_XWAYLAND_SURFACE_DECORATIONS_ALL;
+}
+
+static void handleX11SetDecorations(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct View *view = wl_container_of(listener, view, x11SetDecorations);
+    view->ssd = x11WantsFrame(view);
+    viewUpdateDecoration(view);
+}
+
 static void handleX11Associate(struct wl_listener *listener, void *data)
 {
     (void)data;
@@ -3624,8 +4489,13 @@ static void handleX11Dissociate(struct wl_listener *listener, void *data)
         wl_list_remove(&view->unmap.link);
     }
     if (view->tree) {
+        // The frame is a child of the tree and goes with it.
         wlr_scene_node_destroy(&view->tree->node);
         view->tree = NULL;
+        view->decoTree = NULL;
+        view->decoTitle = NULL;
+        for (int i = 0; i < 3; ++i)
+            view->decoBorder[i] = NULL;
     }
 }
 
@@ -3672,6 +4542,9 @@ static void handleNewXWaylandSurface(struct wl_listener *listener, void *data)
     wl_signal_add(&xsurface->events.set_title, &view->setTitle);
     view->setAppId.notify = handleX11SetClass;
     wl_signal_add(&xsurface->events.set_class, &view->setAppId);
+    view->x11SetDecorations.notify = handleX11SetDecorations;
+    wl_signal_add(&xsurface->events.set_decorations, &view->x11SetDecorations);
+    view->id = ++server->nextViewId;
 
     if (xsurface->surface)
         handleX11Associate(&view->associate, NULL);
@@ -3937,7 +4810,7 @@ static void ipcClientDestroy(struct IpcClient *client)
 
 static void ipcSend(struct IpcClient *client, const char *line)
 {
-    char buffer[2048];
+    char buffer[8192];
     int length = snprintf(buffer, sizeof(buffer), "%s\n", line);
     if (length <= 0)
         return;
@@ -3990,6 +4863,127 @@ static void ipcDescribeOutputs(struct Server *server, char *out, size_t size)
     }
 }
 
+// ok <name>\x1e<description>\x1e<on|off>\x1e<WxH@mHz>\x1e<x>,<y>\x1e<scale>
+//    \x1e<transform>\x1e<mode>,<mode>,...  joined by \x1f
+static void ipcDescribeOutputsDetail(struct Server *server, struct IpcClient *client)
+{
+    char reply[2000] = "ok ";
+    size_t used = 3;
+    bool first = true;
+    struct Output *output;
+    wl_list_for_each(output, &server->outputs, link) {
+        struct wlr_output *o = output->output;
+        struct wlr_box box = {0};
+        wlr_output_layout_get_box(server->outputLayout, o, &box);
+        char description[96];
+        char rawDescription[160];
+        snprintf(rawDescription, sizeof(rawDescription), "%s %s",
+                 o->make ? o->make : "", o->model ? o->model : "");
+        ipcField(description, sizeof(description), rawDescription, false);
+        int width = o->current_mode ? o->current_mode->width : o->width;
+        int height = o->current_mode ? o->current_mode->height : o->height;
+        int refresh = o->current_mode ? o->current_mode->refresh : o->refresh;
+        int written = snprintf(reply + used, sizeof(reply) - used,
+                               "%s%s\x1e%s\x1e%s\x1e%dx%d@%d\x1e%d,%d\x1e%.2f\x1e%d\x1e",
+                               first ? "" : "\x1f", o->name, description,
+                               output->disabled ? "off" : "on", width, height, refresh,
+                               box.x, box.y, o->scale, (int)o->transform);
+        if (written < 0 || used + (size_t)written >= sizeof(reply))
+            break;
+        used += (size_t)written;
+        // The modes, without repeating one (some monitors list duplicates).
+        struct wlr_output_mode *mode;
+        int listed = 0;
+        int lastWidth = -1, lastHeight = -1, lastRefresh = -1;
+        wl_list_for_each(mode, &o->modes, link) {
+            if (mode->width == lastWidth && mode->height == lastHeight
+                && mode->refresh / 1000 == lastRefresh / 1000)
+                continue;
+            lastWidth = mode->width;
+            lastHeight = mode->height;
+            lastRefresh = mode->refresh;
+            written = snprintf(reply + used, sizeof(reply) - used, "%s%dx%d@%d",
+                               listed ? "," : "", mode->width, mode->height, mode->refresh);
+            if (written < 0 || used + (size_t)written >= sizeof(reply) - 2)
+                break;
+            used += (size_t)written;
+            if (++listed >= 40)
+                break;
+        }
+        first = false;
+    }
+    ipcSend(client, reply);
+}
+
+// output-set <name> <on|off> <WxH@mHz|-> <x> <y> <scale> <transform>
+static void ipcSetOutput(struct Server *server, struct IpcClient *client, char *name)
+{
+    char *enabledText = strtok(NULL, " \t\r");
+    char *modeText = strtok(NULL, " \t\r");
+    char *xText = strtok(NULL, " \t\r");
+    char *yText = strtok(NULL, " \t\r");
+    char *scaleText = strtok(NULL, " \t\r");
+    char *transformText = strtok(NULL, " \t\r");
+    if (!enabledText || !modeText || !xText || !yText || !scaleText || !transformText) {
+        ipcSend(client, "error usage: output-set NAME on|off WxH@mHz X Y SCALE TRANSFORM");
+        return;
+    }
+    struct Output *target = NULL;
+    struct Output *output;
+    int enabledOthers = 0;
+    wl_list_for_each(output, &server->outputs, link) {
+        if (strcmp(output->output->name, name) == 0)
+            target = output;
+        else if (!output->disabled)
+            ++enabledOthers;
+    }
+    if (!target) {
+        ipcSend(client, "error no such output");
+        return;
+    }
+    bool enabled = strcmp(enabledText, "off") != 0;
+    if (!enabled && enabledOthers == 0) {
+        ipcSend(client, "error the last screen cannot be turned off");
+        return;
+    }
+    struct wlr_output_state state;
+    wlr_output_state_init(&state);
+    wlr_output_state_set_enabled(&state, enabled);
+    if (enabled) {
+        int width = 0, height = 0, refresh = 0;
+        if (sscanf(modeText, "%dx%d@%d", &width, &height, &refresh) >= 2) {
+            struct wlr_output_mode *mode = findMode(target->output, width, height, refresh);
+            if (mode)
+                wlr_output_state_set_mode(&state, mode);
+        }
+        double scale = atof(scaleText);
+        if (scale >= 0.5 && scale <= 4.0)
+            wlr_output_state_set_scale(&state, (float)scale);
+        int transform = atoi(transformText);
+        if (transform >= 0 && transform <= 7)
+            wlr_output_state_set_transform(&state, (enum wl_output_transform)transform);
+    }
+    bool ok = wlr_output_commit_state(target->output, &state);
+    wlr_output_state_finish(&state);
+    if (!ok) {
+        ipcSend(client, "error the screen rejected this mode");
+        return;
+    }
+    target->disabled = !enabled;
+    target->poweredOff = false;
+    placeOutput(server, target, enabled, false, atoi(xText), atoi(yText));
+    if (enabled)
+        wlr_xcursor_manager_load(server->cursorManager, target->output->scale);
+    arrangeAllOutputs(server);
+    rescueViews(server);
+    updateOutputManager(server);
+    saveOutputs(server);
+    struct View *view;
+    wl_list_for_each(view, &server->views, link)
+        viewUpdateDecoration(view);
+    ipcSend(client, "ok");
+}
+
 static void ipcHandleCommand(struct IpcClient *client, char *line)
 {
     struct Server *server = client->server;
@@ -4024,6 +5018,86 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
         else
             setLayout(server, atoi(argument));
         ipcSend(client, "ok");
+    } else if (strcmp(command, "windows") == 0) {
+        // ok <id>\x1e<desktop>\x1e<app id>\x1e<title>\x1e<flags>\x1f...
+        // flags: f focused, m minimized, x maximized. Most recent first.
+        char reply[3800] = "ok ";
+        size_t used = 3;
+        bool first = true;
+        struct View *view;
+        wl_list_for_each(view, &server->views, link) {
+            if (!view->mapped || view->overrideRedirect || !viewSurface(view))
+                continue;
+            char title[120];
+            ipcField(title, sizeof(title), viewTitle(view), false);
+            char appId[96];
+            ipcField(appId, sizeof(appId), viewAppId(view), true);
+            char flags[4];
+            int f = 0;
+            if (view == server->focusedView)
+                flags[f++] = 'f';
+            if (view->minimized)
+                flags[f++] = 'm';
+            if (view->maximized)
+                flags[f++] = 'x';
+            flags[f] = '\0';
+            int written = snprintf(reply + used, sizeof(reply) - used,
+                                   "%s%u\x1e%d\x1e%s\x1e%s\x1e%s", first ? "" : "\x1f",
+                                   view->id, view->workspace, appId, title, flags);
+            if (written < 0 || used + (size_t)written >= sizeof(reply))
+                break;
+            used += (size_t)written;
+            first = false;
+        }
+        ipcSend(client, reply);
+    } else if ((strcmp(command, "thumbnail") == 0 || strcmp(command, "activate") == 0
+                || strcmp(command, "close") == 0 || strcmp(command, "move-window") == 0)
+               && argument) {
+        uint32_t id = (uint32_t)strtoul(argument, NULL, 10);
+        struct View *target = NULL;
+        struct View *view;
+        wl_list_for_each(view, &server->views, link) {
+            if (view->id == id && view->mapped && !view->overrideRedirect) {
+                target = view;
+                break;
+            }
+        }
+        if (!target) {
+            ipcSend(client, "error no such window");
+            return;
+        }
+        if (strcmp(command, "thumbnail") == 0) {
+            char *sizeText = strtok(NULL, " \t\r");
+            int size = sizeText ? atoi(sizeText) : 320;
+            if (size < 32 || size > 1024)
+                size = 320;
+            char path[PATH_MAX];
+            thumbnailPath(target, path, sizeof(path));
+            if (captureThumbnail(target, size)) {
+                char reply[PATH_MAX + 8];
+                snprintf(reply, sizeof(reply), "ok %s", path);
+                ipcSend(client, reply);
+            } else {
+                ipcSend(client, "error no image");
+            }
+        } else if (strcmp(command, "activate") == 0) {
+            if (target->minimized)
+                viewSetMinimized(target, false);
+            focusView(target, NULL);
+            ipcSend(client, "ok");
+        } else if (strcmp(command, "close") == 0) {
+            viewClose(target);
+            ipcSend(client, "ok");
+        } else {
+            char *desktop = strtok(NULL, " \t\r");
+            if (desktop)
+                moveViewToWorkspace(target, atoi(desktop), false);
+            ipcSend(client, desktop ? "ok" : "error which desktop");
+        }
+    } else if (strcmp(command, "outputs-detail") == 0) {
+        ipcDescribeOutputsDetail(server, client);
+    } else if (strcmp(command, "output-set") == 0 && argument) {
+        ipcSetOutput(server, client, argument);
     } else if (strcmp(command, "workspace") == 0 && argument) {
         if (strcmp(argument, "next") == 0)
             switchWorkspace(server, server->workspace + 1);
@@ -4277,6 +5351,12 @@ static void setupProtocols(struct Server *server)
     server->activationRequest.notify = handleActivationRequest;
     wl_signal_add(&server->activation->events.request_activate,
                   &server->activationRequest);
+    // xdg-decoration: windows that want a compositor-drawn title bar (Qt,
+    // Chromium with "use system title bar", foot, mpv, ...) get one.
+    server->xdgDecorationManager = wlr_xdg_decoration_manager_v1_create(server->display);
+    server->newXdgDecoration.notify = handleNewXdgDecoration;
+    wl_signal_add(&server->xdgDecorationManager->events.new_toplevel_decoration,
+                  &server->newXdgDecoration);
     server->serverDecoration = wlr_server_decoration_manager_create(
         server->display);
     wlr_server_decoration_manager_set_default_mode(
@@ -4632,6 +5712,7 @@ static int run(struct Server *server)
     wl_list_remove(&server->outputManagerTest.link);
     wl_list_remove(&server->layoutChange.link);
     wl_list_remove(&server->gammaSetGamma.link);
+    wl_list_remove(&server->newXdgDecoration.link);
     wlr_log(WLR_DEBUG, "destroying cursor");
     if (server->cursorManager)
         wlr_xcursor_manager_destroy(server->cursorManager);

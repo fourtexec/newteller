@@ -14,6 +14,8 @@ find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Qml Quick Svg DBus)
 find_package(PkgConfig REQUIRED)
 pkg_search_module(WLROOTS REQUIRED IMPORTED_TARGET wlroots-0.19 wlroots-0.18)
 pkg_check_modules(LIBINPUT REQUIRED IMPORTED_TARGET libinput)
+# Title bars and window thumbnails are drawn with cairo and pango.
+pkg_check_modules(CAIRO REQUIRED IMPORTED_TARGET cairo pangocairo)
 find_program(WAYLAND_SCANNER_EXECUTABLE wayland-scanner REQUIRED)
 
 # wlr-layer-shell support (panel, desktop, menu). Package names differ per distro,
@@ -164,6 +166,8 @@ target_link_directories(newteller-compositor PRIVATE ${WLROOTS_LIBRARY_DIRS})
 target_link_libraries(newteller-compositor PRIVATE
     PkgConfig::WLROOTS
     PkgConfig::LIBINPUT
+    PkgConfig::CAIRO
+    m
     wayland-server
     xkbcommon
 )

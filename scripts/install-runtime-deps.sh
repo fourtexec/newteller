@@ -24,6 +24,7 @@ packages=(
     qml6-module-qt-labs-folderlistmodel
     "$wlroots_package" xwayland dbus dbus-user-session libglib2.0-bin
     libxkbcommon0 libseat1 libinput10 libdrm2 libgbm1 libegl1 libgles2
+    libcairo2 libpangocairo-1.0-0
     grim
 )
 # Some packaging splits the QML extension out of layer-shell-qt.
