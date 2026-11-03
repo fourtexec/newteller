@@ -35,6 +35,8 @@
     <file>qml/NotificationCenter.qml</file>
     <file>qml/NotificationAppearance.qml</file>
     <file>qml/QuickSettingsPopup.qml</file>
+    <file>qml/SwitcherOverlay.qml</file>
+    <file>qml/OsdPopup.qml</file>
     <file>themes/default.json</file>
     <file>themes/light.json</file>
     <file>themes/nord.json</file>
@@ -75,6 +77,7 @@
     <file>icons/log-out.svg</file>
     <file>icons/minus.svg</file>
     <file>icons/monitor.svg</file>
+    <file>icons/mic.svg</file>
     <file>icons/moon.svg</file>
     <file>icons/mouse.svg</file>
     <file>icons/package.svg</file>

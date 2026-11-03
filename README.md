@@ -106,6 +106,35 @@ inside VirtualBox. The implemented pieces are:
   maximise with `Super+Up`, restore with `Super+Down`, drag a window to an edge to snap it,
   move it between outputs with `Super+Shift+Left`/`Super+Shift+Right`, and show/hide the
   desktop with `Super+D`
+- **Lock screen.** `Super+L`, the start menu, quick settings, the idle timer and
+  suspend lock the session with swaylock over `ext-session-lock-v1`: while
+  locked the compositor draws and focuses nothing but the locker, and a
+  crashed locker is restarted instead of unlocking. The wallpaper is the lock
+  screen background (`power.lockAfter`, `power.lockOnSleep`).
+- **Idle and power.** The screen turns off after `power.screenOffAfter`
+  minutes (swayidle); video players that inhibit idle keep it on.
+- **Keyboard layouts.** Pick layouts in Settings → Keyboard (or keep the system
+  layout from `/etc/default/keyboard`); `Super+Space` or Alt+Shift (or
+  Ctrl+Shift / Caps Lock) switches, and the panel shows the current layout.
+  Repeat rate/delay, Num Lock and raw XKB variants/options are there too.
+- **Mouse & touchpad.** Tap to click, natural scrolling, disable while
+  typing, pointer speed and left-handed buttons, applied live through
+  libinput; cursor theme and size.
+- **Workspaces.** Four virtual desktops by default (`workspaces.count`):
+  `Ctrl+Super+Left/Right` or `Super+Page Up/Down` switch, add `Shift` to take
+  the focused window along; dots on the panel show and switch them.
+- **Alt+Tab** walks through every window of the current desktop in
+  most-recently-used order with a window list overlay and a live preview;
+  `Shift+Tab` goes back, `Escape` cancels. A tap of `Super` opens the start menu.
+- **Displays.** Display tools that speak wlr-output-management (wdisplays,
+  wlr-randr, kanshi) change resolution, refresh rate, scale, rotation and
+  arrangement; NewTeller remembers the settings per monitor
+  (`~/.config/newteller/outputs.conf`) and starts high-density panels at 200%.
+- **Night light** (wlsunset) on a schedule or always, from quick settings or
+  Settings → Displays.
+- **Desktop services.** Screen sharing and screenshots through
+  xdg-desktop-portal-wlr, a polkit agent for administrator prompts, and
+  `Ctrl+Alt+F1…F12` to switch virtual terminals.
 - Screenshots: `Print` captures the whole output to `~/Pictures/Screenshots` and announces
   the saved path through the notification daemon
 - Multi-monitor: one desktop and one panel per screen
@@ -193,8 +222,13 @@ Setting `QT_QPA_PLATFORM` (or passing `-platform`) overrides the shell's automat
 when it runs inside another session. The compositor always selects its own backend.
 
 The login greeter is the system display manager; NewTeller does not ship its own greeter.
-A dedicated lock screen is not included yet, so the Lock action relies on a session
-locker installed separately.
+The lock screen is swaylock, driven by the compositor through
+`ext-session-lock-v1` (`newteller-lock`); the installer adds it together with
+swayidle, wlsunset, the portals and a polkit agent when the distribution has them.
+
+The compositor reads `~/.config/newteller/compositor.conf`, which the shell
+writes from its settings, and listens on a control socket (`$NEWTELLER_IPC`):
+`newteller-compositor --msg reload|lock|locked|dpms on|dpms off|layout next|workspace N|outputs|exit`.
 
 Windows use client-side decorations (title bars drawn by the toolkit), so every application
 gets a usable frame without a separate window-decorator process. The compositor handles
@@ -203,7 +237,9 @@ these shortcuts globally, even when an application has focus:
 (close the focused window), `Alt+F4` (close), `Super+Left`/`Super+Right` (snap to a half),
 `Super+Up`/`Super+Down` (maximise/restore), `Super+Shift+Left`/`Super+Shift+Right`
 (move to another output), `Super+D` (show desktop), `Super+M` (maximise),
-`Super+F` (fullscreen), `Print` (screenshot), a tap of `Super` on its own (open or close
+`Super+F` (fullscreen), `Super+L` (lock), `Super+Space` (next keyboard layout),
+`Ctrl+Super+Left/Right` (switch desktop, with `Shift` to move the window),
+`Ctrl+Alt+F1…F12` (virtual terminals), `Print` (screenshot), a tap of `Super` on its own (open or close
 the start menu), and `Alt+Tab` (switch windows: keep Alt held and press Tab again to walk
 through every window, most recently used first, with the candidate raised as a preview;
 `Shift+Tab` steps back, `Escape` cancels and releasing Alt switches). The running shell

@@ -799,10 +799,26 @@ class Session(QObject):
     nightLightRunning = Property(bool, lambda self: False, notify=nightLightChanged)
     polkitAgent = Property(str, lambda self: "/usr/bin/lxpolkit", constant=True)
     displaySettingsTool = Property(str, lambda self: "wdisplays", constant=True)
+    workspacesChanged = Signal()
+    switcherChanged = Signal()
+    mediaKey = Signal(str)
+    workspace = Property(int, lambda self: 0, notify=workspacesChanged)
+    workspaceCount = Property(int, lambda self: 4, notify=workspacesChanged)
+    workspaceOccupied = Property(int, lambda self: 0b101, notify=workspacesChanged)
+    switcherEntries = Property("QVariantList", lambda self: [], notify=switcherChanged)
+    switcherIndex = Property(int, lambda self: -1, notify=switcherChanged)
 
     def __init__(self):
         super().__init__()
         self.calls = []
+
+    @Slot(int)
+    def switchWorkspace(self, index):
+        self.calls.append(("switchWorkspace", index))
+
+    @Slot(int)
+    def moveToWorkspace(self, index):
+        self.calls.append(("moveToWorkspace", index))
 
     @Slot()
     def nextKeyboardLayout(self):
@@ -1606,6 +1622,18 @@ def main():
             layout_button = panel.findChild(QObject, "layoutButton")
             check(layout_button is not None and layout_button.property("visible"),
                   "the panel shows the keyboard layout with two layouts configured")
+            strip = panel.findChild(QObject, "workspaceStrip")
+            check(strip is not None and strip.property("visible"),
+                  "the panel shows the desktop dots with four desktops")
+
+            # Hardware keys arrive from the compositor through Session.
+            quick.calls.clear()
+            session.mediaKey.emit("volume-up")
+            QTest.qWait(50)
+            check(("setVolume", 47) in quick.calls,
+                  f"the volume-up key raises the volume by 5% ({quick.calls})")
+            osds = windows_of_kind("OsdPopup")
+            check(bool(osds) and osds[0].isVisible(), "the volume key shows the on-screen level")
             settings._values["notifications.doNotDisturb"] = dnd
             settings.valuesChanged.emit()
             QTest.qWait(50)

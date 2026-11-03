@@ -60,6 +60,9 @@ Window {
     readonly property int dockIconSize: Settings.values["dock.iconSize"] || 28
     // The quick settings cluster at the end of the bar (bell + indicators).
     readonly property bool showIndicators: Settings.values["panel.indicators"] !== false
+    // The desktop dots, when the compositor runs more than one desktop.
+    readonly property bool showWorkspaces: Session.workspaceCount > 1
+                                           && Settings.values["workspaces.showOnPanel"] !== false
     // The layout indicator, when the compositor reports more than one layout.
     readonly property bool showKeyboardLayout: Session.keyboardLayouts.length > 1
                                                && Settings.values["keyboard.showIndicator"] !== false
@@ -845,6 +848,77 @@ Window {
         }
     }
 
+    // --- workspaces: one dot per virtual desktop ----------------------------
+    // The current desktop is a wide accent pill, desktops with windows are
+    // solid dots, empty ones hollow. Click one to go there; the wheel steps.
+    component WorkspaceStrip: Rectangle {
+        id: strip
+        objectName: "workspaceStrip"
+
+        Layout.alignment: Qt.AlignVCenter | Qt.AlignHCenter
+        implicitWidth: panel.vertical ? 30 : dots.implicitWidth + 16
+        implicitHeight: panel.vertical ? dots.implicitHeight + 16 : Math.min(panel.barThickness - 10, 34)
+        radius: Theme.radius
+        color: stripHover.hovered
+               ? Qt.rgba(panel.panelTextColor.r, panel.panelTextColor.g, panel.panelTextColor.b, 0.08)
+               : "transparent"
+
+        HoverHandler {
+            id: stripHover
+            onHoveredChanged: {
+                if (hovered)
+                    panel.showToolTip(strip, "Desktop " + (Session.workspace + 1) + " of "
+                                      + Session.workspaceCount + " - Ctrl+Super+Left/Right");
+                else
+                    panel.hideToolTip();
+            }
+        }
+        WheelHandler {
+            onWheel: (event) => {
+                const step = event.angleDelta.y > 0 ? -1 : 1;
+                Session.switchWorkspace(Math.max(0, Math.min(Session.workspaceCount - 1,
+                                                             Session.workspace + step)));
+            }
+        }
+
+        Grid {
+            id: dots
+            anchors.centerIn: parent
+            columns: panel.vertical ? 1 : Session.workspaceCount
+            spacing: 6
+
+            Repeater {
+                model: Session.workspaceCount
+
+                delegate: Rectangle {
+                    required property int index
+                    readonly property bool current: index === Session.workspace
+                    readonly property bool occupied: (Session.workspaceOccupied & (1 << index)) !== 0
+
+                    width: panel.vertical ? 8 : (current ? 18 : 8)
+                    height: panel.vertical ? (current ? 18 : 8) : 8
+                    radius: 4
+                    color: current ? Theme.accent
+                                   : occupied ? Qt.rgba(panel.panelTextColor.r, panel.panelTextColor.g,
+                                                        panel.panelTextColor.b, 0.75)
+                                              : "transparent"
+                    border.width: current || occupied ? 0 : 1
+                    border.color: Qt.rgba(panel.panelTextColor.r, panel.panelTextColor.g,
+                                          panel.panelTextColor.b, 0.6)
+                    Behavior on width { NumberAnimation { duration: motion.fast } }
+                    Behavior on height { NumberAnimation { duration: motion.fast } }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        anchors.margins: -4
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: Session.switchWorkspace(index)
+                    }
+                }
+            }
+        }
+    }
+
     // --- keyboard layout: shown when more than one layout is configured -----
     // Click (or Super+Space) switches to the next layout; the compositor owns
     // the keyboard, the shell only shows and asks.
@@ -1214,6 +1288,9 @@ Window {
                     StartButton {
                         Layout.leftMargin: Math.max(0, panel.panelLeftSpacing - 4)
                     }
+                    WorkspaceStrip {
+                        visible: panel.showWorkspaces
+                    }
                     Separator {}
                     DockStrip {}
                     PluginSlot {}
@@ -1271,6 +1348,9 @@ Window {
                     spacing: Math.max(2, panel.panelZoneSpacing - 4)
 
                     StartButton {}
+                    WorkspaceStrip {
+                        visible: panel.showWorkspaces
+                    }
                     Separator {}
                     DockStrip {}
                     PluginSlot {}

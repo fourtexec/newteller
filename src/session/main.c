@@ -95,6 +95,7 @@ struct Layer;
 static void spawnDetached(const char *program, const char *const argv[]);
 static void maybeStartShell(struct Server *server);
 static void ipcBroadcast(struct Server *server, const char *line);
+static bool ipcHasWatchers(struct Server *server);
 static void broadcastLayout(struct Server *server);
 static void lockFocusSurface(struct Server *server, struct wlr_surface *surface);
 static void spawnLocker(struct Server *server);
@@ -2201,6 +2202,22 @@ static void switcherCancel(struct Server *server)
         broadcastSwitcher(server);
 }
 
+// Cuts a string that snprintf truncated back to a whole UTF-8 character, so
+// a long Cyrillic or CJK title never ends in half a character.
+static void trimUtf8(char *text)
+{
+    size_t length = strlen(text);
+    size_t start = length;
+    while (start > 0 && ((unsigned char)text[start - 1] & 0xC0) == 0x80)
+        --start;
+    if (start == 0 || !((unsigned char)text[start - 1] & 0x80))
+        return;
+    unsigned char lead = (unsigned char)text[start - 1];
+    size_t needed = lead >= 0xF0 ? 4 : lead >= 0xE0 ? 3 : lead >= 0xC0 ? 2 : 1;
+    if (length - (start - 1) < needed)
+        text[start - 1] = '\0';
+}
+
 // "event switcher <selected> <entries>": the shell draws the Alt+Tab
 // overlay from it. Entries are "<app id>\x1e<title>" joined by \x1f, most
 // recently used first; <selected> is -1 when the switcher closes.
@@ -2223,6 +2240,7 @@ static void broadcastSwitcher(struct Server *server)
             selected = index;
         char title[96];
         snprintf(title, sizeof(title), "%s", viewTitle(view));
+        trimUtf8(title);
         for (char *p = title; *p; ++p) {
             if (*p == '\n' || *p == '\r' || *p == '\x1e' || *p == '\x1f')
                 *p = ' ';
@@ -2259,6 +2277,30 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
         }
         return true;
     }
+    // Volume, brightness and media keys go to the shell, which changes the
+    // level and shows it on screen; they also work on the lock screen. With
+    // no shell listening they stay with the focused application.
+    const char *mediaKey = NULL;
+    switch (sym) {
+    case XKB_KEY_XF86AudioRaiseVolume: mediaKey = "volume-up"; break;
+    case XKB_KEY_XF86AudioLowerVolume: mediaKey = "volume-down"; break;
+    case XKB_KEY_XF86AudioMute: mediaKey = "mute"; break;
+    case XKB_KEY_XF86AudioMicMute: mediaKey = "mic-mute"; break;
+    case XKB_KEY_XF86MonBrightnessUp: mediaKey = "brightness-up"; break;
+    case XKB_KEY_XF86MonBrightnessDown: mediaKey = "brightness-down"; break;
+    case XKB_KEY_XF86AudioPlay:
+    case XKB_KEY_XF86AudioPause: mediaKey = "play-pause"; break;
+    case XKB_KEY_XF86AudioNext: mediaKey = "next"; break;
+    case XKB_KEY_XF86AudioPrev: mediaKey = "previous"; break;
+    default: break;
+    }
+    if (mediaKey && ipcHasWatchers(server)) {
+        char line[64];
+        snprintf(line, sizeof(line), "event key %s", mediaKey);
+        ipcBroadcast(server, line);
+        return true;
+    }
+
     // Everything else belongs to the screen locker while it runs.
     if (server->locked)
         return false;
@@ -3785,6 +3827,18 @@ static void ipcSend(struct IpcClient *client, const char *line)
     // blocks the compositor.
     ssize_t written = send(client->fd, buffer, (size_t)length, MSG_NOSIGNAL);
     (void)written;
+}
+
+static bool ipcHasWatchers(struct Server *server)
+{
+    if (!server->ipcClients.next)
+        return false;
+    struct IpcClient *client;
+    wl_list_for_each(client, &server->ipcClients, link) {
+        if (client->watching)
+            return true;
+    }
+    return false;
 }
 
 static void ipcBroadcast(struct Server *server, const char *line)

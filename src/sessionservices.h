@@ -74,6 +74,9 @@ public:
     Q_INVOKABLE void openDisplaySettings();
     // Ends the session through the compositor (falls back to loginctl).
     Q_INVOKABLE void logout();
+    // XDG autostart entries that apply to this session (name, file, exec),
+    // for the settings page.
+    Q_INVOKABLE QVariantList autostartEntries() const;
     // Human-readable name for a layout code ("ru" -> "Russian").
     Q_INVOKABLE QString layoutDisplayName(const QString &code) const;
 
@@ -88,6 +91,10 @@ signals:
     void nightLightChanged();
     void workspacesChanged();
     void switcherChanged();
+    // A volume/brightness/media key the compositor handed to the shell:
+    // volume-up, volume-down, mute, mic-mute, brightness-up,
+    // brightness-down, play-pause, next, previous.
+    void mediaKey(const QString &name);
 
 private:
     void connectCompositor();
@@ -100,6 +107,7 @@ private:
     void restartIdle();
     void restartNightLight();
     void startPolkitAgent();
+    void runAutostart();
     static QString findProgram(const QString &name);
 
     Settings *m_settings;

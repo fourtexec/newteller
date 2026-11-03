@@ -2758,6 +2758,30 @@ Window {
                         }
 
                         SettingsSection {
+                            title: "Desktops & switching"
+                            subtitle: "Ctrl+Super+Left/Right (or Super+Page Up/Down) moves between desktops; add Shift to take the window along. Alt+Tab walks through the windows of the current desktop."
+
+                            SettingsRow {
+                                width: parent.width
+                                title: "Number of desktops"
+                                settingKey: "workspaces.count"
+                                SettingsStepper { settingKey: "workspaces.count"; from: 1; to: 9; step: 1 }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Show desktops on the panel"
+                                settingKey: "workspaces.showOnPanel"
+                                SettingsSwitch { settingKey: "workspaces.showOnPanel" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: "Show the window list during Alt+Tab"
+                                settingKey: "switcher.showOverlay"
+                                SettingsSwitch { settingKey: "switcher.showOverlay" }
+                            }
+                        }
+
+                        SettingsSection {
                             title: "Night light"
                             subtitle: Session.nightLightAvailable
                                       ? "Warmer colours in the evening are easier on the eyes."

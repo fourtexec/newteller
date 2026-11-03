@@ -33,13 +33,15 @@ fi
 apt-get install -y --no-install-recommends "${packages[@]}"
 
 # Desktop services the session starts when they are installed: the screen
-# locker and idle manager, night light, screen sharing portals and a polkit
-# agent for administrator prompts. Each one is optional, so a package that a
+# locker and idle manager, night light, screen sharing portals, a polkit
+# agent for administrator prompts, and the network (nm-applet), Bluetooth
+# (blueman) and sound (pavucontrol) tools that GNOME and KDE users expect. Each one is optional, so a package that a
 # release of the distribution renamed or dropped never blocks the install.
 optional=(
     swaylock swayidle wlsunset
     xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk
     lxpolkit procps wdisplays
+    network-manager-gnome blueman pavucontrol
 )
 available=()
 for package in "${optional[@]}"; do

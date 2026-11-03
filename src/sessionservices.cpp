@@ -7,12 +7,133 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QHash>
+#include <QSet>
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QTime>
 #include <QUrl>
 
 namespace {
+
+struct AutostartEntry {
+    QString file;
+    QString name;
+    QString exec;
+    QString path;
+};
+
+// The [Desktop Entry] group of a .desktop file, unlocalised keys only.
+QHash<QString, QString> readDesktopEntry(const QString &fileName)
+{
+    QHash<QString, QString> keys;
+    QFile file(fileName);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return keys;
+    bool inEntry = false;
+    while (!file.atEnd()) {
+        const QString line = QString::fromUtf8(file.readLine()).trimmed();
+        if (line.isEmpty() || line.startsWith(QLatin1Char('#')))
+            continue;
+        if (line.startsWith(QLatin1Char('['))) {
+            inEntry = line == QLatin1String("[Desktop Entry]");
+            continue;
+        }
+        if (!inEntry)
+            continue;
+        const int equals = line.indexOf(QLatin1Char('='));
+        if (equals <= 0)
+            continue;
+        const QString key = line.left(equals).trimmed();
+        if (key.contains(QLatin1Char('[')))
+            continue;
+        keys.insert(key, line.mid(equals + 1).trimmed());
+    }
+    return keys;
+}
+
+bool listContains(const QString &list, const QString &desktop)
+{
+    const QStringList items = list.split(QLatin1Char(';'), Qt::SkipEmptyParts);
+    for (const QString &item : items) {
+        if (item.trimmed().compare(desktop, Qt::CaseInsensitive) == 0)
+            return true;
+    }
+    return false;
+}
+
+// Exec without the field codes that make no sense at login (%f, %u, ...).
+QString stripFieldCodes(const QString &exec)
+{
+    QString out;
+    for (int i = 0; i < exec.size(); ++i) {
+        if (exec.at(i) == QLatin1Char('%') && i + 1 < exec.size()) {
+            if (exec.at(i + 1) == QLatin1Char('%'))
+                out += QLatin1Char('%');
+            ++i;
+            continue;
+        }
+        out += exec.at(i);
+    }
+    return out.simplified();
+}
+
+// The XDG autostart entries for this session, user entries overriding
+// system ones of the same file name (XDG Autostart specification).
+QList<AutostartEntry> collectAutostart()
+{
+    QStringList directories;
+    QString configHome = qEnvironmentVariable("XDG_CONFIG_HOME");
+    if (configHome.isEmpty())
+        configHome = QDir::homePath() + QStringLiteral("/.config");
+    directories << configHome + QStringLiteral("/autostart");
+    QString configDirs = qEnvironmentVariable("XDG_CONFIG_DIRS");
+    if (configDirs.isEmpty())
+        configDirs = QStringLiteral("/etc/xdg");
+    for (const QString &dir : configDirs.split(QLatin1Char(':'), Qt::SkipEmptyParts))
+        directories << dir + QStringLiteral("/autostart");
+
+    QList<AutostartEntry> entries;
+    QSet<QString> seen;
+    const QString desktop = QStringLiteral("NewTeller");
+    for (const QString &directory : directories) {
+        const QStringList files = QDir(directory).entryList({QStringLiteral("*.desktop")},
+                                                            QDir::Files, QDir::Name);
+        for (const QString &name : files) {
+            if (seen.contains(name))
+                continue;
+            seen.insert(name);
+            const QString path = directory + QLatin1Char('/') + name;
+            const QHash<QString, QString> keys = readDesktopEntry(path);
+            if (keys.value(QStringLiteral("Type"), QStringLiteral("Application"))
+                != QLatin1String("Application"))
+                continue;
+            if (keys.value(QStringLiteral("Hidden")) == QLatin1String("true"))
+                continue;
+            if (keys.value(QStringLiteral("X-GNOME-Autostart-enabled")) == QLatin1String("false"))
+                continue;
+            const QString onlyShowIn = keys.value(QStringLiteral("OnlyShowIn"));
+            if (!onlyShowIn.isEmpty() && !listContains(onlyShowIn, desktop))
+                continue;
+            if (listContains(keys.value(QStringLiteral("NotShowIn")), desktop))
+                continue;
+            const QString tryExec = keys.value(QStringLiteral("TryExec"));
+            if (!tryExec.isEmpty() && QStandardPaths::findExecutable(tryExec).isEmpty()
+                && !QFileInfo(tryExec).isExecutable())
+                continue;
+            const QString exec = stripFieldCodes(keys.value(QStringLiteral("Exec")));
+            if (exec.isEmpty())
+                continue;
+            // Never start a second shell (newteller-autostart.desktop is for
+            // running NewTeller inside another desktop).
+            const QString program = QProcess::splitCommand(exec).value(0);
+            if (QFileInfo(program).fileName() == QLatin1String("newteller"))
+                continue;
+            entries.append({path, keys.value(QStringLiteral("Name"), name), exec,
+                            keys.value(QStringLiteral("Path"))});
+        }
+    }
+    return entries;
+}
 
 QString boolText(const QVariant &value)
 {
@@ -89,6 +210,9 @@ SessionServices::SessionServices(Settings *settings, QObject *parent)
         restartIdle();
         restartNightLight();
         startPolkitAgent();
+        // Give the panel (and its tray watcher) a moment to come up, so tray
+        // applications find a StatusNotifierWatcher when they start.
+        QTimer::singleShot(1500, this, &SessionServices::runAutostart);
     }
 }
 
@@ -224,6 +348,8 @@ void SessionServices::handleEvent(const QString &line)
             }
         }
         emit switcherChanged();
+    } else if (line.startsWith(QLatin1String("key "))) {
+        emit mediaKey(line.mid(4).trimmed());
     } else if (line.startsWith(QLatin1String("locked "))) {
         const bool locked = line.mid(7).trimmed() == QLatin1String("1");
         if (locked != m_locked) {
@@ -522,6 +648,35 @@ void SessionServices::restartNightLight()
                           QStringLiteral("07:00"));
     }
     m_nightLight.start(wlsunset, args);
+}
+
+QVariantList SessionServices::autostartEntries() const
+{
+    QVariantList list;
+    for (const AutostartEntry &entry : collectAutostart()) {
+        QVariantMap item;
+        item.insert(QStringLiteral("name"), entry.name);
+        item.insert(QStringLiteral("file"), entry.file);
+        item.insert(QStringLiteral("exec"), entry.exec);
+        list.append(item);
+    }
+    return list;
+}
+
+void SessionServices::runAutostart()
+{
+    for (const AutostartEntry &entry : collectAutostart()) {
+        QStringList args = QProcess::splitCommand(entry.exec);
+        if (args.isEmpty())
+            continue;
+        const QString program = args.takeFirst();
+        // nm-applet only shows up in a StatusNotifier tray in indicator mode;
+        // its stock autostart entry asks for the old X11 tray icon.
+        if (QFileInfo(program).fileName() == QLatin1String("nm-applet")
+            && !args.contains(QLatin1String("--indicator")))
+            args << QStringLiteral("--indicator");
+        QProcess::startDetached(program, args, entry.path);
+    }
 }
 
 void SessionServices::startPolkitAgent()

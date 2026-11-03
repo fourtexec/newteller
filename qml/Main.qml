@@ -18,6 +18,61 @@ QtObject {
         screen: Qt.application.screens[0]
     }
 
+    // Volume / brightness / media level pill for the hardware keys.
+    readonly property OsdPopup osd: OsdPopup {
+        screen: Qt.application.screens[0]
+    }
+
+    // Hardware keys arrive from the compositor (they work over any window
+    // and on the lock screen): change the level, then show it.
+    readonly property Connections mediaKeys: Connections {
+        target: Session
+        function onMediaKey(name) {
+            if (name === "volume-up" || name === "volume-down") {
+                if (!Quick.volumeAvailable)
+                    return;
+                const step = name === "volume-up" ? 5 : -5;
+                const next = Math.max(0, Math.min(100, Math.round(Quick.volume) + step));
+                if (Quick.volumeMuted && step > 0)
+                    Quick.toggleMuted();
+                Quick.setVolume(next);
+                root.osd.show(next === 0 ? "volume-x" : "volume-2", next);
+            } else if (name === "mute") {
+                if (!Quick.volumeAvailable)
+                    return;
+                const muted = !Quick.volumeMuted;
+                Quick.toggleMuted();
+                root.osd.show(muted ? "volume-x" : "volume-2", muted ? 0 : Math.round(Quick.volume));
+            } else if (name === "mic-mute") {
+                Shell.runShell("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"
+                               + " || pactl set-source-mute @DEFAULT_SOURCE@ toggle");
+                root.osd.show("mic", -1, "Microphone mute toggled");
+            } else if (name === "brightness-up" || name === "brightness-down") {
+                if (!Quick.brightnessAvailable)
+                    return;
+                const delta = name === "brightness-up" ? 5 : -5;
+                const level = Math.max(1, Math.min(100, Math.round(Quick.brightness) + delta));
+                Quick.setBrightness(level);
+                root.osd.show("sun", level);
+            } else if (name === "play-pause") {
+                Quick.mediaPlayPause();
+                root.osd.show(Quick.mediaPlaying ? "pause" : "play", -1,
+                              Quick.mediaTitle.length > 0 ? Quick.mediaTitle : "Play / pause");
+            } else if (name === "next") {
+                Quick.mediaNext();
+                root.osd.show("skip-forward", -1, "Next track");
+            } else if (name === "previous") {
+                Quick.mediaPrevious();
+                root.osd.show("skip-back", -1, "Previous track");
+            }
+        }
+    }
+
+    // The Alt+Tab window list; the compositor drives it through Session.
+    readonly property SwitcherOverlay switcher: SwitcherOverlay {
+        screen: Qt.application.screens[0]
+    }
+
     // The notification centre and the quick settings card: one of each, on
     // the primary screen, opened from the bell and the indicators button of
     // every panel.
@@ -67,6 +122,30 @@ QtObject {
         delegate: NotificationPopups {
             required property var modelData
             screen: modelData
+        }
+    }
+
+    // Settings -> Applications -> Startup applications, once per start after
+    // the configured delay. An entry is an application id from the start
+    // menu, or else a command line.
+    readonly property Timer startupApps: Timer {
+        interval: Math.max(0, Number(Settings.value("startup.delay", 0)) || 0) * 1000 + 500
+        running: true
+        repeat: false
+        onTriggered: {
+            const list = Settings.value("startup.apps", []) || [];
+            for (var i = 0; i < list.length; ++i) {
+                const entry = String(list[i]).trim();
+                if (entry.length === 0)
+                    continue;
+                const id = entry.endsWith(".desktop") && entry.indexOf("/") < 0
+                           ? entry.slice(0, -8) : entry;
+                const app = Apps.byId(id);
+                if (app && app.id)
+                    Apps.launch(app.id);
+                else
+                    Shell.runShell(entry);
+            }
         }
     }
 
