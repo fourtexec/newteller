@@ -165,9 +165,11 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("desktop.iconTextShadow"), true);
     m_defaults.insert(QStringLiteral("desktop.showHiddenFiles"), false);
     m_defaults.insert(QStringLiteral("desktop.doubleClickSpeed"), 500);
-    // Saved drag-and-drop positions, keyed by the file name in ~/Desktop:
-    // { "notes.txt": { "x": 120, "y": 48 }, ... }.
+    // Pixel positions from before the desktop grid (desktop.gridPositions):
+    // { "notes.txt": { "x": 120, "y": 48 }, ... } and plugin id -> {x, y}.
+    // Read once to keep an old layout; the next drag or reset clears them.
     m_defaults.insert(QStringLiteral("desktop.iconPositions"), QVariantMap());
+    m_defaults.insert(QStringLiteral("desktop.widgetPositions"), QVariantMap());
 
     // ===== Notifications =====
     m_defaults.insert(QStringLiteral("notifications.theme"), QStringLiteral("system"));

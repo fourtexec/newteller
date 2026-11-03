@@ -1570,6 +1570,8 @@ Window {
                                     label: "Reset layout"
                                     onClicked: Settings.setValues({
                                         "desktop.gridPositions": ({}),
+                                        "desktop.iconPositions": ({}),
+                                        "desktop.widgetPositions": ({}),
                                         "desktop.autoArrangeIcons": true
                                     })
                                 }

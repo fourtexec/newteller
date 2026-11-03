@@ -1540,6 +1540,24 @@ def main():
               "right-clicking the desktop opens its menu")
         desk.setProperty("contextMenuVisible", False)
 
+        # An icon placed with the old pixel setting (desktop.iconPositions,
+        # before the grid) keeps its place as the matching grid cell.
+        left, top = desk.property("gridLeft"), desk.property("gridTop")
+        cw, ch = desk.property("cellWidth"), desk.property("cellHeight")
+        settings.setValue("desktop.autoArrangeIcons", False)
+        settings.setValue("desktop.iconPositions",
+                          {"Projects": {"x": left + 3 * cw, "y": top + 2 * ch}})
+        QTest.qWait(120)
+        cells = desk.property("gridCells")
+        if hasattr(cells, "toVariant"):
+            cells = cells.toVariant()
+        cell = (cells or {}).get("icon:Projects", {})
+        check(cell.get("col") == 3 and cell.get("row") == 2,
+              f"an icon position from before the grid becomes its grid cell ({cell})")
+        settings.setValue("desktop.iconPositions", {})
+        settings.setValue("desktop.autoArrangeIcons", True)
+        QTest.qWait(60)
+
     # The dock: every running window becomes a dock entry, grouped per app.
     if panels:
         panel = next(w for w in panels if w.screen() is screens[0])

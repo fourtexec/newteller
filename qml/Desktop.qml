@@ -234,6 +234,20 @@ Window {
         return null;
     }
 
+    // Places saved before the grid existed (pixel positions in
+    // desktop.iconPositions / desktop.widgetPositions), as grid cells, so an
+    // update keeps the user's layout. Read only; the next drag saves the grid.
+    readonly property var legacyIcons: Settings.values["desktop.iconPositions"] || ({})
+    readonly property var legacyWidgets: Settings.values["desktop.widgetPositions"] || ({})
+    function legacyCell(e) {
+        const name = e.key.substring(e.key.indexOf(":") + 1);
+        const old = (e.widget ? legacyWidgets : legacyIcons)[name];
+        if (!old || old.x === undefined || old.y === undefined)
+            return null;
+        return { col: Math.max(0, Math.round((Number(old.x) - gridLeft) / Math.max(1, cellWidth))),
+                 row: Math.max(0, Math.round((Number(old.y) - gridTop) / Math.max(1, cellHeight))) };
+    }
+
     function layoutGrid() {
         const taken = {};
         const cells = {};
@@ -241,7 +255,9 @@ Window {
         const pending = [];
         // 1. Places the user chose (icons only while auto-arrange is off).
         for (const e of elements) {
-            const saved = gridSaved[e.key];
+            var saved = gridSaved[e.key];
+            if (!saved || saved.col === undefined)
+                saved = legacyCell(e);
             const useSaved = saved && saved.col !== undefined && (e.widget || !autoArrange);
             if (useSaved && cellsFree(taken, Number(saved.col), Number(saved.row), e.cols, e.rows)) {
                 cells[e.key] = { col: Number(saved.col), row: Number(saved.row), cols: e.cols, rows: e.rows };
@@ -328,17 +344,27 @@ Window {
         const copy = {};
         for (const k in gridSaved)
             copy[k] = gridSaved[k];
+        // Places that came from the old pixel settings become grid cells
+        // now, since those settings are cleared below.
+        for (const k in gridCells) {
+            if (copy[k] !== undefined || k === key)
+                continue;
+            const isWidget = k.startsWith("widget:");
+            if ((isWidget || !autoArrange) && legacyCell({ key: k, widget: isWidget }))
+                copy[k] = { "col": gridCells[k].col, "row": gridCells[k].row };
+        }
         copy[key] = { "col": target.col, "row": target.row };
+        const values = { "desktop.gridPositions": copy,
+                         "desktop.iconPositions": ({}), "desktop.widgetPositions": ({}) };
         // Moving an icon by hand ends auto-arrange, so its place sticks.
         if (key.startsWith("icon:") && autoArrange) {
             // Keep every other icon where it is now.
             for (const k in gridCells)
                 if (k.startsWith("icon:") && k !== key)
                     copy[k] = { "col": gridCells[k].col, "row": gridCells[k].row };
-            Settings.setValues({ "desktop.autoArrangeIcons": false, "desktop.gridPositions": copy });
-        } else {
-            Settings.setValue("desktop.gridPositions", copy);
+            values["desktop.autoArrangeIcons"] = false;
         }
+        Settings.setValues(values);
     }
 
     function resetIconLayout() {
@@ -346,14 +372,15 @@ Window {
         for (const k in gridSaved)
             if (!k.startsWith("icon:"))
                 copy[k] = gridSaved[k];
-        Settings.setValues({ "desktop.gridPositions": copy, "desktop.autoArrangeIcons": true });
+        Settings.setValues({ "desktop.gridPositions": copy, "desktop.autoArrangeIcons": true,
+                             "desktop.iconPositions": ({}) });
     }
     function resetWidgets() {
         const copy = {};
         for (const k in gridSaved)
             if (!k.startsWith("widget:"))
                 copy[k] = gridSaved[k];
-        Settings.setValue("desktop.gridPositions", copy);
+        Settings.setValues({ "desktop.gridPositions": copy, "desktop.widgetPositions": ({}) });
     }
 
     onWidthChanged: scheduleGridLayout()
@@ -361,6 +388,8 @@ Window {
     onGridColumnsChanged: scheduleGridLayout()
     onGridRowsChanged: scheduleGridLayout()
     onGridSavedChanged: scheduleGridLayout()
+    onLegacyIconsChanged: scheduleGridLayout()
+    onLegacyWidgetsChanged: scheduleGridLayout()
     onAutoArrangeChanged: scheduleGridLayout()
     onShowIconsChanged: scheduleGridLayout()
 
