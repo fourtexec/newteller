@@ -404,6 +404,10 @@ struct IpcClient {
     char buffer[1024];
     size_t length;
     bool watching;
+    // "idle-inhibit on": the shell relays org.freedesktop.ScreenSaver
+    // inhibitions (video players, XWayland applications). Released with
+    // the connection, so a crashed shell cannot keep the screen on.
+    bool inhibitsIdle;
 };
 
 enum CursorMode {
@@ -554,6 +558,7 @@ struct Server {
 
     struct wlr_idle_notifier_v1 *idleNotifier;
     int idleInhibitors;
+    int ipcIdleInhibitors;
 
     struct wlr_output_manager_v1 *outputManager;
     struct wlr_gamma_control_manager_v1 *gammaManager;
@@ -5886,6 +5891,27 @@ static void handleNewLock(struct wl_listener *listener, void *data)
 // Idle inhibition (video players, presentations)
 // ---------------------------------------------------------------------------
 
+// Idle is inhibited by Wayland clients (idle-inhibit-unstable-v1) and by
+// control-socket clients ("idle-inhibit on").
+static void updateIdleInhibited(struct Server *server)
+{
+    wlr_idle_notifier_v1_set_inhibited(server->idleNotifier,
+                                       server->idleInhibitors > 0 || server->ipcIdleInhibitors > 0);
+}
+
+static void ipcSetIdleInhibit(struct IpcClient *client, bool inhibit)
+{
+    struct Server *server = client->server;
+    if (client->inhibitsIdle == inhibit)
+        return;
+    client->inhibitsIdle = inhibit;
+    if (inhibit)
+        ++server->ipcIdleInhibitors;
+    else if (server->ipcIdleInhibitors > 0)
+        --server->ipcIdleInhibitors;
+    updateIdleInhibited(server);
+}
+
 static void idleInhibitorDestroy(struct wl_listener *listener, void *data)
 {
     (void)data;
@@ -5895,7 +5921,7 @@ static void idleInhibitorDestroy(struct wl_listener *listener, void *data)
     free(inhibitor);
     if (server->idleInhibitors > 0)
         --server->idleInhibitors;
-    wlr_idle_notifier_v1_set_inhibited(server->idleNotifier, server->idleInhibitors > 0);
+    updateIdleInhibited(server);
 }
 
 static void handleNewIdleInhibitor(struct wl_listener *listener, void *data)
@@ -5907,7 +5933,7 @@ static void handleNewIdleInhibitor(struct wl_listener *listener, void *data)
     inhibitor->destroy.notify = idleInhibitorDestroy;
     wl_signal_add(&wlrInhibitor->events.destroy, &inhibitor->destroy);
     ++server->idleInhibitors;
-    wlr_idle_notifier_v1_set_inhibited(server->idleNotifier, true);
+    updateIdleInhibited(server);
 }
 
 // ---------------------------------------------------------------------------
@@ -5922,6 +5948,7 @@ static void handleNewIdleInhibitor(struct wl_listener *listener, void *data)
 
 static void ipcClientDestroy(struct IpcClient *client)
 {
+    ipcSetIdleInhibit(client, false);
     if (client->source)
         wl_event_source_remove(client->source);
     close(client->fd);
@@ -6273,6 +6300,13 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
         if (server->focusedView)
             moveViewToWorkspace(server->focusedView, atoi(argument), false);
         ipcSend(client, "ok");
+    } else if (strcmp(command, "idle-inhibit") == 0) {
+        if (argument)
+            ipcSetIdleInhibit(client, strcmp(argument, "on") == 0 || strcmp(argument, "1") == 0);
+        char reply[32];
+        snprintf(reply, sizeof(reply), "ok %d",
+                 server->idleInhibitors > 0 || server->ipcIdleInhibitors > 0);
+        ipcSend(client, reply);
     } else if (strcmp(command, "dpms") == 0 && argument) {
         setOutputsPower(server, strcmp(argument, "off") != 0);
         ipcSend(client, "ok");
@@ -6820,7 +6854,8 @@ static void printUsage(void)
         "  --socket <name>            Use an explicit Wayland socket name\n"
         "  --msg <command>            Send a command to the running compositor\n"
         "                             (reload, lock, dpms on|off, layout next,\n"
-        "                             outputs, exit) and print the reply\n"
+        "                             idle-inhibit on|off, outputs, exit) and\n"
+        "                             print the reply\n"
         "  --debug                    Verbose wlroots logging\n");
 }
 

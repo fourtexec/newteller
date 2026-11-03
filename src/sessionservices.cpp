@@ -206,6 +206,8 @@ SessionServices::SessionServices(Settings *settings, QObject *parent)
         // A restarted compositor forgot the blur regions.
         for (const QString &command : std::as_const(m_blurCommands))
             sendCommand(command);
+        if (m_idleInhibited)
+            sendCommand(QStringLiteral("idle-inhibit on"));
         emit compositorChanged();
     });
     connect(&m_socket, &QLocalSocket::disconnected, this, [this] {
@@ -500,6 +502,14 @@ void SessionServices::setKeyboardLayout(int index)
 // ---------------------------------------------------------------------------
 // Lock, blanking, logout
 // ---------------------------------------------------------------------------
+
+void SessionServices::setIdleInhibited(bool inhibited)
+{
+    if (m_idleInhibited == inhibited)
+        return;
+    m_idleInhibited = inhibited;
+    sendCommand(inhibited ? QStringLiteral("idle-inhibit on") : QStringLiteral("idle-inhibit off"));
+}
 
 void SessionServices::lock()
 {

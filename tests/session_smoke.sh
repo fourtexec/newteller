@@ -289,6 +289,58 @@ if has_shell_name; then
         echo 'the shell did not open the start menu over D-Bus' >&2
         exit 1
     fi
+
+    # org.freedesktop.ScreenSaver.Inhibit (video players, XWayland apps)
+    # keeps the screen awake while the caller stays on the bus, and is
+    # released when it leaves.
+    if [[ $(msg idle-inhibit || true) != 'ok 0' ]]; then
+        echo "idle is inhibited before anyone asked ($(msg idle-inhibit || true))" >&2
+        exit 1
+    fi
+    "$python" - <<'PY' &
+import sys, time
+from PySide6.QtCore import QCoreApplication
+from PySide6.QtDBus import QDBusConnection, QDBusInterface
+app = QCoreApplication(sys.argv)
+bus = QDBusConnection.sessionBus()
+screensaver = QDBusInterface("org.freedesktop.ScreenSaver", "/org/freedesktop/ScreenSaver",
+                             "org.freedesktop.ScreenSaver", bus)
+reply = screensaver.call("Inhibit", "session-smoke", "playing a video")
+if reply.errorName():
+    print("Inhibit failed:", reply.errorName(), reply.errorMessage(), file=sys.stderr)
+    sys.exit(1)
+time.sleep(3)  # stay on the bus: the inhibition holds until we leave
+PY
+    inhibitor=$!
+    inhibited=
+    for _ in $(seq 1 20); do
+        if [[ $(msg idle-inhibit || true) == 'ok 1' ]]; then
+            inhibited=1
+            break
+        fi
+        sleep 0.1
+    done
+    if [[ -z $inhibited ]]; then
+        echo 'org.freedesktop.ScreenSaver.Inhibit did not keep the screen awake' >&2
+        exit 1
+    fi
+    wait "$inhibitor" || {
+        echo 'calling org.freedesktop.ScreenSaver.Inhibit failed' >&2
+        exit 1
+    }
+    released=
+    for _ in $(seq 1 30); do
+        if [[ $(msg idle-inhibit || true) == 'ok 0' ]]; then
+            released=1
+            break
+        fi
+        sleep 0.1
+    done
+    if [[ -z $released ]]; then
+        echo 'an inhibition outlived the application that took it' >&2
+        exit 1
+    fi
+    echo 'session smoke: org.freedesktop.ScreenSaver inhibits idle and lets go'
 else
     echo 'session smoke: no session bus or gdbus, skipping the start menu check' >&2
 fi

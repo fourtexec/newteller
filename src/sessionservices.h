@@ -145,6 +145,10 @@ public:
     Q_INVOKABLE void setKeyboardLayout(int index);
     Q_INVOKABLE void lock();
     Q_INVOKABLE void screenOff();
+    // Keeps the screen awake (org.freedesktop.ScreenSaver inhibitions); the
+    // compositor drops it with the connection, so it is sent again after a
+    // reconnect.
+    void setIdleInhibited(bool inhibited);
     Q_INVOKABLE void openDisplaySettings();
     // Ends the session through the compositor (falls back to loginctl).
     Q_INVOKABLE void logout();
@@ -231,4 +235,5 @@ private:
     // send them again after the compositor connection comes back.
     QHash<QString, QString> m_blurOwners;
     QHash<QString, QString> m_blurCommands;
+    bool m_idleInhibited = false;
 };

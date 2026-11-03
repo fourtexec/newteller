@@ -135,6 +135,11 @@ inside VirtualBox. The implemented pieces are:
   polkit refuses the built-in agent (no login session, no polkit daemon) no
   external one is started either - it would fail the same way and only show
   an "Error" window. The Security settings page shows the reason.
+- **Video keeps the screen awake.** The shell serves
+  `org.freedesktop.ScreenSaver` (Inhibit / UnInhibit), which VLC, browsers
+  and XWayland applications use while they play; Wayland applications use
+  the idle-inhibit protocol. An inhibition ends with UnInhibit or when the
+  application quits, so a crashed player never keeps the screen on.
 - **Open with root.** The dock's right-click menu and the start menu's
   right-click menu start an application as root:
   `newteller-run-as-root` runs it through pkexec (the administrator prompt
@@ -306,6 +311,9 @@ writes from its settings, and listens on a control socket (`$NEWTELLER_IPC`):
 `newteller-compositor --msg reload|lock|locked|dpms on|dpms off|layout next|workspace N|outputs|windows|kill ID|exit`.
 `windows` marks frozen windows with the `h` flag and reports each window's
 process id; `kill ID` force-quits one (never the compositor or the shell).
+`idle-inhibit on|off` keeps the screen awake while the connection that sent
+it stays open (the shell uses it for `org.freedesktop.ScreenSaver`); without
+an argument it reports whether anything inhibits idle (`ok 1` / `ok 0`).
 Watchers get `event hung ID`, `event responsive ID`, `event closed ID` and
 `event click X Y` (any button press, so open shell cards can close).
 

@@ -12,6 +12,7 @@
 #include "polkitagent.h"
 #include "quicksettings.h"
 #include "sessionservices.h"
+#include "screensaver.h"
 #include "clipboardhistory.h"
 #include "bluetooth.h"
 #include "settings.h"
@@ -232,6 +233,12 @@ int main(int argc, char *argv[])
     PolkitAgent polkit(&settings);
     SessionServices session(&settings);
     session.setTheme(&theme);
+    // org.freedesktop.ScreenSaver, only inside the NewTeller session (another
+    // desktop serves it itself).
+    ScreenSaverService screenSaver(qEnvironmentVariable("NEWTELLER_SESSION") == QLatin1String("1"));
+    QObject::connect(&screenSaver, &ScreenSaverService::inhibitedChanged, &session,
+                     &SessionServices::setIdleInhibited);
+    QObject::connect(&screenSaver, &ScreenSaverService::lockRequested, &session, &SessionServices::lock);
     ClipboardHistory clipboard(&settings);
     Bluetooth bluetooth;
     // Declared before the engine: the engine owns the QML objects that hold
