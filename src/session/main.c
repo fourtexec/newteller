@@ -61,6 +61,7 @@
 #include <wlr/types/wlr_text_input_v3.h>
 #include <wlr/types/wlr_viewporter.h>
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
+#include <wlr/types/wlr_tablet_tool.h>
 #include <wlr/types/wlr_touch.h>
 #include <wlr/types/wlr_virtual_pointer_v1.h>
 #include <wlr/types/wlr_xcursor_manager.h>
@@ -671,6 +672,9 @@ struct Server {
     struct wl_listener touchUp;
     struct wl_listener touchMotion;
     struct wl_listener touchFrame;
+    // Graphics tablets: the pen moves the pointer and its tip clicks.
+    struct wl_listener tabletAxis;
+    struct wl_listener tabletTip;
     struct wl_listener newXdgToplevel;
     struct wl_listener newXdgPopup;
     struct wl_listener newLayerSurface;
@@ -4122,6 +4126,39 @@ static void handleTouchFrame(struct wl_listener *listener, void *data)
     wlr_seat_touch_notify_frame(server->seat);
 }
 
+// A pen on a graphics tablet acts as a mouse: it moves the pointer to the
+// point it hovers over, and touching the surface is a left click through
+// the same path as a real click (focus, title bars, shell cards).
+// Pressure and tilt need tablet-v2, which is not offered yet.
+static void handleTabletAxis(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, tabletAxis);
+    struct wlr_tablet_tool_axis_event *event = data;
+    const double x = (event->updated_axes & WLR_TABLET_TOOL_AXIS_X) ? event->x : NAN;
+    const double y = (event->updated_axes & WLR_TABLET_TOOL_AXIS_Y) ? event->y : NAN;
+    if (isnan(x) && isnan(y))
+        return;
+    notifyActivity(server);
+    wlr_cursor_warp_absolute(server->cursor, &event->tablet->base, x, y);
+    processCursorMotion(server, event->time_msec);
+    wlr_seat_pointer_notify_frame(server->seat);
+}
+
+static void handleTabletTip(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, tabletTip);
+    struct wlr_tablet_tool_tip_event *event = data;
+    wlr_cursor_warp_absolute(server->cursor, &event->tablet->base, event->x, event->y);
+    processCursorMotion(server, event->time_msec);
+    struct wlr_pointer_button_event click = {0};
+    click.time_msec = event->time_msec;
+    click.button = BTN_LEFT;
+    click.state = event->state == WLR_TABLET_TOOL_TIP_DOWN ? WL_POINTER_BUTTON_STATE_PRESSED
+                                                           : WL_POINTER_BUTTON_STATE_RELEASED;
+    cursorButton(&server->cursorButton, &click);
+    wlr_seat_pointer_notify_frame(server->seat);
+}
+
 static void newInput(struct wl_listener *listener, void *data)
 {
     struct Server *server = wl_container_of(listener, server, newInput);
@@ -4149,6 +4186,9 @@ static void newInput(struct wl_listener *listener, void *data)
         wl_list_insert(&server->touchDevices, &touch->link);
         updateSeatCapabilities(server);
         wlr_log(WLR_INFO, "touchscreen connected: %s", device->name ? device->name : "?");
+    } else if (device->type == WLR_INPUT_DEVICE_TABLET) {
+        wlr_cursor_attach_input_device(server->cursor, device);
+        wlr_log(WLR_INFO, "graphics tablet connected: %s", device->name ? device->name : "?");
     }
 }
 
@@ -7754,6 +7794,10 @@ static void setupInput(struct Server *server)
     wl_signal_add(&server->cursor->events.touch_motion, &server->touchMotion);
     server->touchFrame.notify = handleTouchFrame;
     wl_signal_add(&server->cursor->events.touch_frame, &server->touchFrame);
+    server->tabletAxis.notify = handleTabletAxis;
+    wl_signal_add(&server->cursor->events.tablet_tool_axis, &server->tabletAxis);
+    server->tabletTip.notify = handleTabletTip;
+    wl_signal_add(&server->cursor->events.tablet_tool_tip, &server->tabletTip);
 
     server->pointerGestures = wlr_pointer_gestures_v1_create(server->display);
     server->swipeBegin.notify = handleSwipeBegin;
@@ -8042,6 +8086,8 @@ static int run(struct Server *server)
     wl_list_remove(&server->touchUp.link);
     wl_list_remove(&server->touchMotion.link);
     wl_list_remove(&server->touchFrame.link);
+    wl_list_remove(&server->tabletAxis.link);
+    wl_list_remove(&server->tabletTip.link);
     wl_list_remove(&server->swipeBegin.link);
     wl_list_remove(&server->swipeUpdate.link);
     wl_list_remove(&server->swipeEnd.link);

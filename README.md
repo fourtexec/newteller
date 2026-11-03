@@ -135,6 +135,8 @@ inside VirtualBox. The implemented pieces are:
   polkit refuses the built-in agent (no login session, no polkit daemon) no
   external one is started either - it would fail the same way and only show
   an "Error" window. The Security settings page shows the reason.
+- **Graphics tablets**: the pen moves the pointer and touching the
+  tablet clicks (no pressure yet).
 - **Touchscreens**: a touch goes to the surface under the finger and
   focuses its window like a click; shell cards close on a touch outside.
 - **Virtual machines and remote desktops** can take every key
