@@ -16,6 +16,8 @@ pkg_search_module(WLROOTS REQUIRED IMPORTED_TARGET wlroots-0.19 wlroots-0.18)
 pkg_check_modules(LIBINPUT REQUIRED IMPORTED_TARGET libinput)
 # Title bars and window thumbnails are drawn with cairo and pango.
 pkg_check_modules(CAIRO REQUIRED IMPORTED_TARGET cairo pangocairo)
+# The effects renderer builds clip regions with pixman directly.
+pkg_check_modules(PIXMAN REQUIRED IMPORTED_TARGET pixman-1)
 find_program(WAYLAND_SCANNER_EXECUTABLE wayland-scanner REQUIRED)
 
 # wlr-layer-shell support (panel, desktop, menu). Package names differ per distro,
@@ -168,6 +170,7 @@ target_link_libraries(newteller-compositor PRIVATE
     PkgConfig::WLROOTS
     PkgConfig::LIBINPUT
     PkgConfig::CAIRO
+    PkgConfig::PIXMAN
     m
     wayland-server
     xkbcommon
