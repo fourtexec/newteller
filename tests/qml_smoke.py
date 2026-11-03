@@ -1561,7 +1561,7 @@ def main():
             walk_items(panel.property("contentItem"), items)
         column_buttons = [i for i in items if isinstance(i, QQuickItem) and is_task_button(i)
                           and i.parentItem() is not None
-                          and i.parentItem().metaObject().className().startswith("QQuickColumn")]
+                          and i.parentItem().metaObject().className() == "QQuickColumn"]
         check(len(column_buttons) >= 2,
               f"a vertical dock lists its buttons in one column ({len(column_buttons)})")
         bad = [f"{b.width():.0f}x{b.height():.0f}" for b in column_buttons

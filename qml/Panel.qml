@@ -616,7 +616,7 @@ Window {
         objectName: "startButton"
         Layout.alignment: Qt.AlignVCenter | Qt.AlignHCenter
         iconName: "layout-grid"
-        label: "Start"
+        label: panel.vertical ? "" : "Start"
         foregroundColor: panel.panelTextColor
         onClicked: {
             panel.menuWanted = true;
@@ -733,7 +733,11 @@ Window {
     }
 
     component ClockText: Text {
-        text: (Settings.values["panel.showDate"]
+        // A vertical bar is too narrow for "HH:mm" on one line: hours above
+        // minutes.
+        text: panel.vertical
+              ? Qt.formatDateTime(Shell.now, "HH") + "\n" + Qt.formatDateTime(Shell.now, "mm")
+              : (Settings.values["panel.showDate"]
                ? Qt.formatDateTime(Shell.now, Settings.values["panel.dateFormat"] || "ddd d MMM") + "  "
                : "")
               + Qt.formatDateTime(Shell.now, Settings.values["panel.clockFormat"] || "HH:mm")
@@ -748,8 +752,10 @@ Window {
         id: clockButton
         objectName: "clockButton"
         Layout.alignment: Qt.AlignVCenter | Qt.AlignHCenter
-        implicitWidth: clockLabel.implicitWidth + 18
-        implicitHeight: Math.min(panel.barThickness - 10, clockLabel.implicitHeight + 10)
+        implicitWidth: panel.vertical ? Math.min(clockLabel.implicitWidth + 12, panel.barThickness - 8)
+                                      : clockLabel.implicitWidth + 18
+        implicitHeight: panel.vertical ? clockLabel.implicitHeight + 10
+                                       : Math.min(panel.barThickness - 10, clockLabel.implicitHeight + 10)
         radius: Theme.radius
         color: clockHover.hovered
                ? Qt.rgba(panel.panelTextColor.r, panel.panelTextColor.g, panel.panelTextColor.b, 0.08)
@@ -1227,10 +1233,13 @@ Window {
         id: dockStrip
         // Height of one button; on a vertical bar the buttons are squares as
         // wide as the strip.
-        readonly property real buttonExtent: panel.vertical ? width
+        // On a vertical bar the strip is exactly as wide as the pill's inside
+        // (not whatever the column layout hands out, which can be wider).
+        readonly property int verticalWidth: Math.max(16, panel.barThickness - 4 - 2 * panel.dockPadding)
+        readonly property real buttonExtent: panel.vertical ? verticalWidth
                                              : (panel.dockButtonHeight > 0 ? panel.dockButtonHeight
                                                                            : height)
-        Layout.fillWidth: panel.vertical
+        Layout.fillWidth: false
         Layout.fillHeight: !panel.vertical
         Layout.alignment: Qt.AlignCenter
         Layout.leftMargin: panel.vertical ? 0 : Math.max(0, panel.panelSpacing - 4)
@@ -1238,13 +1247,13 @@ Window {
         Layout.topMargin: panel.vertical ? Math.max(0, panel.panelSpacing - 4) : 0
         Layout.bottomMargin: panel.vertical ? Math.max(0, panel.panelSpacing - 4) : 0
         Layout.preferredWidth: panel.vertical
-                               ? -1
+                               ? verticalWidth
                                : (panel.dockMultiRow
                                   ? Math.min(panel.dockWrapWidth, panel.dockMaxWidth)
                                   : Math.min(contentWidth, panel.dockMaxWidth))
         Layout.preferredHeight: panel.vertical ? Math.min(contentHeight, panel.dockMaxHeight) : -1
         Layout.minimumWidth: 0
-        Layout.maximumWidth: panel.vertical ? Number.POSITIVE_INFINITY : panel.dockMaxWidth
+        Layout.maximumWidth: panel.vertical ? verticalWidth : panel.dockMaxWidth
         clip: true
         contentWidth: stripLoader.item ? stripLoader.item.width : 0
         contentHeight: stripLoader.item ? stripLoader.item.height : 0

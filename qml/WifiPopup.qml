@@ -154,15 +154,6 @@ DropdownWindow {
             model: Session.wifiNetworks
             boundsBehavior: Flickable.StopAtBounds
 
-            Text {
-                anchors.centerIn: parent
-                visible: networks.count === 0 && Session.wifiStatus.length === 0
-                text: Session.wifiBusy ? "Searching for networks..." : "No networks found"
-                color: Theme.muted
-                font.family: Theme.fontFamily
-                font.pointSize: Theme.fontSize
-            }
-
             delegate: Rectangle {
                 required property var modelData
                 width: networks.width
@@ -222,6 +213,15 @@ DropdownWindow {
                     }
                 }
             }
+        }
+
+        Text {
+            Layout.alignment: Qt.AlignHCenter
+            visible: networks.count === 0 && Session.wifiStatus.length === 0
+            text: Session.wifiBusy ? "Searching for networks..." : "No networks found"
+            color: Theme.muted
+            font.family: Theme.fontFamily
+            font.pointSize: Theme.fontSize
         }
 
         RowLayout {
