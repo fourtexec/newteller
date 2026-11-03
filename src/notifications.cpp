@@ -29,29 +29,10 @@ constexpr int kMaxActive = 8;
 
 } // namespace
 
-QDBusArgument &operator<<(QDBusArgument &argument, const NotificationDaemon::ServerInformation &info)
-{
-    argument.beginStructure();
-    argument << info.name << info.vendor << info.version << info.specVersion;
-    argument.endStructure();
-    return argument;
-}
-
-const QDBusArgument &operator>>(const QDBusArgument &argument, NotificationDaemon::ServerInformation &info)
-{
-    argument.beginStructure();
-    argument >> info.name >> info.vendor >> info.version >> info.specVersion;
-    argument.endStructure();
-    return argument;
-}
-
 NotificationDaemon::NotificationDaemon(Settings *settings, QObject *parent)
     : QObject(parent)
     , m_settings(settings)
 {
-    qRegisterMetaType<ServerInformation>("ServerInformation");
-    qDBusRegisterMetaType<ServerInformation>();
-
     setupDBus();
     setupSocket();
 
@@ -111,7 +92,8 @@ void NotificationDaemon::setupDBus()
 
     m_registeredObject =
         bus.registerObject(QStringLiteral("/org/freedesktop/Notifications"), this,
-                           QDBusConnection::ExportAllSlots | QDBusConnection::ExportAllSignals);
+                           QDBusConnection::ExportScriptableSlots
+                               | QDBusConnection::ExportScriptableSignals);
     m_ownsDBus = m_registeredObject;
     emit dbusChanged();
 }
@@ -186,7 +168,7 @@ void NotificationDaemon::readSocket()
     }
 }
 
-uint NotificationDaemon::Notify(uint replacesId, const QString &appName, const QString &appIcon,
+uint NotificationDaemon::Notify(const QString &appName, uint replacesId, const QString &appIcon,
                                 const QString &summary, const QString &body, const QStringList &actions,
                                 const QVariantMap &hints, int expireTimeout)
 {
@@ -209,10 +191,13 @@ QStringList NotificationDaemon::GetCapabilities() const
     return {QStringLiteral("actions"), QStringLiteral("body")};
 }
 
-NotificationDaemon::ServerInformation NotificationDaemon::GetServerInformation() const
+QString NotificationDaemon::GetServerInformation(QString &vendor, QString &version,
+                                                 QString &specVersion) const
 {
-    return {QStringLiteral("NewTeller"), QStringLiteral("fourtexec"),
-            QStringLiteral(NEWTELLER_VERSION), QStringLiteral("1.2")};
+    vendor = QStringLiteral("fourtexec");
+    version = QStringLiteral(NEWTELLER_VERSION);
+    specVersion = QStringLiteral("1.2");
+    return QStringLiteral("NewTeller");
 }
 
 uint NotificationDaemon::send(const QString &appName, const QString &summary, const QString &body,
@@ -225,15 +210,34 @@ uint NotificationDaemon::publish(uint replacesId, const QString &appName, const 
                                  const QString &summary, const QString &body, const QStringList &actions,
                                  const QVariantMap &hints, int expireTimeout)
 {
-    if (replacesId > 0)
-        dismiss(replacesId, kReasonClosed);
+    // replaces_id updates a notification in place and keeps its id
+    // (progress, volume, "now playing"). It is not closed: the application
+    // would take NotificationClosed for the user dismissing it.
+    int replaceAt = -1;
+    bool known = false;
+    if (replacesId > 0) {
+        for (int i = 0; i < m_active.size(); ++i) {
+            if (m_active.at(i).toMap().value(QStringLiteral("id")).toUInt() == replacesId) {
+                replaceAt = i;
+                known = true;
+                break;
+            }
+        }
+        for (int i = m_history.size() - 1; i >= 0; --i) {
+            if (m_history.at(i).toMap().value(QStringLiteral("id")).toUInt() == replacesId) {
+                m_history.removeAt(i); // the update takes its place
+                known = true;
+            }
+        }
+    }
 
     const bool critical = hints.value(QStringLiteral("urgency")).toInt() >= kUrgencyCritical;
     const bool dnd = m_settings->value(QStringLiteral("notifications.doNotDisturb"), false).toBool()
                      && !critical;
 
     QVariantMap entry;
-    const uint id = m_nextId++;
+    const uint id = known ? replacesId : m_nextId++;
+    entry.insert(QStringLiteral("revision"), ++m_revision);
     entry.insert(QStringLiteral("id"), id);
     entry.insert(QStringLiteral("app"), appName.isEmpty() ? QStringLiteral("NewTeller") : appName);
     entry.insert(QStringLiteral("summary"), summary);
@@ -247,15 +251,21 @@ uint NotificationDaemon::publish(uint replacesId, const QString &appName, const 
     int timeout = expireTimeout;
     if (timeout < 0)
         timeout = m_settings->value(QStringLiteral("notifications.duration"), 6).toInt() * 1000;
-    if (critical && timeout <= 0)
-        timeout = 0; // critical notifications never expire on their own
+    // Critical notifications stay until the user closes them, unless the
+    // application asked for a timeout itself.
+    if (critical && expireTimeout < 0)
+        timeout = 0;
     entry.insert(QStringLiteral("timeout"), timeout);
 
     m_history.append(entry);
     trimHistory();
     emit historyChanged();
 
-    if (!dnd && m_settings->value(QStringLiteral("notifications.enabled"), true).toBool()) {
+    if (replaceAt >= 0) {
+        // Shown already: update the popup where it is, even under DND.
+        m_active[replaceAt] = entry;
+        emit activeChanged();
+    } else if (!dnd && m_settings->value(QStringLiteral("notifications.enabled"), true).toBool()) {
         if (m_active.size() >= kMaxActive)
             dismiss(m_active.first().toMap().value(QStringLiteral("id")).toUInt(), kReasonExpired);
         m_active.append(entry);

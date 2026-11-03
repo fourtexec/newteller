@@ -290,6 +290,35 @@ if has_shell_name; then
         exit 1
     fi
 
+    # org.freedesktop.Notifications as applications call it (libnotify uses
+    # the interface name and the spec's argument order), and replaces_id
+    # updates a notification in place with the same id.
+    notify() {
+        gdbus call --session --dest org.freedesktop.Notifications \
+            --object-path /org/freedesktop/Notifications \
+            --method org.freedesktop.Notifications.Notify \
+            session-smoke "$1" '' 'Download' "$2" '[]' '{}' 'int32 5000' 2>&1
+    }
+    first=$(notify 0 '10%')
+    first_id=$(printf '%s' "$first" | sed -n 's/.*uint32 \([0-9]*\).*/\1/p')
+    if [[ -z $first_id ]]; then
+        echo "applications cannot send notifications: $first" >&2
+        exit 1
+    fi
+    second=$(notify "$first_id" '90%')
+    if [[ $second != *"uint32 $first_id,"* ]]; then
+        echo "replacing notification $first_id gave another id: $second" >&2
+        exit 1
+    fi
+    info=$(gdbus call --session --dest org.freedesktop.Notifications \
+        --object-path /org/freedesktop/Notifications \
+        --method org.freedesktop.Notifications.GetServerInformation 2>&1)
+    if [[ $info != "('NewTeller', "* ]]; then
+        echo "GetServerInformation is not four strings: $info" >&2
+        exit 1
+    fi
+    echo "session smoke: notifications arrive over D-Bus and update in place (id $first_id)"
+
     # org.freedesktop.ScreenSaver.Inhibit (video players, XWayland apps)
     # keeps the screen awake while the caller stays on the bus, and is
     # released when it leaves.

@@ -105,7 +105,8 @@ Window {
                 body: e.body || "",
                 icon: e.icon || "",
                 actions: JSON.stringify(e.actions || []),
-                timeout: e.timeout || 0
+                timeout: e.timeout || 0,
+                revision: e.revision || 0
             };
             var at = -1;
             for (var j = 0; j < cards.count; ++j) {
@@ -114,12 +115,15 @@ Window {
                     break;
                 }
             }
-            if (at < 0)
+            if (at < 0) {
                 cards.append(cardData);
-            else if (at !== i)
-                cards.move(at, i, 1);
-            else
+            } else {
+                // A moved card is updated too (replaced notifications keep
+                // their id but not their text).
+                if (at !== i)
+                    cards.move(at, i, 1);
                 cards.set(i, cardData);
+            }
         }
         syncVisibility();
     }
@@ -237,21 +241,35 @@ Window {
             readonly property var actions: entry.actions.filter(a => a && a.length > 0)
             // 1.0 -> 0.0 while the timeout runs; drives the progress line.
             property real progress: (entry.timeout || 0) > 0 ? 1.0 : 0.0
+            // A new revision (the notification was replaced) starts the
+            // timeout again.
+            readonly property int revision: model.revision
 
             // Expire on the daemon-side timeout (0 = sticky).
+            function arm() {
+                if ((card.entry.timeout || 0) > 0 && card.visible) {
+                    lifeTimer.restart();
+                    lifeAnimation.restart();
+                } else {
+                    lifeTimer.stop();
+                    lifeAnimation.stop();
+                }
+            }
+            onRevisionChanged: arm()
+            onVisibleChanged: arm()
+            Component.onCompleted: arm()
             Timer {
                 id: lifeTimer
-                running: card.entry.timeout > 0 && card.visible
                 interval: card.entry.timeout || 0
                 onTriggered: Notifications.dismiss(card.entry.id, 1)
             }
             NumberAnimation {
+                id: lifeAnimation
                 target: card
                 property: "progress"
                 from: 1.0
                 to: 0.0
                 duration: Math.max(1, card.entry.timeout || 1)
-                running: lifeTimer.running
             }
 
             MouseArea {

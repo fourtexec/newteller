@@ -23,6 +23,10 @@ class Settings;
 // Exposed to QML as the context property `Notifications`.
 class NotificationDaemon : public QObject {
     Q_OBJECT
+    // The D-Bus interface name callers use (notify-send, libnotify, browsers).
+    // Without it QtDBus publishes "local.<app>.NotificationDaemon" and every
+    // call to org.freedesktop.Notifications fails with UnknownInterface.
+    Q_CLASSINFO("D-Bus Interface", "org.freedesktop.Notifications")
     // The notifications that should be on screen right now:
     // { id, app, summary, body, icon, actions, timeout, urgent, time }
     Q_PROPERTY(QVariantList active READ active NOTIFY activeChanged)
@@ -56,21 +60,13 @@ public:
     // centre). Notifications still on screen are dismissed first.
     Q_INVOKABLE void removeHistory(uint id);
 
-    // Reply of GetServerInformation() as a D-Bus struct (ssss).
-    struct ServerInformation {
-        QString name;
-        QString vendor;
-        QString version;
-        QString specVersion;
-    };
-
     // The socket `newteller-ctl notify` writes into.
     static QString socketPath();
 
 signals:
-    // org.freedesktop.Notifications signals.
-    void NotificationClosed(uint id, uint reason);
-    void ActionInvoked(uint id, const QString &actionKey);
+    // org.freedesktop.Notifications signals (the only ones on D-Bus).
+    Q_SCRIPTABLE void NotificationClosed(uint id, uint reason);
+    Q_SCRIPTABLE void ActionInvoked(uint id, const QString &actionKey);
 
     void activeChanged();
     void historyChanged();
@@ -78,12 +74,17 @@ signals:
 
 public slots:
     // --- org.freedesktop.Notifications methods -------------------------------
-    uint Notify(uint replacesId, const QString &appName, const QString &appIcon,
-                const QString &summary, const QString &body, const QStringList &actions,
-                const QVariantMap &hints, int expireTimeout);
-    void CloseNotification(uint id);
-    QStringList GetCapabilities() const;
-    ServerInformation GetServerInformation() const;
+    // Q_SCRIPTABLE: only these are exported on the bus.
+    // Spec order: app_name first, then replaces_id (signature susssasa{sv}i).
+    Q_SCRIPTABLE uint Notify(const QString &appName, uint replacesId, const QString &appIcon,
+                             const QString &summary, const QString &body, const QStringList &actions,
+                             const QVariantMap &hints, int expireTimeout);
+    Q_SCRIPTABLE void CloseNotification(uint id);
+    Q_SCRIPTABLE QStringList GetCapabilities() const;
+    // Four out arguments (name, vendor, version, spec version), as the
+    // specification has it - not one struct.
+    Q_SCRIPTABLE QString GetServerInformation(QString &vendor, QString &version,
+                                              QString &specVersion) const;
 
 private:
     uint publish(uint replacesId, const QString &appName, const QString &appIcon,
@@ -102,17 +103,10 @@ private:
     bool m_ownsDBus = false;
     bool m_registeredObject = false;
     uint m_nextId = 1;
+    // Bumped on every publish, so a replaced popup restarts its timer.
+    uint m_revision = 0;
     QLocalServer *m_server = nullptr;
     // Partial lines per connected sender, until a newline completes one JSON object.
     QHash<QLocalSocket *, QByteArray> m_buffered;
 };
 
-Q_DECLARE_METATYPE(NotificationDaemon::ServerInformation)
-
-class QDBusArgument;
-
-// Marshalling of the ServerInformation struct. Declared in the global
-// namespace next to the type: argument-dependent lookup in
-// qDBusRegisterMetaType() cannot see operators defined in other scopes.
-QDBusArgument &operator<<(QDBusArgument &argument, const NotificationDaemon::ServerInformation &info);
-const QDBusArgument &operator>>(const QDBusArgument &argument, NotificationDaemon::ServerInformation &info);
