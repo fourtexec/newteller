@@ -1331,6 +1331,13 @@ def main():
         with open(qml, encoding="utf-8") as handle:
             source_texts.update(qml_unquote(t) for t in
                                 re.findall(r'qsTr\("((?:[^"\\]|\\.)*)"\)', handle.read()))
+    # C++ messages shown in the UI go through tr("..." "...") (adjacent
+    # literals form one string).
+    for cpp in glob.glob(os.path.join(ROOT, "src", "*.cpp")):
+        with open(cpp, encoding="utf-8") as handle:
+            for call in re.findall(r'\btr\(\s*((?:"(?:[^"\\]|\\.)*"\s*)+)\)', handle.read()):
+                parts = re.findall(r'"((?:[^"\\]|\\.)*)"', call)
+                source_texts.add(qml_unquote("".join(parts)))
     for path in glob.glob(os.path.join(ROOT, "i18n", "*.json")):
         with open(path, encoding="utf-8") as handle:
             table = json.load(handle)

@@ -1087,7 +1087,7 @@ QString SessionServices::wifiDevice()
 {
     m_wifiStatus.clear();
     if (!wifiAvailable()) {
-        m_wifiStatus = QStringLiteral("NetworkManager is not running. Install and start it "
+        m_wifiStatus = tr("NetworkManager is not running. Install and start it "
                                       "(network-manager / NetworkManager) to use Wi-Fi.");
         return QString();
     }
@@ -1107,24 +1107,24 @@ QString SessionServices::wifiDevice()
             const bool enabled = nmProperty(kNmPath, kNm, QStringLiteral("WirelessEnabled")).toBool();
             const bool hardware = nmProperty(kNmPath, kNm, QStringLiteral("WirelessHardwareEnabled")).toBool();
             if (!hardware)
-                m_wifiStatus = QStringLiteral("Wi-Fi is blocked by the hardware switch or the airplane-mode key.");
+                m_wifiStatus = tr("Wi-Fi is blocked by the hardware switch or the airplane-mode key.");
             else if (!enabled)
-                m_wifiStatus = QStringLiteral("Wi-Fi is turned off.");
+                m_wifiStatus = tr("Wi-Fi is turned off.");
             else
-                m_wifiStatus = QStringLiteral("The Wi-Fi adapter %1 (driver %2) is not ready - "
+                m_wifiStatus = tr("The Wi-Fi adapter %1 (driver %2) is not ready - "
                                               "its firmware may be missing.").arg(iface, driver);
         }
         return device.path();
     }
     if (!unmanaged.isEmpty()) {
-        m_wifiStatus = QStringLiteral("The Wi-Fi adapter %1 is not managed by NetworkManager "
+        m_wifiStatus = tr("The Wi-Fi adapter %1 is not managed by NetworkManager "
                                       "(it is configured in /etc/network/interfaces). Remove it "
                                       "there and restart NetworkManager.").arg(unmanaged);
     } else if (sysfsHasWireless()) {
-        m_wifiStatus = QStringLiteral("NetworkManager does not see the Wi-Fi adapter. "
+        m_wifiStatus = tr("NetworkManager does not see the Wi-Fi adapter. "
                                       "Restart NetworkManager or check its configuration.");
     } else {
-        m_wifiStatus = QStringLiteral("No Wi-Fi adapter was found: its driver or firmware is "
+        m_wifiStatus = tr("No Wi-Fi adapter was found: its driver or firmware is "
                                       "missing (see 'dmesg | grep -i firmware').");
     }
     return QString();
@@ -1212,7 +1212,7 @@ void SessionServices::connectWifi(const QString &ssid, const QString &password)
     }
     if (network.value(QStringLiteral("enterprise")).toBool()) {
         emit wifiConnectFinished(false, ssid,
-                                 QStringLiteral("This is an enterprise (802.1X) network; set it up "
+                                 tr("This is an enterprise (802.1X) network; set it up "
                                                 "with nm-connection-editor."));
         return;
     }
@@ -1253,7 +1253,7 @@ void SessionServices::connectWifi(const QString &ssid, const QString &password)
                         QVariant::fromValue(QDBusObjectPath(accessPoint))}, 5000);
     } else {
         if (secure && password.isEmpty()) {
-            emit wifiConnectFinished(false, ssid, QStringLiteral("Enter the password for %1").arg(ssid));
+            emit wifiConnectFinished(false, ssid, tr("Enter the password for %1").arg(ssid));
             return;
         }
         NMSettingsMap settings;
