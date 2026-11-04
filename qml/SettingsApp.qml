@@ -1066,7 +1066,7 @@ Window {
                                 width: parent.width
                                 title: qsTr("Auto-hide delay")
                                 settingKey: "panel.autoHideDelay"
-                                SettingsStepper { from: 0; to: 5000; step: 100; suffix: " ms" }
+                                SettingsStepper { from: 0; to: 5000; step: 100; suffix: qsTr(" ms") }
                             }
                             SettingsRow {
                                 width: parent.width
@@ -1471,7 +1471,7 @@ Window {
                                 width: parent.width
                                 title: qsTr("Slideshow interval")
                                 settingKey: "desktop.wallpaperSlideshowInterval"
-                                SettingsStepper { from: 10; to: 3600; step: 10; suffix: " s" }
+                                SettingsStepper { from: 10; to: 3600; step: 10; suffix: qsTr(" s") }
                             }
                         }
 
@@ -1702,7 +1702,7 @@ Window {
                                 width: parent.width
                                 title: qsTr("Startup delay (seconds)")
                                 settingKey: "startup.delay"
-                                SettingsStepper { from: 0; to: 60; step: 1; suffix: " s" }
+                                SettingsStepper { from: 0; to: 60; step: 1; suffix: qsTr(" s") }
                             }
                             SettingsRow {
                                 width: parent.width
@@ -1842,7 +1842,7 @@ Window {
                                 width: parent.width
                                 title: qsTr("Sampling interval")
                                 settingKey: "system.interval"
-                                SettingsStepper { from: 250; to: 60000; step: 250; suffix: " ms" }
+                                SettingsStepper { from: 250; to: 60000; step: 250; suffix: qsTr(" ms") }
                             }
                             SettingsRow {
                                 width: parent.width
@@ -1891,7 +1891,7 @@ Window {
                                 width: parent.width
                                 title: qsTr("Config file watching")
                                 settingKey: "watch.debounce"
-                                SettingsStepper { from: 0; to: 10000; step: 50; suffix: " ms" }
+                                SettingsStepper { from: 0; to: 10000; step: 50; suffix: qsTr(" ms") }
                             }
                         }
 
@@ -2009,7 +2009,7 @@ Window {
                                 title: qsTr("Duration")
                                 subtitle: "0 keeps a popup until it is clicked."
                                 settingKey: "notifications.duration"
-                                SettingsStepper { from: 0; to: 120; suffix: " s" }
+                                SettingsStepper { from: 0; to: 120; suffix: qsTr(" s") }
                             }
                             SettingsRow {
                                 width: parent.width
@@ -2962,13 +2962,13 @@ Window {
                                 title: qsTr("Repeat delay")
                                 subtitle: qsTr("How long a key is held before it repeats.")
                                 settingKey: "keyboard.repeatDelay"
-                                SettingsSlider { settingKey: "keyboard.repeatDelay"; from: 150; to: 1000; step: 25; suffix: " ms" }
+                                SettingsSlider { settingKey: "keyboard.repeatDelay"; from: 150; to: 1000; step: 25; suffix: qsTr(" ms") }
                             }
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Repeat rate")
                                 settingKey: "keyboard.repeatRate"
-                                SettingsSlider { settingKey: "keyboard.repeatRate"; from: 5; to: 60; step: 1; suffix: " /s" }
+                                SettingsSlider { settingKey: "keyboard.repeatRate"; from: 5; to: 60; step: 1; suffix: qsTr(" /s") }
                             }
                             SettingsRow {
                                 width: parent.width

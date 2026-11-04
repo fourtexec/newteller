@@ -1,4 +1,7 @@
 {
+ " /s": " /с",
+ " ms": " мс",
+ " s": " с",
  "%1% left. Plug in now or the computer will shut down.": "Осталось %1%. Подключите зарядку, иначе компьютер выключится.",
  "%1% left. Plug in soon.": "Осталось %1%. Скоро понадобится зарядка.",
  "A copy of the settings was saved to %1": "Копия настроек сохранена в %1",
