@@ -239,6 +239,8 @@ Settings::Settings(QObject *parent)
     // Window management
     m_defaults.insert(QStringLiteral("windowRules.alwaysOnTop"), QStringList());
     m_defaults.insert(QStringLiteral("windowRules.maximized"), QStringList());
+    // Screen recordings (wf-recorder) also record the default microphone.
+    m_defaults.insert(QStringLiteral("recorder.audio"), false);
     // Power management
     m_defaults.insert(QStringLiteral("power.sleepAction"), QStringLiteral("suspend"));
     m_defaults.insert(QStringLiteral("power.lockOnSleep"), true);

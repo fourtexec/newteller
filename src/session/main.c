@@ -3924,6 +3924,11 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
         requestWindowMenu(view, view->x + 16, top);
         return true;
     }
+    // Super+Alt+R: start or stop a screen recording (as Windows' Game Bar).
+    if (logo && alt && !ctrl && (sym == XKB_KEY_r || sym == XKB_KEY_R)) {
+        shellAction("toggleScreenRecording");
+        return true;
+    }
     // Super+1..9: start or bring up the Nth application on the dock (as on
     // Windows). The shell owns the dock, so it gets the index.
     if (logo && !alt && !ctrl && !shift && sym >= XKB_KEY_1 && sym <= XKB_KEY_9) {

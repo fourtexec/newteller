@@ -267,6 +267,9 @@ QtObject {
             root.startMenu.hide();
             root.runDialog.show();
         }
+        function onScreenRecordingToggleRequested() {
+            Recorder.toggle();
+        }
         function onDockItemRequested(index) {
             // The panel of the first screen: every panel shows the same dock.
             const panel = root.panels.objectAt(0);

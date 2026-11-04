@@ -454,6 +454,11 @@ void ShellController::showForceQuit()
     emit forceQuitRequested();
 }
 
+void ShellController::toggleScreenRecording()
+{
+    emit screenRecordingToggleRequested();
+}
+
 void ShellController::activateDockItem(int index)
 {
     if (index >= 0)

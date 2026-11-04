@@ -1059,8 +1059,8 @@ Window {
             id: layoutHover
             onHoveredChanged: {
                 if (hovered)
-                    panel.showToolTip(layoutButton, Session.keyboardLayoutName
-                                      + " - Super+Space switches");
+                    panel.showToolTip(layoutButton, qsTr("%1 - Super+Space switches")
+                                                        .arg(Session.keyboardLayoutName));
                 else
                     panel.hideToolTip();
             }
@@ -1085,6 +1085,67 @@ Window {
     }
 
     // --- bell: the notification centre --------------------------------------
+    // --- screen recording: a red pill with the time; a click stops it ------
+    component RecordingButton: Rectangle {
+        id: recordingButton
+        objectName: "recordingButton"
+
+        Layout.alignment: Qt.AlignVCenter | Qt.AlignHCenter
+        visible: Recorder.recording
+        implicitWidth: panel.vertical ? 30 : recordingRow.implicitWidth + 16
+        height: Math.min(panel.barThickness - 10, 30)
+        radius: height / 2
+        color: Qt.rgba(0.9, 0.28, 0.3, recordingHover.hovered ? 0.32 : 0.2)
+
+        HoverHandler {
+            id: recordingHover
+            onHoveredChanged: {
+                if (hovered)
+                    panel.showToolTip(recordingButton, qsTr("Stop recording (Super+Alt+R)"));
+                else
+                    panel.hideToolTip();
+            }
+        }
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                panel.hideToolTip();
+                Recorder.stop();
+            }
+        }
+        Row {
+            id: recordingRow
+            anchors.centerIn: parent
+            spacing: 6
+
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 10
+                height: 10
+                radius: 5
+                color: "#e5484d"
+                SequentialAnimation on opacity {
+                    running: Recorder.recording
+                    loops: Animation.Infinite
+                    NumberAnimation { to: 0.35; duration: 700 }
+                    NumberAnimation { to: 1; duration: 700 }
+                }
+            }
+            Text {
+                visible: !panel.vertical
+                anchors.verticalCenter: parent.verticalCenter
+                text: {
+                    const s = Recorder.elapsed;
+                    return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+                }
+                color: panel.panelTextColor
+                font.family: Theme.fontFamily
+                font.pointSize: Theme.fontSize - 1
+            }
+        }
+    }
+
     component BellButton: Rectangle {
         id: bellButton
         objectName: "bellButton"
@@ -1457,6 +1518,7 @@ Window {
                     PluginSlot {}
 
                     TrayBox {}
+                    RecordingButton {}
                     LayoutButton {
                         visible: panel.showKeyboardLayout
                     }
@@ -1523,6 +1585,7 @@ Window {
                     PluginSlot {}
 
                     TrayBox {}
+                    RecordingButton {}
                     LayoutButton {
                         visible: panel.showKeyboardLayout
                     }

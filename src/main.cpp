@@ -15,6 +15,7 @@
 #include "screensaver.h"
 #include "translator.h"
 #include "clipboardhistory.h"
+#include "screenrecorder.h"
 #include "bluetooth.h"
 #include "bluetoothagent.h"
 #include "drivemonitor.h"
@@ -257,6 +258,7 @@ int main(int argc, char *argv[])
                      &SessionServices::setIdleInhibited);
     QObject::connect(&screenSaver, &ScreenSaverService::lockRequested, &session, &SessionServices::lock);
     ClipboardHistory clipboard(&settings);
+    ScreenRecorder recorder(&settings, &notifications);
     Bluetooth bluetooth;
     // Pairing codes and confirmations (org.bluez.Agent1), only in the
     // NewTeller session: another desktop has its own agent.
@@ -331,6 +333,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("Quick"), &quick);
     engine.rootContext()->setContextProperty(QStringLiteral("Session"), &session);
     engine.rootContext()->setContextProperty(QStringLiteral("Clipboard"), &clipboard);
+    engine.rootContext()->setContextProperty(QStringLiteral("Recorder"), &recorder);
     engine.rootContext()->setContextProperty(QStringLiteral("Bluetooth"), &bluetooth);
     engine.rootContext()->setContextProperty(QStringLiteral("Polkit"), &polkit);
 

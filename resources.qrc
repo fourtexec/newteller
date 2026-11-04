@@ -121,6 +121,8 @@
     <file>icons/terminal.svg</file>
     <file>icons/trash.svg</file>
     <file>icons/type.svg</file>
+    <file>icons/video.svg</file>
+    <file>icons/circle-stop.svg</file>
     <file>icons/volume-2.svg</file>
     <file>icons/volume-x.svg</file>
     <file>icons/wifi.svg</file>

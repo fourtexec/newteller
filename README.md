@@ -269,6 +269,12 @@ inside VirtualBox. The implemented pieces are:
   area picked with the mouse (slurp); the PNG lands in `Screenshots` inside the pictures folder (`~/Pictures`, or its
   localized name from `user-dirs.dirs`), is
   copied to the clipboard (wl-copy) and announced through the notification daemon
+- **Screen recording** (wf-recorder): quick settings records the whole screen
+  or an area picked with the mouse (slurp), optionally with the microphone
+  (`recorder.audio`); `Super+Alt+R` starts and stops it. A red pill on the
+  panel shows the time and stops the recording; the MP4 lands in
+  `Screencasts` inside the videos folder and a notification offers Play and
+  Show in folder.
 - Multi-monitor: one desktop and one panel per screen
 - Rust core (application search index, metrics sampler, config, watcher) with a
   C++/Qt fallback, plus the `newteller-ctl` command line tool
@@ -392,7 +398,7 @@ these shortcuts globally, even when an application has focus:
 `Super+Up`/`Super+Down` (maximise/restore), `Super+Shift+Left`/`Super+Shift+Right`
 (move to another output), `Super+D` (show desktop), `Super+M` (maximise),
 `Super+F` (fullscreen), `Super+L` (lock), `Super+Space` (next keyboard layout),
-`Super+V` (clipboard history), `Super+1…9` (the Nth dock application: start
+`Super+V` (clipboard history), `Super+Alt+R` (start/stop screen recording), `Super+1…9` (the Nth dock application: start
 it, bring it up, or cycle its windows), `Alt+Space` (window menu), `Super+N` (notifications), `Super+A` (quick settings), `Super+R` (run), `Super+E` (home
 folder), `Super+I` (settings), `Super+Shift+S` (area screenshot),
 `Ctrl+Super+Left/Right` (switch desktop, with `Shift` to move the window),

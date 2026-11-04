@@ -427,6 +427,7 @@ class Shell(QObject):
     forceQuitRequested = Signal()
     runDialogRequested = Signal()
     dockItemRequested = Signal(int)
+    screenRecordingToggleRequested = Signal()
 
     def __init__(self, desktop_dir, home_dir):
         super().__init__()
@@ -1196,6 +1197,45 @@ class ClipboardStub(QObject):
         self.calls.append(("clear",))
 
 
+class RecorderStub(QObject):
+    """Stand-in for the Recorder context property (src/screenrecorder.h)."""
+
+    stateChanged = Signal()
+    elapsedChanged = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self.calls = []
+        self._recording = False
+
+    available = Property(bool, lambda self: True, constant=True)
+    areaAvailable = Property(bool, lambda self: True, constant=True)
+    busy = Property(bool, lambda self: self._recording, notify=stateChanged)
+    recording = Property(bool, lambda self: self._recording, notify=stateChanged)
+    elapsed = Property(int, lambda self: 75 if self._recording else 0, notify=elapsedChanged)
+
+    @Slot(bool, str)
+    def start(self, area, screen):
+        self.calls.append(("start", area))
+        self._recording = True
+        self.stateChanged.emit()
+        self.elapsedChanged.emit()
+
+    @Slot()
+    def stop(self):
+        self.calls.append(("stop",))
+        self._recording = False
+        self.stateChanged.emit()
+        self.elapsedChanged.emit()
+
+    @Slot()
+    def toggle(self):
+        if self._recording:
+            self.stop()
+        else:
+            self.start(False, "")
+
+
 class Quick(QObject):
     """Stand-in for the QuickSettings context property (src/quicksettings.h)."""
 
@@ -1350,6 +1390,7 @@ def main():
     notifications, file_portal = Notifications(), FilePortal()
     tray, quick, session = Tray(), Quick(), Session()
     clipboard = ClipboardStub()
+    recorder = RecorderStub()
     bluetooth = BluetoothStub()
     polkit = PolkitStub()
     engine = QQmlApplicationEngine()
@@ -1357,7 +1398,8 @@ def main():
                       ("Plugins", plugin_manager), ("System", system), ("Windows", window_list),
                       ("Notifications", notifications), ("FilePortal", file_portal),
                       ("Tray", tray), ("Quick", quick), ("Session", session),
-                      ("Clipboard", clipboard), ("Bluetooth", bluetooth), ("Polkit", polkit)):
+                      ("Clipboard", clipboard), ("Bluetooth", bluetooth), ("Polkit", polkit),
+                      ("Recorder", recorder)):
         engine.rootContext().setContextProperty(name, obj)
 
     failures = []
@@ -2308,6 +2350,26 @@ def main():
             QTest.qWait(300)
             check(("moveWindow", 7, 2) in session.calls,
                   f"the window menu moves the window to another desktop ({session.calls})")
+
+        # Screen recording: quick settings starts it, the panel shows a pill
+        # with the time, Super+Alt+R (through Shell) stops it.
+        quick_cards = windows_of_kind("QuickSettingsPopup")
+        if quick_cards:
+            record = quick_cards[0].findChild(QObject, "recorderScreen")
+            check(record is not None, "quick settings has a Record the screen button")
+            if record is not None:
+                QMetaObject.invokeMethod(record, "clicked")
+                QTest.qWait(300)
+                check(("start", False) in recorder.calls,
+                      f"the Screen button starts a recording ({recorder.calls})")
+                pill = panel.findChild(QObject, "recordingButton")
+                check(pill is not None and pill.property("visible"),
+                      "the panel shows the recording pill while recording")
+                shell.screenRecordingToggleRequested.emit()
+                QTest.qWait(100)
+                check(("stop",) in recorder.calls, "Super+Alt+R stops the recording")
+                check(pill is None or not pill.property("visible"),
+                      "the recording pill goes away when the recording stops")
 
         # Panel shortcuts that never open a card: the middle click mutes, the
         # bell's right click flips do-not-disturb.

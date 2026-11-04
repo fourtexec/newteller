@@ -83,6 +83,8 @@ public:
     Q_INVOKABLE void showForceQuit();
     // Super+1..9 (from the compositor): the dock application at `index`.
     Q_INVOKABLE void activateDockItem(int index);
+    // Super+Alt+R: start or stop recording the screen.
+    Q_INVOKABLE void toggleScreenRecording();
     Q_INVOKABLE void openConfig() const;
     // Opens the path in the file manager (or its handler for directories).
     Q_INVOKABLE void openPath(const QString &path) const;
@@ -152,6 +154,7 @@ signals:
     void taskViewToggleRequested();
     void forceQuitRequested();
     void dockItemRequested(int index);
+    void screenRecordingToggleRequested();
 
 private:
     void openOrSay(const QUrl &url) const;
