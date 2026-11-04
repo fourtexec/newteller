@@ -102,6 +102,9 @@ public:
     // Creates "name" in the folder (path or file:// URL), or "name 2", "name 3"
     // when that exists; returns the new folder's path, empty on failure.
     Q_INVOKABLE QString createFolder(const QString &parent, const QString &name) const;
+    // Renames a file or folder (path or file:// URL) within its folder; says
+    // why on screen when it cannot (name taken, invalid, no permission).
+    Q_INVOKABLE bool renameFile(const QString &path, const QString &newName) const;
     // Machine and configuration diagnostics, same shape as `newteller-ctl doctor`.
     Q_INVOKABLE QVariantMap diagnostics() const;
 

@@ -424,6 +424,8 @@ Window {
                 required property bool fileIsDir
 
                 readonly property string gridKey: "icon:" + fileName
+                readonly property bool renaming: desk.renamingUrl.length > 0
+                                                 && desk.renamingUrl === fileUrl.toString()
                 // A launcher of an installed application shows that
                 // application's icon and name, and a double-click starts it.
                 readonly property bool isLauncher: !fileIsDir && fileName.toLowerCase().endsWith(".desktop")
@@ -507,12 +509,61 @@ Window {
                     wrapMode: Text.Wrap
                     elide: Text.ElideRight
                     maximumLineCount: 2
+                    visible: !iconDelegate.renaming
                     text: iconDelegate.label
                     color: desk.iconColor && desk.iconColor.length > 0 ? desk.iconColor : "white"
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize
                     style: desk.iconShadow ? Text.Outline : Text.Plain
                     styleColor: "#80000000"
+                }
+
+                // Rename in place: Enter keeps the new name, Escape or a
+                // click elsewhere cancels.
+                Rectangle {
+                    visible: iconDelegate.renaming
+                    anchors.top: icon.bottom
+                    anchors.topMargin: 4
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: desk.cellWidth - 4
+                    height: renameInput.implicitHeight + 6
+                    z: 2
+                    radius: 3
+                    color: Theme.background
+                    border.width: 1
+                    border.color: Theme.accent
+
+                    TextInput {
+                        id: renameInput
+                        objectName: "renameInput"
+                        anchors.fill: parent
+                        anchors.margins: 3
+                        horizontalAlignment: TextInput.AlignHCenter
+                        clip: true
+                        selectByMouse: true
+                        color: Theme.foreground
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSize
+                        onAccepted: {
+                            Shell.renameFile(iconDelegate.fileUrl.toString(), text);
+                            desk.renamingUrl = "";
+                        }
+                        Keys.onEscapePressed: desk.renamingUrl = ""
+                        onActiveFocusChanged: {
+                            if (!activeFocus && iconDelegate.renaming)
+                                desk.renamingUrl = "";
+                        }
+                    }
+                }
+                onRenamingChanged: {
+                    if (!renaming)
+                        return;
+                    renameInput.text = fileName;
+                    // The name without its extension is selected, as file
+                    // managers do.
+                    const dot = fileIsDir ? -1 : fileName.lastIndexOf(".");
+                    renameInput.forceActiveFocus();
+                    renameInput.select(0, dot > 0 ? dot : fileName.length);
                 }
 
                 MouseArea {
@@ -777,6 +828,8 @@ Window {
     }
 
     // --- a desktop icon's menu ------------------------------------------
+    // The icon whose name is being edited (its file:// URL), or empty.
+    property string renamingUrl: ""
     property string iconMenuUrl: ""
     // The application of a launcher icon: Open starts it, like a double-click.
     property string iconMenuApp: ""
@@ -798,6 +851,8 @@ Window {
             Apps.launch(iconMenuApp);
         else if (action === "open")
             Shell.openUrl(iconMenuUrl);
+        else if (action === "rename")
+            renamingUrl = iconMenuUrl;
         else if (action === "copyPath")
             Shell.copyToClipboard(iconMenuPath);
         else if (action === "trash")
@@ -828,6 +883,13 @@ Window {
                 iconName: "folder"
                 label: qsTr("Open")
                 onClicked: desk.iconMenuAction("open")
+            }
+            TaskButton {
+                width: parent.width
+                fillWidth: true
+                iconName: "type"
+                label: qsTr("Rename")
+                onClicked: desk.iconMenuAction("rename")
             }
             TaskButton {
                 width: parent.width

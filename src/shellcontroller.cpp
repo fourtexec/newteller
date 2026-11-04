@@ -394,6 +394,29 @@ void ShellController::openPath(const QString &path) const
     openOrSay(QUrl::fromLocalFile(expandHome(path)));
 }
 
+bool ShellController::renameFile(const QString &path, const QString &newName) const
+{
+    const QFileInfo info(expandHome(path.trimmed()));
+    const QString name = newName.trimmed();
+    if (name.isEmpty() || name == info.fileName())
+        return false; // nothing to do
+    if (name.contains(QLatin1Char('/')) || name == QLatin1String(".") || name == QLatin1String("..")) {
+        notify(tr("Could not rename %1").arg(info.fileName()), tr("A name cannot contain \"/\"."));
+        return false;
+    }
+    const QString target = info.dir().absoluteFilePath(name);
+    if (QFileInfo::exists(target)) {
+        notify(tr("Could not rename %1").arg(info.fileName()), tr("%1 already exists here.").arg(name));
+        return false;
+    }
+    if (!info.exists() || !info.dir().rename(info.fileName(), name)) {
+        notify(tr("Could not rename %1").arg(info.fileName()),
+               tr("You may not be allowed to change this folder."));
+        return false;
+    }
+    return true;
+}
+
 QString ShellController::createFolder(const QString &parent, const QString &name) const
 {
     const QString base = expandHome(parent.trimmed());

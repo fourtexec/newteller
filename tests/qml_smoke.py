@@ -483,6 +483,11 @@ class Shell(QObject):
     def clipboardText(self):
         return "pasted text"
 
+    @Slot(str, str, result=bool)
+    def renameFile(self, path, name):
+        self.calls.append(("renameFile", path, name))
+        return True
+
     @Slot(str, str, result=str)
     def createFolder(self, parent, name):
         self.calls.append(("createFolder", parent, name))
@@ -1683,6 +1688,34 @@ def main():
             QTest.qWait(50)
             check(icon_menu.isVisible() and not desk.property("contextMenuVisible"),
                   "right-clicking an icon opens its menu, not the desktop's")
+            # Rename: the name turns into an editor with the name selected
+            # up to its extension; Enter renames the file.
+            QMetaObject.invokeMethod(desk, "openIconMenu", Q_ARG("QVariant", url),
+                                     Q_ARG("QVariant", 100), Q_ARG("QVariant", 100), Q_ARG("QVariant", ""))
+            QMetaObject.invokeMethod(desk, "iconMenuAction", Q_ARG("QVariant", "rename"))
+            QTest.qWait(50)
+            editors = []
+
+            def find_editors(item):
+                if item.objectName() == "renameInput" and item.isVisible():
+                    editors.append(item)
+                for child in item.childItems():
+                    find_editors(child)
+            find_editors(desk.contentItem())
+            check(len(editors) == 1, f"Rename shows one name editor ({len(editors)})")
+            if editors:
+                name = url.rsplit("/", 1)[-1]
+                check(editors[0].property("text") == QUrl(url).fileName(),
+                      f"the editor holds the file name ({editors[0].property('text')!r})")
+                shell.calls.clear()
+                editors[0].setProperty("text", "Renamed.txt")
+                QMetaObject.invokeMethod(editors[0], "accepted")
+                QTest.qWait(50)
+                check(("renameFile", url, "Renamed.txt") in shell.calls
+                      and desk.property("renamingUrl") == "",
+                      f"Enter renames the file and closes the editor ({shell.calls})")
+            QMetaObject.invokeMethod(desk, "openIconMenu", Q_ARG("QVariant", url),
+                                     Q_ARG("QVariant", 100), Q_ARG("QVariant", 100), Q_ARG("QVariant", ""))
             shell.calls.clear()
             QMetaObject.invokeMethod(desk, "iconMenuAction", Q_ARG("QVariant", "trash"))
             check(("moveToTrash", url) in shell.calls and not icon_menu.isVisible(),
