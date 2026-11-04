@@ -16,6 +16,7 @@
 #include <QFile>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <QUrl>
 #include <QtDebug>
 
 namespace {
@@ -542,6 +543,14 @@ void QuickSettings::applyPlayerProperties(const QString &service, const QVariant
         const QVariantMap map = metadataMap(properties.value(QStringLiteral("Metadata")));
         state.title = variantString(map.value(QStringLiteral("xesam:title")));
         state.artist = variantString(map.value(QStringLiteral("xesam:artist")));
+        // Only schemes an Image can load: players also send data or
+        // private ones the panel cannot read.
+        const QString art = variantString(map.value(QStringLiteral("mpris:artUrl"))).trimmed();
+        const QString scheme = QUrl(art).scheme();
+        state.artUrl = (scheme == QLatin1String("file") || scheme == QLatin1String("https")
+                        || scheme == QLatin1String("http"))
+                           ? art
+                           : QString();
     }
     if (properties.contains(QStringLiteral("PlaybackStatus")))
         state.playing = variantString(properties.value(QStringLiteral("PlaybackStatus")))
@@ -583,6 +592,7 @@ void QuickSettings::pickMedia()
     m_currentPlayer = chosen;
     m_mediaTitle = state.title;
     m_mediaArtist = state.artist;
+    m_mediaArtUrl = state.artUrl;
     m_mediaPlaying = state.playing;
     emit mediaChanged();
 }

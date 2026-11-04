@@ -43,7 +43,7 @@ DropdownWindow {
     }
 
     cardWidth: 360
-    cardHeight: Math.max(240, Math.min(560, 24 + 46 * visibleRows + (Quick.mediaAvailable ? 74 : 0)))
+    cardHeight: Math.max(240, Math.min(560, 24 + 46 * visibleRows + (Quick.mediaAvailable ? (Quick.mediaArtUrl.length > 0 ? 84 : 74) : 0)))
     padding: 12
     scopeName: "newteller-quick-settings"
 
@@ -69,22 +69,47 @@ DropdownWindow {
             visible: Quick.mediaAvailable
             spacing: 2
 
-            Text {
+            RowLayout {
                 Layout.fillWidth: true
-                text: Quick.mediaTitle.length > 0 ? Quick.mediaTitle : qsTr("Not playing")
-                color: Theme.foreground
-                font.family: Theme.fontFamily
-                font.pointSize: Theme.fontSize + 1
-                elide: Text.ElideRight
-            }
-            Text {
-                Layout.fillWidth: true
-                visible: Quick.mediaArtist.length > 0
-                text: Quick.mediaArtist
-                color: Theme.muted
-                font.family: Theme.fontFamily
-                font.pointSize: Theme.fontSize - 1
-                elide: Text.ElideRight
+                spacing: 10
+
+                // The cover the player announces (mpris:artUrl).
+                Image {
+                    id: mediaArt
+                    objectName: "mediaArt"
+                    visible: Quick.mediaArtUrl.length > 0 && status === Image.Ready
+                    Layout.preferredWidth: 44
+                    Layout.preferredHeight: 44
+                    sourceSize.width: 88
+                    sourceSize.height: 88
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                    smooth: true
+                    source: Quick.mediaArtUrl
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: Quick.mediaTitle.length > 0 ? Quick.mediaTitle : qsTr("Not playing")
+                        color: Theme.foreground
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSize + 1
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        visible: Quick.mediaArtist.length > 0
+                        text: Quick.mediaArtist
+                        color: Theme.muted
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSize - 1
+                        elide: Text.ElideRight
+                    }
+                }
             }
             RowLayout {
                 Layout.fillWidth: true

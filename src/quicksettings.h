@@ -50,6 +50,8 @@ class QuickSettings : public QObject, protected QDBusContext {
     Q_PROPERTY(QString mediaPlayer READ mediaPlayer NOTIFY mediaChanged)
     Q_PROPERTY(QString mediaTitle READ mediaTitle NOTIFY mediaChanged)
     Q_PROPERTY(QString mediaArtist READ mediaArtist NOTIFY mediaChanged)
+    // mpris:artUrl of the current track (file://, http(s)://), or empty.
+    Q_PROPERTY(QString mediaArtUrl READ mediaArtUrl NOTIFY mediaChanged)
     Q_PROPERTY(bool mediaPlaying READ mediaPlaying NOTIFY mediaChanged)
 
 public:
@@ -71,6 +73,7 @@ public:
     QString mediaPlayer() const;
     QString mediaTitle() const { return m_mediaTitle; }
     QString mediaArtist() const { return m_mediaArtist; }
+    QString mediaArtUrl() const { return m_mediaArtUrl; }
     bool mediaPlaying() const { return m_mediaPlaying; }
 
     // Volume ------------------------------------------------------------------
@@ -153,11 +156,13 @@ private:
         bool playing = false;
         QString title;
         QString artist;
+        QString artUrl;
     };
     QHash<QString, PlayerState> m_playerStates;
     QString m_currentPlayer; // the player the popup shows and controls
     bool m_volumeReading = false; // one mixer read at a time
     QString m_mediaTitle;
     QString m_mediaArtist;
+    QString m_mediaArtUrl;
     bool m_mediaPlaying = false;
 };

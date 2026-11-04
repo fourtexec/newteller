@@ -1150,10 +1150,17 @@ class Quick(QObject):
     mediaTitle = Property(str, lambda self: "Test song", notify=mediaChanged)
     mediaArtist = Property(str, lambda self: "Test artist", notify=mediaChanged)
     mediaPlaying = Property(bool, lambda self: True, notify=mediaChanged)
+    mediaArtUrl = Property(str, lambda self: self._art, notify=mediaChanged)
 
     def __init__(self):
         super().__init__()
         self.calls = []
+        # A cover on disk, as players announce it (mpris:artUrl).
+        art_dir = tempfile.mkdtemp(prefix="newteller-art-")
+        cover = QImage(16, 16, QImage.Format_RGB32)
+        cover.fill(QColor("#cc6633"))
+        cover.save(os.path.join(art_dir, "cover.png"))
+        self._art = QUrl.fromLocalFile(os.path.join(art_dir, "cover.png")).toString()
 
     @Slot(int)
     def setVolume(self, percent):
@@ -1854,6 +1861,9 @@ def main():
         check(quick_popup.isVisible(), "toggling opens the quick settings popup")
         check(("refresh",) in quick.calls, "opening refreshes volume and brightness")
         check(quick_popup.height() >= 240, "the quick settings popup has content height")
+        art = quick_popup.findChild(QQuickItem, "mediaArt")
+        check(art is not None and art.isVisible() and art.property("implicitWidth") > 0,
+              "the media card shows the track's cover")
         QMetaObject.invokeMethod(quick_popup, "hide")
         QTest.qWait(300)
         check(not quick_popup.isVisible(), "closing the quick settings popup")
