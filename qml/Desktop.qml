@@ -526,7 +526,8 @@ Window {
                         if (mouse.button !== Qt.RightButton)
                             return;
                         const at = iconDelegate.mapToItem(null, mouse.x, mouse.y);
-                        desk.openIconMenu(iconDelegate.fileUrl.toString(), at.x, at.y);
+                        desk.openIconMenu(iconDelegate.fileUrl.toString(), at.x, at.y,
+                                          iconDelegate.knownLauncher ? iconDelegate.launcherApp.id : "");
                     }
                     onPressed: (mouse) => {
                         if (mouse.button !== Qt.LeftButton)
@@ -767,12 +768,15 @@ Window {
 
     // --- a desktop icon's menu ------------------------------------------
     property string iconMenuUrl: ""
+    // The application of a launcher icon: Open starts it, like a double-click.
+    property string iconMenuApp: ""
     readonly property string iconMenuPath: iconMenuUrl.length > 0
                                            ? decodeURIComponent(iconMenuUrl.replace(/^file:\/\//, "")) : ""
 
-    function openIconMenu(url, x, y) {
+    function openIconMenu(url, x, y, appId) {
         contextMenu.visible = false;
         iconMenuUrl = url;
+        iconMenuApp = appId || "";
         iconMenu.x = Math.max(8, Math.min(x, desk.width - iconMenu.width - 8));
         iconMenu.y = Math.max(8, Math.min(y, desk.height - iconMenu.height - 8));
         iconMenu.visible = true;
@@ -780,7 +784,9 @@ Window {
 
     function iconMenuAction(action) {
         iconMenu.visible = false;
-        if (action === "open")
+        if (action === "open" && iconMenuApp.length > 0)
+            Apps.launch(iconMenuApp);
+        else if (action === "open")
             Shell.openUrl(iconMenuUrl);
         else if (action === "copyPath")
             Shell.copyToClipboard(iconMenuPath);
