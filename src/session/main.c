@@ -243,6 +243,9 @@ struct Layer {
 struct View {
     struct wl_list link; // top-most first
     struct Server *server;
+    // keyboard.layoutPerWindow: the layout this window was last used with
+    // (0, the first layout, for a new window).
+    int layoutIndex;
 
     // Exactly one of xdg/x11 is set.
     struct wlr_xdg_toplevel *xdg;
@@ -1350,6 +1353,10 @@ static void focusView(struct View *view, struct wlr_surface *surface)
     viewSetActivated(view, true);
     if (view->xdg && view->xdg->base->initialized)
         wlr_xdg_surface_ping(view->xdg->base);
+    // keyboard.layoutPerWindow: the window gets its own layout back before
+    // the enter event carries the keyboard state to it.
+    if (server->config.layoutPerWindow && view->layoutIndex != server->layoutIndex)
+        setLayout(server, view->layoutIndex);
 
     struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
     if (keyboard) {
@@ -3148,6 +3155,8 @@ static void setLayout(struct Server *server, int index)
             % server->layoutCount;
     struct wlr_keyboard *active = wlr_seat_get_keyboard(server->seat);
     server->layoutIndex = index;
+    if (server->config.layoutPerWindow && server->focusedView)
+        server->focusedView->layoutIndex = index;
     struct Keyboard *keyboard;
     wl_list_for_each(keyboard, &server->keyboards, link) {
         if (keyboard->ownKeymap || !keyboard->keyboard->keymap)
@@ -3903,6 +3912,8 @@ static void keyboardModifiers(struct wl_listener *listener, void *data)
                                                     XKB_STATE_LAYOUT_EFFECTIVE);
         if (group != server->layoutIndex && group < server->layoutCount) {
             server->layoutIndex = group;
+            if (server->config.layoutPerWindow && server->focusedView)
+                server->focusedView->layoutIndex = group;
             broadcastLayout(server);
         }
     }

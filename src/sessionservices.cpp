@@ -619,6 +619,8 @@ QString SessionServices::compositorConfigText() const
     text += confLine(QStringLiteral("keyboard.repeatDelay"),
                      QString::number(qBound(100, value("keyboard.repeatDelay").toInt(), 2000)));
     text += confLine(QStringLiteral("keyboard.numlock"), boolText(value("keyboard.numlock")));
+    text += confLine(QStringLiteral("keyboard.layoutPerWindow"),
+                     boolText(value("keyboard.layoutPerWindow")));
     text += confLine(QStringLiteral("touchpad.tapToClick"), boolText(value("touchpad.tapToClick")));
     text += confLine(QStringLiteral("touchpad.naturalScroll"), boolText(value("touchpad.naturalScroll")));
     text += confLine(QStringLiteral("touchpad.disableWhileTyping"),

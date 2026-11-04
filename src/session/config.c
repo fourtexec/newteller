@@ -82,6 +82,7 @@ void ntConfigDefaults(struct CompositorConfig *config)
     config->repeatRate = 25;
     config->repeatDelay = 600;
     config->numlock = false;
+    config->layoutPerWindow = false;
     config->touchpadTap = true;
     config->touchpadNaturalScroll = true;
     config->touchpadDisableWhileTyping = true;
@@ -204,6 +205,8 @@ bool ntConfigLoadFile(struct CompositorConfig *config, const char *path)
             config->repeatDelay = parseInt(value, config->repeatDelay, 100, 2000);
         else if (strcmp(key, "keyboard.numlock") == 0)
             config->numlock = parseBool(value, config->numlock);
+        else if (strcmp(key, "keyboard.layoutPerWindow") == 0)
+            config->layoutPerWindow = parseBool(value, config->layoutPerWindow);
         else if (strcmp(key, "touchpad.tapToClick") == 0)
             config->touchpadTap = parseBool(value, config->touchpadTap);
         else if (strcmp(key, "touchpad.naturalScroll") == 0)

@@ -189,6 +189,8 @@ inside VirtualBox. The implemented pieces are:
   layout from `/etc/default/keyboard`); `Super+Space` or Alt+Shift (or
   Ctrl+Shift / Caps Lock) switches, and the panel shows the current layout.
   Repeat rate/delay, Num Lock and raw XKB variants/options are there too.
+  `keyboard.layoutPerWindow` ("Remember the layout per window") gives every
+  window its own layout, as on Windows: switching windows switches back.
 - **Mouse & touchpad.** Tap to click, natural scrolling, disable while
   typing, pointer speed and left-handed buttons, applied live through
   libinput; cursor theme and size.

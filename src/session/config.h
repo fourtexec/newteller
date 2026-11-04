@@ -27,6 +27,8 @@ struct CompositorConfig {
     int repeatRate;                        // keys per second
     int repeatDelay;                       // milliseconds
     bool numlock;
+    // Every window keeps its own keyboard layout (switched on focus).
+    bool layoutPerWindow;
 
     bool touchpadTap;
     bool touchpadNaturalScroll;

@@ -2952,6 +2952,13 @@ Window {
                                 settingKey: "keyboard.showIndicator"
                                 SettingsSwitch { settingKey: "keyboard.showIndicator" }
                             }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Remember the layout per window")
+                                subtitle: qsTr("Each window keeps the layout it was used with, as on Windows; new windows start with the first one.")
+                                settingKey: "keyboard.layoutPerWindow"
+                                SettingsSwitch { settingKey: "keyboard.layoutPerWindow" }
+                            }
                         }
 
                         SettingsSection {

@@ -230,6 +230,8 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("keyboard.repeatRate"), 25);
     m_defaults.insert(QStringLiteral("keyboard.repeatDelay"), 600);
     m_defaults.insert(QStringLiteral("keyboard.numlock"), false);
+    // Every window remembers its keyboard layout (as on Windows).
+    m_defaults.insert(QStringLiteral("keyboard.layoutPerWindow"), false);
     m_defaults.insert(QStringLiteral("keyboard.showIndicator"), true);
     // Pointer devices (libinput, applied by the compositor).
     m_defaults.insert(QStringLiteral("touchpad.tapToClick"), true);
