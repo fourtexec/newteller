@@ -612,9 +612,31 @@ int ShellController::pasteFiles(const QString &folder) const
         && !QStandardPaths::findExecutable(QStringLiteral("wl-paste")).isEmpty()) {
         QProcess types;
         types.start(QStringLiteral("wl-paste"), {QStringLiteral("--list-types")});
-        if (types.waitForFinished(1000)
-            && QString::fromUtf8(types.readAllStandardOutput()).split(QLatin1Char('\n'))
-                   .contains(QStringLiteral("text/uri-list"))) {
+        const QStringList offered = types.waitForFinished(1000)
+                                        ? QString::fromUtf8(types.readAllStandardOutput()).split(QLatin1Char('\n'))
+                                        : QStringList();
+        if (!offered.contains(QStringLiteral("text/uri-list")) && offered.contains(QStringLiteral("image/png"))) {
+            // A picture (a screenshot, an image copied in a browser): saved
+            // as a PNG file.
+            QProcess image;
+            image.start(QStringLiteral("wl-paste"), {QStringLiteral("--type"), QStringLiteral("image/png")});
+            if (image.waitForFinished(3000) && image.exitCode() == 0) {
+                const QByteArray png = image.readAllStandardOutput();
+                const QDir dir(expandHome(folder.trimmed()));
+                const QString name = freeName(dir, tr("Pasted image %1.png")
+                                                       .arg(QDateTime::currentDateTime().toString(
+                                                           QStringLiteral("yyyyMMdd-hhmmss"))), false);
+                QFile file(dir.absoluteFilePath(name));
+                if (!png.isEmpty() && !name.isEmpty() && file.open(QIODevice::WriteOnly) && file.write(png) == png.size())
+                    return 1;
+                notify(tr("Could not paste the image"),
+                       tr("You may not be allowed to change this folder, or the disk is full."));
+                return 1; // handled: do not paste it as text as well
+            }
+            image.kill();
+            image.waitForFinished(100);
+        }
+        if (offered.contains(QStringLiteral("text/uri-list"))) {
             QProcess paste;
             paste.start(QStringLiteral("wl-paste"),
                         {QStringLiteral("--no-newline"), QStringLiteral("--type"), QStringLiteral("text/uri-list")});

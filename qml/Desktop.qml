@@ -751,7 +751,7 @@ Window {
                         const stamp = Qt.formatDateTime(Shell.now, "yyyyMMdd-hhmmss");
                         // The URL as is: the shell decodes it (spaces, Cyrillic,
                         // '#' in the folder name), cutting "file://" off did not.
-                        Shell.saveTextFile(Shell.desktopUrl + "/Pasted " + stamp + ".txt", text);
+                        Shell.saveTextFile(Shell.desktopUrl + "/" + qsTr("Pasted text %1.txt").arg(stamp), text);
                     }
                 }
             }
