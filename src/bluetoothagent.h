@@ -39,8 +39,15 @@ public slots:
     Q_SCRIPTABLE void AuthorizeService(const QDBusObjectPath &device, const QString &uuid);
     Q_SCRIPTABLE void Cancel();
 
+private slots:
+    // org.freedesktop.DBus.Properties.PropertiesChanged of the device that
+    // shows a code: the code goes away once the device is paired.
+    // Takes the raw message: typed arguments make Qt abort on a malformed one.
+    void devicePropertiesChanged(const QDBusMessage &message);
+
 private:
     void registerWithBluez();
+    void closeCode();
     QString deviceName(const QDBusObjectPath &device) const;
     // Shows a question and keeps the D-Bus call open until it is answered.
     void ask(const QString &summary, const QString &body);
@@ -51,4 +58,5 @@ private:
     // Open questions: notification id -> the BlueZ call waiting for it.
     QHash<uint, QDBusMessage> m_pending;
     uint m_codeNotification = 0;
+    QString m_codeDevice;
 };

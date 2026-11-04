@@ -1,6 +1,7 @@
 #include "bluetoothagent.h"
 #include "notifications.h"
 
+#include <QDBusArgument>
 #include <QDBusPendingCall>
 #include <QDBusServiceWatcher>
 #include <QRandomGenerator>
@@ -111,9 +112,41 @@ QString BluetoothAgent::RequestPinCode(const QDBusObjectPath &device)
 
 void BluetoothAgent::DisplayPinCode(const QDBusObjectPath &device, const QString &pincode)
 {
-    m_codeNotification = m_notifications->send(
+    closeCode();
+    // Urgent: the user is pairing right now, so do-not-disturb must not hide
+    // the code. It stays until the device is paired or BlueZ cancels.
+    m_codeNotification = m_notifications->sendWithActions(
         QStringLiteral("Bluetooth"), tr("Pairing with %1").arg(deviceName(device)),
-        tr("Type %1 on the device and press Enter.").arg(pincode), QStringLiteral("bluetooth"), 0);
+        tr("Type %1 on the device and press Enter.").arg(pincode), QStringLiteral("bluetooth"), {});
+    m_codeDevice = device.path();
+    m_bus.connect(kBluez, m_codeDevice, QStringLiteral("org.freedesktop.DBus.Properties"),
+                  QStringLiteral("PropertiesChanged"), this,
+                  SLOT(devicePropertiesChanged(QDBusMessage)));
+}
+
+void BluetoothAgent::devicePropertiesChanged(const QDBusMessage &message)
+{
+    const QList<QVariant> args = message.arguments();
+    if (args.size() < 2 || args.at(0).toString() != QLatin1String("org.bluez.Device1")
+        || !args.at(1).canConvert<QDBusArgument>())
+        return;
+    const QVariantMap changed = qdbus_cast<QVariantMap>(args.at(1));
+    if (changed.value(QStringLiteral("Paired")).toBool())
+        closeCode();
+}
+
+void BluetoothAgent::closeCode()
+{
+    if (!m_codeDevice.isEmpty()) {
+        m_bus.disconnect(kBluez, m_codeDevice, QStringLiteral("org.freedesktop.DBus.Properties"),
+                         QStringLiteral("PropertiesChanged"), this,
+                         SLOT(devicePropertiesChanged(QDBusMessage)));
+        m_codeDevice.clear();
+    }
+    if (m_codeNotification) {
+        m_notifications->dismiss(m_codeNotification, 3);
+        m_codeNotification = 0;
+    }
 }
 
 uint BluetoothAgent::RequestPasskey(const QDBusObjectPath &device)
@@ -134,9 +167,10 @@ void BluetoothAgent::DisplayPasskey(const QDBusObjectPath &device, uint passkey,
 // Numeric comparison (phones, computers): both sides show the same code.
 void BluetoothAgent::RequestConfirmation(const QDBusObjectPath &device, uint passkey)
 {
-    ask(tr("Pair with %1?").arg(deviceName(device)),
+    const QString name = deviceName(device);
+    ask(tr("Pair with %1?").arg(name),
         tr("Check that %1 shows the code %2.")
-            .arg(deviceName(device), QStringLiteral("%1").arg(passkey, 6, 10, QLatin1Char('0'))));
+            .arg(name, QStringLiteral("%1").arg(passkey, 6, 10, QLatin1Char('0'))));
 }
 
 // A device that started the pairing itself.
@@ -161,8 +195,5 @@ void BluetoothAgent::Cancel()
         m_bus.send(call.createErrorReply(kCanceled, tr("Pairing was cancelled.")));
         m_notifications->dismiss(id, 3);
     }
-    if (m_codeNotification) {
-        m_notifications->dismiss(m_codeNotification, 3);
-        m_codeNotification = 0;
-    }
+    closeCode();
 }
