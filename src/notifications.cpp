@@ -5,7 +5,9 @@
 #include <QtDBus/QDBusConnection>
 #include <QtDBus/QDBusError>
 #include <QtDBus/QDBusMetaType>
+#include <QBuffer>
 #include <QDateTime>
+#include <QImage>
 #include <QTime>
 #include <QDir>
 #include <QFileInfo>
@@ -18,6 +20,51 @@
 #include <QtDebug>
 
 namespace {
+// The picture a notification carries (an avatar, an album cover, a site
+// icon) as a URL QML can show, per the spec's order: image-data, then
+// image-path, then the deprecated icon_data. Raw pixels become a small PNG
+// data: URL, so nothing is written to disk.
+QString imageDataUrl(const QVariant &value)
+{
+    if (!value.canConvert<QDBusArgument>())
+        return {};
+    const QDBusArgument arg = value.value<QDBusArgument>();
+    if (arg.currentSignature() != QLatin1String("(iiibiiay)"))
+        return {};
+    int width = 0, height = 0, rowStride = 0, bitsPerSample = 0, channels = 0;
+    bool hasAlpha = false;
+    QByteArray data;
+    arg.beginStructure();
+    arg >> width >> height >> rowStride >> hasAlpha >> bitsPerSample >> channels >> data;
+    arg.endStructure();
+    if (width <= 0 || height <= 0 || width > 4096 || height > 4096 || bitsPerSample != 8
+        || channels != (hasAlpha ? 4 : 3) || rowStride < width * channels
+        || data.size() < qint64(rowStride) * (height - 1) + qint64(width) * channels)
+        return {};
+    const QImage pixels(reinterpret_cast<const uchar *>(data.constData()), width, height, rowStride,
+                        hasAlpha ? QImage::Format_RGBA8888 : QImage::Format_RGB888);
+    // The popup shows it at 38 px; 96 keeps it sharp on a 2x screen.
+    const QImage image = (width > 96 || height > 96)
+                             ? pixels.scaled(96, 96, Qt::KeepAspectRatio, Qt::SmoothTransformation)
+                             : pixels.copy();
+    QByteArray png;
+    QBuffer buffer(&png);
+    buffer.open(QIODevice::WriteOnly);
+    if (!image.save(&buffer, "PNG"))
+        return {};
+    return QStringLiteral("data:image/png;base64,") + QString::fromLatin1(png.toBase64());
+}
+
+// A local file as a file:// URL; anything else (an icon name) is empty.
+QString localImageUrl(const QString &value)
+{
+    QString path = value.trimmed();
+    if (path.startsWith(QLatin1String("file://")))
+        path = QUrl(path).toLocalFile();
+    if (!path.startsWith(QLatin1Char('/')) || !QFileInfo(path).isFile())
+        return {};
+    return QUrl::fromLocalFile(path).toString();
+}
 
 // org.freedesktop.Notifications close reasons.
 constexpr uint kReasonExpired = 1;
@@ -257,7 +304,26 @@ uint NotificationDaemon::publish(uint replacesId, const QString &appName, const 
     entry.insert(QStringLiteral("app"), appName.isEmpty() ? QStringLiteral("NewTeller") : appName);
     entry.insert(QStringLiteral("summary"), summary);
     entry.insert(QStringLiteral("body"), body);
-    entry.insert(QStringLiteral("icon"), appIcon);
+    // app_icon may be a file:// URI; the icon lookup takes plain paths.
+    QString icon = appIcon.startsWith(QLatin1String("file://")) ? QUrl(appIcon).toLocalFile() : appIcon;
+    QString image;
+    for (const char *key : {"image-data", "image_data"}) {
+        if (image.isEmpty())
+            image = imageDataUrl(hints.value(QLatin1String(key)));
+    }
+    for (const char *key : {"image-path", "image_path"}) {
+        const QString path = hints.value(QLatin1String(key)).toString();
+        if (!image.isEmpty() || path.isEmpty())
+            continue;
+        image = localImageUrl(path);
+        // Not a file: an icon name, which then replaces the app icon.
+        if (image.isEmpty() && !path.contains(QLatin1Char('/')))
+            icon = path;
+    }
+    if (image.isEmpty())
+        image = imageDataUrl(hints.value(QStringLiteral("icon_data")));
+    entry.insert(QStringLiteral("icon"), icon);
+    entry.insert(QStringLiteral("image"), image);
     entry.insert(QStringLiteral("actions"), actions);
     entry.insert(QStringLiteral("urgent"), critical);
     entry.insert(QStringLiteral("time"), QDateTime::currentDateTime().toMSecsSinceEpoch());

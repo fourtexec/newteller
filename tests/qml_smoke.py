@@ -48,8 +48,8 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen:configfile=" + _config.name
 os.environ["QT_QUICK_BACKEND"] = "software"
 
 import PySide6  # noqa: E402
-from PySide6.QtCore import (Q_ARG, QDateTime, QDir, QEnum, QFile, QFileInfo, QMargins,  # noqa: E402
-                            QMetaObject, QObject, QPoint, QPointF, QRectF, QtMsgType, QTimer,
+from PySide6.QtCore import (Q_ARG, QBuffer, QByteArray, QDateTime, QDir, QEnum,  # noqa: E402
+                            QFile, QFileInfo, QMargins, QIODevice, QMetaObject, QObject, QPoint, QPointF, QRectF, QtMsgType, QTimer,
                             QTranslator, QUrl, Property, Qt, Signal, Slot, qInstallMessageHandler)
 from PySide6.QtGui import QColor, QGuiApplication, QImage, QImageReader  # noqa: E402
 from PySide6.QtQml import (QmlAnonymous, QmlAttached, QmlNamedElement,  # noqa: E402
@@ -2255,6 +2255,35 @@ def main():
             QTest.qWait(300)
             check(stack.property("count") == 2 and stack_ids() == [1, 2],
                   f"a re-arriving card lands in order ({stack_ids()})")
+
+            # A notification's own picture (image-data becomes a PNG data:
+            # URL in the daemon) shows in place of the app icon.
+            picture = QImage(8, 8, QImage.Format_RGB32)
+            picture.fill(QColor("#3366cc"))
+            png = QByteArray()
+            png_buffer = QBuffer(png)
+            png_buffer.open(QIODevice.WriteOnly)
+            picture.save(png_buffer, "PNG")
+            third = {"id": 3, "app": "Chat", "summary": "Anna", "body": "Hi", "icon": "bell",
+                     "image": "data:image/png;base64," + bytes(png.toBase64()).decode(),
+                     "actions": [], "timeout": 0}
+            notifications._active = [first, second, third]
+            notifications.activeChanged.emit()
+            QTest.qWait(300)
+            # Delegates are visual children only, so walk childItems().
+            def items_named(item, name):
+                found = [item] if item.objectName() == name else []
+                for child in item.childItems():
+                    found += items_named(child, name)
+                return found
+            images = [i for i in items_named(stack.property("contentItem"), "notificationImage")
+                      if i.isVisible()]
+            sizes = [(i.property("sourceSize").width(), i.property("sourceSize").height())
+                     for i in images]
+            # The image has decoded once its source size is known.
+            check(len(images) == 1 and images[0].property("source").toString().startswith("data:")
+                  and images[0].property("implicitWidth") > 0,
+                  f"a notification picture is shown ({len(images)} visible, {sizes})")
 
         notifications._active = []
         notifications.activeChanged.emit()

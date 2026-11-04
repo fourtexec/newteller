@@ -104,6 +104,7 @@ Window {
                 summary: e.summary || "",
                 body: e.body || "",
                 icon: e.icon || "",
+                image: e.image || "",
                 actions: JSON.stringify(e.actions || []),
                 timeout: e.timeout || 0,
                 revision: e.revision || 0
@@ -235,6 +236,7 @@ Window {
                 summary: model.summary,
                 body: model.body,
                 icon: model.icon,
+                image: model.image,
                 actions: notif.parseActions(model.actions),
                 timeout: model.timeout
             })
@@ -295,13 +297,27 @@ Window {
                 }
 
                 Item {
-                    // notifications.showAppIcon
-                    visible: Settings.values["notifications.showAppIcon"] !== false
+                    // notifications.showAppIcon; the notification's own
+                    // picture (an avatar, a cover) shows either way.
+                    readonly property bool hasImage: (card.entry.image || "").length > 0
+                    visible: hasImage || Settings.values["notifications.showAppIcon"] !== false
                     Layout.preferredWidth: 38
                     Layout.preferredHeight: 38
                     Layout.alignment: Qt.AlignTop
+                    Image {
+                        objectName: "notificationImage"
+                        anchors.fill: parent
+                        visible: parent.hasImage
+                        sourceSize.width: 96
+                        sourceSize.height: 96
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                        smooth: true
+                        source: card.entry.image || ""
+                    }
                     Rectangle {
                         anchors.fill: parent
+                        visible: !parent.hasImage
                         radius: 12
                         color: Qt.rgba(notif.appearance.accent.r, notif.appearance.accent.g,
                                       notif.appearance.accent.b, 0.18)
