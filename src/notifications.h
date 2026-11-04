@@ -100,6 +100,7 @@ private:
     void setupSocket();
     void readSocket();
     void trimHistory();
+    void playSound(const QVariantMap &hints);
 
     Settings *m_settings;
     QVariantList m_active;
@@ -110,6 +111,7 @@ private:
     uint m_nextId = 1;
     // Bumped on every publish, so a replaced popup restarts its timer.
     uint m_revision = 0;
+    qint64 m_lastSound = 0; // ms since epoch; at most two sounds a second
     QLocalServer *m_server = nullptr;
     // Partial lines per connected sender, until a newline completes one JSON object.
     QHash<QLocalSocket *, QByteArray> m_buffered;

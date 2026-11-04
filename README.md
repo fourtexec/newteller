@@ -73,6 +73,10 @@ inside VirtualBox. The implemented pieces are:
   built-in notification daemon, newest first, with per-entry removal, a clear-all
   button and the do-not-disturb switch; the bell counts what arrived while it
   was closed. Per-row removal is `Notifications.removeHistory()` on the daemon.
+- **Notification sounds** (`notifications.soundEnabled`): a new popup plays
+  the application's `sound-file`, the chosen `notifications.soundFile` or
+  the theme's message sound (canberra-gtk-play, pw-play or paplay); never
+  under do-not-disturb or for `suppress-sound`.
 - **Bluetooth pairing agent**: keyboards show the code to type and phones
   the code to compare as notifications with Pair / Cancel; without an
   agent BlueZ could only pair devices that need no confirmation.

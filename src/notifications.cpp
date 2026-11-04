@@ -11,7 +11,9 @@
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLocalSocket>
+#include <QProcess>
 #include <QStandardPaths>
+#include <QUrl>
 #include <QtDebug>
 
 namespace {
@@ -279,8 +281,65 @@ uint NotificationDaemon::publish(uint replacesId, const QString &appName, const 
             dismiss(m_active.first().toMap().value(QStringLiteral("id")).toUInt(), kReasonExpired);
         m_active.append(entry);
         emit activeChanged();
+        playSound(hints);
     }
     return id;
+}
+
+// notifications.soundEnabled: a new popup plays the application's
+// sound-file hint, the chosen notifications.soundFile, or the theme's
+// message-new-instant sound. suppress-sound silences one notification.
+void NotificationDaemon::playSound(const QVariantMap &hints)
+{
+    if (!m_settings->value(QStringLiteral("notifications.soundEnabled"), true).toBool()
+        || hints.value(QStringLiteral("suppress-sound")).toBool())
+        return;
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    if (now - m_lastSound < 500)
+        return;
+    m_lastSound = now;
+
+    QString file = hints.value(QStringLiteral("sound-file")).toString();
+    if (file.startsWith(QLatin1String("file://")))
+        file = QUrl(file).toLocalFile();
+    if (file.isEmpty())
+        file = m_settings->value(QStringLiteral("notifications.soundFile")).toString().trimmed();
+    if (file.startsWith(QLatin1String("~/")))
+        file = QDir::homePath() + file.mid(1);
+    if (!file.isEmpty() && !QFileInfo(file).isReadable())
+        file.clear();
+    const QString name = hints.value(QStringLiteral("sound-name"),
+                                     QStringLiteral("message-new-instant")).toString();
+
+    // libcanberra knows the sound theme; otherwise play the freedesktop file.
+    const QString canberra = QStandardPaths::findExecutable(QStringLiteral("canberra-gtk-play"));
+    if (!canberra.isEmpty()) {
+        QProcess::startDetached(canberra, file.isEmpty() ? QStringList{QStringLiteral("-i"), name}
+                                                         : QStringList{QStringLiteral("-f"), file});
+        return;
+    }
+    if (file.isEmpty()) {
+        const QStringList dirs = QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation);
+        for (const QString &dir : dirs) {
+            for (const QString &candidate : {name, QStringLiteral("message-new-instant")}) {
+                const QString path = dir + QStringLiteral("/sounds/freedesktop/stereo/") + candidate
+                                     + QStringLiteral(".oga");
+                if (QFileInfo::exists(path)) {
+                    file = path;
+                    break;
+                }
+            }
+            if (!file.isEmpty())
+                break;
+        }
+    }
+    if (file.isEmpty())
+        return;
+    for (const QString &player : {QStringLiteral("pw-play"), QStringLiteral("paplay")}) {
+        const QString path = QStandardPaths::findExecutable(player);
+        if (!path.isEmpty() && QProcess::startDetached(path, {file}))
+            return;
+    }
 }
 
 void NotificationDaemon::dismiss(uint id, uint reason)
