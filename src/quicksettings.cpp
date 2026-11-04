@@ -7,6 +7,8 @@
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
 #include <QDBusMessage>
+#include <QDBusPendingReply>
+#include <QDBusPendingCallWatcher>
 #include <QDBusReply>
 #include <QDBusServiceWatcher>
 #include <QDBusVariant>
@@ -508,6 +510,7 @@ void QuickSettings::removeMediaPlayer(const QString &service)
     if (!m_mediaPlayers.removeOne(service))
         return;
     m_mediaOwners.remove(service);
+    m_playerStates.remove(service);
     QDBusConnection::sessionBus().disconnect(service, QString::fromLatin1(kMprisPath),
                                              QStringLiteral("org.freedesktop.DBus.Properties"),
                                              QStringLiteral("PropertiesChanged"), this,
@@ -516,30 +519,36 @@ void QuickSettings::removeMediaPlayer(const QString &service)
     pickMedia();
 }
 
-// Reads Metadata and PlaybackStatus of one player. Failures leave the player
-// in the list: a player may not be fully up yet, the next change heals it.
+// Reads every property of one player without blocking (GetAll); the
+// answer updates its cached state and the choice of player.
 void QuickSettings::readMediaPlayer(const QString &service)
 {
-    QDBusConnection bus = QDBusConnection::sessionBus();
-    auto read = [&bus, &service](const QString &property) -> QVariant {
-        QDBusMessage call = QDBusMessage::createMethodCall(
-            service, QString::fromLatin1(kMprisPath),
-            QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
-        call << QStringLiteral("org.mpris.MediaPlayer2.Player") << property;
-        return propertyValue(bus.call(call, QDBus::BlockWithGui, 600));
-    };
+    QDBusMessage call = QDBusMessage::createMethodCall(service, QString::fromLatin1(kMprisPath),
+                                                       QStringLiteral("org.freedesktop.DBus.Properties"),
+                                                       QStringLiteral("GetAll"));
+    call << QStringLiteral("org.mpris.MediaPlayer2.Player");
+    auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(call, 2000), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, service](QDBusPendingCallWatcher *w) {
+        w->deleteLater();
+        const QDBusPendingReply<QVariantMap> reply = *w;
+        if (reply.isError() || !m_mediaPlayers.contains(service))
+            return;
+        applyPlayerProperties(service, reply.value());
+        pickMedia();
+    });
+}
 
-    const QVariant metadata = read(QStringLiteral("Metadata"));
-    if (metadata.isValid()) {
-        const QVariantMap map = metadataMap(metadata);
-        if (map.contains(QStringLiteral("xesam:title")))
-            m_mediaTitle = variantString(map.value(QStringLiteral("xesam:title")));
-        if (map.contains(QStringLiteral("xesam:artist")))
-            m_mediaArtist = variantString(map.value(QStringLiteral("xesam:artist")));
+void QuickSettings::applyPlayerProperties(const QString &service, const QVariantMap &properties)
+{
+    PlayerState &state = m_playerStates[service];
+    if (properties.contains(QStringLiteral("Metadata"))) {
+        const QVariantMap map = metadataMap(properties.value(QStringLiteral("Metadata")));
+        state.title = variantString(map.value(QStringLiteral("xesam:title")));
+        state.artist = variantString(map.value(QStringLiteral("xesam:artist")));
     }
-    const QVariant status = read(QStringLiteral("PlaybackStatus"));
-    if (status.isValid())
-        m_mediaPlaying = status.toString() == QLatin1String("Playing");
+    if (properties.contains(QStringLiteral("PlaybackStatus")))
+        state.playing = variantString(properties.value(QStringLiteral("PlaybackStatus")))
+                        == QLatin1String("Playing");
 }
 
 void QuickSettings::mediaPropertiesChanged(const QString &interface, const QVariantMap &changed,
@@ -548,63 +557,36 @@ void QuickSettings::mediaPropertiesChanged(const QString &interface, const QVari
     if (interface != QLatin1String("org.mpris.MediaPlayer2.Player"))
         return;
     // The sender is the player's unique name (":1.42"), not its
-    // org.mpris.MediaPlayer2.<player> name; comparing the two ignored every
-    // change.
+    // org.mpris.MediaPlayer2.<player> name.
     const QString sender = message().service();
-    if (!m_mediaPlayers.contains(sender) && m_mediaOwners.key(sender).isEmpty())
+    const QString service = m_mediaPlayers.contains(sender) ? sender : m_mediaOwners.key(sender);
+    if (service.isEmpty())
         return;
-    if (changed.contains(QStringLiteral("Metadata"))) {
-        // Cheap path: the change already carries the new values.
-        const QVariant metadata = changed.value(QStringLiteral("Metadata"));
-        const QVariantMap map = metadataMap(metadata);
-        if (map.contains(QStringLiteral("xesam:title")))
-            m_mediaTitle = variantString(map.value(QStringLiteral("xesam:title")));
-        if (map.contains(QStringLiteral("xesam:artist")))
-            m_mediaArtist = variantString(map.value(QStringLiteral("xesam:artist")));
-    }
-    if (changed.contains(QStringLiteral("PlaybackStatus")))
-        m_mediaPlaying = variantString(changed.value(QStringLiteral("PlaybackStatus")))
-                         == QLatin1String("Playing");
+    applyPlayerProperties(service, changed);
     pickMedia();
 }
 
-// The popup shows one player: whoever is playing, else the newest player.
+// The popup shows and controls one player: one that is playing, else the
+// newest one.
 QString QuickSettings::mediaPlayer() const
 {
-    for (const QString &service : m_mediaPlayers) {
-        // Playback status is cached only for the picked player; players are
-        // few, so asking each one is fine and keeps this simple.
-        return service;
-    }
-    return QString();
+    return m_currentPlayer;
 }
 
 void QuickSettings::pickMedia()
 {
-    if (m_mediaPlayers.isEmpty()) {
-        m_mediaTitle.clear();
-        m_mediaArtist.clear();
-        m_mediaPlaying = false;
-        emit mediaChanged();
-        return;
-    }
-    // Prefer a playing player; otherwise keep the first service.
     QString chosen;
-    for (const QString &service : m_mediaPlayers) {
-        QDBusMessage call = QDBusMessage::createMethodCall(
-            service, QString::fromLatin1(kMprisPath),
-            QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
-        call << QStringLiteral("org.mpris.MediaPlayer2.Player")
-             << QStringLiteral("PlaybackStatus");
-        const QDBusMessage reply = QDBusConnection::sessionBus().call(call, QDBus::BlockWithGui, 400);
-        if (propertyValue(reply).toString() == QLatin1String("Playing")) {
+    for (const QString &service : std::as_const(m_mediaPlayers)) {
+        if (m_playerStates.value(service).playing)
             chosen = service;
-            break;
-        }
     }
-    if (chosen.isEmpty())
-        chosen = m_mediaPlayers.first();
-    readMediaPlayer(chosen);
+    if (chosen.isEmpty() && !m_mediaPlayers.isEmpty())
+        chosen = m_mediaPlayers.constLast();
+    const PlayerState state = m_playerStates.value(chosen);
+    m_currentPlayer = chosen;
+    m_mediaTitle = state.title;
+    m_mediaArtist = state.artist;
+    m_mediaPlaying = state.playing;
     emit mediaChanged();
 }
 

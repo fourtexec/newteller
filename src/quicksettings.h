@@ -118,6 +118,7 @@ private:
     void addMediaPlayer(const QString &service, const QString &owner = QString());
     void removeMediaPlayer(const QString &service);
     void readMediaPlayer(const QString &service);
+    void applyPlayerProperties(const QString &service, const QVariantMap &properties);
     void pickMedia();
     void callPlayer(const QString &method);
     // Runs a mixer tool without blocking the UI thread; done(ok, stdout).
@@ -147,6 +148,14 @@ private:
     // Well-known name -> unique name of its owner: signals arrive from the
     // unique name, never from org.mpris.MediaPlayer2.<player>.
     QHash<QString, QString> m_mediaOwners;
+    // What each player plays, from GetAll and PropertiesChanged.
+    struct PlayerState {
+        bool playing = false;
+        QString title;
+        QString artist;
+    };
+    QHash<QString, PlayerState> m_playerStates;
+    QString m_currentPlayer; // the player the popup shows and controls
     bool m_volumeReading = false; // one mixer read at a time
     QString m_mediaTitle;
     QString m_mediaArtist;
