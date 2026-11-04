@@ -134,6 +134,35 @@ dependencies go into `scripts/install-build-deps.sh` and a
 call directly (pixman had to be added explicitly: "DSO missing from command
 line").
 
+## Shell pitfalls already paid for
+
+- **No blocking D-Bus or process calls on the UI thread.** A slow or hung
+  service (an app's tray menu, MPRIS player, NetworkManager, wpctl) froze
+  the whole shell. Use `asyncCall` + `QDBusPendingCallWatcher` or an
+  asynchronous `QProcess`, and test with a fake service that never answers.
+- **QML lists and objects reach a `QVariant` parameter as a `QJSValue`**,
+  which `QJsonDocument` writes as `null`. `Settings::setValue` converts it
+  (`plainValue`); any other C++ method that stores what QML hands it should
+  take `QVariantList` / `QVariantMap` or convert the same way. A list read
+  back from `Settings.values` is array-like, not always a JS `Array`: copy it
+  by `length`, not with `Array.isArray`.
+- **Read D-Bus signals as a raw `QDBusMessage`** in slots connected to other
+  services: a typed slot makes Qt abort the shell on a malformed signal.
+  `Properties.Get` replies hold a `QDBusVariant`; read a `QDBusArgument` only
+  through a `const` reference (the non-const one writes).
+- **Never fail silently.** A missing helper (terminal, xdg-open, screen
+  locker, pkexec) or a launch that fails gets a notification; important ones
+  (critical battery, pairing codes) go through `Shell.notifyUrgent` /
+  `sendWithActions`, which do-not-disturb does not hide.
+- **Nothing assumes Debian or English.** `x-terminal-emulator` exists only on
+  Debian (`newteller-terminal` picks a terminal), `~/Pictures` is localized
+  (use the XDG folders: `Shell.picturesPath`), and every visible text goes
+  through `qsTr()` / `tr()` - the smoke test lints `qml/` and `plugins/` for
+  bare English labels.
+- **Plugins keep their state in the shell settings** (`weather.*`,
+  `stickyNotes.notes`) with defaults in `src/settings.cpp`; nothing from the
+  network until the user turns it on (the weather widget waits for a city).
+
 ## Dock and panel layout
 
 - Only the active dock layout exists: `DockStrip` loads a Row, a Column

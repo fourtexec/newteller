@@ -12,16 +12,50 @@ Rectangle {
     property int fontSize: pluginSettings.fontSize !== undefined ? Number(pluginSettings.fontSize) : 11
     property bool autoSave: pluginSettings.autoSave !== false
 
-    property var notes: [
-        {
-            id: 1,
-            text: "Welcome to NewTeller!\n\nClick to edit this note.\nDrag from the header to move.",
-            x: 0,
-            y: 0,
-            width: 220,
-            height: 150
+    // The notes, saved in the shell settings (stickyNotes.notes) a moment
+    // after every change. Read once: re-reading on every save would rebuild
+    // the note being typed in.
+    property var notes: []
+
+    // A list from C++ is array-like, not always an Array: copy it.
+    function savedNotes() {
+        const saved = Settings.values["stickyNotes.notes"];
+        const loaded = [];
+        for (let i = 0; saved && i < saved.length; ++i) {
+            const note = saved[i];
+            if (note && note.id !== undefined)
+                loaded.push(JSON.parse(JSON.stringify(note)));
         }
-    ]
+        return loaded;
+    }
+
+    Component.onCompleted: notes = savedNotes()
+
+    // Every screen's desktop has its own copy of the widget: when another
+    // copy saved, take its notes - unless this one is being edited, which
+    // would lose what is typed here.
+    property bool editing: false
+    Connections {
+        target: Settings
+        function onValuesChanged() {
+            if (saveTimer.running || widget.editing)
+                return;
+            const saved = widget.savedNotes();
+            if (JSON.stringify(saved) !== JSON.stringify(widget.notes))
+                widget.notes = saved;
+        }
+    }
+
+    Timer {
+        id: saveTimer
+        interval: 800
+        onTriggered: Settings.setValue("stickyNotes.notes", JSON.parse(JSON.stringify(widget.notes)))
+    }
+
+    function save() {
+        if (autoSave)
+            saveTimer.restart()
+    }
 
     width: 300
     height: 200
@@ -36,13 +70,14 @@ Rectangle {
         var updated = notes.slice()
         updated.push({
             id: nextId,
-            text: "New note",
+            text: "",
             x: 20 * (updated.length % 5),
             y: 20 * (updated.length % 5),
             width: 220,
             height: 150
         })
         notes = updated
+        save()
     }
 
     function deleteNote(idx) {
@@ -51,12 +86,15 @@ Rectangle {
         var updated = notes.slice()
         updated.splice(idx, 1)
         notes = updated
+        save()
     }
 
+    // In place, so the note being edited is not rebuilt.
     function updateNoteField(idx, field, val) {
         if (idx < 0 || idx >= notes.length)
             return
         notes[idx][field] = val
+        save()
     }
 
     // Empty-state card when all notes are closed
@@ -70,7 +108,7 @@ Rectangle {
 
         Text {
             anchors.centerIn: parent
-            text: "No notes yet. Click to add one."
+            text: qsTr("No notes yet. Click to add one.")
             color: Theme.muted
             font.family: Theme.fontFamily
             font.pointSize: Theme.fontSize
@@ -204,7 +242,7 @@ Rectangle {
                 }
 
                 Text {
-                    text: "Note #" + (note.noteIndex + 1)
+                    text: qsTr("Note %1").arg(note.noteIndex + 1)
                     color: Qt.darker(note.noteColor, 2.2)
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize - 1
@@ -249,6 +287,14 @@ Rectangle {
             onTextChanged: {
                 if (text !== note.noteText)
                     note.noteEdited(text)
+            }
+            onActiveFocusChanged: widget.editing = activeFocus
+
+            Text {
+                visible: editor.text.length === 0 && !editor.activeFocus
+                text: qsTr("Click to write")
+                color: Qt.darker(note.noteColor, 1.6)
+                font: editor.font
             }
         }
 

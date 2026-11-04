@@ -113,9 +113,16 @@ DropdownWindow {
                             elide: Text.ElideRight
                         }
                         Text {
-                            text: Bluetooth.busyDevice === modelData.path ? qsTr("Working...")
-                                  : modelData.connected ? "Connected"
-                                  : modelData.paired ? "Paired" : "Available"
+                            objectName: "bluetoothStatus"
+                            readonly property string state: Bluetooth.busyDevice === modelData.path
+                                                            ? qsTr("Working...")
+                                                            : modelData.connected ? qsTr("Connected")
+                                                            : modelData.paired ? qsTr("Paired")
+                                                            : qsTr("Available")
+                            // The device's charge, when it reports one.
+                            text: modelData.connected && (modelData.battery === undefined ? -1 : modelData.battery) >= 0
+                                  ? qsTr("%1 · battery %2%").arg(state).arg(modelData.battery)
+                                  : state
                             color: Theme.muted
                             font.family: Theme.fontFamily
                             font.pointSize: Theme.fontSize - 2
@@ -124,7 +131,7 @@ DropdownWindow {
                     TaskButton {
                         enabled: Bluetooth.busyDevice.length === 0
                         label: modelData.connected ? qsTr("Disconnect")
-                               : modelData.paired ? "Connect" : "Pair"
+                               : modelData.paired ? qsTr("Connect") : qsTr("Pair")
                         onClicked: {
                             popup.statusText = "";
                             if (modelData.connected)

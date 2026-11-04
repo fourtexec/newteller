@@ -27,7 +27,7 @@ Rectangle {
         }
         Text {
             width: parent.width
-            text: "Kernel " + Shell.kernelVersion
+            text: qsTr("Kernel %1").arg(Shell.kernelVersion)
             elide: Text.ElideRight
             color: Theme.muted
             font.family: Theme.fontFamily
@@ -35,7 +35,7 @@ Rectangle {
         }
         Text {
             width: parent.width
-            text: "Up " + System.uptimeText + " · " + System.processes + " processes"
+            text: qsTr("Up %1 · %2 processes").arg(System.uptimeText).arg(System.processes)
             elide: Text.ElideRight
             color: Theme.muted
             font.family: Theme.fontFamily
@@ -43,8 +43,8 @@ Rectangle {
         }
         Text {
             width: parent.width
-            text: "Load " + System.load1.toFixed(2) + " " + System.load5.toFixed(2)
-                  + " " + System.load15.toFixed(2) + " · " + System.cpuCount + " cores"
+            text: qsTr("Load %1 %2 %3 · %4 cores").arg(System.load1.toFixed(2)).arg(System.load5.toFixed(2))
+                  .arg(System.load15.toFixed(2)).arg(System.cpuCount)
             elide: Text.ElideRight
             color: Theme.muted
             font.family: Theme.fontFamily
@@ -53,7 +53,7 @@ Rectangle {
         Text {
             width: parent.width
             visible: System.batteryPresent
-            text: "Battery " + Math.round(System.batteryPercent) + "% " + System.batteryStatus
+            text: qsTr("Battery %1% %2").arg(Math.round(System.batteryPercent)).arg(System.batteryStatus)
             elide: Text.ElideRight
             color: Theme.muted
             font.family: Theme.fontFamily

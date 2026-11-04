@@ -54,7 +54,16 @@ Window {
         const q = input.text.trim();
         if (q.length === 0)
             return;
-        if (results.length > 0) {
+        // As in the Windows Run box: a web address or a folder / document
+        // opens, an executable or any other text runs as a command.
+        const kind = Shell.pathKind(q);
+        if (/^(https?|ftp|file):\/\/\S+$/i.test(q) || /^mailto:\S+$/i.test(q)) {
+            Shell.openUrl(q);
+            rememberCommand(q);
+        } else if (kind === "dir" || kind === "file") {
+            Shell.openPath(q);
+            rememberCommand(q);
+        } else if (results.length > 0) {
             Apps.launch(results[0].id);
         } else {
             // A bare command: run it through the shell.

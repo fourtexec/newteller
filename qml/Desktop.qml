@@ -424,6 +424,8 @@ Window {
                 required property bool fileIsDir
 
                 readonly property string gridKey: "icon:" + fileName
+                readonly property bool renaming: desk.renamingUrl.length > 0
+                                                 && desk.renamingUrl === fileUrl.toString()
                 // A launcher of an installed application shows that
                 // application's icon and name, and a double-click starts it.
                 readonly property bool isLauncher: !fileIsDir && fileName.toLowerCase().endsWith(".desktop")
@@ -507,6 +509,7 @@ Window {
                     wrapMode: Text.Wrap
                     elide: Text.ElideRight
                     maximumLineCount: 2
+                    visible: !iconDelegate.renaming
                     text: iconDelegate.label
                     color: desk.iconColor && desk.iconColor.length > 0 ? desk.iconColor : "white"
                     font.family: Theme.fontFamily
@@ -515,12 +518,71 @@ Window {
                     styleColor: "#80000000"
                 }
 
+                // Rename in place: Enter keeps the new name, Escape or a
+                // click elsewhere cancels.
+                Rectangle {
+                    visible: iconDelegate.renaming
+                    anchors.top: icon.bottom
+                    anchors.topMargin: 4
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: desk.cellWidth - 4
+                    height: renameInput.implicitHeight + 6
+                    z: 2
+                    radius: 3
+                    color: Theme.background
+                    border.width: 1
+                    border.color: Theme.accent
+
+                    TextInput {
+                        id: renameInput
+                        objectName: "renameInput"
+                        anchors.fill: parent
+                        anchors.margins: 3
+                        horizontalAlignment: TextInput.AlignHCenter
+                        clip: true
+                        selectByMouse: true
+                        color: Theme.foreground
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSize
+                        onAccepted: {
+                            Shell.renameFile(iconDelegate.fileUrl.toString(), text);
+                            desk.renamingUrl = "";
+                        }
+                        Keys.onEscapePressed: desk.renamingUrl = ""
+                        onActiveFocusChanged: {
+                            if (!activeFocus && iconDelegate.renaming)
+                                desk.renamingUrl = "";
+                        }
+                    }
+                }
+                onRenamingChanged: {
+                    if (!renaming)
+                        return;
+                    renameInput.text = fileName;
+                    // The name without its extension is selected, as file
+                    // managers do.
+                    const dot = fileIsDir ? -1 : fileName.lastIndexOf(".");
+                    renameInput.forceActiveFocus();
+                    renameInput.select(0, dot > 0 ? dot : fileName.length);
+                }
+
                 MouseArea {
                     id: iconMouse
                     anchors.fill: parent
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
                     cursorShape: iconDelegate.dragging ? Qt.ClosedHandCursor : Qt.PointingHandCursor
 
+                    // Right button: the icon's own menu (open, copy path, trash).
+                    onClicked: (mouse) => {
+                        if (mouse.button !== Qt.RightButton)
+                            return;
+                        const at = iconDelegate.mapToItem(null, mouse.x, mouse.y);
+                        desk.openIconMenu(iconDelegate.fileUrl.toString(), at.x, at.y,
+                                          iconDelegate.knownLauncher ? iconDelegate.launcherApp.id : "");
+                    }
                     onPressed: (mouse) => {
+                        if (mouse.button !== Qt.LeftButton)
+                            return;
                         iconDelegate.dragging = false;
                         const scene = iconDelegate.mapToItem(null, mouse.x, mouse.y);
                         iconDelegate.pressSceneX = scene.x;
@@ -551,8 +613,8 @@ Window {
                                             Qt.size(iconDelegate.width, iconDelegate.height));
                         iconDelegate.dragging = false;
                     }
-                    onDoubleClicked: {
-                        if (iconDelegate.dragging)
+                    onDoubleClicked: (mouse) => {
+                        if (iconDelegate.dragging || mouse.button !== Qt.LeftButton)
                             return;
                         if (iconDelegate.knownLauncher)
                             Apps.launch(iconDelegate.launcherApp.id);
@@ -620,6 +682,7 @@ Window {
                 return;
             contextMenu.x = Math.min(mouse.x, desk.width - contextMenu.width - 8);
             contextMenu.y = Math.min(mouse.y, desk.height - contextMenu.height - 8);
+            iconMenu.visible = false;
             contextMenu.visible = true;
         }
     }
@@ -679,13 +742,27 @@ Window {
                 label: qsTr("Paste")
                 onClicked: {
                     contextMenu.visible = false;
+                    // Files copied in a file manager are copied here; any
+                    // other clipboard text becomes a text file.
+                    if (Shell.pasteFiles(Shell.desktopUrl) > 0)
+                        return;
                     const text = Shell.clipboardText();
                     if (text.length > 0) {
                         const stamp = Qt.formatDateTime(Shell.now, "yyyyMMdd-hhmmss");
                         // The URL as is: the shell decodes it (spaces, Cyrillic,
                         // '#' in the folder name), cutting "file://" off did not.
-                        Shell.saveTextFile(Shell.desktopUrl + "/Pasted " + stamp + ".txt", text);
+                        Shell.saveTextFile(Shell.desktopUrl + "/" + qsTr("Pasted text %1.txt").arg(stamp), text);
                     }
+                }
+            }
+            TaskButton {
+                width: parent.width
+                fillWidth: true
+                iconName: "folder"
+                label: qsTr("New folder")
+                onClicked: {
+                    contextMenu.visible = false;
+                    Shell.createFolder(Shell.desktopUrl, qsTr("New folder"));
                 }
             }
             TaskButton {
@@ -754,14 +831,97 @@ Window {
         }
     }
 
-    // Clicking anywhere else closes the menu.
+    // --- a desktop icon's menu ------------------------------------------
+    // The icon whose name is being edited (its file:// URL), or empty.
+    property string renamingUrl: ""
+    property string iconMenuUrl: ""
+    // The application of a launcher icon: Open starts it, like a double-click.
+    property string iconMenuApp: ""
+    readonly property string iconMenuPath: iconMenuUrl.length > 0
+                                           ? decodeURIComponent(iconMenuUrl.replace(/^file:\/\//, "")) : ""
+
+    function openIconMenu(url, x, y, appId) {
+        contextMenu.visible = false;
+        iconMenuUrl = url;
+        iconMenuApp = appId || "";
+        iconMenu.x = Math.max(8, Math.min(x, desk.width - iconMenu.width - 8));
+        iconMenu.y = Math.max(8, Math.min(y, desk.height - iconMenu.height - 8));
+        iconMenu.visible = true;
+    }
+
+    function iconMenuAction(action) {
+        iconMenu.visible = false;
+        if (action === "open" && iconMenuApp.length > 0)
+            Apps.launch(iconMenuApp);
+        else if (action === "open")
+            Shell.openUrl(iconMenuUrl);
+        else if (action === "rename")
+            renamingUrl = iconMenuUrl;
+        else if (action === "copyPath")
+            Shell.copyToClipboard(iconMenuPath);
+        else if (action === "trash")
+            Shell.moveToTrash(iconMenuUrl);
+    }
+
+    Rectangle {
+        id: iconMenu
+        objectName: "iconMenu"
+        visible: false
+        width: 200
+        height: iconMenuColumn.implicitHeight + 12
+        radius: Theme.radius
+        color: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, Theme.opacity)
+        border.width: 1
+        border.color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.6)
+        z: 100
+
+        Column {
+            id: iconMenuColumn
+            anchors.fill: parent
+            anchors.margins: 6
+            spacing: 2
+
+            TaskButton {
+                width: parent.width
+                fillWidth: true
+                iconName: "folder"
+                label: qsTr("Open")
+                onClicked: desk.iconMenuAction("open")
+            }
+            TaskButton {
+                width: parent.width
+                fillWidth: true
+                iconName: "type"
+                label: qsTr("Rename")
+                onClicked: desk.iconMenuAction("rename")
+            }
+            TaskButton {
+                width: parent.width
+                fillWidth: true
+                iconName: "clipboard"
+                label: qsTr("Copy path")
+                onClicked: desk.iconMenuAction("copyPath")
+            }
+            TaskButton {
+                width: parent.width
+                fillWidth: true
+                iconName: "trash"
+                label: qsTr("Move to Trash")
+                onClicked: desk.iconMenuAction("trash")
+            }
+        }
+    }
+
+    // Clicking anywhere else closes the menus.
     MouseArea {
         anchors.fill: parent
         z: 99
-        enabled: contextMenu.visible
+        enabled: contextMenu.visible || iconMenu.visible
         onPressed: (mouse) => {
             if (!contextMenu.contains(mapToItem(contextMenu, mouse.x, mouse.y)))
                 contextMenu.visible = false;
+            if (!iconMenu.contains(mapToItem(iconMenu, mouse.x, mouse.y)))
+                iconMenu.visible = false;
             mouse.accepted = false;
         }
     }

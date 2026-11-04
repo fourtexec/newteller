@@ -100,6 +100,45 @@ DropdownWindow {
         Settings.setValue("panel.pinned", pinned);
     }
 
+    // --- log out / restart / shut down, confirmed ----------------------------
+    property string pendingPower: ""
+    property int powerCountdown: 0
+
+    function askPower(action) {
+        pendingPower = action;
+        powerCountdown = 30;
+        powerTimer.restart();
+    }
+    function cancelPower() {
+        pendingPower = "";
+        powerTimer.stop();
+    }
+    function runPower() {
+        const action = pendingPower;
+        cancelPower();
+        menu.hide();
+        if (action === "logout")
+            Shell.logout();
+        else if (action === "reboot")
+            Shell.reboot();
+        else if (action === "powerOff")
+            Shell.powerOff();
+    }
+    Timer {
+        id: powerTimer
+        interval: 1000
+        repeat: true
+        onTriggered: {
+            menu.powerCountdown -= 1;
+            if (menu.powerCountdown <= 0)
+                menu.runPower();
+        }
+    }
+    onVisibleChanged: {
+        if (!visible && pendingPower.length > 0)
+            cancelPower();
+    }
+
     function openPinMenu(button, app) {
         pinTarget = app;
         const pos = button.mapToItem(menu.bodyItem, button.width, 0);
@@ -171,6 +210,20 @@ DropdownWindow {
                 onClicked: {
                     menu.togglePin(menu.pinTarget);
                     pinMenu.close();
+                }
+            }
+            TaskButton {
+                objectName: "startAddToDesktop"
+                width: 180
+                height: 32
+                fillWidth: true
+                iconName: "monitor"
+                label: qsTr("Add to desktop")
+                onClicked: {
+                    const app = menu.pinTarget;
+                    pinMenu.close();
+                    if (app && app.path)
+                        Shell.addToDesktop(app.path);
                 }
             }
             TaskButton {
@@ -377,6 +430,50 @@ DropdownWindow {
             color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.6)
         }
 
+        // Log out, restart and shut down ask first: one stray click must not
+        // throw away unsaved work. The action runs on confirmation or after
+        // the countdown; closing the menu cancels it.
+        Rectangle {
+            id: powerConfirm
+            objectName: "powerConfirm"
+            visible: menu.pendingPower.length > 0
+            Layout.fillWidth: true
+            Layout.preferredHeight: powerRow.implicitHeight + 16
+            radius: Theme.radius
+            color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.12)
+            border.width: 1
+            border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.4)
+
+            RowLayout {
+                id: powerRow
+                anchors.fill: parent
+                anchors.margins: 8
+                spacing: 6
+
+                Text {
+                    Layout.fillWidth: true
+                    wrapMode: Text.Wrap
+                    text: menu.pendingPower === "logout" ? qsTr("Logging out in %1 s").arg(menu.powerCountdown)
+                          : menu.pendingPower === "reboot" ? qsTr("Restarting in %1 s").arg(menu.powerCountdown)
+                          : qsTr("Shutting down in %1 s").arg(menu.powerCountdown)
+                    color: Theme.foreground
+                    font.family: Theme.fontFamily
+                    font.pointSize: Theme.fontSize
+                }
+                TaskButton {
+                    objectName: "powerConfirmNow"
+                    label: menu.pendingPower === "logout" ? qsTr("Log out")
+                           : menu.pendingPower === "reboot" ? qsTr("Restart") : qsTr("Shut down")
+                    active: true
+                    onClicked: menu.runPower()
+                }
+                TaskButton {
+                    label: qsTr("Cancel")
+                    onClicked: menu.cancelPower()
+                }
+            }
+        }
+
         RowLayout {
             id: footer
             Layout.fillWidth: true
@@ -390,7 +487,7 @@ DropdownWindow {
             TaskButton {
                 iconName: "log-out"
                 tooltipText: qsTr("Log out")
-                onClicked: { Shell.logout(); menu.hide(); }
+                onClicked: menu.askPower("logout")
             }
             TaskButton {
                 iconName: "moon"
@@ -400,12 +497,12 @@ DropdownWindow {
             TaskButton {
                 iconName: "rotate-cw"
                 tooltipText: qsTr("Restart")
-                onClicked: { Shell.reboot(); menu.hide(); }
+                onClicked: menu.askPower("reboot")
             }
             TaskButton {
                 iconName: "power"
                 tooltipText: qsTr("Shut down")
-                onClicked: { Shell.powerOff(); menu.hide(); }
+                onClicked: menu.askPower("powerOff")
             }
             Item { Layout.fillWidth: true }
             TaskButton {

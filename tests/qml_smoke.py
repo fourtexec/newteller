@@ -479,9 +479,51 @@ class Shell(QObject):
     def openPath(self, path):
         self.calls.append(("openPath", path))
 
+    @Slot(str, result=int)
+    def pasteFiles(self, folder):
+        self.calls.append(("pasteFiles", folder))
+        return 0
+
     @Slot(result=str)
     def clipboardText(self):
         return "pasted text"
+
+    @Slot(str, str, result=bool)
+    def renameFile(self, path, name):
+        self.calls.append(("renameFile", path, name))
+        return True
+
+    @Slot(str, result=str)
+    def pathKind(self, path):
+        p = path.strip()
+        if p == "~" or p.startswith("~/"):
+            p = self._home + p[1:]
+        if not os.path.isabs(p):
+            return ""
+        if os.path.isdir(p):
+            return "dir"
+        if os.path.isfile(p):
+            return "exec" if os.access(p, os.X_OK) else "file"
+        return ""
+
+    @Slot(str, result=bool)
+    def addToDesktop(self, path):
+        self.calls.append(("addToDesktop", path))
+        return True
+
+    @Slot(str, str, result=str)
+    def createFolder(self, parent, name):
+        self.calls.append(("createFolder", parent, name))
+        return ""
+
+    @Slot(str, result=bool)
+    def moveToTrash(self, path):
+        self.calls.append(("moveToTrash", path))
+        return True
+
+    @Slot(str)
+    def copyToClipboard(self, text):
+        self.calls.append(("copyToClipboard", text))
 
     @Slot(str, str, result=bool)
     def saveTextFile(self, path, text):
@@ -573,6 +615,10 @@ class Shell(QObject):
     def notify(self, title, body):
         self.calls.append(("notify", title))
 
+    @Slot(str, str, str)
+    def notifyUrgent(self, title, body, icon=""):
+        self.calls.append(("notifyUrgent", title))
+
 
 class FilePortal(QObject):
     """Stand-in for the FilePortal context property (src/fileportal.h)."""
@@ -607,10 +653,12 @@ class System(QObject):
     networkDownText = Property(str, lambda self: "1.2 MiB/s", constant=True)
     networkUpText = Property(str, lambda self: "240 KiB/s", constant=True)
     uptimeText = Property(str, lambda self: "1h 2m", constant=True)
-    batteryPresent = Property(bool, lambda self: False, constant=True)
-    batteryPercent = Property(float, lambda self: 0.0, constant=True)
+    # (present, percent, charging); the battery test changes it.
+    battery = (False, 0.0, False)
+    batteryPresent = Property(bool, lambda self: self.battery[0], notify=snapshotUpdated)
+    batteryPercent = Property(float, lambda self: self.battery[1], notify=snapshotUpdated)
     batteryStatus = Property(str, lambda self: "", constant=True)
-    batteryCharging = Property(bool, lambda self: False, constant=True)
+    batteryCharging = Property(bool, lambda self: self.battery[2], notify=snapshotUpdated)
     batteryCritical = Property(bool, lambda self: False, constant=True)
     batteryTimeText = Property(str, lambda self: "", constant=True)
     # An int: the desktop-sysinfo widget prints "N processes".
@@ -1064,9 +1112,11 @@ class BluetoothStub(QObject):
     busyDevice = Property(str, lambda self: "", notify=changed)
     devices = Property("QVariantList", lambda self: [
         {"path": "/org/bluez/hci0/dev_1", "address": "00:11", "name": "Headphones",
-         "icon": "audio-headset", "paired": True, "connected": True, "trusted": True, "rssi": -40},
+         "icon": "audio-headset", "paired": True, "connected": True, "trusted": True, "rssi": -40,
+         "battery": 80},
         {"path": "/org/bluez/hci0/dev_2", "address": "00:22", "name": "Mouse",
-         "icon": "input-mouse", "paired": False, "connected": False, "trusted": False, "rssi": -60}],
+         "icon": "input-mouse", "paired": False, "connected": False, "trusted": False, "rssi": -60,
+         "battery": -1}],
         notify=changed)
 
     def __init__(self):
@@ -1364,6 +1414,29 @@ def main():
     dead = [k for k in bound_keys
             if not any(k in text for text in readers) and '"%s"' % k not in page_reads]
     check(not dead, f"every settings control changes something (never read: {dead})")
+    # English interface text in QML goes through qsTr(), or the Russian
+    # interface shows it untranslated: labels, returned strings and the
+    # branches of a ?: that pick a label.
+    english = r'[A-Z][a-z]+(?: [a-z]+)*[.!]?'
+    label_patterns = [
+        re.compile(r'\b(?:text|label|title|subtitle|placeholder|tooltipText)\s*:\s*"(' + english + r')"'),
+        re.compile(r'\breturn\s+"(' + english + r')"'),
+    ]
+    ternary_pattern = re.compile(r'[?:]\s*"(' + english + r')"\s*(?:[:;)]|$)')
+    # Names that are the same in every language.
+    untranslated = {"NewTeller", "English", "Super", "Sans", "Wayland"}
+    bare = []
+    for path in sorted(glob.glob(os.path.join(ROOT, "qml", "*.qml"))
+                       + glob.glob(os.path.join(ROOT, "plugins", "*", "*.qml"))):
+        with open(path, encoding="utf-8") as handle:
+            for number, line in enumerate(handle, 1):
+                code = line.split("//")[0]
+                patterns = label_patterns + ([ternary_pattern] if "?" in code else [])
+                for pattern in patterns:
+                    for match in pattern.finditer(code):
+                        if match.group(1) not in untranslated:
+                            bare.append(f"{os.path.basename(path)}:{number} {match.group(1)!r}")
+    check(not bare, f"interface text in QML goes through qsTr() (bare: {bare})")
 
     # Translations (i18n/<language>.json, read by src/translator.cpp): every
     # entry translates a real qsTr() text, keeps its %1 placeholders, and the
@@ -1371,7 +1444,8 @@ def main():
     def qml_unquote(text):
         return text.replace("\\\\", "\x00").replace("\\n", "\n").replace('\\"', '"').replace("\x00", "\\")
     source_texts = set()
-    for qml in glob.glob(os.path.join(ROOT, "qml", "*.qml")):
+    for qml in glob.glob(os.path.join(ROOT, "qml", "*.qml")) + \
+               glob.glob(os.path.join(ROOT, "plugins", "*", "*.qml")):
         with open(qml, encoding="utf-8") as handle:
             source_texts.update(qml_unquote(t) for t in
                                 re.findall(r'qsTr\("((?:[^"\\]|\\.)*)"\)', handle.read()))
@@ -1534,6 +1608,38 @@ def main():
         check("org.gnome.Nautilus" not in settings._values["panel.pinned"],
               f"unpinning removes the id again ({settings._values['panel.pinned']})")
 
+        # Shut down asks first; closing the menu cancels, confirming runs it.
+        QMetaObject.invokeMethod(menu, "show")
+        QTest.qWait(50)
+        confirm = menu.findChild(QObject, "powerConfirm")
+        shell.calls.clear()
+        QMetaObject.invokeMethod(menu, "askPower", Q_ARG("QVariant", "powerOff"))
+        QTest.qWait(50)
+        check(confirm is not None and confirm.property("visible") and ("powerOff",) not in shell.calls,
+              "Shut down asks for confirmation instead of shutting down at once")
+        QMetaObject.invokeMethod(menu, "hide")
+        QTest.qWait(400)
+        check(menu.property("pendingPower") == "" and ("powerOff",) not in shell.calls,
+              "closing the start menu cancels the shutdown")
+        QMetaObject.invokeMethod(menu, "show")
+        QTest.qWait(50)
+        QMetaObject.invokeMethod(menu, "askPower", Q_ARG("QVariant", "powerOff"))
+        QMetaObject.invokeMethod(menu, "runPower")
+        QTest.qWait(50)
+        check(("powerOff",) in shell.calls, f"confirming shuts down ({shell.calls})")
+        QTest.qWait(400)
+
+        # The same menu puts a copy of the application's launcher on the desktop.
+        menu.setProperty("pinTarget", {"id": "org.gnome.Nautilus",
+                                       "path": "/usr/share/applications/org.gnome.Nautilus.desktop"})
+        add_button = menu.findChild(QObject, "startAddToDesktop")
+        check(add_button is not None, "the application menu offers Add to desktop")
+        if add_button is not None:
+            shell.calls.clear()
+            QMetaObject.invokeMethod(add_button, "clicked")
+            check(("addToDesktop", "/usr/share/applications/org.gnome.Nautilus.desktop") in shell.calls,
+                  f"Add to desktop copies the application's launcher ({shell.calls})")
+
         # Highlighted fuzzy search (StartMenu shows StyledText hit highlights).
         search = menu.findChild(QObject, "startSearch")
         check(search is not None, "start menu search field")
@@ -1603,6 +1709,18 @@ def main():
             check(settings._values["run.history"][0] == "nload",
                   f"the command is remembered ({settings._values['run.history']})")
             check(not dialog.isVisible(), "closing the run dialog")
+            # A web address and a folder open instead of running as commands.
+            for typed, expected in (("https://example.org", ("openUrl", "https://example.org")),
+                                    ("~", ("openPath", "~"))):
+                QMetaObject.invokeMethod(dialog, "show")
+                QTest.qWait(50)
+                rq.setProperty("text", typed)
+                QTest.qWait(20)
+                shell.calls.clear()
+                QMetaObject.invokeMethod(dialog, "runCurrent")
+                QTest.qWait(300)
+                check(expected in shell.calls and not any(c[0] == "runShell" for c in shell.calls),
+                      f"{typed!r} in the run dialog opens it ({shell.calls})")
 
     # Desktop right-click menu.
     if desktops:
@@ -1615,6 +1733,60 @@ def main():
         check(desk.property("contextMenuVisible") is True,
               "right-clicking the desktop opens its menu")
         desk.setProperty("contextMenuVisible", False)
+
+        # Right-clicking an icon opens the icon's own menu: open, copy the
+        # path, move to the trash (restorable, unlike a delete).
+        desk_items = []
+
+        def collect(item):
+            desk_items.append(item)
+            for child in item.childItems():
+                collect(child)
+        collect(desk.contentItem())
+        icons = [i for i in desk_items if isinstance(i, QQuickItem)
+                 and i.objectName() == "desktopIcon" and i.isVisible()]
+        icon_menu = desk.findChild(QQuickItem, "iconMenu")
+        check(bool(icons) and icon_menu is not None, f"desktop icons and their menu exist ({len(icons)})")
+        if icons and icon_menu is not None:
+            target = icons[0]
+            url = target.property("fileUrl").toString()
+            spot = target.mapToScene(QPointF(target.width() / 2, target.height() / 2))
+            QTest.mouseClick(desk, Qt.RightButton, Qt.NoModifier, QPoint(int(spot.x()), int(spot.y())))
+            QTest.qWait(50)
+            check(icon_menu.isVisible() and not desk.property("contextMenuVisible"),
+                  "right-clicking an icon opens its menu, not the desktop's")
+            # Rename: the name turns into an editor with the name selected
+            # up to its extension; Enter renames the file.
+            QMetaObject.invokeMethod(desk, "openIconMenu", Q_ARG("QVariant", url),
+                                     Q_ARG("QVariant", 100), Q_ARG("QVariant", 100), Q_ARG("QVariant", ""))
+            QMetaObject.invokeMethod(desk, "iconMenuAction", Q_ARG("QVariant", "rename"))
+            QTest.qWait(50)
+            editors = []
+
+            def find_editors(item):
+                if item.objectName() == "renameInput" and item.isVisible():
+                    editors.append(item)
+                for child in item.childItems():
+                    find_editors(child)
+            find_editors(desk.contentItem())
+            check(len(editors) == 1, f"Rename shows one name editor ({len(editors)})")
+            if editors:
+                name = url.rsplit("/", 1)[-1]
+                check(editors[0].property("text") == QUrl(url).fileName(),
+                      f"the editor holds the file name ({editors[0].property('text')!r})")
+                shell.calls.clear()
+                editors[0].setProperty("text", "Renamed.txt")
+                QMetaObject.invokeMethod(editors[0], "accepted")
+                QTest.qWait(50)
+                check(("renameFile", url, "Renamed.txt") in shell.calls
+                      and desk.property("renamingUrl") == "",
+                      f"Enter renames the file and closes the editor ({shell.calls})")
+            QMetaObject.invokeMethod(desk, "openIconMenu", Q_ARG("QVariant", url),
+                                     Q_ARG("QVariant", 100), Q_ARG("QVariant", 100), Q_ARG("QVariant", ""))
+            shell.calls.clear()
+            QMetaObject.invokeMethod(desk, "iconMenuAction", Q_ARG("QVariant", "trash"))
+            check(("moveToTrash", url) in shell.calls and not icon_menu.isVisible(),
+                  f"Move to Trash sends the icon's file to the trash ({shell.calls})")
 
         # An icon placed with the old pixel setting (desktop.iconPositions,
         # before the grid) keeps its place as the matching grid cell.
@@ -1843,12 +2015,27 @@ def main():
         QMetaObject.invokeMethod(center, "toggle")
         QTest.qWait(300)  # the open animation plays
         check(center.isVisible(), "toggling opens the notification centre")
+        avatar = QImage(8, 8, QImage.Format_RGB32)
+        avatar.fill(QColor("#33aa66"))
+        avatar_png = QByteArray()
+        avatar_buffer = QBuffer(avatar_png)
+        avatar_buffer.open(QIODevice.WriteOnly)
+        avatar.save(avatar_buffer, "PNG")
         notifications._history = [
-            {"id": 1, "app": "Mail", "summary": "Hello", "body": "First", "time": 1000},
-            {"id": 2, "app": "Chat", "summary": "Yo", "body": "Second", "time": 2000},
+            {"id": 1, "app": "Mail", "summary": "Hello", "body": "First", "time": 1000,
+             "icon": "bell", "image": ""},
+            {"id": 2, "app": "Chat", "summary": "Yo", "body": "Second", "time": 2000, "icon": "",
+             "image": "data:image/png;base64," + bytes(avatar_png.toBase64()).decode()},
         ]
         notifications.historyChanged.emit()
-        QTest.qWait(50)
+        QTest.qWait(300)
+        # A row shows the notification's picture, as its popup did.
+        center_items = []
+        walk_items(center.contentItem(), center_items)
+        pictures = [i for i in center_items if isinstance(i, QQuickItem)
+                    and i.objectName() == "historyImage" and i.isVisible()]
+        check(len(pictures) == 1 and pictures[0].property("implicitWidth") > 0,
+              f"the history shows a notification's picture ({len(pictures)})")
         # Everything on screen counts as seen; closing keeps the mark.
         check(int(center.property("unreadCount")) == 0,
               f"an open centre counts as seen ({center.property('unreadCount')})")
@@ -2180,6 +2367,12 @@ def main():
                 bt_list = bts[0].findChild(QObject, "bluetoothList")
                 check(bt_list is not None and bt_list.property("count") == 2,
                       "the Bluetooth list shows the devices")
+                bt_items = []
+                walk_items(bts[0].contentItem(), bt_items)
+                statuses = sorted(i.property("text") for i in bt_items
+                                  if isinstance(i, QQuickItem) and i.objectName() == "bluetoothStatus")
+                check(statuses == ["Available", "Connected · battery 80%"],
+                      f"connected devices show their charge ({statuses})")
                 QMetaObject.invokeMethod(bts[0], "hide")
                 QTest.qWait(400)
                 check(("stopDiscovery",) in bluetooth.calls, "closing the Bluetooth list stops scanning")
@@ -2341,6 +2534,19 @@ def main():
         notifications.activeChanged.emit()
         QTest.qWait(400)  # the exit animation plays before the window hides
         check(not notif_win.isVisible(), "the last notification dismiss hides the window")
+
+    # A battery at 4% while discharging: the warning gets through
+    # do-not-disturb (urgent), once.
+    shell.calls.clear()
+    system.battery = (True, 4.0, False)
+    system.snapshotUpdated.emit()
+    system.snapshotUpdated.emit()
+    QTest.qWait(50)
+    urgent = [c for c in shell.calls if c[0] == "notifyUrgent"]
+    check(len(urgent) == 1, f"a critically low battery warns urgently, once ({shell.calls})")
+    system.battery = (False, 0.0, False)
+    system.snapshotUpdated.emit()
+    QTest.qWait(50)
 
     # The colour palette is a panel pinned to the left edge of the screen,
     # not a floating window.

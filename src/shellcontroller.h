@@ -4,6 +4,7 @@
 #include <QDateTime>
 #include <QHash>
 #include <QObject>
+#include <QPair>
 #include <QString>
 #include <QTimer>
 #include <QUrl>
@@ -89,10 +90,30 @@ public:
     Q_INVOKABLE void copyToClipboard(const QString &text) const;
     // Desktop notification through org.freedesktop.Notifications (notify-send).
     Q_INVOKABLE void notify(const QString &title, const QString &body) const;
+    // Gets through do-not-disturb and stays until closed (critical battery).
+    Q_INVOKABLE void notifyUrgent(const QString &title, const QString &body,
+                                  const QString &icon = QString()) const;
     // Text currently in the clipboard, for the desktop paste action.
     Q_INVOKABLE QString clipboardText() const;
+    // Files copied in a file manager (text/uri-list on the clipboard) are
+    // copied into the folder (path or file:// URL) in the background, and a
+    // copied picture is saved there as a PNG; returns how many items are
+    // pasted, 0 when the clipboard holds neither.
+    Q_INVOKABLE int pasteFiles(const QString &folder) const;
     // Writes a text file (used by the desktop "Paste" action).
     Q_INVOKABLE bool saveTextFile(const QString &path, const QString &text) const;
+    // Moves a file or folder (path or file:// URL) to the trash, where it can
+    // be restored; says so on screen when that fails.
+    Q_INVOKABLE bool moveToTrash(const QString &path) const;
+    // Creates "name" in the folder (path or file:// URL), or "name 2", "name 3"
+    // when that exists; returns the new folder's path, empty on failure.
+    Q_INVOKABLE QString createFolder(const QString &parent, const QString &name) const;
+    // Puts a copy of an application's launcher (.desktop file) on the
+    // desktop, marked executable so a double-click starts it.
+    Q_INVOKABLE bool addToDesktop(const QString &desktopFile) const;
+    // Renames a file or folder (path or file:// URL) within its folder; says
+    // why on screen when it cannot (name taken, invalid, no permission).
+    Q_INVOKABLE bool renameFile(const QString &path, const QString &newName) const;
     // Machine and configuration diagnostics, same shape as `newteller-ctl doctor`.
     Q_INVOKABLE QVariantMap diagnostics() const;
 
@@ -106,6 +127,9 @@ public:
     // only ever receives wallpapers that pass this check.
     Q_INVOKABLE bool isImageFile(const QString &path) const;
     Q_INVOKABLE bool fileExists(const QString &path) const;
+    // What a typed path is: "dir", "exec" (an executable file), "file", or
+    // "" when nothing is there. "~/" and file:// URLs are understood.
+    Q_INVOKABLE QString pathKind(const QString &path) const;
 
     Q_INVOKABLE void lock() const;
     Q_INVOKABLE void logout() const;
@@ -140,4 +164,6 @@ private:
     mutable QHash<QString, QString> m_iconCache;
     // "name@color" -> recoloured SVG file URL (Shell.tintedIcon).
     mutable QHash<QString, QString> m_tintCache;
+    // "Moved to the trash" notifications with Undo: id -> {trashed, original}.
+    mutable QHash<uint, QPair<QString, QString>> m_trashUndo;
 };

@@ -14,15 +14,74 @@
 #include <QGuiApplication>
 #include <QImageReader>
 #include <QProcess>
+#include <QThread>
+#include <QPointer>
+#include <QMimeData>
 #include <QStandardPaths>
 #include <QSysInfo>
 #include <QUrl>
+
+namespace {
+// "name.txt" -> "name 2.txt" (then 3, 4...) while the name is taken.
+QString freeName(const QDir &dir, const QString &name, bool isDir)
+{
+    if (!dir.exists(name))
+        return name;
+    const QFileInfo info(name);
+    const QString stem = isDir || info.completeSuffix().isEmpty() || info.baseName().isEmpty()
+                             ? name : info.baseName();
+    const QString suffix = stem == name ? QString() : QLatin1Char('.') + info.completeSuffix();
+    for (int n = 2; n < 10000; ++n) {
+        const QString candidate = QStringLiteral("%1 %2%3").arg(stem).arg(n).arg(suffix);
+        if (!dir.exists(candidate))
+            return candidate;
+    }
+    return QString();
+}
+
+// Copies a file or a whole folder; false at the first failure.
+bool copyTree(const QString &source, const QString &target)
+{
+    const QFileInfo info(source);
+    if (!info.isDir() || info.isSymLink())
+        return info.isSymLink() ? QFile::link(info.symLinkTarget(), target) : QFile::copy(source, target);
+    if (!QDir().mkpath(target))
+        return false;
+    const QDir dir(source);
+    const QStringList entries = dir.entryList(QDir::AllEntries | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot);
+    for (const QString &entry : entries) {
+        if (!copyTree(dir.absoluteFilePath(entry), target + QLatin1Char('/') + entry))
+            return false;
+    }
+    return true;
+}
+} // namespace
 
 ShellController::ShellController(Settings *settings, NotificationDaemon *notifications, QObject *parent)
     : QObject(parent)
     , m_settings(settings)
     , m_notifications(notifications)
 {
+    // Undo on a "moved to the trash" notification puts the file back.
+    if (m_notifications) {
+        connect(m_notifications, &NotificationDaemon::ActionInvoked, this, [this](uint id, const QString &key) {
+            if (!m_trashUndo.contains(id) || key != QLatin1String("undo"))
+                return;
+            const auto [trashed, original] = m_trashUndo.take(id);
+            if (QFileInfo::exists(original) || !QFile::rename(trashed, original)) {
+                notify(tr("Could not restore %1").arg(QFileInfo(original).fileName()),
+                       tr("Open the trash in the file manager to restore it."));
+                return;
+            }
+            // The trash's record of it: Trash/info/<name>.trashinfo.
+            const QFileInfo inTrash(trashed);
+            QFile::remove(inTrash.dir().absoluteFilePath(QStringLiteral("../info/%1.trashinfo")
+                                                             .arg(inTrash.fileName())));
+        });
+        connect(m_notifications, &NotificationDaemon::NotificationClosed, this,
+                [this](uint id, uint) { m_trashUndo.remove(id); });
+    }
+
     // One shared ticker: the panel, the start menu and clock widgets all bind
     // to `Shell.now` instead of running their own timers.
     m_now = QDateTime::currentDateTime();
@@ -101,6 +160,22 @@ bool ShellController::isImageFile(const QString &path) const
     QImageReader reader(p);
     // canRead() only parses the header, so even a huge photo is cheap here.
     return reader.canRead();
+}
+
+QString ShellController::pathKind(const QString &path) const
+{
+    QString local = path.trimmed();
+    if (local == QLatin1String("~"))
+        local = QDir::homePath();
+    local = expandHome(local);
+    if (local.isEmpty() || !QDir::isAbsolutePath(local))
+        return QString();
+    const QFileInfo info(local);
+    if (info.isDir())
+        return QStringLiteral("dir");
+    if (info.isFile())
+        return info.isExecutable() ? QStringLiteral("exec") : QStringLiteral("file");
+    return QString();
 }
 
 bool ShellController::fileExists(const QString &path) const
@@ -394,6 +469,96 @@ void ShellController::openPath(const QString &path) const
     openOrSay(QUrl::fromLocalFile(expandHome(path)));
 }
 
+bool ShellController::addToDesktop(const QString &desktopFile) const
+{
+    const QFileInfo source(expandHome(desktopFile.trimmed()));
+    const QDir desktop(QStandardPaths::writableLocation(QStandardPaths::DesktopLocation));
+    if (source.isFile() && (desktop.exists() || QDir().mkpath(desktop.absolutePath()))) {
+        // Already there (the same launcher): nothing to add.
+        QFile existing(desktop.absoluteFilePath(source.fileName()));
+        QFile original(source.absoluteFilePath());
+        if (existing.exists() && existing.open(QIODevice::ReadOnly) && original.open(QIODevice::ReadOnly)
+            && existing.readAll() == original.readAll())
+            return true;
+        const QString name = freeName(desktop, source.fileName(), false);
+        const QString target = desktop.absoluteFilePath(name);
+        if (!name.isEmpty() && QFile::copy(source.absoluteFilePath(), target)) {
+            QFile::setPermissions(target, QFile::permissions(target) | QFileDevice::ExeOwner
+                                              | QFileDevice::ExeUser);
+            return true;
+        }
+    }
+    notify(tr("Could not add %1 to the desktop").arg(source.completeBaseName()),
+           tr("You may not be allowed to change this folder, or the disk is full."));
+    return false;
+}
+
+bool ShellController::renameFile(const QString &path, const QString &newName) const
+{
+    const QFileInfo info(expandHome(path.trimmed()));
+    const QString name = newName.trimmed();
+    if (name.isEmpty() || name == info.fileName())
+        return false; // nothing to do
+    if (name.contains(QLatin1Char('/')) || name == QLatin1String(".") || name == QLatin1String("..")) {
+        notify(tr("Could not rename %1").arg(info.fileName()), tr("A name cannot contain \"/\"."));
+        return false;
+    }
+    const QString target = info.dir().absoluteFilePath(name);
+    if (QFileInfo::exists(target)) {
+        notify(tr("Could not rename %1").arg(info.fileName()), tr("%1 already exists here.").arg(name));
+        return false;
+    }
+    if (!info.exists() || !info.dir().rename(info.fileName(), name)) {
+        notify(tr("Could not rename %1").arg(info.fileName()),
+               tr("You may not be allowed to change this folder."));
+        return false;
+    }
+    return true;
+}
+
+QString ShellController::createFolder(const QString &parent, const QString &name) const
+{
+    const QString base = expandHome(parent.trimmed());
+    const QString wanted = name.trimmed().isEmpty() ? tr("New folder") : name.trimmed();
+    QDir dir(base);
+    if (!base.isEmpty() && dir.exists()) {
+        for (int n = 1; n < 1000; ++n) {
+            const QString candidate = n == 1 ? wanted : QStringLiteral("%1 %2").arg(wanted).arg(n);
+            if (dir.exists(candidate))
+                continue;
+            if (dir.mkdir(candidate))
+                return dir.absoluteFilePath(candidate);
+            break;
+        }
+    }
+    notify(tr("Could not create a folder in %1").arg(base),
+           tr("You may not be allowed to change this folder."));
+    return QString();
+}
+
+bool ShellController::moveToTrash(const QString &path) const
+{
+    QString local = path.trimmed();
+    if (local.startsWith(QLatin1String("file:")))
+        local = QUrl(local).toLocalFile();
+    local = expandHome(local);
+    // QFile follows the freedesktop trash: the file manager can restore it.
+    QString trashed;
+    if (!local.isEmpty() && QFileInfo::exists(local) && QFile::moveToTrash(local, &trashed)) {
+        if (m_notifications && !trashed.isEmpty()
+            && m_settings->value(QStringLiteral("notifications.enabled"), true).toBool()) {
+            const uint id = m_notifications->sendWithActions(
+                QStringLiteral("NewTeller"), tr("%1 moved to the trash").arg(QFileInfo(local).fileName()),
+                QString(), QStringLiteral("trash"), {QStringLiteral("undo"), tr("Undo")}, false, 8000);
+            m_trashUndo.insert(id, {trashed, local});
+        }
+        return true;
+    }
+    notify(tr("Could not move %1 to the trash").arg(QFileInfo(local).fileName()),
+           tr("It may be on a drive without a trash folder, or you may not be allowed to change it."));
+    return false;
+}
+
 void ShellController::openOrSay(const QUrl &url) const
 {
     // Qt hands the URL to xdg-open (or the OpenURI portal); without them a
@@ -421,8 +586,27 @@ void ShellController::terminal(const QString &command) const
 
 void ShellController::copyToClipboard(const QString &text) const
 {
+    // On Wayland only a surface with keyboard focus may set the clipboard,
+    // which the desktop and the panel usually do not have; wl-copy goes
+    // through wlr-data-control and works from anywhere.
+    if (!qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")
+        && !QStandardPaths::findExecutable(QStringLiteral("wl-copy")).isEmpty()
+        && QProcess::startDetached(QStringLiteral("wl-copy"), {QStringLiteral("--"), text}))
+        return;
     if (QClipboard *clipboard = QGuiApplication::clipboard())
         clipboard->setText(text);
+}
+
+void ShellController::notifyUrgent(const QString &title, const QString &body, const QString &icon) const
+{
+    if (m_notifications
+        && m_settings->value(QStringLiteral("notifications.enabled"), true).toBool()) {
+        m_notifications->sendWithActions(QStringLiteral("NewTeller"), title, body, icon, {});
+        return;
+    }
+    QProcess::startDetached(QStringLiteral("notify-send"),
+                            {QStringLiteral("--app-name=NewTeller"), QStringLiteral("--urgency=critical"),
+                             title, body});
 }
 
 void ShellController::notify(const QString &title, const QString &body) const
@@ -442,8 +626,105 @@ void ShellController::notify(const QString &title, const QString &body) const
 
 QString ShellController::clipboardText() const
 {
+    // Wayland hands the clipboard only to the focused surface, which the
+    // desktop is not: wl-paste reads it through wlr-data-control. It runs on
+    // a click, bounded to a second so a hung clipboard owner cannot freeze
+    // the shell.
+    if (!qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")
+        && !QStandardPaths::findExecutable(QStringLiteral("wl-paste")).isEmpty()) {
+        QProcess paste;
+        paste.start(QStringLiteral("wl-paste"),
+                    {QStringLiteral("--no-newline"), QStringLiteral("--type"), QStringLiteral("text")});
+        if (paste.waitForFinished(1000) && paste.exitStatus() == QProcess::NormalExit
+            && paste.exitCode() == 0)
+            return QString::fromUtf8(paste.readAllStandardOutput());
+        paste.kill();
+        paste.waitForFinished(100);
+    }
     const QClipboard *clipboard = QGuiApplication::clipboard();
     return clipboard != nullptr ? clipboard->text() : QString();
+}
+
+
+int ShellController::pasteFiles(const QString &folder) const
+{
+    QStringList sources;
+    if (!qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")
+        && !QStandardPaths::findExecutable(QStringLiteral("wl-paste")).isEmpty()) {
+        QProcess types;
+        types.start(QStringLiteral("wl-paste"), {QStringLiteral("--list-types")});
+        const QStringList offered = types.waitForFinished(1000)
+                                        ? QString::fromUtf8(types.readAllStandardOutput()).split(QLatin1Char('\n'))
+                                        : QStringList();
+        if (!offered.contains(QStringLiteral("text/uri-list")) && offered.contains(QStringLiteral("image/png"))) {
+            // A picture (a screenshot, an image copied in a browser): saved
+            // as a PNG file.
+            QProcess image;
+            image.start(QStringLiteral("wl-paste"), {QStringLiteral("--type"), QStringLiteral("image/png")});
+            if (image.waitForFinished(3000) && image.exitCode() == 0) {
+                const QByteArray png = image.readAllStandardOutput();
+                const QDir dir(expandHome(folder.trimmed()));
+                const QString name = freeName(dir, tr("Pasted image %1.png")
+                                                       .arg(QDateTime::currentDateTime().toString(
+                                                           QStringLiteral("yyyyMMdd-hhmmss"))), false);
+                QFile file(dir.absoluteFilePath(name));
+                if (!png.isEmpty() && !name.isEmpty() && file.open(QIODevice::WriteOnly) && file.write(png) == png.size())
+                    return 1;
+                notify(tr("Could not paste the image"),
+                       tr("You may not be allowed to change this folder, or the disk is full."));
+                return 1; // handled: do not paste it as text as well
+            }
+            image.kill();
+            image.waitForFinished(100);
+        }
+        if (offered.contains(QStringLiteral("text/uri-list"))) {
+            QProcess paste;
+            paste.start(QStringLiteral("wl-paste"),
+                        {QStringLiteral("--no-newline"), QStringLiteral("--type"), QStringLiteral("text/uri-list")});
+            if (paste.waitForFinished(1000)) {
+                const QStringList lines = QString::fromUtf8(paste.readAllStandardOutput()).split(QLatin1Char('\n'));
+                for (QString line : lines) {
+                    line = line.trimmed();
+                    if (line.startsWith(QLatin1String("file:")))
+                        sources << QUrl(line).toLocalFile();
+                }
+            }
+        }
+    } else if (const QClipboard *clipboard = QGuiApplication::clipboard()) {
+        if (const QMimeData *data = clipboard->mimeData()) {
+            for (const QUrl &url : data->urls()) {
+                if (url.isLocalFile())
+                    sources << url.toLocalFile();
+            }
+        }
+    }
+    sources.removeAll(QString());
+    if (sources.isEmpty())
+        return 0;
+
+    const QString target = expandHome(folder.trimmed());
+    // A big folder takes a while: copy in the background, report at the end.
+    QPointer<const ShellController> self(this);
+    QThread *worker = QThread::create([self, sources, target] {
+        const QDir dir(target);
+        QStringList failed;
+        for (const QString &source : sources) {
+            const QFileInfo from(source);
+            const QString name = freeName(dir, from.fileName(), from.isDir());
+            if (name.isEmpty() || !QFileInfo::exists(source) || !copyTree(source, dir.absoluteFilePath(name)))
+                failed << QFileInfo(source).fileName();
+        }
+        if (!failed.isEmpty() && self) {
+            QMetaObject::invokeMethod(const_cast<ShellController *>(self.data()), [self, failed] {
+                if (self)
+                    self->notify(tr("Could not paste %1").arg(failed.join(QStringLiteral(", "))),
+                                 tr("You may not be allowed to change this folder, or the disk is full."));
+            }, Qt::QueuedConnection);
+        }
+    });
+    connect(worker, &QThread::finished, worker, &QObject::deleteLater);
+    worker->start();
+    return int(sources.size());
 }
 
 bool ShellController::saveTextFile(const QString &path, const QString &text) const

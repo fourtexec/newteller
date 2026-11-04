@@ -88,8 +88,10 @@ QtObject {
             const level = Math.round(System.batteryPercent);
             if (level <= 5 && root.batteryWarned > 5) {
                 root.batteryWarned = 5;
-                Shell.notify(qsTr("Battery critically low"),
-                             qsTr("%1% left. Plug in now or the computer will shut down.").arg(level));
+                // Urgent: do-not-disturb must not hide it.
+                Shell.notifyUrgent(qsTr("Battery critically low"),
+                                   qsTr("%1% left. Plug in now or the computer will shut down.").arg(level),
+                                   "battery");
             } else if (level <= 10 && root.batteryWarned > 10) {
                 root.batteryWarned = 10;
                 Shell.notify(qsTr("Battery low"), qsTr("%1% left. Plug in soon.").arg(level));

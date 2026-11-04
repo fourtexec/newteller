@@ -71,8 +71,8 @@ Rectangle {
                 return
             if (hovered)
                 win.showToolTip(widget,
-                                "CPU " + Math.round(widget.cpuPercent) + "% ("
-                                + widget.cpuCount + " cores)")
+                                qsTr("CPU %1% (%2 cores)").arg(Math.round(widget.cpuPercent))
+                                                          .arg(widget.cpuCount))
             else if (typeof win.hideToolTip === "function")
                 win.hideToolTip()
         }

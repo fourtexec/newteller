@@ -7,11 +7,9 @@
   "x": 60,
   "y": 180,
   "order": 20,
-  "description": "Weather widget showing temperature, conditions, and forecast.",
+  "description": "Current weather and a 5-day forecast from Open-Meteo for the city set with the gear button.",
   "settings": {
     "location": "auto",
-    "units": "metric",
-    "showForecast": true,
     "refreshInterval": 30
   }
 }

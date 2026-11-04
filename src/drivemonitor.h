@@ -43,6 +43,7 @@ private:
     void announce(const Volume &volume);
     void answered(uint id, const QString &key);
     void open(const Volume &volume);
+    void openFolder(const QString &path);
     void eject(const Volume &volume);
     void unmountAll(const Volume &volume, QStringList blocks);
     void powerOff(const Volume &volume);

@@ -104,9 +104,10 @@ inside VirtualBox. The implemented pieces are:
   see [Settings application](#settings-application). The QML is compiled into the
   `newteller` executable, so it cannot be deleted or damaged without replacing the
   binary itself.
-- Run dialog (`Alt+F2`): run a shell command or search applications; bare
-  commands are remembered (`run.history`, capped by `run.historyLimit`) and
-  Up/Down walks the history
+- Run dialog (`Alt+F2`): run a shell command or search applications; a web
+  address (`https://…`, `mailto:`) or a folder / document path (`~/Документы`,
+  `/etc/fstab`) opens instead; bare commands are remembered (`run.history`,
+  capped by `run.historyLimit`) and Up/Down walks the history
 - **Dropdowns linked to their buttons.** Every floating surface — start menu,
   quick settings, notification centre, clock, dock menu and tray menu — opens
   anchored to the widget that toggled it: centred on the button, clamped into
@@ -124,8 +125,10 @@ inside VirtualBox. The implemented pieces are:
   inside the menus (start menu session actions, quick settings, notification
   centre) use an in-window bubble.
 - Desktop: wallpaper, icons from `~/Desktop` (double-click to open), desktop
-  plugins, right-click menu (change wallpaper, paste to a file, open a terminal,
-  settings)
+  plugins, right-click menu (change wallpaper, paste to a file, new folder, open
+  a terminal, settings); right-clicking an icon opens its own menu: Open,
+  Rename (in place), Copy path, Move to Trash (restorable from the file
+  manager)
 - System monitor (`System` object, on a shared ticker) with bundled panel and
   desktop widgets
 - **Surface materials:** configure panel, dock buttons, floating shell windows and notifications independently as theme, opaque, half-transparent, frosted glass or liquid glass. Inside a NewTeller session the compositor blurs what is behind see-through menus, the dock, the overview, Alt+Tab and the on-screen display.
@@ -741,6 +744,7 @@ Bundled plugins:
 | --- | --- | --- |
 | `desktop-clock` | desktop | large clock and date |
 | `desktop-sysinfo` | desktop | host, kernel, uptime, load, battery |
+| `desktop-weather` | desktop | weather and a 5-day forecast from Open-Meteo (no key) for the city set with its gear button (`weather.location`, `weather.units`, `weather.showForecast`); nothing is fetched until a city is set |
 | `panel-system-monitor` | panel | CPU and memory bars, network rates |
 
 Plugins have access to the global objects:

@@ -1,5 +1,7 @@
 #include "bluetooth.h"
 
+#include <QHash>
+
 #include <QDBusArgument>
 #include <QDBusConnection>
 #include <QDBusMessage>
@@ -66,6 +68,7 @@ void Bluetooth::refresh()
         if (reply.type() == QDBusMessage::ReplyMessage && !reply.arguments().isEmpty()) {
             const QDBusArgument objects = reply.arguments().constFirst().value<QDBusArgument>();
             QList<QPair<QString, QVariantMap>> deviceObjects;
+            QHash<QString, int> batteries; // device path -> percent (org.bluez.Battery1)
             objects.beginMap();
             while (!objects.atEnd()) {
                 QDBusObjectPath path;
@@ -84,6 +87,11 @@ void Bluetooth::refresh()
                         discovering = properties.value(QStringLiteral("Discovering")).toBool();
                     } else if (interface == kDevice) {
                         deviceObjects.append({path.path(), properties});
+                    } else if (interface == QLatin1String("org.bluez.Battery1")) {
+                        bool ok = false;
+                        const int percent = properties.value(QStringLiteral("Percentage")).toInt(&ok);
+                        if (ok)
+                            batteries.insert(path.path(), qBound(0, percent, 100));
                     }
                 }
                 objects.endMap();
@@ -113,6 +121,8 @@ void Bluetooth::refresh()
                 device.insert(QStringLiteral("connected"), p.value(QStringLiteral("Connected")).toBool());
                 device.insert(QStringLiteral("trusted"), p.value(QStringLiteral("Trusted")).toBool());
                 device.insert(QStringLiteral("rssi"), p.value(QStringLiteral("RSSI"), -200).toInt());
+                // Headphones, mice and keyboards report their charge.
+                device.insert(QStringLiteral("battery"), batteries.value(object.first, -1));
                 devices.append(device);
             }
             std::sort(devices.begin(), devices.end(), [](const QVariant &a, const QVariant &b) {
