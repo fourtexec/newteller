@@ -1064,9 +1064,11 @@ class BluetoothStub(QObject):
     busyDevice = Property(str, lambda self: "", notify=changed)
     devices = Property("QVariantList", lambda self: [
         {"path": "/org/bluez/hci0/dev_1", "address": "00:11", "name": "Headphones",
-         "icon": "audio-headset", "paired": True, "connected": True, "trusted": True, "rssi": -40},
+         "icon": "audio-headset", "paired": True, "connected": True, "trusted": True, "rssi": -40,
+         "battery": 80},
         {"path": "/org/bluez/hci0/dev_2", "address": "00:22", "name": "Mouse",
-         "icon": "input-mouse", "paired": False, "connected": False, "trusted": False, "rssi": -60}],
+         "icon": "input-mouse", "paired": False, "connected": False, "trusted": False, "rssi": -60,
+         "battery": -1}],
         notify=changed)
 
     def __init__(self):
@@ -2195,6 +2197,12 @@ def main():
                 bt_list = bts[0].findChild(QObject, "bluetoothList")
                 check(bt_list is not None and bt_list.property("count") == 2,
                       "the Bluetooth list shows the devices")
+                bt_items = []
+                walk_items(bts[0].contentItem(), bt_items)
+                statuses = sorted(i.property("text") for i in bt_items
+                                  if isinstance(i, QQuickItem) and i.objectName() == "bluetoothStatus")
+                check(statuses == ["Available", "Connected · battery 80%"],
+                      f"connected devices show their charge ({statuses})")
                 QMetaObject.invokeMethod(bts[0], "hide")
                 QTest.qWait(400)
                 check(("stopDiscovery",) in bluetooth.calls, "closing the Bluetooth list stops scanning")
