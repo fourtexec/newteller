@@ -191,6 +191,10 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("notifications.groupByApp"), false);
     m_defaults.insert(QStringLiteral("notifications.showAppIcon"), true);
     m_defaults.insert(QStringLiteral("drives.notify"), true);
+    // The weather widget: nothing is fetched until a city is set.
+    m_defaults.insert(QStringLiteral("weather.location"), QString());
+    m_defaults.insert(QStringLiteral("weather.units"), QStringLiteral("metric"));
+    m_defaults.insert(QStringLiteral("weather.showForecast"), true);
     m_defaults.insert(QStringLiteral("notifications.soundEnabled"), true);
     m_defaults.insert(QStringLiteral("notifications.soundFile"), QString());
     m_defaults.insert(QStringLiteral("notifications.doNotDisturbSchedule"), false);

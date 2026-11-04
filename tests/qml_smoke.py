@@ -1395,7 +1395,8 @@ def main():
     def qml_unquote(text):
         return text.replace("\\\\", "\x00").replace("\\n", "\n").replace('\\"', '"').replace("\x00", "\\")
     source_texts = set()
-    for qml in glob.glob(os.path.join(ROOT, "qml", "*.qml")):
+    for qml in glob.glob(os.path.join(ROOT, "qml", "*.qml")) + \
+               glob.glob(os.path.join(ROOT, "plugins", "*", "*.qml")):
         with open(qml, encoding="utf-8") as handle:
             source_texts.update(qml_unquote(t) for t in
                                 re.findall(r'qsTr\("((?:[^"\\]|\\.)*)"\)', handle.read()))

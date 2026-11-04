@@ -741,6 +741,7 @@ Bundled plugins:
 | --- | --- | --- |
 | `desktop-clock` | desktop | large clock and date |
 | `desktop-sysinfo` | desktop | host, kernel, uptime, load, battery |
+| `desktop-weather` | desktop | weather and a 5-day forecast from Open-Meteo (no key) for the city set with its gear button (`weather.location`, `weather.units`, `weather.showForecast`); nothing is fetched until a city is set |
 | `panel-system-monitor` | panel | CPU and memory bars, network rates |
 
 Plugins have access to the global objects:
