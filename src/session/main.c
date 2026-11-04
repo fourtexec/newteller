@@ -204,6 +204,9 @@ static pid_t viewPid(struct View *view);
 static void updateIdleInhibited(struct Server *server);
 static bool surfaceLayoutPosition(struct Server *server, struct wlr_surface *surface, int *x, int *y);
 static bool shortcutsInhibited(struct Server *server);
+static void raisePinnedViews(struct Server *server);
+static void viewSetMaximized(struct View *view, bool maximized);
+static void requestWindowMenu(struct View *view, int x, int y);
 struct Keyboard;
 static struct wlr_input_method_keyboard_grab_v2 *keyboardImGrab(struct Keyboard *keyboard);
 
@@ -261,6 +264,10 @@ struct View {
     bool overrideRedirect;
     bool positioned;
     bool hiddenByShowDesktop;
+    // Stays above ordinary windows (window menu, rules.alwaysOnTop).
+    bool alwaysOnTop;
+    // rules.* were applied at the first map.
+    bool rulesApplied;
     // The virtual desktop the window lives on.
     int workspace;
     // A stable number for the control socket (thumbnails, overview).
@@ -325,6 +332,7 @@ struct View {
     struct wl_listener requestMaximize;
     struct wl_listener requestFullscreen;
     struct wl_listener requestMinimize;
+    struct wl_listener requestShowMenu;
     struct wl_listener foreignClose;
     struct wl_listener foreignActivate;
     struct wl_listener foreignMinimize;
@@ -1317,6 +1325,58 @@ static void viewRaise(struct View *view)
     wlr_scene_node_raise_to_top(&view->tree->node);
     wl_list_remove(&view->link);
     wl_list_insert(&view->server->views, &view->link);
+    raisePinnedViews(view->server);
+}
+
+// Always-on-top windows go back above the ordinary ones after anything was
+// raised. X11 menus and tooltips (override-redirect) stay above them, or a
+// pinned window would cover the menu of the application under it.
+static void raisePinnedViews(struct Server *server)
+{
+    bool any = false;
+    struct View *view;
+    wl_list_for_each(view, &server->views, link) {
+        if (view->alwaysOnTop && view->tree) {
+            any = true;
+            break;
+        }
+    }
+    if (!any)
+        return;
+    // Least recently used first, so the most recent one ends on top.
+    wl_list_for_each_reverse(view, &server->views, link) {
+        if (view->alwaysOnTop && view->tree && !view->overrideRedirect)
+            wlr_scene_node_raise_to_top(&view->tree->node);
+    }
+    wl_list_for_each_reverse(view, &server->views, link) {
+        if (view->overrideRedirect && view->tree)
+            wlr_scene_node_raise_to_top(&view->tree->node);
+    }
+}
+
+static void viewSetAlwaysOnTop(struct View *view, bool onTop)
+{
+    view->alwaysOnTop = onTop;
+    if (onTop && view->tree)
+        wlr_scene_node_raise_to_top(&view->tree->node);
+    raisePinnedViews(view->server);
+    scheduleAllFrames(view->server);
+}
+
+// Settings -> Windows -> Window rules: applications that always start on
+// top or maximized. Applied once, when the window first appears.
+static void applyWindowRules(struct View *view)
+{
+    if (view->rulesApplied || view->overrideRedirect)
+        return;
+    view->rulesApplied = true;
+    const struct CompositorConfig *config = &view->server->config;
+    const char *appId = viewAppId(view);
+    if (ntConfigListContains(config->rulesAlwaysOnTop, appId))
+        viewSetAlwaysOnTop(view, true);
+    if (ntConfigListContains(config->rulesMaximized, appId) && !view->maximized
+        && !view->fullscreen)
+        viewSetMaximized(view, true);
 }
 
 static void focusView(struct View *view, struct wlr_surface *surface)
@@ -2841,6 +2901,11 @@ static void cursorButton(struct wl_listener *listener, void *data)
                 viewSetMinimized(view, true);
                 break;
             }
+            if (event->button == BTN_RIGHT) {
+                // The window menu, as on every other desktop.
+                requestWindowMenu(view, (int)server->cursor->x, (int)server->cursor->y);
+                break;
+            }
             if (event->button != BTN_LEFT)
                 break;
             if (server->lastTitleView == view
@@ -3036,7 +3101,9 @@ static void seatStartDrag(struct wl_listener *listener, void *data)
 // Keyboard
 // ---------------------------------------------------------------------------
 
-static void shellAction(const char *method)
+// Calls org.newteller.Shell.<method> with one optional argument (gdbus
+// parses it as a GVariant: "3" is an int32).
+static void shellActionWith(const char *method, const char *argument)
 {
     // gdbus is part of glib2, present on every supported Debian/Ubuntu
     // desktop. The service is registered by the running NewTeller shell.
@@ -3046,9 +3113,14 @@ static void shellAction(const char *method)
         "gdbus", "call", "--session",
         "--dest", "org.newteller.Shell",
         "--object-path", "/org/newteller/Shell",
-        "--method", call, NULL,
+        "--method", call, argument, NULL,
     };
     spawnDetached(argv[0], argv);
+}
+
+static void shellAction(const char *method)
+{
+    shellActionWith(method, NULL);
 }
 
 // ---------------------------------------------------------------------------
@@ -3391,6 +3463,7 @@ static void switcherRestoreStacking(struct Server *server)
         if (view->tree)
             wlr_scene_node_raise_to_top(&view->tree->node);
     }
+    raisePinnedViews(server);
 }
 
 static void switcherStep(struct Server *server, bool backwards)
@@ -3571,6 +3644,59 @@ static void ipcField(char *out, size_t size, const char *text, bool noSpaces)
             || (noSpaces && *p == ' '))
             *p = noSpaces ? '_' : ' ';
     }
+}
+
+// The state letters of a window, shared by `windows` and the window menu:
+// f focused, m minimized, x maximized, F fullscreen, t always on top,
+// h not responding. "-" when none applies, so the field is never empty.
+static void viewFlags(struct View *view, char *flags, size_t size)
+{
+    size_t used = 0;
+    const struct {
+        bool on;
+        char letter;
+    } states[] = {
+        {view == view->server->focusedView, 'f'},
+        {view->minimized, 'm'},
+        {view->maximized, 'x'},
+        {view->hung, 'h'},
+        {view->fullscreen, 'F'},
+        {view->alwaysOnTop, 't'},
+    };
+    for (size_t i = 0; i < sizeof(states) / sizeof(states[0]) && used + 1 < size; ++i) {
+        if (states[i].on)
+            flags[used++] = states[i].letter;
+    }
+    if (used == 0 && size > 1)
+        flags[used++] = '-';
+    flags[used] = '\0';
+}
+
+// "event window-menu <id> <x> <y> <desktop> <flags> <title>": the shell
+// opens the window menu at x/y (layout coordinates). Asked for by a right
+// click on a title bar (ours or a client's), Alt+Space or `window-menu`.
+static void requestWindowMenu(struct View *view, int x, int y)
+{
+    struct Server *server = view->server;
+    if (server->locked || view->overrideRedirect || !view->mapped
+        || !ipcHasWatchers(server))
+        return;
+    char title[160];
+    ipcField(title, sizeof(title), viewTitle(view), false);
+    char flags[8];
+    viewFlags(view, flags, sizeof(flags));
+    char line[256];
+    snprintf(line, sizeof(line), "event window-menu %u %d %d %d %s %s", view->id, x, y,
+             view->workspace, flags, title);
+    ipcBroadcast(server, line);
+}
+
+// "on", "off" or "toggle" (the default) applied to the current state.
+static bool ipcToggle(const char *argument, bool current)
+{
+    if (!argument || strcmp(argument, "toggle") == 0)
+        return !current;
+    return strcmp(argument, "on") == 0 || strcmp(argument, "1") == 0;
 }
 
 // "event switcher <selected> <entries>": the shell draws the Alt+Tab
@@ -3773,6 +3899,23 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
     }
     if (logo && sym == XKB_KEY_space && server->layoutCount > 1) {
         setLayout(server, server->layoutIndex + 1);
+        return true;
+    }
+    // Alt+Space: the focused window's menu (as on Windows and GNOME), at its
+    // top-left corner since the pointer may be anywhere.
+    if (alt && !logo && !ctrl && sym == XKB_KEY_space && server->focusedView
+        && ipcHasWatchers(server)) {
+        struct View *view = server->focusedView;
+        int top = view->ssd ? view->y - server->config.titleHeight / 2 : view->y + 8;
+        requestWindowMenu(view, view->x + 16, top);
+        return true;
+    }
+    // Super+1..9: start or bring up the Nth application on the dock (as on
+    // Windows). The shell owns the dock, so it gets the index.
+    if (logo && !alt && !ctrl && !shift && sym >= XKB_KEY_1 && sym <= XKB_KEY_9) {
+        char argument[8];
+        snprintf(argument, sizeof(argument), "%d", (int)(sym - XKB_KEY_1));
+        shellActionWith("activateDockItem", argument);
         return true;
     }
     if (logo)
@@ -4333,6 +4476,7 @@ static void handleXdgMap(struct wl_listener *listener, void *data)
     // A newly opened application or dialog takes focus. This also deactivates
     // an open menu layer, which closes itself when it loses focus.
     focusView(view, NULL);
+    applyWindowRules(view);
     updateForeignToplevel(view);
 }
 
@@ -4371,6 +4515,7 @@ static void handleXdgDestroy(struct wl_listener *listener, void *data)
     wl_list_remove(&view->requestMaximize.link);
     wl_list_remove(&view->requestFullscreen.link);
     wl_list_remove(&view->requestMinimize.link);
+    wl_list_remove(&view->requestShowMenu.link);
     wl_list_remove(&view->setTitle.link);
     wl_list_remove(&view->setAppId.link);
     wl_list_remove(&view->pingTimeout.link);
@@ -4423,6 +4568,17 @@ static void handleXdgRequestMinimize(struct wl_listener *listener, void *data)
     (void)data;
     struct View *view = wl_container_of(listener, view, requestMinimize);
     viewSetMinimized(view, true);
+}
+
+// GTK header bars and other client-side title bars ask for the window menu
+// on a right click; x/y are relative to the surface.
+static void handleXdgRequestWindowMenu(struct wl_listener *listener, void *data)
+{
+    struct View *view = wl_container_of(listener, view, requestShowMenu);
+    struct wlr_xdg_toplevel_show_window_menu_event *event = data;
+    struct wlr_box geometry = viewGeometry(view);
+    requestWindowMenu(view, view->x - geometry.x + event->x,
+                      view->y - geometry.y + event->y);
 }
 
 static void handleXdgSetTitle(struct wl_listener *listener, void *data)
@@ -4630,6 +4786,8 @@ static void handleNewXdgToplevel(struct wl_listener *listener, void *data)
     wl_signal_add(&toplevel->events.request_fullscreen, &view->requestFullscreen);
     view->requestMinimize.notify = handleXdgRequestMinimize;
     wl_signal_add(&toplevel->events.request_minimize, &view->requestMinimize);
+    view->requestShowMenu.notify = handleXdgRequestWindowMenu;
+    wl_signal_add(&toplevel->events.request_show_window_menu, &view->requestShowMenu);
     view->setTitle.notify = handleXdgSetTitle;
     wl_signal_add(&toplevel->events.set_title, &view->setTitle);
     view->setAppId.notify = handleXdgSetAppId;
@@ -5922,6 +6080,7 @@ static void handleX11Map(struct wl_listener *listener, void *data)
         ensureForeignToplevel(view);
         viewRaise(view);
         focusView(view, NULL);
+        applyWindowRules(view);
     }
     updateForeignToplevel(view);
 }
@@ -7165,7 +7324,7 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
         ipcSend(client, "ok");
     } else if (strcmp(command, "windows") == 0) {
         // ok <id>\x1e<desktop>\x1e<app id>\x1e<title>\x1e<flags>\x1f...
-        // flags: f focused, m minimized, x maximized. Most recent first.
+        // flags: see viewFlags() ("-" for none). Most recent first.
         char reply[3800] = "ok ";
         size_t used = 3;
         bool first = true;
@@ -7177,17 +7336,8 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
             ipcField(title, sizeof(title), viewTitle(view), false);
             char appId[96];
             ipcField(appId, sizeof(appId), viewAppId(view), true);
-            char flags[5];
-            int f = 0;
-            if (view == server->focusedView)
-                flags[f++] = 'f';
-            if (view->minimized)
-                flags[f++] = 'm';
-            if (view->maximized)
-                flags[f++] = 'x';
-            if (view->hung)
-                flags[f++] = 'h';
-            flags[f] = '\0';
+            char flags[8];
+            viewFlags(view, flags, sizeof(flags));
             int written = snprintf(reply + used, sizeof(reply) - used,
                                    "%s%u\x1e%d\x1e%s\x1e%s\x1e%s\x1e%d", first ? "" : "\x1f",
                                    view->id, view->workspace, appId, title, flags,
@@ -7198,9 +7348,21 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
             first = false;
         }
         ipcSend(client, reply);
+    } else if (strcmp(command, "window-menu") == 0 && !argument) {
+        // The focused window's menu, at its corner (as Alt+Space).
+        struct View *view = server->focusedView;
+        if (!view) {
+            ipcSend(client, "error no focused window");
+            return;
+        }
+        requestWindowMenu(view, view->x + 16, view->y + 8);
+        ipcSend(client, "ok");
     } else if ((strcmp(command, "thumbnail") == 0 || strcmp(command, "activate") == 0
                 || strcmp(command, "close") == 0 || strcmp(command, "move-window") == 0
-                || strcmp(command, "kill") == 0)
+                || strcmp(command, "kill") == 0 || strcmp(command, "minimize") == 0
+                || strcmp(command, "maximize") == 0 || strcmp(command, "fullscreen") == 0
+                || strcmp(command, "always-on-top") == 0
+                || strcmp(command, "window-menu") == 0)
                && argument) {
         uint32_t id = (uint32_t)strtoul(argument, NULL, 10);
         struct View *target = NULL;
@@ -7236,6 +7398,41 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
             ipcSend(client, "ok");
         } else if (strcmp(command, "close") == 0) {
             viewClose(target);
+            ipcSend(client, "ok");
+        } else if (strcmp(command, "minimize") == 0) {
+            // minimize ID [on|off|toggle]: on by default.
+            char *state = strtok(NULL, " \t\r");
+            bool minimize = state ? ipcToggle(state, target->minimized) : true;
+            if (minimize != target->minimized) {
+                viewSetMinimized(target, minimize);
+                if (!minimize)
+                    focusView(target, NULL);
+            }
+            ipcSend(client, "ok");
+        } else if (strcmp(command, "maximize") == 0) {
+            bool maximize = ipcToggle(strtok(NULL, " \t\r"), target->maximized);
+            if (target->minimized)
+                viewSetMinimized(target, false);
+            if (maximize != target->maximized)
+                viewSetMaximized(target, maximize);
+            focusView(target, NULL);
+            ipcSend(client, "ok");
+        } else if (strcmp(command, "fullscreen") == 0) {
+            bool fullscreen = ipcToggle(strtok(NULL, " \t\r"), target->fullscreen);
+            if (target->minimized)
+                viewSetMinimized(target, false);
+            if (fullscreen != target->fullscreen)
+                viewSetFullscreen(target, fullscreen);
+            focusView(target, NULL);
+            ipcSend(client, "ok");
+        } else if (strcmp(command, "always-on-top") == 0) {
+            viewSetAlwaysOnTop(target, ipcToggle(strtok(NULL, " \t\r"), target->alwaysOnTop));
+            ipcSend(client, target->alwaysOnTop ? "ok 1" : "ok 0");
+        } else if (strcmp(command, "window-menu") == 0) {
+            char *x = strtok(NULL, " \t\r");
+            char *y = strtok(NULL, " \t\r");
+            requestWindowMenu(target, x ? atoi(x) : target->x + 16,
+                              y ? atoi(y) : target->y + 8);
             ipcSend(client, "ok");
         } else if (strcmp(command, "kill") == 0) {
             // Force quit: the process behind the window, never the session.
@@ -7880,8 +8077,9 @@ static void printUsage(void)
         "  --socket <name>            Use an explicit Wayland socket name\n"
         "  --msg <command>            Send a command to the running compositor\n"
         "                             (reload, lock, dpms on|off, layout next,\n"
-        "                             idle-inhibit on|off, outputs, exit) and\n"
-        "                             print the reply\n"
+        "                             idle-inhibit on|off, outputs, windows,\n"
+        "                             minimize|maximize|fullscreen|always-on-top ID,\n"
+        "                             window-menu, exit) and print the reply\n"
         "  --debug                    Verbose wlroots logging\n");
 }
 

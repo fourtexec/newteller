@@ -112,6 +112,11 @@ public:
     Q_INVOKABLE void activateWindow(int id);
     Q_INVOKABLE void closeWindow(int id);
     Q_INVOKABLE void moveWindow(int id, int workspace);
+    // The window menu's actions (compositor ids, as in windows()).
+    Q_INVOKABLE void minimizeWindow(int id);
+    Q_INVOKABLE void toggleMaximizeWindow(int id);
+    Q_INVOKABLE void toggleFullscreenWindow(int id);
+    Q_INVOKABLE void setWindowAlwaysOnTop(int id, bool onTop);
     // Force quit: kills the process behind the window. "" on success, else
     // the reason.
     Q_INVOKABLE QString killWindow(int id);
@@ -183,6 +188,11 @@ signals:
     void hungWindowsChanged();
     // A window stopped responding (the force-quit dialog offers to end it).
     void windowHung(int id);
+    // Open the window menu at x/y (layout coordinates). `flags` holds the
+    // state letters of the window (m minimized, x maximized, F fullscreen,
+    // t always on top), `desktop` the desktop it is on.
+    void windowMenuRequested(int id, int x, int y, int desktop, const QString &flags,
+                             const QString &title);
 
 private:
     void connectCompositor();

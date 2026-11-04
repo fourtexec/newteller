@@ -2663,6 +2663,32 @@ Window {
                         }
 
                         SettingsSection {
+                            title: qsTr("Window rules")
+                            subtitle: qsTr("Application ids, separated by commas (the overview and Ctrl+Shift+Esc show them). Any window can also be put on top from its window menu: right-click the title bar or press Alt+Space.")
+
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Always on top")
+                                settingKey: "windowRules.alwaysOnTop"
+                                SettingsTextField {
+                                    width: 240
+                                    settingKey: "windowRules.alwaysOnTop"
+                                    placeholder: qsTr("e.g. org.gnome.Calculator")
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Open maximized")
+                                settingKey: "windowRules.maximized"
+                                SettingsTextField {
+                                    width: 240
+                                    settingKey: "windowRules.maximized"
+                                    placeholder: qsTr("e.g. firefox, code")
+                                }
+                            }
+                        }
+
+                        SettingsSection {
                             title: qsTr("Your shortcuts")
                             subtitle: qsTr("Run any command from a key combination, e.g. Super+T -> konsole, Ctrl+Alt+F -> firefox. They take priority over the built-in ones.")
 

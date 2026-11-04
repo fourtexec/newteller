@@ -132,6 +132,20 @@ QtObject {
         screen: Qt.application.screens[0]
     }
 
+    // Right click on a title bar, Alt+Space: minimize, maximize, always on
+    // top, move to another desktop, close.
+    readonly property WindowMenu windowMenu: WindowMenu {
+        screen: Qt.application.screens[0]
+    }
+
+    readonly property Connections windowMenuRequests: Connections {
+        target: Session
+        function onWindowMenuRequested(id, x, y, desktop, flags, title) {
+            root.startMenu.hide();
+            root.windowMenu.openAt(id, x, y, desktop, flags, title);
+        }
+    }
+
     // Ctrl+Shift+Esc: end a frozen application.
     readonly property ForceQuitWindow forceQuit: ForceQuitWindow {
         screen: Qt.application.screens[0]
@@ -252,6 +266,14 @@ QtObject {
         function onRunDialogRequested() {
             root.startMenu.hide();
             root.runDialog.show();
+        }
+        function onDockItemRequested(index) {
+            // The panel of the first screen: every panel shows the same dock.
+            const panel = root.panels.objectAt(0);
+            if (panel) {
+                root.startMenu.hide();
+                panel.activateDockIndex(index);
+            }
         }
     }
 }

@@ -230,6 +230,11 @@ inside VirtualBox. The implemented pieces are:
   "system title bar") get one: title, minimize/maximize/close, double click to
   maximize, drag to move, edges to resize. Buttons left or right, height,
   border, font and colours (or the theme's) in Settings → Windows.
+- **Window menu**: right-click a title bar (NewTeller's own or an
+  application's header bar) or press `Alt+Space`: minimize, maximize, full
+  screen, **always on top**, move to another desktop, close. Settings →
+  Windows → Window rules keeps chosen applications on top or opens them
+  maximized (`windowRules.alwaysOnTop`, `windowRules.maximized`).
 - **Overview** (`Super+Tab`): every window of a desktop as a live thumbnail,
   desktops along the top; click to switch, close, or move a window to
   another desktop. Alt+Tab shows thumbnails too.
@@ -364,6 +369,12 @@ distribution has them.
 The compositor reads `~/.config/newteller/compositor.conf`, which the shell
 writes from its settings, and listens on a control socket (`$NEWTELLER_IPC`):
 `newteller-compositor --msg reload|lock|locked|dpms on|dpms off|layout next|workspace N|outputs|windows|kill ID|exit`.
+Window commands take the id from `windows`: `minimize ID [on|off]`,
+`maximize ID [on|off|toggle]`, `fullscreen ID [on|off|toggle]`,
+`always-on-top ID [on|off|toggle]` and `window-menu [ID [X Y]]` (opens the
+window menu; watchers get `event window-menu ID X Y DESKTOP FLAGS TITLE`).
+`windows` flags: `f` focused, `m` minimized, `x` maximized, `F` full screen,
+`t` always on top, `h` not responding (`-` for none).
 `windows` marks frozen windows with the `h` flag and reports each window's
 process id; `kill ID` force-quits one (never the compositor or the shell).
 `idle-inhibit on|off` keeps the screen awake while the connection that sent
@@ -380,7 +391,8 @@ these shortcuts globally, even when an application has focus:
 `Super+Up`/`Super+Down` (maximise/restore), `Super+Shift+Left`/`Super+Shift+Right`
 (move to another output), `Super+D` (show desktop), `Super+M` (maximise),
 `Super+F` (fullscreen), `Super+L` (lock), `Super+Space` (next keyboard layout),
-`Super+V` (clipboard history), `Super+N` (notifications), `Super+A` (quick settings), `Super+R` (run), `Super+E` (home
+`Super+V` (clipboard history), `Super+1…9` (the Nth dock application: start
+it, bring it up, or cycle its windows), `Alt+Space` (window menu), `Super+N` (notifications), `Super+A` (quick settings), `Super+R` (run), `Super+E` (home
 folder), `Super+I` (settings), `Super+Shift+S` (area screenshot),
 `Ctrl+Super+Left/Right` (switch desktop, with `Shift` to move the window),
 `Ctrl+Shift+Esc` or `Ctrl+Alt+Esc` (force quit),

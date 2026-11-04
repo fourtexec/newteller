@@ -178,6 +178,39 @@ if [[ $reply != ok* || ! -s $thumb ]]; then
 fi
 echo "session smoke: window $window_id has a thumbnail ($(stat -c %s "$thumb") bytes)"
 
+# The window menu's commands: always on top, maximize, minimize, and the
+# state letters in `windows` that the menu reads.
+window_flags() {
+    msg windows | sed 's/^ok //' | tr '\037' '\n' \
+        | awk -F $'\x1e' -v id="$window_id" '$1 == id { print $5 }'
+}
+if [[ $(msg always-on-top "$window_id" on || true) != 'ok 1' ]]; then
+    echo "always-on-top does not pin the window" >&2
+    exit 1
+fi
+if [[ $(window_flags) != *t* ]]; then
+    echo "a pinned window is not listed as always on top ($(window_flags))" >&2
+    exit 1
+fi
+msg maximize "$window_id" on >/dev/null
+if [[ $(window_flags) != *x* ]]; then
+    echo "maximize did not maximize the window ($(window_flags))" >&2
+    exit 1
+fi
+msg maximize "$window_id" off >/dev/null
+msg minimize "$window_id" >/dev/null
+if [[ $(window_flags) != *m* ]]; then
+    echo "minimize did not minimize the window ($(window_flags))" >&2
+    exit 1
+fi
+msg minimize "$window_id" off >/dev/null
+msg always-on-top "$window_id" off >/dev/null
+if [[ $(window_flags) == *[mxt]* ]]; then
+    echo "the window did not come back to normal ($(window_flags))" >&2
+    exit 1
+fi
+echo "session smoke: window menu commands (on top, maximize, minimize) work"
+
 # Settings -> Displays goes through output-set.
 reply=$(msg outputs-detail || true)
 if [[ $reply != ok\ HEADLESS-1* ]]; then

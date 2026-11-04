@@ -454,6 +454,12 @@ void ShellController::showForceQuit()
     emit forceQuitRequested();
 }
 
+void ShellController::activateDockItem(int index)
+{
+    if (index >= 0)
+        emit dockItemRequested(index);
+}
+
 void ShellController::showRunDialog()
 {
     emit runDialogRequested();

@@ -426,6 +426,7 @@ class Shell(QObject):
     taskViewToggleRequested = Signal()
     forceQuitRequested = Signal()
     runDialogRequested = Signal()
+    dockItemRequested = Signal(int)
 
     def __init__(self, desktop_dir, home_dir):
         super().__init__()
@@ -906,6 +907,23 @@ class Session(QObject):
     pointerPressed = Signal(int, int)
     hungWindowsChanged = Signal()
     windowHung = Signal(int)
+    windowMenuRequested = Signal(int, int, int, int, str, str)
+
+    @Slot(int)
+    def minimizeWindow(self, window_id):
+        self.calls.append(("minimizeWindow", window_id))
+
+    @Slot(int)
+    def toggleMaximizeWindow(self, window_id):
+        self.calls.append(("toggleMaximizeWindow", window_id))
+
+    @Slot(int)
+    def toggleFullscreenWindow(self, window_id):
+        self.calls.append(("toggleFullscreenWindow", window_id))
+
+    @Slot(int, bool)
+    def setWindowAlwaysOnTop(self, window_id, on_top):
+        self.calls.append(("setWindowAlwaysOnTop", window_id, on_top))
     hungWindows = Property("QVariantList", lambda self: [], notify=hungWindowsChanged)
 
     @Slot(int, result=str)
@@ -2259,6 +2277,37 @@ def main():
             QMetaObject.invokeMethod(tray_menus[0], "close")
             QTest.qWait(300)
             check(not tray_menus[0].isVisible(), "the tray menu closes again")
+
+        # The window menu (title bar right click, Alt+Space) opens where the
+        # compositor says and sends its actions back over Session.
+        window_menus = windows_of_kind("WindowMenu")
+        check(len(window_menus) == 1, f"one window menu ({len(window_menus)})")
+        if window_menus:
+            wmenu = window_menus[0]
+            session.calls.clear()
+            session.windowMenuRequested.emit(7, geometry.x() + 300, geometry.y() + 120, 1, "x",
+                                             "Notes - Editor")
+            QTest.qWait(300)
+            check(wmenu.isVisible(), "a window menu request opens the window menu")
+            card = on_screen(wmenu, "the window menu")
+            check(card[0] <= geometry.x() + 300 <= card[0] + card[2]
+                  and card[1] >= geometry.y() + 120 - 2,
+                  f"the window menu hangs below the pointer ({card})")
+            check(wmenu.property("isMaximized") and not wmenu.property("isOnTop"),
+                  "the window menu reads the window's state")
+            QMetaObject.invokeMethod(wmenu, "run", Q_ARG("QVariant", "onTop"),
+                                     Q_ARG("QVariant", 0))
+            QTest.qWait(300)
+            check(("setWindowAlwaysOnTop", 7, True) in session.calls,
+                  f"Always on top is sent to the compositor ({session.calls})")
+            check(not wmenu.isVisible(), "the window menu closes after an action")
+            session.windowMenuRequested.emit(7, geometry.x() + 300, geometry.y() + 120, 1, "t", "")
+            QTest.qWait(300)
+            QMetaObject.invokeMethod(wmenu, "run", Q_ARG("QVariant", "desktop"),
+                                     Q_ARG("QVariant", 2))
+            QTest.qWait(300)
+            check(("moveWindow", 7, 2) in session.calls,
+                  f"the window menu moves the window to another desktop ({session.calls})")
 
         # Panel shortcuts that never open a card: the middle click mutes, the
         # bell's right click flips do-not-disturb.

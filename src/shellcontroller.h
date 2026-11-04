@@ -81,6 +81,8 @@ public:
     Q_INVOKABLE void toggleTaskView();
     // Ctrl+Shift+Esc / Ctrl+Alt+Esc: the force-quit dialog.
     Q_INVOKABLE void showForceQuit();
+    // Super+1..9 (from the compositor): the dock application at `index`.
+    Q_INVOKABLE void activateDockItem(int index);
     Q_INVOKABLE void openConfig() const;
     // Opens the path in the file manager (or its handler for directories).
     Q_INVOKABLE void openPath(const QString &path) const;
@@ -149,6 +151,7 @@ signals:
     void clipboardToggleRequested();
     void taskViewToggleRequested();
     void forceQuitRequested();
+    void dockItemRequested(int index);
 
 private:
     void openOrSay(const QUrl &url) const;

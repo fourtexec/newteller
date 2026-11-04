@@ -16,6 +16,7 @@
 #include <QFileInfo>
 #include <QHash>
 #include <QList>
+#include <QRegularExpression>
 
 #include <algorithm>
 #include <QSet>
@@ -408,6 +409,15 @@ void SessionServices::handleEvent(const QString &line)
     } else if (line.startsWith(QLatin1String("closed "))) {
         if (m_hung.remove(line.mid(7).trimmed().toInt()))
             emit hungWindowsChanged();
+    } else if (line.startsWith(QLatin1String("window-menu "))) {
+        // window-menu <id> <x> <y> <desktop> <flags> <title...>
+        const QStringList parts = line.mid(12).split(QLatin1Char(' '));
+        if (parts.size() >= 5) {
+            const QString flags = parts.at(4) == QLatin1String("-") ? QString() : parts.at(4);
+            emit windowMenuRequested(parts.at(0).toInt(), parts.at(1).toInt(), parts.at(2).toInt(),
+                                     parts.at(3).toInt(), flags,
+                                     parts.mid(5).join(QLatin1Char(' ')));
+        }
     } else if (line.startsWith(QLatin1String("key "))) {
         emit mediaKey(line.mid(4).trimmed());
     } else if (line.startsWith(QLatin1String("locked "))) {
@@ -575,6 +585,7 @@ void SessionServices::settingChanged(const QString &key)
         || key.startsWith(QLatin1String("lock.")) || key.startsWith(QLatin1String("effects."))
         || key == QLatin1String("windows.focusFollowsMouse")
         || key == QLatin1String("windows.placement") || key == QLatin1String("windows.snapping")
+        || key.startsWith(QLatin1String("windowRules."))
         || key.startsWith(QLatin1String("mouse.")) || key.startsWith(QLatin1String("cursor."))
         || key == QLatin1String("desktop.wallpaper")
         || key == QLatin1String("desktop.defaultWallpaper")
@@ -684,6 +695,29 @@ QString SessionServices::compositorConfigText() const
     text += confLine(QStringLiteral("windows.placement"), value("windows.placement").toString());
     text += confLine(QStringLiteral("windows.snapping"), boolText(value("windows.snapping")));
     text += confLine(QStringLiteral("switcher.allWorkspaces"), boolText(value("switcher.allWorkspaces")));
+
+    // Window rules: a list in shell.json, or the comma separated text the
+    // settings field writes. Only characters an application id can hold.
+    const auto appIds = [&value](const char *key) {
+        const QVariant v = value(key);
+        const QStringList raw = v.typeId() == QMetaType::QString
+            ? v.toString().split(QRegularExpression(QStringLiteral("[,\\s]+")), Qt::SkipEmptyParts)
+            : v.toStringList();
+        QStringList ids;
+        for (const QString &entry : raw) {
+            QString id;
+            for (const QChar c : entry.trimmed()) {
+                if (c.isLetterOrNumber() || c == QLatin1Char('.') || c == QLatin1Char('_')
+                    || c == QLatin1Char('-'))
+                    id += c;
+            }
+            if (!id.isEmpty() && !ids.contains(id))
+                ids.append(id);
+        }
+        return ids.join(QLatin1Char(','));
+    };
+    text += confLine(QStringLiteral("rules.alwaysOnTop"), appIds("windowRules.alwaysOnTop"));
+    text += confLine(QStringLiteral("rules.maximized"), appIds("windowRules.maximized"));
 
     // Desktop effects.
     text += confLine(QStringLiteral("effects.enabled"), boolText(value("effects.enabled")));
@@ -1369,6 +1403,8 @@ QVariantList SessionServices::windows() const
         window.insert(QStringLiteral("minimized"), f.at(4).contains(QLatin1Char('m')));
         window.insert(QStringLiteral("maximized"), f.at(4).contains(QLatin1Char('x')));
         window.insert(QStringLiteral("hung"), f.at(4).contains(QLatin1Char('h')));
+        window.insert(QStringLiteral("fullscreen"), f.at(4).contains(QLatin1Char('F')));
+        window.insert(QStringLiteral("alwaysOnTop"), f.at(4).contains(QLatin1Char('t')));
         window.insert(QStringLiteral("pid"), f.value(5).toInt());
         list.append(window);
     }
@@ -1456,6 +1492,30 @@ void SessionServices::closeWindow(int id)
 void SessionServices::moveWindow(int id, int workspace)
 {
     query(QStringLiteral("move-window %1 %2").arg(id).arg(workspace));
+}
+
+// The window menu's commands go over the watch connection: the reply is
+// not needed, so the UI never waits for the compositor.
+void SessionServices::minimizeWindow(int id)
+{
+    sendCommand(QStringLiteral("minimize %1").arg(id));
+}
+
+void SessionServices::toggleMaximizeWindow(int id)
+{
+    sendCommand(QStringLiteral("maximize %1").arg(id));
+}
+
+void SessionServices::toggleFullscreenWindow(int id)
+{
+    sendCommand(QStringLiteral("fullscreen %1").arg(id));
+}
+
+void SessionServices::setWindowAlwaysOnTop(int id, bool onTop)
+{
+    sendCommand(QStringLiteral("always-on-top %1 %2")
+                    .arg(id)
+                    .arg(onTop ? QStringLiteral("on") : QStringLiteral("off")));
 }
 
 QVariantList SessionServices::outputs() const

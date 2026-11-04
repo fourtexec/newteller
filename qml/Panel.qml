@@ -547,6 +547,31 @@ Window {
         activateEntry(entry);
     }
 
+    // Super+1..9: the Nth button of the dock, in the order shown (background
+    // entries last). Like a click, but an application with several windows
+    // cycles through them instead of minimising.
+    function activateDockIndex(index) {
+        const entries = panel.dockEntries;
+        if (index < 0 || index >= entries.length)
+            return;
+        const entry = entries[index];
+        if (entry.windows.length > 1) {
+            var current = -1;
+            for (var i = 0; i < entry.windows.length; ++i) {
+                if (entry.windows[i].active)
+                    current = i;
+            }
+            if (current >= 0) {
+                const next = entry.windows[(current + 1) % entry.windows.length];
+                if (!next.readOnly) {
+                    Windows.activate(next.id);
+                    return;
+                }
+            }
+        }
+        dockClicked(entry);
+    }
+
     function closeEntry(entry) {
         for (const w of entry.windows)
             Windows.closeWindow(w.id);
