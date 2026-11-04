@@ -357,6 +357,10 @@ uint NotificationDaemon::publish(uint replacesId, const QString &appName, const 
     // resident: stays on screen after one of its actions was clicked.
     entry.insert(QStringLiteral("resident"), hints.value(QStringLiteral("resident")).toBool());
     entry.insert(QStringLiteral("stackTag"), stackTag);
+    // value: a 0-100 progress or level the popup draws as a bar; -1 = none.
+    bool hasValue = false;
+    const int value = hints.value(QStringLiteral("value")).toInt(&hasValue);
+    entry.insert(QStringLiteral("value"), hasValue ? qBound(0, value, 100) : -1);
 
     // transient: shown, but not kept in the history (volume, progress).
     if (!hints.value(QStringLiteral("transient")).toBool()) {

@@ -2278,7 +2278,7 @@ def main():
             picture.save(png_buffer, "PNG")
             third = {"id": 3, "app": "Chat", "summary": "Anna", "body": "Hi", "icon": "bell",
                      "image": "data:image/png;base64," + bytes(png.toBase64()).decode(),
-                     "actions": ["default", "", "reply", "Reply"], "timeout": 0}
+                     "actions": ["default", "", "reply", "Reply"], "timeout": 0, "value": 40}
             notifications._active = [first, second, third]
             notifications.activeChanged.emit()
             QTest.qWait(300)
@@ -2303,6 +2303,10 @@ def main():
                                                                "notificationAction")
                       if b.isVisible()]
             check(labels == ["Reply"], f"only real actions become buttons ({labels})")
+            bars = [b for b in items_named(stack.property("contentItem"), "notificationValue")
+                    if b.isVisible()]
+            check(len(bars) == 1 and abs(bars[0].childItems()[0].width() - bars[0].width() * 0.4) < 2,
+                  f"the value hint draws a level bar ({[(b.width(), b.childItems()[0].width()) for b in bars]})")
             def card_of(item):
                 # The nearest ancestor that carries the card's entry.
                 while item is not None:

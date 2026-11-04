@@ -105,6 +105,7 @@ Window {
                 body: e.body || "",
                 icon: e.icon || "",
                 image: e.image || "",
+                value: e.value === undefined ? -1 : e.value,
                 actions: JSON.stringify(e.actions || []),
                 timeout: e.timeout || 0,
                 revision: e.revision || 0
@@ -237,6 +238,7 @@ Window {
                 body: model.body,
                 icon: model.icon,
                 image: model.image,
+                value: model.value,
                 actions: notif.parseActions(model.actions),
                 timeout: model.timeout
             })
@@ -403,6 +405,30 @@ Window {
                         wrapMode: Text.Wrap
                         maximumLineCount: 4
                         elide: Text.ElideRight
+                    }
+
+                    // The value hint: a level or progress (volume scripts,
+                    // copies), 0-100.
+                    Rectangle {
+                        objectName: "notificationValue"
+                        Layout.fillWidth: true
+                        Layout.topMargin: 4
+                        Layout.preferredHeight: 4
+                        visible: (card.entry.value === undefined ? -1 : card.entry.value) >= 0
+                        radius: 2
+                        color: Qt.rgba(notif.appearance.foreground.r, notif.appearance.foreground.g,
+                                       notif.appearance.foreground.b, 0.16)
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            width: parent.width * Math.max(0, Math.min(100, card.entry.value || 0)) / 100
+                            radius: 2
+                            color: notif.appearance.accent
+                            Behavior on width {
+                                NumberAnimation { duration: motion.fast }
+                            }
+                        }
                     }
 
                     Row {
