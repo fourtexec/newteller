@@ -35,8 +35,45 @@ dir="$pictures/Screenshots"
 mkdir -p "$dir"
 file="$dir/Screenshot_$(date +%Y%m%d-%H%M%S)-$$.png"
 
+# Messages follow the shell's language (shell.language in shell.json),
+# else the system locale.
+language=$(sed -n 's/.*"shell\.language"[[:space:]]*:[[:space:]]*"\([a-z]*\)".*/\1/p' \
+    "${XDG_CONFIG_HOME:-$HOME/.config}/newteller/shell.json" 2>/dev/null | head -n 1)
+case "$language" in
+    ''|auto) language="${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}" ;;
+esac
+case "$language" in
+    ru*)
+        msg_failed="Не удалось сделать снимок экрана"
+        msg_no_grim="grim не установлен"
+        msg_no_slurp="Для снимка области нужен slurp (sudo apt install slurp)"
+        msg_no_image="Композитор не вернул изображение"
+        msg_saved="Снимок экрана сохранён"
+        msg_copied="также скопирован в буфер обмена"
+        ;;
+    *)
+        msg_failed="Screenshot failed"
+        msg_no_grim="grim is not installed"
+        msg_no_slurp="Area screenshots need slurp (sudo apt install slurp)"
+        msg_no_image="The compositor did not return an image"
+        msg_saved="Screenshot saved"
+        msg_copied="also copied to the clipboard"
+        ;;
+esac
+
+# notify SUMMARY BODY [IMAGE]: the image becomes the notification's picture
+# (image-path) where the daemon shows one.
 notify() {
     if command -v gdbus >/dev/null 2>&1; then
+        if [ -n "${3:-}" ]; then
+            # GVariant text: quote the path, escaping \ and '.
+            quoted=$(printf '%s' "$3" | sed "s/\\\\/\\\\\\\\/g; s/'/\\\\'/g")
+            gdbus call --session --dest org.freedesktop.Notifications \
+                --object-path /org/freedesktop/Notifications \
+                --method org.freedesktop.Notifications.Notify \
+                "Screenshot" 0 "image" "$1" "$2" "[]" "{'image-path': <'$quoted'>}" "int32 -1" \
+                >/dev/null 2>&1 && return 0
+        fi
         gdbus call --session --dest org.newteller.Shell \
             --object-path /org/newteller/Shell \
             --method org.newteller.Shell.notify "$1" "$2" >/dev/null 2>&1 && return 0
@@ -48,31 +85,31 @@ notify() {
 }
 
 if ! command -v grim >/dev/null 2>&1; then
-    notify "Screenshot failed" "grim is not installed"
+    notify "$msg_failed" "$msg_no_grim"
     exit 1
 fi
 
 if [ "$mode" = area ]; then
     if ! command -v slurp >/dev/null 2>&1; then
-        notify "Screenshot failed" "Area screenshots need slurp (sudo apt install slurp)"
+        notify "$msg_failed" "$msg_no_slurp"
         exit 1
     fi
     # Escape in slurp cancels: no screenshot, no error.
     region=$(slurp -d 2>/dev/null) || exit 0
     [ -n "$region" ] || exit 0
     grim -g "$region" "$file" || {
-        notify "Screenshot failed" "The compositor did not return an image"
+        notify "$msg_failed" "$msg_no_image"
         exit 1
     }
 elif ! grim "$file"; then
-    notify "Screenshot failed" "The compositor did not return an image"
+    notify "$msg_failed" "$msg_no_image"
     exit 1
 fi
 
 if command -v wl-copy >/dev/null 2>&1; then
     wl-copy --type image/png < "$file" >/dev/null 2>&1 &
-    notify "Screenshot saved" "$file (also copied to the clipboard)"
+    notify "$msg_saved" "$file ($msg_copied)" "$file"
 else
-    notify "Screenshot saved" "$file"
+    notify "$msg_saved" "$file" "$file"
 fi
 printf '%s\n' "$file"
