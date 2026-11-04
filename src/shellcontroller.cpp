@@ -425,6 +425,18 @@ void ShellController::copyToClipboard(const QString &text) const
         clipboard->setText(text);
 }
 
+void ShellController::notifyUrgent(const QString &title, const QString &body, const QString &icon) const
+{
+    if (m_notifications
+        && m_settings->value(QStringLiteral("notifications.enabled"), true).toBool()) {
+        m_notifications->sendWithActions(QStringLiteral("NewTeller"), title, body, icon, {});
+        return;
+    }
+    QProcess::startDetached(QStringLiteral("notify-send"),
+                            {QStringLiteral("--app-name=NewTeller"), QStringLiteral("--urgency=critical"),
+                             title, body});
+}
+
 void ShellController::notify(const QString &title, const QString &body) const
 {
     // The built-in daemon shows the popup itself when it owns the session; if

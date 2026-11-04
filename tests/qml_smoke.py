@@ -573,6 +573,10 @@ class Shell(QObject):
     def notify(self, title, body):
         self.calls.append(("notify", title))
 
+    @Slot(str, str, str)
+    def notifyUrgent(self, title, body, icon=""):
+        self.calls.append(("notifyUrgent", title))
+
 
 class FilePortal(QObject):
     """Stand-in for the FilePortal context property (src/fileportal.h)."""
@@ -607,10 +611,12 @@ class System(QObject):
     networkDownText = Property(str, lambda self: "1.2 MiB/s", constant=True)
     networkUpText = Property(str, lambda self: "240 KiB/s", constant=True)
     uptimeText = Property(str, lambda self: "1h 2m", constant=True)
-    batteryPresent = Property(bool, lambda self: False, constant=True)
-    batteryPercent = Property(float, lambda self: 0.0, constant=True)
+    # (present, percent, charging); the battery test changes it.
+    battery = (False, 0.0, False)
+    batteryPresent = Property(bool, lambda self: self.battery[0], notify=snapshotUpdated)
+    batteryPercent = Property(float, lambda self: self.battery[1], notify=snapshotUpdated)
     batteryStatus = Property(str, lambda self: "", constant=True)
-    batteryCharging = Property(bool, lambda self: False, constant=True)
+    batteryCharging = Property(bool, lambda self: self.battery[2], notify=snapshotUpdated)
     batteryCritical = Property(bool, lambda self: False, constant=True)
     batteryTimeText = Property(str, lambda self: "", constant=True)
     # An int: the desktop-sysinfo widget prints "N processes".
@@ -2388,6 +2394,19 @@ def main():
         notifications.activeChanged.emit()
         QTest.qWait(400)  # the exit animation plays before the window hides
         check(not notif_win.isVisible(), "the last notification dismiss hides the window")
+
+    # A battery at 4% while discharging: the warning gets through
+    # do-not-disturb (urgent), once.
+    shell.calls.clear()
+    system.battery = (True, 4.0, False)
+    system.snapshotUpdated.emit()
+    system.snapshotUpdated.emit()
+    QTest.qWait(50)
+    urgent = [c for c in shell.calls if c[0] == "notifyUrgent"]
+    check(len(urgent) == 1, f"a critically low battery warns urgently, once ({shell.calls})")
+    system.battery = (False, 0.0, False)
+    system.snapshotUpdated.emit()
+    QTest.qWait(50)
 
     # The colour palette is a panel pinned to the left edge of the screen,
     # not a floating window.

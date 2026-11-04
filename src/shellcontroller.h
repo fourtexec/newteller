@@ -89,6 +89,9 @@ public:
     Q_INVOKABLE void copyToClipboard(const QString &text) const;
     // Desktop notification through org.freedesktop.Notifications (notify-send).
     Q_INVOKABLE void notify(const QString &title, const QString &body) const;
+    // Gets through do-not-disturb and stays until closed (critical battery).
+    Q_INVOKABLE void notifyUrgent(const QString &title, const QString &body,
+                                  const QString &icon = QString()) const;
     // Text currently in the clipboard, for the desktop paste action.
     Q_INVOKABLE QString clipboardText() const;
     // Writes a text file (used by the desktop "Paste" action).
