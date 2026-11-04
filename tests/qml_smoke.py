@@ -1321,6 +1321,25 @@ def main():
     missing_files = sorted(name for name in literal_icons
                            if not os.path.exists(os.path.join(icon_dir, name + ".svg")))
     check(not missing_files, f"every literal iconName has an icons/ file (missing: {missing_files})")
+    # Every control in the settings application changes something: its key
+    # is read by the C++ services, the compositor (through compositor.conf),
+    # another QML file or the settings page itself, not only by the control.
+    with open(os.path.join(ROOT, "qml", "SettingsApp.qml"), encoding="utf-8") as handle:
+        settings_qml = handle.read()
+    bound_keys = sorted(set(re.findall(r'settingKey:\s*"([^"]+)"', settings_qml)))
+    readers = []
+    for pattern in ("src/*.cpp", "src/*.h", "src/session/*.c", "qml/*.qml", "plugins/*/*.qml",
+                    "rust/crates/*/src/**/*.rs"):
+        for path in glob.glob(os.path.join(ROOT, pattern), recursive=True):
+            if path.endswith(("settings.cpp", "SettingsApp.qml")):
+                continue
+            with open(path, encoding="utf-8") as handle:
+                readers.append(handle.read())
+    page_reads = re.sub(r'settingKey:\s*"[^"]+"', "", settings_qml)
+    dead = [k for k in bound_keys
+            if not any(k in text for text in readers) and '"%s"' % k not in page_reads]
+    check(not dead, f"every settings control changes something (never read: {dead})")
+
     # Translations (i18n/<language>.json, read by src/translator.cpp): every
     # entry translates a real qsTr() text, keeps its %1 placeholders, and the
     # file is compiled in.

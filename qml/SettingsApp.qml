@@ -479,25 +479,6 @@ Window {
                             title: qsTr("Theme variants")
                             subtitle: qsTr("Automatically switch themes based on system preferences.")
 
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Follow system theme")
-                                settingKey: "theme.followSystem"
-                                SettingsSwitch {}
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("System theme preference")
-                                visible: Settings.values["theme.followSystem"] === true
-                                settingKey: "theme.systemTheme"
-                                SettingsChoice {
-                                    model: [
-                                        { value: "auto", label: qsTr("Auto-detect") },
-                                        { value: "light", label: qsTr("Light") },
-                                        { value: "dark", label: qsTr("Dark") }
-                                    ]
-                                }
-                            }
                         }
 
                         SettingsSection {
@@ -1797,20 +1778,8 @@ Window {
 
                             SettingsRow {
                                 width: parent.width
-                                title: qsTr("Max search results")
-                                settingKey: "search.maxResults"
-                                SettingsStepper { from: 10; to: 500; step: 10 }
-                            }
-                            SettingsRow {
-                                width: parent.width
                                 title: qsTr("Show category chips")
                                 settingKey: "search.showCategories"
-                                SettingsSwitch {}
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Show category icons")
-                                settingKey: "search.categoryIcons"
                                 SettingsSwitch {}
                             }
                         }
@@ -1852,24 +1821,6 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: qsTr("Show CPU temperature")
-                                settingKey: "system.showCpuTemp"
-                                SettingsSwitch {}
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Show GPU info")
-                                settingKey: "system.showGpu"
-                                SettingsSwitch {}
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Show fan speed")
-                                settingKey: "system.showFanSpeed"
-                                SettingsSwitch {}
-                            }
-                            SettingsRow {
-                                width: parent.width
                                 title: qsTr("Battery")
                                 settingKey: "system.battery"
                                 SettingsSwitch {}
@@ -1887,12 +1838,6 @@ Window {
                                 settingKey: "system.disks"
                                 SettingsSwitch {}
                             }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Config file watching")
-                                settingKey: "watch.debounce"
-                                SettingsStepper { from: 0; to: 10000; step: 50; suffix: qsTr(" ms") }
-                            }
                         }
 
                         SettingsSection {
@@ -1902,28 +1847,8 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Icon cache")
-                                settingKey: "cache.iconCache"
+                                settingKey: "icons.cache"
                                 SettingsSwitch {}
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Max icon cache size")
-                                visible: Settings.values["cache.iconCache"] === true
-                                settingKey: "cache.maxIconCacheSize"
-                                SettingsStepper { from: 100; to: 5000; step: 100 }
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Search cache")
-                                settingKey: "cache.searchCache"
-                                SettingsSwitch {}
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Max search cache size")
-                                visible: Settings.values["cache.searchCache"] === true
-                                settingKey: "cache.maxSearchCacheSize"
-                                SettingsStepper { from: 100; to: 2000; step: 100 }
                             }
                         }
 
@@ -2268,12 +2193,6 @@ Window {
                                 width: parent.width
                                 title: qsTr("Enable online plugins")
                                 settingKey: "plugins.onlineEnabled"
-                                SettingsSwitch {}
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Auto-update plugins")
-                                settingKey: "plugins.autoUpdate"
                                 SettingsSwitch {}
                             }
                             SettingsRow {

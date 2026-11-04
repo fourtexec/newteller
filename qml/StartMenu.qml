@@ -267,7 +267,8 @@ DropdownWindow {
             id: chips
             Layout.fillWidth: true
             spacing: 6
-            visible: Apps.categories.length > 0
+            // search.showCategories (Settings -> Start menu).
+            visible: Apps.categories.length > 0 && Settings.values["search.showCategories"] !== false
 
             Repeater {
                 model: Apps.categories.slice(0, 12)
