@@ -5,6 +5,7 @@
 #include <QHash>
 #include <QObject>
 #include <QString>
+#include <QStringList>
 #include <QVariantMap>
 
 class NotificationDaemon;
@@ -43,6 +44,7 @@ private:
     void answered(uint id, const QString &key);
     void open(const Volume &volume);
     void eject(const Volume &volume);
+    void unmountAll(const Volume &volume, QStringList blocks);
     void powerOff(const Volume &volume);
     void failed(const QString &summary, const QDBusMessage &reply);
 

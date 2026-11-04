@@ -33,13 +33,10 @@ QVariantMap propertiesOf(const QDBusMessage &reply)
     return qdbus_cast<QVariantMap>(reply.arguments().constFirst());
 }
 
-// MountPoints (aay) of a Properties.Get reply: the first one, without the
-// trailing NUL UDisks keeps in each path.
-QString firstMountPoint(const QDBusMessage &reply)
+// The first of MountPoints (aay), without the trailing NUL UDisks keeps in
+// each path; empty when the filesystem is not mounted.
+QString firstMountPoint(const QVariant &value)
 {
-    if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
-        return {};
-    const QVariant value = qvariant_cast<QDBusVariant>(reply.arguments().constFirst()).variant();
     if (!value.canConvert<QDBusArgument>())
         return {};
     const QList<QByteArray> points = qdbus_cast<QList<QByteArray>>(value);
@@ -50,6 +47,14 @@ QString firstMountPoint(const QDBusMessage &reply)
             return QString::fromLocal8Bit(point);
     }
     return {};
+}
+
+// The same from a Properties.Get reply.
+QString firstMountPoint(const QDBusMessage &reply)
+{
+    if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
+        return {};
+    return firstMountPoint(qvariant_cast<QDBusVariant>(reply.arguments().constFirst()).variant());
 }
 } // namespace
 
@@ -209,28 +214,65 @@ void DriveMonitor::open(const Volume &volume)
 
 void DriveMonitor::eject(const Volume &volume)
 {
-    QDBusMessage get = QDBusMessage::createMethodCall(kUDisks, volume.block, kProperties, QStringLiteral("Get"));
-    get << kFilesystem << QStringLiteral("MountPoints");
-    auto *watcher = new QDBusPendingCallWatcher(m_bus.asyncCall(get), this);
+    // Every mounted filesystem of the drive: a stick can carry several
+    // partitions, and it is only safe to pull out once all are unmounted.
+    QDBusMessage list = QDBusMessage::createMethodCall(kUDisks, kRoot, kObjectManager,
+                                                       QStringLiteral("GetManagedObjects"));
+    auto *watcher = new QDBusPendingCallWatcher(m_bus.asyncCall(list), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, volume](QDBusPendingCallWatcher *w) {
         w->deleteLater();
-        if (firstMountPoint(w->reply()).isEmpty()) {
-            powerOff(volume);
+        const QDBusMessage reply = w->reply();
+        QStringList mounted;
+        if (reply.type() == QDBusMessage::ReplyMessage && !reply.arguments().isEmpty()
+            && reply.arguments().constFirst().canConvert<QDBusArgument>()) {
+            const QDBusArgument objects = reply.arguments().constFirst().value<QDBusArgument>();
+            if (objects.currentSignature() == QLatin1String("a{oa{sa{sv}}}")) {
+                objects.beginMap();
+                while (!objects.atEnd()) {
+                    QDBusObjectPath path;
+                    QMap<QString, QVariantMap> interfaces;
+                    objects.beginMapEntry();
+                    objects >> path >> interfaces;
+                    objects.endMapEntry();
+                    if (!path.path().startsWith(kBlockDevices) || !interfaces.contains(kFilesystem))
+                        continue;
+                    const QString drive =
+                        qvariant_cast<QDBusObjectPath>(interfaces.value(kBlock).value(QStringLiteral("Drive"))).path();
+                    if (drive == volume.drive
+                        && !firstMountPoint(interfaces.value(kFilesystem).value(QStringLiteral("MountPoints"))).isEmpty())
+                        mounted << path.path();
+                }
+                objects.endMap();
+            } else {
+                mounted << volume.block;
+            }
+        } else {
+            mounted << volume.block; // no list: at least the one we know
+        }
+        unmountAll(volume, mounted);
+    });
+}
+
+void DriveMonitor::unmountAll(const Volume &volume, QStringList blocks)
+{
+    if (blocks.isEmpty()) {
+        powerOff(volume);
+        return;
+    }
+    const QString block = blocks.takeFirst();
+    QDBusMessage unmount = QDBusMessage::createMethodCall(kUDisks, block, kFilesystem, QStringLiteral("Unmount"));
+    unmount << QVariantMap();
+    auto *watcher = new QDBusPendingCallWatcher(m_bus.asyncCall(unmount, kMountTimeoutMs), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, volume, blocks](QDBusPendingCallWatcher *w) {
+        w->deleteLater();
+        const QDBusMessage reply = w->reply();
+        // Busy: a file is still open there, and the drive stays mounted.
+        if (reply.type() == QDBusMessage::ErrorMessage
+            && reply.errorName() != QLatin1String("org.freedesktop.UDisks2.Error.NotMounted")) {
+            failed(tr("Could not eject %1").arg(volume.label), reply);
             return;
         }
-        QDBusMessage unmount = QDBusMessage::createMethodCall(kUDisks, volume.block, kFilesystem,
-                                                              QStringLiteral("Unmount"));
-        unmount << QVariantMap();
-        auto *unmountWatcher = new QDBusPendingCallWatcher(m_bus.asyncCall(unmount, kMountTimeoutMs), this);
-        connect(unmountWatcher, &QDBusPendingCallWatcher::finished, this,
-                [this, volume](QDBusPendingCallWatcher *u) {
-                    u->deleteLater();
-                    // Busy: a file is still open there. The drive stays mounted.
-                    if (u->reply().type() == QDBusMessage::ErrorMessage)
-                        failed(tr("Could not eject %1").arg(volume.label), u->reply());
-                    else
-                        powerOff(volume);
-                });
+        unmountAll(volume, blocks);
     });
 }
 
