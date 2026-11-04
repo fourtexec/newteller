@@ -337,9 +337,14 @@ uint NotificationDaemon::publish(uint replacesId, const QString &appName, const 
     if (critical && expireTimeout < 0)
         timeout = 0;
     entry.insert(QStringLiteral("timeout"), timeout);
+    // resident: stays on screen after one of its actions was clicked.
+    entry.insert(QStringLiteral("resident"), hints.value(QStringLiteral("resident")).toBool());
 
-    m_history.append(entry);
-    trimHistory();
+    // transient: shown, but not kept in the history (volume, progress).
+    if (!hints.value(QStringLiteral("transient")).toBool()) {
+        m_history.append(entry);
+        trimHistory();
+    }
     emit historyChanged();
 
     if (replaceAt >= 0) {
@@ -445,6 +450,11 @@ void NotificationDaemon::dismiss(uint id, uint reason)
 void NotificationDaemon::invokeAction(uint id, const QString &actionKey)
 {
     emit ActionInvoked(id, actionKey);
+    for (const QVariant &entry : std::as_const(m_active)) {
+        const QVariantMap map = entry.toMap();
+        if (map.value(QStringLiteral("id")).toUInt() == id && map.value(QStringLiteral("resident")).toBool())
+            return;
+    }
     dismiss(id, kReasonDismissed);
 }
 
