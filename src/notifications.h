@@ -48,11 +48,13 @@ public:
 
     // Pushes a notification into the queue (the built-in test button and
     // Shell.notify use this path).
-    // A critical notification with action buttons (actions: key, label,
-    // key, label...); the answer arrives as ActionInvoked or
-    // NotificationClosed. Used by the Bluetooth pairing agent.
+    // A notification with action buttons (actions: key, label, key,
+    // label...); the answer arrives as ActionInvoked or NotificationClosed.
+    // Urgent ones (Bluetooth pairing) get through do-not-disturb and stay
+    // until answered; others (a new drive) expire like any notification.
     uint sendWithActions(const QString &appName, const QString &summary, const QString &body,
-                         const QString &icon, const QStringList &actions);
+                         const QString &icon, const QStringList &actions, bool urgent = true,
+                         int expireTimeoutMs = -1);
     Q_INVOKABLE uint send(const QString &appName, const QString &summary, const QString &body,
                           const QString &icon = QString(), int expireTimeoutMs = -1);
     // Removes a popup: reason 1 = expired, 2 = dismissed by the user,

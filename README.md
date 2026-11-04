@@ -79,7 +79,12 @@ inside VirtualBox. The implemented pieces are:
   under do-not-disturb or for `suppress-sound`.
 - **Bluetooth pairing agent**: keyboards show the code to type and phones
   the code to compare as notifications with Pair / Cancel; without an
-  agent BlueZ could only pair devices that need no confirmation.
+  agent BlueZ could only pair devices that need no confirmation. The code
+  gets through do-not-disturb and goes away once the device is paired.
+- **Removable drives** (`drives.notify`): a USB stick or memory card that is
+  plugged in is announced with Open (mounts it through UDisks2 and opens the
+  folder) and Eject (unmounts it and powers the drive off); internal disks
+  and loop devices stay quiet. Needs udisks2.
 - **Search in the wrong layout**: the start menu and the run dialog retry a
   query that finds nothing in the other keyboard layout, so "ашкуащч" finds
   Firefox and "nthv" finds Терминал (ЙЦУКЕН <-> QWERTY).

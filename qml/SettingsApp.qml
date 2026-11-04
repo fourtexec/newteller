@@ -2027,6 +2027,13 @@ Window {
                                 settingKey: "notifications.showAppIcon"
                                 SettingsSwitch {}
                             }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Announce removable drives")
+                                subtitle: qsTr("A USB stick or memory card that is plugged in gets Open and Eject buttons.")
+                                settingKey: "drives.notify"
+                                SettingsSwitch {}
+                            }
                         }
 
                         SettingsSection {

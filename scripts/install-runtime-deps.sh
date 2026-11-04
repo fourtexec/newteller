@@ -88,7 +88,7 @@ install_debian() {
         xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk
         lxpolkit procps wdisplays
         network-manager wpasupplicant network-manager-gnome
-        blueman pavucontrol slurp wl-clipboard sound-theme-freedesktop
+        blueman pavucontrol slurp wl-clipboard sound-theme-freedesktop udisks2
     )
     # Wi-Fi firmware for the common adapters (Debian: non-free-firmware;
     # Ubuntu: linux-firmware). Missing firmware is the usual reason an
@@ -134,7 +134,7 @@ install_arch() {
         xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk
         polkit-gnome procps-ng wdisplays
         networkmanager wpa_supplicant network-manager-applet
-        blueman pavucontrol slurp wl-clipboard sound-theme-freedesktop
+        blueman pavucontrol slurp wl-clipboard sound-theme-freedesktop udisks2
     )
     wants_firmware && optional+=(linux-firmware)
     power_manager_installed || optional+=(power-profiles-daemon)
@@ -169,7 +169,7 @@ install_fedora() {
         xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk
         lxpolkit procps-ng wdisplays
         NetworkManager NetworkManager-wifi wpa_supplicant network-manager-applet
-        blueman pavucontrol slurp wl-clipboard sound-theme-freedesktop
+        blueman pavucontrol slurp wl-clipboard sound-theme-freedesktop udisks2
     )
     wants_firmware && optional+=(linux-firmware)
     power_manager_installed || optional+=(power-profiles-daemon)

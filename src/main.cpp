@@ -17,6 +17,7 @@
 #include "clipboardhistory.h"
 #include "bluetooth.h"
 #include "bluetoothagent.h"
+#include "drivemonitor.h"
 #include "settings.h"
 #include "shellcontroller.h"
 #include "shellwindow.h"
@@ -251,6 +252,9 @@ int main(int argc, char *argv[])
     std::unique_ptr<BluetoothAgent> bluetoothAgent;
     if (qEnvironmentVariable("NEWTELLER_SESSION") == QLatin1String("1"))
         bluetoothAgent = std::make_unique<BluetoothAgent>(&notifications, QDBusConnection::systemBus());
+    std::unique_ptr<DriveMonitor> driveMonitor;
+    if (qEnvironmentVariable("NEWTELLER_SESSION") == QLatin1String("1"))
+        driveMonitor = std::make_unique<DriveMonitor>(&notifications, &settings, QDBusConnection::systemBus());
     // Declared before the engine: the engine owns the QML objects that hold
     // connections to this object, and it must therefore be destroyed first.
     FilePortal filePortal;

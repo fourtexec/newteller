@@ -105,6 +105,7 @@ qt_add_executable(newteller
     src/screensaver.cpp
     src/translator.cpp
     src/bluetoothagent.cpp
+    src/drivemonitor.cpp
 )
 
 target_compile_definitions(newteller PRIVATE NEWTELLER_VERSION="${PROJECT_VERSION}")

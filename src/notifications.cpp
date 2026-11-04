@@ -205,11 +205,13 @@ QString NotificationDaemon::GetServerInformation(QString &vendor, QString &versi
 
 uint NotificationDaemon::sendWithActions(const QString &appName, const QString &summary,
                                          const QString &body, const QString &icon,
-                                         const QStringList &actions)
+                                         const QStringList &actions, bool urgent, int expireTimeoutMs)
 {
     // Critical: it gets through do-not-disturb and stays until answered.
-    return publish(0, appName, icon, summary, body, actions,
-                   {{QStringLiteral("urgency"), QVariant::fromValue<uchar>(kUrgencyCritical)}}, 0);
+    if (urgent)
+        return publish(0, appName, icon, summary, body, actions,
+                       {{QStringLiteral("urgency"), QVariant::fromValue<uchar>(kUrgencyCritical)}}, 0);
+    return publish(0, appName, icon, summary, body, actions, {}, expireTimeoutMs);
 }
 
 uint NotificationDaemon::send(const QString &appName, const QString &summary, const QString &body,

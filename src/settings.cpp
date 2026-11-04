@@ -180,6 +180,7 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("notifications.customForeground"), QString());
     m_defaults.insert(QStringLiteral("notifications.groupByApp"), false);
     m_defaults.insert(QStringLiteral("notifications.showAppIcon"), true);
+    m_defaults.insert(QStringLiteral("drives.notify"), true);
     m_defaults.insert(QStringLiteral("notifications.soundEnabled"), true);
     m_defaults.insert(QStringLiteral("notifications.soundFile"), QString());
     m_defaults.insert(QStringLiteral("notifications.doNotDisturbSchedule"), false);
