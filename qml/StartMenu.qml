@@ -174,6 +174,20 @@ DropdownWindow {
                 }
             }
             TaskButton {
+                objectName: "startAddToDesktop"
+                width: 180
+                height: 32
+                fillWidth: true
+                iconName: "monitor"
+                label: qsTr("Add to desktop")
+                onClicked: {
+                    const app = menu.pinTarget;
+                    pinMenu.close();
+                    if (app && app.path)
+                        Shell.addToDesktop(app.path);
+                }
+            }
+            TaskButton {
                 objectName: "startOpenWithRoot"
                 width: 180
                 height: 32

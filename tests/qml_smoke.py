@@ -493,6 +493,11 @@ class Shell(QObject):
         self.calls.append(("renameFile", path, name))
         return True
 
+    @Slot(str, result=bool)
+    def addToDesktop(self, path):
+        self.calls.append(("addToDesktop", path))
+        return True
+
     @Slot(str, str, result=str)
     def createFolder(self, parent, name):
         self.calls.append(("createFolder", parent, name))
@@ -1589,6 +1594,17 @@ def main():
         QMetaObject.invokeMethod(menu, "togglePin", Q_ARG("QVariant", {"id": "org.gnome.Nautilus"}))
         check("org.gnome.Nautilus" not in settings._values["panel.pinned"],
               f"unpinning removes the id again ({settings._values['panel.pinned']})")
+
+        # The same menu puts a copy of the application's launcher on the desktop.
+        menu.setProperty("pinTarget", {"id": "org.gnome.Nautilus",
+                                       "path": "/usr/share/applications/org.gnome.Nautilus.desktop"})
+        add_button = menu.findChild(QObject, "startAddToDesktop")
+        check(add_button is not None, "the application menu offers Add to desktop")
+        if add_button is not None:
+            shell.calls.clear()
+            QMetaObject.invokeMethod(add_button, "clicked")
+            check(("addToDesktop", "/usr/share/applications/org.gnome.Nautilus.desktop") in shell.calls,
+                  f"Add to desktop copies the application's launcher ({shell.calls})")
 
         # Highlighted fuzzy search (StartMenu shows StyledText hit highlights).
         search = menu.findChild(QObject, "startSearch")

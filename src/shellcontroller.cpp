@@ -21,6 +21,42 @@
 #include <QSysInfo>
 #include <QUrl>
 
+namespace {
+// "name.txt" -> "name 2.txt" (then 3, 4...) while the name is taken.
+QString freeName(const QDir &dir, const QString &name, bool isDir)
+{
+    if (!dir.exists(name))
+        return name;
+    const QFileInfo info(name);
+    const QString stem = isDir || info.completeSuffix().isEmpty() || info.baseName().isEmpty()
+                             ? name : info.baseName();
+    const QString suffix = stem == name ? QString() : QLatin1Char('.') + info.completeSuffix();
+    for (int n = 2; n < 10000; ++n) {
+        const QString candidate = QStringLiteral("%1 %2%3").arg(stem).arg(n).arg(suffix);
+        if (!dir.exists(candidate))
+            return candidate;
+    }
+    return QString();
+}
+
+// Copies a file or a whole folder; false at the first failure.
+bool copyTree(const QString &source, const QString &target)
+{
+    const QFileInfo info(source);
+    if (!info.isDir() || info.isSymLink())
+        return info.isSymLink() ? QFile::link(info.symLinkTarget(), target) : QFile::copy(source, target);
+    if (!QDir().mkpath(target))
+        return false;
+    const QDir dir(source);
+    const QStringList entries = dir.entryList(QDir::AllEntries | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot);
+    for (const QString &entry : entries) {
+        if (!copyTree(dir.absoluteFilePath(entry), target + QLatin1Char('/') + entry))
+            return false;
+    }
+    return true;
+}
+} // namespace
+
 ShellController::ShellController(Settings *settings, NotificationDaemon *notifications, QObject *parent)
     : QObject(parent)
     , m_settings(settings)
@@ -417,6 +453,30 @@ void ShellController::openPath(const QString &path) const
     openOrSay(QUrl::fromLocalFile(expandHome(path)));
 }
 
+bool ShellController::addToDesktop(const QString &desktopFile) const
+{
+    const QFileInfo source(expandHome(desktopFile.trimmed()));
+    const QDir desktop(QStandardPaths::writableLocation(QStandardPaths::DesktopLocation));
+    if (source.isFile() && (desktop.exists() || QDir().mkpath(desktop.absolutePath()))) {
+        // Already there (the same launcher): nothing to add.
+        QFile existing(desktop.absoluteFilePath(source.fileName()));
+        QFile original(source.absoluteFilePath());
+        if (existing.exists() && existing.open(QIODevice::ReadOnly) && original.open(QIODevice::ReadOnly)
+            && existing.readAll() == original.readAll())
+            return true;
+        const QString name = freeName(desktop, source.fileName(), false);
+        const QString target = desktop.absoluteFilePath(name);
+        if (!name.isEmpty() && QFile::copy(source.absoluteFilePath(), target)) {
+            QFile::setPermissions(target, QFile::permissions(target) | QFileDevice::ExeOwner
+                                              | QFileDevice::ExeUser);
+            return true;
+        }
+    }
+    notify(tr("Could not add %1 to the desktop").arg(source.completeBaseName()),
+           tr("You may not be allowed to change this folder, or the disk is full."));
+    return false;
+}
+
 bool ShellController::renameFile(const QString &path, const QString &newName) const
 {
     const QFileInfo info(expandHome(path.trimmed()));
@@ -569,41 +629,6 @@ QString ShellController::clipboardText() const
     return clipboard != nullptr ? clipboard->text() : QString();
 }
 
-namespace {
-// "name.txt" -> "name 2.txt" (then 3, 4...) while the name is taken.
-QString freeName(const QDir &dir, const QString &name, bool isDir)
-{
-    if (!dir.exists(name))
-        return name;
-    const QFileInfo info(name);
-    const QString stem = isDir || info.completeSuffix().isEmpty() || info.baseName().isEmpty()
-                             ? name : info.baseName();
-    const QString suffix = stem == name ? QString() : QLatin1Char('.') + info.completeSuffix();
-    for (int n = 2; n < 10000; ++n) {
-        const QString candidate = QStringLiteral("%1 %2%3").arg(stem).arg(n).arg(suffix);
-        if (!dir.exists(candidate))
-            return candidate;
-    }
-    return QString();
-}
-
-// Copies a file or a whole folder; false at the first failure.
-bool copyTree(const QString &source, const QString &target)
-{
-    const QFileInfo info(source);
-    if (!info.isDir() || info.isSymLink())
-        return info.isSymLink() ? QFile::link(info.symLinkTarget(), target) : QFile::copy(source, target);
-    if (!QDir().mkpath(target))
-        return false;
-    const QDir dir(source);
-    const QStringList entries = dir.entryList(QDir::AllEntries | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot);
-    for (const QString &entry : entries) {
-        if (!copyTree(dir.absoluteFilePath(entry), target + QLatin1Char('/') + entry))
-            return false;
-    }
-    return true;
-}
-} // namespace
 
 int ShellController::pasteFiles(const QString &folder) const
 {

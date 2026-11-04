@@ -108,6 +108,9 @@ public:
     // Creates "name" in the folder (path or file:// URL), or "name 2", "name 3"
     // when that exists; returns the new folder's path, empty on failure.
     Q_INVOKABLE QString createFolder(const QString &parent, const QString &name) const;
+    // Puts a copy of an application's launcher (.desktop file) on the
+    // desktop, marked executable so a double-click starts it.
+    Q_INVOKABLE bool addToDesktop(const QString &desktopFile) const;
     // Renames a file or folder (path or file:// URL) within its folder; says
     // why on screen when it cannot (name taken, invalid, no permission).
     Q_INVOKABLE bool renameFile(const QString &path, const QString &newName) const;
