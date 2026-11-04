@@ -4,6 +4,7 @@
 #include <QDateTime>
 #include <QHash>
 #include <QObject>
+#include <QPair>
 #include <QString>
 #include <QTimer>
 #include <QUrl>
@@ -152,4 +153,6 @@ private:
     mutable QHash<QString, QString> m_iconCache;
     // "name@color" -> recoloured SVG file URL (Shell.tintedIcon).
     mutable QHash<QString, QString> m_tintCache;
+    // "Moved to the trash" notifications with Undo: id -> {trashed, original}.
+    mutable QHash<uint, QPair<QString, QString>> m_trashUndo;
 };

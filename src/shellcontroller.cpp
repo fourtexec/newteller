@@ -23,6 +23,26 @@ ShellController::ShellController(Settings *settings, NotificationDaemon *notific
     , m_settings(settings)
     , m_notifications(notifications)
 {
+    // Undo on a "moved to the trash" notification puts the file back.
+    if (m_notifications) {
+        connect(m_notifications, &NotificationDaemon::ActionInvoked, this, [this](uint id, const QString &key) {
+            if (!m_trashUndo.contains(id) || key != QLatin1String("undo"))
+                return;
+            const auto [trashed, original] = m_trashUndo.take(id);
+            if (QFileInfo::exists(original) || !QFile::rename(trashed, original)) {
+                notify(tr("Could not restore %1").arg(QFileInfo(original).fileName()),
+                       tr("Open the trash in the file manager to restore it."));
+                return;
+            }
+            // The trash's record of it: Trash/info/<name>.trashinfo.
+            const QFileInfo inTrash(trashed);
+            QFile::remove(inTrash.dir().absoluteFilePath(QStringLiteral("../info/%1.trashinfo")
+                                                             .arg(inTrash.fileName())));
+        });
+        connect(m_notifications, &NotificationDaemon::NotificationClosed, this,
+                [this](uint id, uint) { m_trashUndo.remove(id); });
+    }
+
     // One shared ticker: the panel, the start menu and clock widgets all bind
     // to `Shell.now` instead of running their own timers.
     m_now = QDateTime::currentDateTime();
@@ -444,8 +464,17 @@ bool ShellController::moveToTrash(const QString &path) const
         local = QUrl(local).toLocalFile();
     local = expandHome(local);
     // QFile follows the freedesktop trash: the file manager can restore it.
-    if (!local.isEmpty() && QFileInfo::exists(local) && QFile::moveToTrash(local))
+    QString trashed;
+    if (!local.isEmpty() && QFileInfo::exists(local) && QFile::moveToTrash(local, &trashed)) {
+        if (m_notifications && !trashed.isEmpty()
+            && m_settings->value(QStringLiteral("notifications.enabled"), true).toBool()) {
+            const uint id = m_notifications->sendWithActions(
+                QStringLiteral("NewTeller"), tr("%1 moved to the trash").arg(QFileInfo(local).fileName()),
+                QString(), QStringLiteral("trash"), {QStringLiteral("undo"), tr("Undo")}, false, 8000);
+            m_trashUndo.insert(id, {trashed, local});
+        }
         return true;
+    }
     notify(tr("Could not move %1 to the trash").arg(QFileInfo(local).fileName()),
            tr("It may be on a drive without a trash folder, or you may not be allowed to change it."));
     return false;
