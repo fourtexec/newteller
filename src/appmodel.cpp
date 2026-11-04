@@ -458,7 +458,48 @@ int AppModel::indexOf(const QString &id) const
     return m_indexById.value(id, -1);
 }
 
+// Russian ЙЦУКЕН and English QWERTY share the keys: a query typed in the
+// wrong layout ("ашкуащч", "ntrcn") becomes the intended one.
+static QString swapKeyboardLayout(const QString &query)
+{
+    static const QString english = QStringLiteral("qwertyuiop[]asdfghjkl;'zxcvbnm,.`");
+    static const QString russian = QStringLiteral("йцукенгшщзхъфывапролджэячсмитьбюё");
+    bool cyrillic = false;
+    for (const QChar c : query) {
+        if (c.script() == QChar::Script_Cyrillic) {
+            cyrillic = true;
+            break;
+        }
+    }
+    const QString &from = cyrillic ? russian : english;
+    const QString &to = cyrillic ? english : russian;
+    QString out;
+    out.reserve(query.size());
+    for (const QChar c : query) {
+        const QChar lower = c.toLower();
+        const int at = from.indexOf(lower);
+        if (at < 0) {
+            out += c;
+            continue;
+        }
+        const QChar mapped = to.at(at);
+        out += c.isUpper() ? mapped.toUpper() : mapped;
+    }
+    return out;
+}
+
 QVariantList AppModel::searchDetailed(const QString &query, int limit) const
+{
+    QVariantList hits = searchDetailedOnce(query, limit);
+    if (hits.isEmpty() && !query.trimmed().isEmpty()) {
+        const QString swapped = swapKeyboardLayout(query);
+        if (swapped != query)
+            hits = searchDetailedOnce(swapped, limit);
+    }
+    return hits;
+}
+
+QVariantList AppModel::searchDetailedOnce(const QString &query, int limit) const
 {
     if (!m_index.isValid())
         return {};
@@ -488,9 +529,20 @@ QVariantMap AppModel::searchResult(const QString &query, int limit) const
 
 QVariantList AppModel::search(const QString &query, int limit) const
 {
+    QVariantList hits = searchOnce(query, limit);
+    if (hits.isEmpty() && !query.trimmed().isEmpty()) {
+        const QString swapped = swapKeyboardLayout(query);
+        if (swapped != query)
+            hits = searchOnce(swapped, limit);
+    }
+    return hits;
+}
+
+QVariantList AppModel::searchOnce(const QString &query, int limit) const
+{
     // Rust path: ranked hits, each expanded to the full application map so the
     // existing QML keeps working and gains score/kind/highlight for free.
-    const QVariantList hits = searchDetailed(query, limit);
+    const QVariantList hits = searchDetailedOnce(query, limit);
     if (!hits.isEmpty() || (m_index.isValid() && !query.trimmed().isEmpty())) {
         QVariantList out;
         out.reserve(hits.size());
