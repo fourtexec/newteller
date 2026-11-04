@@ -2,6 +2,7 @@
 
 #include "settings.h"
 
+#include <QCoreApplication>
 #include <QDateTime>
 #include <QFile>
 #include <QRegularExpression>
@@ -30,6 +31,34 @@ QString bytesText(double bytes)
     return QStringLiteral("%1 %2").arg(value, 0, 'f', 1).arg(QLatin1String(units[unit]));
 }
 
+// Battery time as people say it: "2 h 05 min", "40 min".
+QString batteryDurationText(double seconds)
+{
+    const qint64 minutes = qint64(seconds) / 60;
+    if (minutes >= 60)
+        return QCoreApplication::translate("SystemMonitor", "%1 h %2 min")
+            .arg(minutes / 60)
+            .arg(minutes % 60, 2, 10, QLatin1Char('0'));
+    return QCoreApplication::translate("SystemMonitor", "%1 min").arg(qMax<qint64>(1, minutes));
+}
+
+// The kernel's power_supply status words, translated.
+QString batteryStatusText(const QString &status)
+{
+    const QString key = status.trimmed().toLower();
+    if (key == QLatin1String("charging"))
+        return QCoreApplication::translate("SystemMonitor", "Charging");
+    if (key == QLatin1String("discharging"))
+        return QCoreApplication::translate("SystemMonitor", "On battery");
+    if (key == QLatin1String("full"))
+        return QCoreApplication::translate("SystemMonitor", "Fully charged");
+    if (key == QLatin1String("not charging"))
+        return QCoreApplication::translate("SystemMonitor", "Not charging");
+    if (key.isEmpty() || key == QLatin1String("unknown"))
+        return QString();
+    return status;
+}
+
 QString durationText(double seconds)
 {
     if (!(seconds > 0.0))
@@ -40,7 +69,7 @@ QString durationText(double seconds)
     const qint64 minutes = (total / 60) % 60;
     const qint64 secs = total % 60;
     if (days > 0)
-        return QStringLiteral("%1 d %2:%3")
+        return QCoreApplication::translate("SystemMonitor", "%1 d %2:%3")
             .arg(days)
             .arg(hours, 2, 10, QLatin1Char('0'))
             .arg(minutes, 2, 10, QLatin1Char('0'));
@@ -265,16 +294,16 @@ void SystemMonitor::applySnapshot(const QVariantMap &map)
     const QVariantMap battery = map.value(QStringLiteral("battery")).toMap();
     m_batteryPresent = battery.value(QStringLiteral("present")).toBool();
     m_batteryPercent = battery.value(QStringLiteral("percent")).toDouble();
-    m_batteryStatus = battery.value(QStringLiteral("status")).toString();
+    m_batteryStatus = batteryStatusText(battery.value(QStringLiteral("status")).toString());
     m_batteryCharging = battery.value(QStringLiteral("charging")).toBool();
     m_batteryCritical = m_batteryPresent && !m_batteryCharging && m_batteryPercent > 0.0
                        && m_batteryPercent <= 10.0;
     const double toEmpty = battery.value(QStringLiteral("timeToEmptySeconds")).toDouble();
     const double toFull = battery.value(QStringLiteral("timeToFullSeconds")).toDouble();
     if (m_batteryCharging && toFull > 0.0)
-        m_batteryTimeText = durationText(toFull) + QStringLiteral(" to full");
+        m_batteryTimeText = tr("%1 to full").arg(batteryDurationText(toFull));
     else if (!m_batteryCharging && toEmpty > 0.0)
-        m_batteryTimeText = durationText(toEmpty) + QStringLiteral(" left");
+        m_batteryTimeText = tr("%1 left").arg(batteryDurationText(toEmpty));
     else
         m_batteryTimeText.clear();
 
