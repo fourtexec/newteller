@@ -213,7 +213,7 @@ target_link_libraries(newteller-compositor PRIVATE
 
 install(TARGETS newteller newteller-compositor RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(PROGRAMS scripts/newteller-session scripts/newteller-screenshot scripts/newteller-lock
-                 scripts/newteller-run-as-root DESTINATION ${CMAKE_INSTALL_BINDIR})
+                 scripts/newteller-run-as-root scripts/newteller-terminal DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(DIRECTORY plugins/ DESTINATION ${CMAKE_INSTALL_DATADIR}/newteller/plugins)
 install(FILES data/org.newteller.Shell.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
 install(FILES data/newteller-session.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/wayland-sessions RENAME newteller.desktop)

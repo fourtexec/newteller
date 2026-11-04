@@ -239,7 +239,7 @@ Window {
                         font.bold: true
                     }
                     Text {
-                        text: "version " + Shell.version
+                        text: qsTr("version %1").arg(Shell.version)
                         color: Theme.muted
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSize - 2
@@ -1656,7 +1656,7 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Application catalogue cap")
-                                subtitle: "0 keeps every installed application."
+                                subtitle: qsTr("0 keeps every installed application.")
                                 settingKey: "apps.maxApps"
                                 SettingsStepper { from: 0; to: 2000; step: 50 }
                             }
@@ -2068,14 +2068,14 @@ Window {
                                 title: qsTr("Start time")
                                 visible: Settings.values["notifications.doNotDisturbSchedule"] === true
                                 settingKey: "notifications.dndStartTime"
-                                SettingsTextField { width: 120; placeholder: "HH:mm (24h)" }
+                                SettingsTextField { width: 120; placeholder: qsTr("HH:mm (24h)") }
                             }
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("End time")
                                 visible: Settings.values["notifications.doNotDisturbSchedule"] === true
                                 settingKey: "notifications.dndEndTime"
-                                SettingsTextField { width: 120; placeholder: "HH:mm (24h)" }
+                                SettingsTextField { width: 120; placeholder: qsTr("HH:mm (24h)") }
                             }
                         }
 

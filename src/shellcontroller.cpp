@@ -401,10 +401,11 @@ void ShellController::runShell(const QString &command) const
 
 void ShellController::terminal(const QString &command) const
 {
-    const QString wrapper = m_settings->value(
-        QStringLiteral("apps.terminalCommand"),
-        QStringLiteral("x-terminal-emulator -e")).toString();
-    runShell(wrapper + QLatin1Char(' ') + command);
+    // Without a command the terminal opens on its own (a prefix such as
+    // "kitty -e" with nothing after it would fail).
+    const QString wrapper = m_settings->terminalCommand();
+    runShell(command.trimmed().isEmpty() ? wrapper.section(QLatin1Char(' '), 0, 0)
+                                         : wrapper + QLatin1Char(' ') + command);
 }
 
 void ShellController::copyToClipboard(const QString &text) const

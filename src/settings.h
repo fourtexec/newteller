@@ -39,6 +39,10 @@ public:
     bool dirty() const { return m_dirty; }
 
     Q_INVOKABLE QVariant value(const QString &key, const QVariant &fallback = QVariant()) const;
+    // apps.terminalCommand as a prefix for a command to run in a terminal.
+    // Empty, or naming a program that is not installed (x-terminal-emulator
+    // outside Debian), gives newteller-terminal, which finds one.
+    QString terminalCommand() const;
     Q_INVOKABLE void setValue(const QString &key, const QVariant &value);
     Q_INVOKABLE void setValues(const QVariantMap &values);
     // Removes the user override so the key falls back to its default.

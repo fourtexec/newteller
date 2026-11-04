@@ -19,6 +19,15 @@ QString Settings::configFile()
     return configDir() + QStringLiteral("/shell.json");
 }
 
+QString Settings::terminalCommand() const
+{
+    const QString configured = value(QStringLiteral("apps.terminalCommand")).toString().simplified();
+    const QString program = configured.section(QLatin1Char(' '), 0, 0);
+    if (!program.isEmpty() && !QStandardPaths::findExecutable(program).isEmpty())
+        return configured;
+    return QStringLiteral("newteller-terminal");
+}
+
 Settings::Settings(QObject *parent)
     : QObject(parent)
     , m_saveTimer(this)
@@ -92,8 +101,9 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("apps.recent"), QStringList());
     m_defaults.insert(QStringLiteral("apps.recentLimit"), 8);
     m_defaults.insert(QStringLiteral("apps.usage"), QVariantMap());
-    m_defaults.insert(QStringLiteral("apps.terminalCommand"),
-                      QStringLiteral("x-terminal-emulator -e"));
+    // newteller-terminal picks the installed terminal (x-terminal-emulator
+    // exists only on Debian and Ubuntu).
+    m_defaults.insert(QStringLiteral("apps.terminalCommand"), QStringLiteral("newteller-terminal"));
     m_defaults.insert(QStringLiteral("apps.maxApps"), 0);
     m_defaults.insert(QStringLiteral("system.interval"), 2000);
     m_defaults.insert(QStringLiteral("system.perCore"), false);

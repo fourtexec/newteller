@@ -704,8 +704,7 @@ QVariantList AppModel::launchArgs(const QString &id, const QStringList &files) c
         return {};
     const AppEntry &app = m_apps.at(row);
 
-    const QString terminalCommand = m_settings->value(
-        QStringLiteral("apps.terminalCommand"), QStringLiteral("x-terminal-emulator -e")).toString();
+    const QString terminalCommand = m_settings->terminalCommand();
 
     if (Rust::available()) {
         // Full spec behaviour: quoting, %i/%c/%k expansion, %u/%f file lists,
@@ -819,8 +818,7 @@ bool AppModel::launchAction(const QString &id, const QString &actionId)
         if (exec.isEmpty())
             return false;
 
-        const QString terminalCommand = m_settings->value(
-            QStringLiteral("apps.terminalCommand"), QStringLiteral("x-terminal-emulator -e")).toString();
+        const QString terminalCommand = m_settings->terminalCommand();
         QStringList argv = Rust::available()
                                ? Rust::Index::execArgv(exec,
                                                        action.value(QStringLiteral("icon")).toString(),

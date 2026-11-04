@@ -3785,7 +3785,12 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
         return true;
     }
     if (logo && sym == XKB_KEY_Return) {
-        const char *argv[] = {"x-terminal-emulator", NULL};
+        // newteller-terminal finds the installed terminal (and follows the
+        // shell's apps.terminalCommand); x-terminal-emulator is Debian's.
+        const char *argv[] = {"/bin/sh", "-c",
+                              "command -v newteller-terminal >/dev/null 2>&1"
+                              " && exec newteller-terminal; exec x-terminal-emulator",
+                              NULL};
         setChildEnvironment(server);
         spawnDetached(argv[0], argv);
         return true;

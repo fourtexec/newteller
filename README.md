@@ -525,7 +525,7 @@ All keys, with their defaults:
 | `plugins.autoRescan` | `true` | rescan when the plugin directories change |
 | `apps.recent` / `apps.recentLimit` | `[]` / `8` | usage history and row length |
 | `apps.usage` | `{}` | launch counts (drives the recent row and ranking) |
-| `apps.terminalCommand` | `""` | terminal used by "Open terminal" (auto-detected when empty) |
+| `apps.terminalCommand` | `"newteller-terminal"` | prefix that runs a command in a terminal (`kitty -e`, `gnome-terminal --`); `newteller-terminal`, also used when the named program is missing, picks the installed terminal (`x-terminal-emulator` on Debian, else foot, kitty, alacritty, wezterm, konsole, gnome-terminal, …) |
 | `apps.maxApps` | `0` | cap on the catalogue (0 = unlimited) |
 | `system.interval` | `2000` | metrics sampling interval in ms |
 | `system.perCore` | `false` | per-core CPU metrics |

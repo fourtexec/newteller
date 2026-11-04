@@ -9,6 +9,7 @@
  "%1 was not found. The application may have been removed.": "%1 не найден. Возможно, приложение было удалено.",
  "%1% left. Plug in now or the computer will shut down.": "Осталось %1%. Подключите зарядку, иначе компьютер выключится.",
  "%1% left. Plug in soon.": "Осталось %1%. Скоро понадобится зарядка.",
+ "0 keeps every installed application.": "0 — показывать все установленные приложения.",
  "A USB stick or memory card that is plugged in gets Open and Eject buttons.": "Для подключённой флешки или карты памяти появятся кнопки «Открыть» и «Извлечь».",
  "A copy of the settings was saved to %1": "Копия настроек сохранена в %1",
  "A program is still using it. Close the files on it and try again.": "Он ещё используется программой. Закройте открытые с него файлы и повторите.",
@@ -270,6 +271,7 @@
  "Grid height": "Высота сетки",
  "Grid width": "Ширина сетки",
  "Group windows of one application": "Группировать окна одного приложения",
+ "HH:mm (24h)": "ЧЧ:ММ (24 ч)",
  "Half": "Половина",
  "Half transparent": "Полупрозрачный",
  "Half transparent, non transparent, frosted glass or liquid glass.": "Полупрозрачный, непрозрачный, матовое или жидкое стекло.",
@@ -678,5 +680,6 @@
  "Zone spacing": "Отступ между зонами",
  "no polkit agent": "нет агента polkit",
  "pkexec is not installed (sudo apt install pkexec).": "pkexec не установлен (sudo apt install pkexec).",
- "the administrator": "администратора"
+ "the administrator": "администратора",
+ "version %1": "версия %1"
 }
