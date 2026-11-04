@@ -440,6 +440,14 @@ void TrayWatcher::removeItem(const QString &service, const QString &path)
                     service, path, QString::fromLatin1(kItemInterface), QString::fromLatin1(signal),
                     this, SLOT(handleItemSignal(QDBusMessage)));
             }
+            if (id == m_menuId) {
+                QDBusConnection::sessionBus().disconnect(
+                    m_menuService, m_menuPath, QString::fromLatin1(kMenuInterface),
+                    QStringLiteral("LayoutUpdated"), this, SLOT(handleMenuLayoutUpdated()));
+                m_menuId.clear();
+                m_menuService.clear();
+                m_menuPath.clear();
+            }
             m_items.removeAt(i);
             m_registered.removeAll(id);
             emitItems();
@@ -648,36 +656,66 @@ bool TrayWatcher::hasMenu(const QString &id) const
     return item && !item->menuPath.isEmpty();
 }
 
-QVariantList TrayWatcher::menu(const QString &id) const
+void TrayWatcher::requestMenu(const QString &id)
 {
-    TrayItemData *item = const_cast<TrayWatcher *>(this)->find(id);
-    if (!item || item->menuPath.isEmpty())
-        return {};
+    TrayItemData *item = find(id);
+    if (!item || item->menuPath.isEmpty()) {
+        emit menuReady(id, {});
+        return;
+    }
+    const QString service = item->service;
+    const QString path = item->menuPath;
+    watchMenu(id, service, path);
 
-    // Give the application a chance to update dynamic entries before the
-    // whole tree is fetched. Most toolkits answer immediately; the timeout
-    // only matters for a hung service.
-    QDBusMessage aboutCall = QDBusMessage::createMethodCall(item->service, item->menuPath,
+    // AboutToShow lets the application update dynamic entries first; the
+    // layout is fetched once it answered (or failed, or timed out). Nothing
+    // here waits on the application, so a hung one cannot freeze the panel.
+    QDBusMessage aboutCall = QDBusMessage::createMethodCall(service, path,
                                                             QString::fromLatin1(kMenuInterface),
                                                             QStringLiteral("AboutToShow"));
     aboutCall << 0;
-    QDBusConnection::sessionBus().call(aboutCall, QDBus::Block, 1000);
+    auto *about = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(aboutCall, 1000), this);
+    connect(about, &QDBusPendingCallWatcher::finished, this, [this, id, service, path](QDBusPendingCallWatcher *a) {
+        a->deleteLater();
+        QDBusMessage call = QDBusMessage::createMethodCall(service, path, QString::fromLatin1(kMenuInterface),
+                                                           QStringLiteral("GetLayout"));
+        // parent id 0 (the root), recursion depth -1 (the whole tree), no
+        // explicit property filter (so every toolkit sends what it has).
+        call << 0 << -1 << QStringList();
+        auto *layout = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(call, 1500), this);
+        connect(layout, &QDBusPendingCallWatcher::finished, this, [this, id](QDBusPendingCallWatcher *w) {
+            w->deleteLater();
+            const QDBusMessage reply = w->reply();
+            QVariantList items;
+            if (reply.type() == QDBusMessage::ReplyMessage && reply.arguments().size() >= 2
+                && reply.arguments().at(1).canConvert<QDBusArgument>()) {
+                const QDBusArgument tree = reply.arguments().at(1).value<QDBusArgument>();
+                items = parseMenuNode(tree).value(QStringLiteral("children")).toList();
+            }
+            emit menuReady(id, items);
+        });
+    });
+}
 
-    QDBusMessage call = QDBusMessage::createMethodCall(item->service, item->menuPath,
-                                                       QString::fromLatin1(kMenuInterface),
-                                                       QStringLiteral("GetLayout"));
-    // parent id 0 (the root), recursion depth -1 (the whole tree), no explicit
-    // property filter (so every toolkit sends the properties it has).
-    call << 0 << -1 << QStringList();
-    const QDBusMessage reply = QDBusConnection::sessionBus().call(call, QDBus::Block, 1200);
-    if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().size() < 2)
-        return {};
-    const QVariant layoutValue = reply.arguments().at(1);
-    if (!layoutValue.canConvert<QDBusArgument>())
-        return {};
-    const QDBusArgument layout = layoutValue.value<QDBusArgument>();
-    const QVariantMap root = parseMenuNode(layout);
-    return root.value(QStringLiteral("children")).toList();
+void TrayWatcher::watchMenu(const QString &id, const QString &service, const QString &path)
+{
+    m_menuId = id;
+    if (service == m_menuService && path == m_menuPath)
+        return;
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    if (!m_menuPath.isEmpty())
+        bus.disconnect(m_menuService, m_menuPath, QString::fromLatin1(kMenuInterface),
+                       QStringLiteral("LayoutUpdated"), this, SLOT(handleMenuLayoutUpdated()));
+    m_menuService = service;
+    m_menuPath = path;
+    bus.connect(service, path, QString::fromLatin1(kMenuInterface), QStringLiteral("LayoutUpdated"),
+                this, SLOT(handleMenuLayoutUpdated()));
+}
+
+void TrayWatcher::handleMenuLayoutUpdated()
+{
+    if (!m_menuId.isEmpty())
+        emit menuChanged(m_menuId);
 }
 
 void TrayWatcher::menuAboutToShow(const QString &id, int itemId) const

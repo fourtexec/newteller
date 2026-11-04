@@ -739,10 +739,20 @@ class Tray(QObject):
     """Stand-in for the TrayWatcher context property (src/tray.h)."""
 
     itemsChanged = Signal()
+    menuReady = Signal(str, "QVariantList")
+    menuChanged = Signal(str)
 
     def __init__(self):
         super().__init__()
         self.calls = []
+        self.menus = {"item-1": [
+            {"id": 1, "label": "Mute", "enabled": True, "visible": True, "separator": False,
+             "checkable": True, "checked": False, "iconName": "", "hasChildren": False,
+             "children": []},
+            {"id": 2, "label": "Quit", "enabled": True, "visible": True, "separator": False,
+             "checkable": False, "checked": False, "iconName": "", "hasChildren": False,
+             "children": []},
+        ]}
         self._items = [{
             "id": ":1.42|/StatusNotifierItem",
             "service": ":1.42",
@@ -784,9 +794,12 @@ class Tray(QObject):
     def hasMenu(self, item_id):
         return False
 
-    @Slot(str, result="QVariantList")
-    def menu(self, item_id):
-        return []
+    @Slot(str)
+    def requestMenu(self, item_id):
+        self.calls.append(("requestMenu", item_id))
+        # Answers later, like the real watcher's asynchronous GetLayout.
+        items = self.menus.get(item_id, [])
+        QTimer.singleShot(50, lambda: self.menuReady.emit(item_id, items))
 
     @Slot(str, int)
     def menuAboutToShow(self, item_id, menu_item_id):
@@ -2011,13 +2024,29 @@ def main():
 
         if tray_menus:
             rect = QRectF(geometry.x() + 700, bar_top, 26, 48)
+            # An item whose menu is empty opens nothing.
+            QMetaObject.invokeMethod(tray_menus[0], "openFor",
+                                     Q_ARG("QVariant", "item-empty"), Q_ARG("QVariant", rect))
+            QTest.qWait(300)
+            check(not tray_menus[0].isVisible(), "an empty tray menu does not open")
             QMetaObject.invokeMethod(tray_menus[0], "openFor",
                                      Q_ARG("QVariant", "item-1"), Q_ARG("QVariant", rect))
             QTest.qWait(300)
+            check(("requestMenu", "item-1") in tray.calls, "the tray menu is requested, not fetched blocking")
             check(tray_menus[0].isVisible(), "opening the tray menu for an item")
+            current = tray_menus[0].property("currentItems")
+            current = current.toVariant() if hasattr(current, "toVariant") else current
+            check(len(current) == 2, f"the tray menu shows the application's entries ({len(current)})")
             card = on_screen(tray_menus[0], "the tray menu")
             check(card[0] <= 713 <= card[0] + card[2],
                   f"the tray menu hangs off its icon ({card})")
+            # The application changes its menu while it is open.
+            tray.menus["item-1"] = tray.menus["item-1"][:1]
+            tray.menuChanged.emit("item-1")
+            QTest.qWait(300)
+            current = tray_menus[0].property("currentItems")
+            current = current.toVariant() if hasattr(current, "toVariant") else current
+            check(len(current) == 1, f"an open tray menu follows the application's updates ({len(current)})")
             QMetaObject.invokeMethod(tray_menus[0], "close")
             QTest.qWait(300)
             check(not tray_menus[0].isVisible(), "the tray menu closes again")

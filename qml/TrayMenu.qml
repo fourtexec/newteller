@@ -5,8 +5,10 @@ import QtQuick.Window
 // export. Applications that only implement Activation/ContextMenu keep the
 // old path (the panel asks them to open their own popup).
 //
-// The menu is fetched live when it opens: rootItems is the tree, path is the
-// chain of submenu ids currently shown. Opening a submenu replaces the list
+// The menu is fetched live when it opens, without blocking (Tray.requestMenu
+// answers with menuReady): rootItems is the tree, path is the chain of
+// submenu ids currently shown. The card appears once the tree arrived, and
+// an open menu follows the application's updates (menuChanged). Opening a submenu replaces the list
 // in place and leaves a Back row at the top.
 //
 // Like the dock menu it is anchored to the icon that toggled it.
@@ -16,6 +18,8 @@ DropdownWindow {
     property string itemId: ""
     property var rootItems: []
     property var path: []
+    // Waiting for the first tree of itemId; the card opens when it arrives.
+    property bool loading: false
 
     readonly property real menuWidth: 280
     readonly property var currentItems: visibleItems(findNode(rootItems, path))
@@ -29,12 +33,40 @@ DropdownWindow {
         itemId = id;
         path = [];
         anchor = anchorRect;
-        rootItems = Tray.menu(id);
-        show();
+        loading = true;
+        Tray.requestMenu(id);
     }
 
     function close() {
+        loading = false;
         hide();
+    }
+
+    // The tree of the item that was asked for: open the card on the first
+    // answer, refresh it in place afterwards.
+    function menuArrived(id, items) {
+        if (id !== itemId || (!loading && !visible))
+            return;
+        rootItems = items || [];
+        // A submenu the update removed: go back to the top.
+        if (path.length > 0 && findNode(rootItems, path).length === 0)
+            path = [];
+        if (loading) {
+            loading = false;
+            if (visibleItems(rootItems).length > 0)
+                show();
+        }
+    }
+
+    Connections {
+        target: Tray
+        function onMenuReady(id, items) {
+            trayMenu.menuArrived(id, items);
+        }
+        function onMenuChanged(id) {
+            if (trayMenu.visible && id === trayMenu.itemId)
+                Tray.requestMenu(id);
+        }
     }
 
     function findNode(items, ids) {

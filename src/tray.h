@@ -99,10 +99,13 @@ public slots:
     // panel then renders that menu itself instead of asking the application
     // for a native popup.
     Q_INVOKABLE bool hasMenu(const QString &id) const;
-    // The full menu tree, fetched live from the item's DBusMenu service:
+    // Fetches the full menu tree from the item's DBusMenu service without
+    // blocking; menuReady(id, items) carries it:
     // [{ id, label, enabled, visible, separator, checkable, checked,
     //    iconName, hasChildren, children: [...] }, ...]
-    Q_INVOKABLE QVariantList menu(const QString &id) const;
+    // While a menu is requested, the application's LayoutUpdated signal
+    // emits menuChanged(id) so an open menu can fetch it again.
+    Q_INVOKABLE void requestMenu(const QString &id);
     Q_INVOKABLE void menuAboutToShow(const QString &id, int itemId) const;
     Q_INVOKABLE void menuEvent(const QString &id, int itemId, const QString &event) const;
 
@@ -115,6 +118,8 @@ signals:
     void itemsChanged();
     void availableChanged();
     void enabledChanged();
+    void menuReady(const QString &id, const QVariantList &items);
+    void menuChanged(const QString &id);
 
     // org.kde.StatusNotifierWatcher signals, exported on the bus.
     Q_SCRIPTABLE void StatusNotifierItemRegistered(const QString &service);
@@ -126,6 +131,7 @@ private slots:
                                  const QStringList &invalidated);
     // NewIcon, NewTitle, NewStatus, NewToolTip, NewAttentionIcon, NewMenu.
     void handleItemSignal(const QDBusMessage &message);
+    void handleMenuLayoutUpdated();
 
 private:
     void setupDBus();
@@ -141,6 +147,7 @@ private:
     void applyProperties(TrayItemData &item, const QVariantMap &properties);
     void emitItems();
     QString calledFromService() const;
+    void watchMenu(const QString &id, const QString &service, const QString &path);
 
     Settings *m_settings = nullptr;
     QDBusServiceWatcher *m_serviceWatcher = nullptr;
@@ -155,6 +162,10 @@ private:
     // Refreshes already on the way, so a chatty item cannot pile them up.
     QSet<QString> m_refreshing;
     QSet<QString> m_refreshAgain;
+    // The menu whose LayoutUpdated signal is followed (the last one asked for).
+    QString m_menuId;
+    QString m_menuService;
+    QString m_menuPath;
 };
 
 class QQuickImageProvider;
