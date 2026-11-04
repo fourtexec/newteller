@@ -101,6 +101,10 @@ signals:
     void launchFailed(const QString &id, const QString &reason);
 
 private:
+    // The searches themselves; search()/searchDetailed() retry them with the
+    // query typed in the other keyboard layout ("ашкуащч" -> "firefox").
+    QVariantList searchOnce(const QString &query, int limit) const;
+    QVariantList searchDetailedOnce(const QString &query, int limit) const;
     static bool parseDesktop(const QString &path, AppEntry &out, const QString &locale);
     static QVariantMap toMap(const AppEntry &app);
     static void sortApps(QVector<AppEntry> &apps);

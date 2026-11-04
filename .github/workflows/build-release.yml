@@ -38,7 +38,7 @@ jobs:
         run: |
           apt-get update
           apt-get install -y --no-install-recommends ca-certificates git
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install build and runtime dependencies
         run: bash scripts/install-build-deps.sh
       - name: Rust tests
@@ -129,7 +129,7 @@ jobs:
           # when something failed.
           awk '!/^\+ /' "$log"
       - name: Preserve release archive
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: newteller-${{ matrix.target }}
           path: |
@@ -148,7 +148,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           pattern: newteller-*-x86_64
           merge-multiple: true

@@ -137,7 +137,7 @@ Window {
     // Images in ~/Pictures, used by "Change wallpaper".
     FolderListModel {
         id: wallpaperFiles
-        folder: Shell.home + "/Pictures"
+        folder: Shell.picturesPath
         nameFilters: ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp", "*.gif", "*.svg", "*.xpm",
                       "*.tif", "*.tiff", "*.avif", "*.heic", "*.jxl"]
         showDirs: false
@@ -234,6 +234,20 @@ Window {
         return null;
     }
 
+    // Places saved before the grid existed (pixel positions in
+    // desktop.iconPositions / desktop.widgetPositions), as grid cells, so an
+    // update keeps the user's layout. Read only; the next drag saves the grid.
+    readonly property var legacyIcons: Settings.values["desktop.iconPositions"] || ({})
+    readonly property var legacyWidgets: Settings.values["desktop.widgetPositions"] || ({})
+    function legacyCell(e) {
+        const name = e.key.substring(e.key.indexOf(":") + 1);
+        const old = (e.widget ? legacyWidgets : legacyIcons)[name];
+        if (!old || old.x === undefined || old.y === undefined)
+            return null;
+        return { col: Math.max(0, Math.round((Number(old.x) - gridLeft) / Math.max(1, cellWidth))),
+                 row: Math.max(0, Math.round((Number(old.y) - gridTop) / Math.max(1, cellHeight))) };
+    }
+
     function layoutGrid() {
         const taken = {};
         const cells = {};
@@ -241,7 +255,9 @@ Window {
         const pending = [];
         // 1. Places the user chose (icons only while auto-arrange is off).
         for (const e of elements) {
-            const saved = gridSaved[e.key];
+            var saved = gridSaved[e.key];
+            if (!saved || saved.col === undefined)
+                saved = legacyCell(e);
             const useSaved = saved && saved.col !== undefined && (e.widget || !autoArrange);
             if (useSaved && cellsFree(taken, Number(saved.col), Number(saved.row), e.cols, e.rows)) {
                 cells[e.key] = { col: Number(saved.col), row: Number(saved.row), cols: e.cols, rows: e.rows };
@@ -328,17 +344,27 @@ Window {
         const copy = {};
         for (const k in gridSaved)
             copy[k] = gridSaved[k];
+        // Places that came from the old pixel settings become grid cells
+        // now, since those settings are cleared below.
+        for (const k in gridCells) {
+            if (copy[k] !== undefined || k === key)
+                continue;
+            const isWidget = k.startsWith("widget:");
+            if ((isWidget || !autoArrange) && legacyCell({ key: k, widget: isWidget }))
+                copy[k] = { "col": gridCells[k].col, "row": gridCells[k].row };
+        }
         copy[key] = { "col": target.col, "row": target.row };
+        const values = { "desktop.gridPositions": copy,
+                         "desktop.iconPositions": ({}), "desktop.widgetPositions": ({}) };
         // Moving an icon by hand ends auto-arrange, so its place sticks.
         if (key.startsWith("icon:") && autoArrange) {
             // Keep every other icon where it is now.
             for (const k in gridCells)
                 if (k.startsWith("icon:") && k !== key)
                     copy[k] = { "col": gridCells[k].col, "row": gridCells[k].row };
-            Settings.setValues({ "desktop.autoArrangeIcons": false, "desktop.gridPositions": copy });
-        } else {
-            Settings.setValue("desktop.gridPositions", copy);
+            values["desktop.autoArrangeIcons"] = false;
         }
+        Settings.setValues(values);
     }
 
     function resetIconLayout() {
@@ -346,14 +372,15 @@ Window {
         for (const k in gridSaved)
             if (!k.startsWith("icon:"))
                 copy[k] = gridSaved[k];
-        Settings.setValues({ "desktop.gridPositions": copy, "desktop.autoArrangeIcons": true });
+        Settings.setValues({ "desktop.gridPositions": copy, "desktop.autoArrangeIcons": true,
+                             "desktop.iconPositions": ({}) });
     }
     function resetWidgets() {
         const copy = {};
         for (const k in gridSaved)
             if (!k.startsWith("widget:"))
                 copy[k] = gridSaved[k];
-        Settings.setValue("desktop.gridPositions", copy);
+        Settings.setValues({ "desktop.gridPositions": copy, "desktop.widgetPositions": ({}) });
     }
 
     onWidthChanged: scheduleGridLayout()
@@ -361,6 +388,8 @@ Window {
     onGridColumnsChanged: scheduleGridLayout()
     onGridRowsChanged: scheduleGridLayout()
     onGridSavedChanged: scheduleGridLayout()
+    onLegacyIconsChanged: scheduleGridLayout()
+    onLegacyWidgetsChanged: scheduleGridLayout()
     onAutoArrangeChanged: scheduleGridLayout()
     onShowIconsChanged: scheduleGridLayout()
 
@@ -395,7 +424,20 @@ Window {
                 required property bool fileIsDir
 
                 readonly property string gridKey: "icon:" + fileName
-                readonly property string resolvedIconName: fileIsDir ? "folder" : "file-text"
+                // A launcher of an installed application shows that
+                // application's icon and name, and a double-click starts it.
+                readonly property bool isLauncher: !fileIsDir && fileName.toLowerCase().endsWith(".desktop")
+                readonly property var launcherApp: {
+                    if (!isLauncher)
+                        return ({});
+                    const app = Apps.byId(fileName);
+                    return app && app.id !== undefined ? app : Apps.byId(fileName.slice(0, -8));
+                }
+                readonly property bool knownLauncher: !!launcherApp && launcherApp.id !== undefined
+                readonly property string resolvedIconName: fileIsDir ? "folder"
+                    : knownLauncher && launcherApp.icon ? launcherApp.icon
+                    : isLauncher ? "app-window" : "file-text"
+                readonly property string label: knownLauncher && launcherApp.name ? launcherApp.name : fileBaseName
                 // While dragging, x/y follow the pointer; otherwise they are
                 // the element's grid cell.
                 property real dragX: 0
@@ -465,7 +507,7 @@ Window {
                     wrapMode: Text.Wrap
                     elide: Text.ElideRight
                     maximumLineCount: 2
-                    text: fileBaseName
+                    text: iconDelegate.label
                     color: desk.iconColor && desk.iconColor.length > 0 ? desk.iconColor : "white"
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize
@@ -510,7 +552,11 @@ Window {
                         iconDelegate.dragging = false;
                     }
                     onDoubleClicked: {
-                        if (!iconDelegate.dragging)
+                        if (iconDelegate.dragging)
+                            return;
+                        if (iconDelegate.knownLauncher)
+                            Apps.launch(iconDelegate.launcherApp.id);
+                        else
                             Shell.openUrl(iconDelegate.fileUrl.toString());
                     }
                 }
@@ -615,14 +661,14 @@ Window {
                 width: parent.width
                 fillWidth: true
                 iconName: "image"
-                label: "Change wallpaper"
+                label: qsTr("Change wallpaper")
                 onClicked: {
                     contextMenu.visible = false;
                     if (wallpaperFiles.count > 0) {
                         const next = Math.floor(Math.random() * wallpaperFiles.count);
                         Settings.setValue("desktop.wallpaper", wallpaperFiles.get(next).filePath);
                     } else {
-                        Shell.openPath(Shell.home + "/Pictures");
+                        Shell.openPath(Shell.picturesPath);
                     }
                 }
             }
@@ -630,14 +676,15 @@ Window {
                 width: parent.width
                 fillWidth: true
                 iconName: "clipboard"
-                label: "Paste"
+                label: qsTr("Paste")
                 onClicked: {
                     contextMenu.visible = false;
                     const text = Shell.clipboardText();
                     if (text.length > 0) {
                         const stamp = Qt.formatDateTime(Shell.now, "yyyyMMdd-hhmmss");
-                        Shell.saveTextFile(Shell.desktopUrl.replace("file://", "")
-                                           + "/Pasted " + stamp + ".txt", text);
+                        // The URL as is: the shell decodes it (spaces, Cyrillic,
+                        // '#' in the folder name), cutting "file://" off did not.
+                        Shell.saveTextFile(Shell.desktopUrl + "/Pasted " + stamp + ".txt", text);
                     }
                 }
             }
@@ -645,7 +692,7 @@ Window {
                 width: parent.width
                 fillWidth: true
                 iconName: "terminal"
-                label: "Open terminal"
+                label: qsTr("Open terminal")
                 onClicked: {
                     contextMenu.visible = false;
                     Shell.terminal("");
@@ -655,7 +702,7 @@ Window {
                 width: parent.width
                 fillWidth: true
                 iconName: "settings"
-                label: "Settings"
+                label: qsTr("Settings")
                 onClicked: {
                     contextMenu.visible = false;
                     Shell.openSettings();
@@ -665,7 +712,7 @@ Window {
                 width: parent.width
                 fillWidth: true
                 iconName: "layout-grid"
-                label: desk.autoArrange ? "Free icon placement" : "Auto-arrange icons"
+                label: desk.autoArrange ? qsTr("Free icon placement") : qsTr("Auto-arrange icons")
                 onClicked: {
                     contextMenu.visible = false;
                     if (desk.autoArrange)
@@ -678,7 +725,7 @@ Window {
                 width: parent.width
                 fillWidth: true
                 iconName: "rotate-ccw"
-                label: "Reset icon layout"
+                label: qsTr("Reset icon layout")
                 onClicked: {
                     contextMenu.visible = false;
                     desk.resetIconLayout();
@@ -688,7 +735,7 @@ Window {
                 width: parent.width
                 fillWidth: true
                 iconName: "layout-grid"
-                label: "Arrange widgets"
+                label: qsTr("Arrange widgets")
                 onClicked: {
                     contextMenu.visible = false;
                     desk.resetWidgets();
@@ -698,7 +745,7 @@ Window {
                 width: parent.width
                 fillWidth: true
                 iconName: "file-code"
-                label: "Config file"
+                label: qsTr("Config file")
                 onClicked: {
                     contextMenu.visible = false;
                     Shell.openConfig();

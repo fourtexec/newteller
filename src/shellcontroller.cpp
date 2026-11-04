@@ -115,6 +115,21 @@ QString ShellController::desktopUrl() const
     return QUrl::fromLocalFile(dir).toString();
 }
 
+QString ShellController::picturesPath() const
+{
+    return QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
+}
+
+QString ShellController::documentsPath() const
+{
+    return QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+}
+
+QString ShellController::downloadsPath() const
+{
+    return QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+}
+
 QString ShellController::userName() const
 {
     return qEnvironmentVariable("USER");
@@ -149,6 +164,10 @@ QString ShellController::expandHome(const QString &path) const
 {
     if (path.startsWith(QLatin1String("~/")))
         return QDir::homePath() + path.mid(1);
+    // QML often has a file:// URL at hand (Shell.desktopUrl); its path may be
+    // percent-encoded, so let QUrl decode it instead of cutting the scheme off.
+    if (path.startsWith(QLatin1String("file:")))
+        return QUrl(path).toLocalFile();
     return path;
 }
 
@@ -300,7 +319,24 @@ QUrl ShellController::tintedIcon(const QString &name, const QColor &color) const
 
 void ShellController::openUrl(const QString &url) const
 {
-    QDesktopServices::openUrl(QUrl(url));
+    const QUrl target(url);
+    // A launcher (.desktop file) on the desktop starts its program instead of
+    // opening in a text editor - but only when it is marked executable, as
+    // KDE does, so a downloaded file cannot run a command by a double-click.
+    if (target.isLocalFile()) {
+        const QFileInfo info(target.toLocalFile());
+        if (info.isFile() && info.suffix().compare(QLatin1String("desktop"), Qt::CaseInsensitive) == 0
+            && info.isExecutable()) {
+            const QString gio = QStandardPaths::findExecutable(QStringLiteral("gio"));
+            if (!gio.isEmpty()
+                && QProcess::startDetached(gio, {QStringLiteral("launch"), info.absoluteFilePath()}))
+                return;
+            const QString dex = QStandardPaths::findExecutable(QStringLiteral("dex"));
+            if (!dex.isEmpty() && QProcess::startDetached(dex, {info.absoluteFilePath()}))
+                return;
+        }
+    }
+    openOrSay(target);
 }
 
 void ShellController::openSettings()
@@ -350,12 +386,23 @@ void ShellController::showRunDialog()
 
 void ShellController::openConfig() const
 {
-    QDesktopServices::openUrl(QUrl::fromLocalFile(Settings::configFile()));
+    openOrSay(QUrl::fromLocalFile(Settings::configFile()));
 }
 
 void ShellController::openPath(const QString &path) const
 {
-    QDesktopServices::openUrl(QUrl::fromLocalFile(expandHome(path)));
+    openOrSay(QUrl::fromLocalFile(expandHome(path)));
+}
+
+void ShellController::openOrSay(const QUrl &url) const
+{
+    // Qt hands the URL to xdg-open (or the OpenURI portal); without them a
+    // click on a folder or file did nothing at all.
+    if (QDesktopServices::openUrl(url))
+        return;
+    const QString name = url.isLocalFile() ? url.toLocalFile() : url.toDisplayString();
+    notify(tr("Could not open %1").arg(name),
+           tr("No application is set up to open it. Install xdg-utils and a file manager."));
 }
 
 void ShellController::runShell(const QString &command) const
@@ -365,10 +412,11 @@ void ShellController::runShell(const QString &command) const
 
 void ShellController::terminal(const QString &command) const
 {
-    const QString wrapper = m_settings->value(
-        QStringLiteral("apps.terminalCommand"),
-        QStringLiteral("x-terminal-emulator -e")).toString();
-    runShell(wrapper + QLatin1Char(' ') + command);
+    // Without a command the terminal opens on its own (a prefix such as
+    // "kitty -e" with nothing after it would fail).
+    const QString wrapper = m_settings->terminalCommand();
+    runShell(command.trimmed().isEmpty() ? wrapper.section(QLatin1Char(' '), 0, 0)
+                                         : wrapper + QLatin1Char(' ') + command);
 }
 
 void ShellController::copyToClipboard(const QString &text) const

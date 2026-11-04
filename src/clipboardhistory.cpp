@@ -79,11 +79,14 @@ void ClipboardHistory::start()
     if (m_watcher.state() != QProcess::NotRunning)
         return;
     // For every new text selection wl-paste runs the command with the text
-    // on stdin; the command echoes it followed by the separator.
+    // on stdin; the command echoes it followed by the separator. Passwords
+    // that a password manager marks as secret (x-kde-passwordManagerHint;
+    // wl-paste reports CLIPBOARD_STATE=sensitive) never enter the history.
     m_watcher.start(QStringLiteral("wl-paste"),
                     {QStringLiteral("--no-newline"), QStringLiteral("--type"), QStringLiteral("text"),
                      QStringLiteral("--watch"), QStringLiteral("sh"), QStringLiteral("-c"),
-                     QStringLiteral("cat; printf '\\036'")});
+                     QStringLiteral("if [ \"${CLIPBOARD_STATE:-}\" = sensitive ]; then "
+                                    "cat >/dev/null; else cat; printf '\\036'; fi")});
 }
 
 void ClipboardHistory::stop()

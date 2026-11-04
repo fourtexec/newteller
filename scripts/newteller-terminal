@@ -1,0 +1,63 @@
+#!/bin/sh
+# Open a terminal emulator, optionally running a command in it
+# (Super+Enter, "Open terminal", applications with Terminal=true).
+#
+#   newteller-terminal [COMMAND [ARGUMENTS...]]
+#
+# x-terminal-emulator only exists on Debian and Ubuntu; elsewhere the first
+# installed terminal of a common list is used. Order: apps.terminalCommand
+# from the shell settings when it names an installed program, $TERMINAL,
+# x-terminal-emulator, then the list below.
+set -u
+
+# launch PROGRAM 'FLAGS' [COMMAND...]: FLAGS put before the command (word
+# split on purpose: "start --"); without a command just the terminal.
+launch() {
+    program=$1
+    flags=$2
+    shift 2
+    if [ $# -eq 0 ]; then
+        exec "$program"
+    fi
+    # shellcheck disable=SC2086
+    exec "$program" $flags "$@"
+}
+
+config="${XDG_CONFIG_HOME:-$HOME/.config}/newteller/shell.json"
+configured=$(sed -n 's/.*"apps\.terminalCommand"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+    "$config" 2>/dev/null | head -n 1)
+first=${configured%% *}
+if [ -n "$first" ] && [ "$first" != newteller-terminal ] && command -v "$first" >/dev/null 2>&1; then
+    if [ $# -eq 0 ]; then
+        exec "$first"
+    fi
+    # The setting is a prefix such as "kitty -e" or "gnome-terminal --".
+    # shellcheck disable=SC2086
+    exec $configured "$@"
+fi
+
+if [ -n "${TERMINAL:-}" ] && command -v "${TERMINAL%% *}" >/dev/null 2>&1; then
+    launch "$TERMINAL" -e "$@"
+fi
+
+for entry in "x-terminal-emulator:-e" "foot:" "kitty:" "alacritty:-e" "wezterm:start --" \
+             "ghostty:-e" "konsole:-e" "gnome-terminal:--" "ptyxis:--" "kgx:--" \
+             "xfce4-terminal:-x" "tilix:-e" "terminator:-x" "qterminal:-e" "lxterminal:-e" \
+             "xterm:-e"; do
+    program=${entry%%:*}
+    if command -v "$program" >/dev/null 2>&1; then
+        launch "$program" "${entry#*:}" "$@"
+    fi
+done
+
+case "${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}" in
+    ru*) summary='Терминал не найден'
+         body='Установите эмулятор терминала, например foot или gnome-terminal.' ;;
+    *) summary='No terminal found'
+       body='Install a terminal emulator such as foot or gnome-terminal.' ;;
+esac
+echo "newteller-terminal: no terminal emulator is installed" >&2
+if command -v notify-send >/dev/null 2>&1; then
+    notify-send -i terminal "$summary" "$body" >/dev/null 2>&1
+fi
+exit 1

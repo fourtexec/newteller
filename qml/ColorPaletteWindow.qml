@@ -219,7 +219,7 @@ Window {
 
                 Text {
                     Layout.fillWidth: true
-                    text: "Colour palette"
+                    text: qsTr("Colour palette")
                     color: Theme.foreground
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize + 1
@@ -257,7 +257,7 @@ Window {
                         font.bold: true
                     }
                     Text {
-                        text: "Picked colour"
+                        text: qsTr("Picked colour")
                         color: Theme.muted
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSize - 2
@@ -354,7 +354,7 @@ Window {
             }
 
             Text {
-                text: "Presets"
+                text: qsTr("Presets")
                 color: Theme.muted
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSize - 2
@@ -416,7 +416,7 @@ Window {
 
                 TaskButton {
                     iconName: "check"
-                    label: "Apply"
+                    label: qsTr("Apply")
                     active: true
                     onClicked: {
                         picker.applied(picker.current);
@@ -425,7 +425,7 @@ Window {
                 }
                 TaskButton {
                     iconName: "x"
-                    label: "Cancel"
+                    label: qsTr("Cancel")
                     onClicked: picker.hide()
                 }
             }

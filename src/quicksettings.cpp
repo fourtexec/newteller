@@ -1,16 +1,22 @@
 #include "quicksettings.h"
 #include "settings.h"
 
+#include <QCoreApplication>
+#include <memory>
 #include <QDBusArgument>
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
 #include <QDBusMessage>
+#include <QDBusPendingReply>
+#include <QDBusPendingCallWatcher>
 #include <QDBusReply>
 #include <QDBusServiceWatcher>
+#include <QDBusVariant>
 #include <QDir>
 #include <QFile>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <QUrl>
 #include <QtDebug>
 
 namespace {
@@ -25,24 +31,41 @@ constexpr auto kMprisPath = "/org/mpris/MediaPlayer2";
 QString networkStateText(int state, bool wifiEnabled)
 {
     if (state >= 70)
-        return QStringLiteral("Connected");
+        return QCoreApplication::translate("QuickSettings", "Connected");
     if (state >= 60)
-        return QStringLiteral("Connecting...");
+        return QCoreApplication::translate("QuickSettings", "Connecting...");
     if (state >= 30)
-        return QStringLiteral("Disconnecting...");
+        return QCoreApplication::translate("QuickSettings", "Disconnecting...");
     if (!wifiEnabled)
-        return QStringLiteral("Wi-Fi off");
-    return QStringLiteral("Disconnected");
+        return QCoreApplication::translate("QuickSettings", "Wi-Fi off");
+    return QCoreApplication::translate("QuickSettings", "Disconnected");
+}
+
+// MPRIS Metadata (a{sv}) as a map. qdbus_cast reads the dictionary itself;
+// the hand-written loop it replaces used the writing QDBusArgument API,
+// never advanced and froze the shell whenever a player changed tracks.
+QVariantMap metadataMap(const QVariant &metadata)
+{
+    if (metadata.userType() == qMetaTypeId<QDBusArgument>())
+        return qdbus_cast<QVariantMap>(metadata.value<QDBusArgument>());
+    return metadata.toMap();
 }
 
 // Extracts a plain string from a D-Bus variant, looking through QDBusArgument
-// wrappers (Metadata arrives as a{sv} with nested types).
+// wrappers (Metadata arrives as a{sv} with nested types). The argument is
+// read through a const QDBusArgument: the non-const begin*() calls are the
+// writing API, do nothing on a received message, and a loop over them
+// never ends.
 QString variantString(const QVariant &value)
 {
-    if (value.canConvert<QString>())
+    if (value.userType() == QMetaType::QStringList)
+        return value.toStringList().join(QStringLiteral(", "));
+    if (value.userType() == qMetaTypeId<QDBusVariant>())
+        return variantString(qvariant_cast<QDBusVariant>(value).variant());
+    if (value.userType() != qMetaTypeId<QDBusArgument>() && value.canConvert<QString>())
         return value.toString();
-    if (value.canConvert<QDBusArgument>()) {
-        QDBusArgument argument = value.value<QDBusArgument>();
+    if (value.userType() == qMetaTypeId<QDBusArgument>()) {
+        const QDBusArgument argument = value.value<QDBusArgument>();
         if (argument.currentType() == QDBusArgument::ArrayType) {
             argument.beginArray();
             QString joined;
@@ -112,67 +135,90 @@ void QuickSettings::detectVolumeTool()
         m_volumeTool = VolumeTool::None;
 }
 
-bool QuickSettings::runTool(const QStringList &arguments, QString *output) const
+void QuickSettings::runToolAsync(const QStringList &arguments,
+                                 std::function<void(bool, const QString &)> done)
 {
-    QProcess process;
-    process.start(arguments.first(), arguments.mid(1));
-    if (!process.waitForStarted(800) || !process.waitForFinished(1500))
-        return false;
-    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0)
-        return false;
-    if (output)
-        *output = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
-    return true;
+    auto *process = new QProcess(this);
+    auto finished = std::make_shared<bool>(false);
+    auto finish = [process, done, finished](bool ok) {
+        if (*finished)
+            return;
+        *finished = true;
+        done(ok, ok ? QString::fromUtf8(process->readAllStandardOutput()).trimmed() : QString());
+        process->deleteLater();
+    };
+    connect(process, &QProcess::finished, this, [process, finish](int code, QProcess::ExitStatus status) {
+        Q_UNUSED(process);
+        finish(status == QProcess::NormalExit && code == 0);
+    });
+    connect(process, &QProcess::errorOccurred, this, [finish](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart)
+            finish(false);
+    });
+    QTimer::singleShot(3000, process, [process] {
+        if (process->state() != QProcess::NotRunning)
+            process->kill();
+    });
+    process->start(arguments.first(), arguments.mid(1));
 }
 
-void QuickSettings::readVolume()
+void QuickSettings::applyVolume(int percent, bool muted)
 {
-    if (m_volumeTool == VolumeTool::None)
-        return;
-    QString out;
-    if (m_volumeTool == VolumeTool::WpCtl) {
-        if (!runTool({QStringLiteral("wpctl"), QStringLiteral("get-volume"),
-                      QStringLiteral("@DEFAULT_AUDIO_SINK@")},
-                     &out))
-            return;
-        const bool muted = out.contains(QLatin1String("MUTED"), Qt::CaseInsensitive);
-        const int space = out.lastIndexOf(QLatin1Char(' '));
-        const QString number = space >= 0 ? out.mid(space + 1) : out;
-        bool ok = false;
-        const double linear = number.toDouble(&ok);
-        if (!ok)
-            return;
-        const int percent = qRound(linear * 100.0);
-        if (percent != m_volume || muted != m_volumeMuted) {
-            m_volume = qBound(0, percent, 150);
-            m_volumeMuted = muted;
-            emit volumeChanged();
-        }
-        return;
-    }
-    // pactl
-    QString mutedOut;
-    runTool({QStringLiteral("pactl"), QStringLiteral("get-sink-mute"),
-             QStringLiteral("@DEFAULT_SINK@")},
-            &mutedOut);
-    if (!runTool({QStringLiteral("pactl"), QStringLiteral("get-sink-volume"),
-                  QStringLiteral("@DEFAULT_SINK@")},
-                 &out))
-        return;
-    const bool muted = mutedOut.contains(QLatin1String("yes"), Qt::CaseInsensitive);
-    // "Volume: front-left: 43690 /  67% / -11.00 dB, ..."
-    int percent = -1;
-    const QRegularExpression percentRegex(QStringLiteral("(\\d+)%"));
-    const auto match = percentRegex.match(out);
-    if (match.hasMatch())
-        percent = match.captured(1).toInt();
-    if (percent < 0)
-        return;
     if (percent != m_volume || muted != m_volumeMuted) {
         m_volume = qBound(0, percent, 150);
         m_volumeMuted = muted;
         emit volumeChanged();
     }
+}
+
+// Every 8 s and after each change: asynchronous, so a slow or stuck audio
+// server never freezes the panel (it used to wait up to 2.3 s for wpctl).
+void QuickSettings::readVolume()
+{
+    if (m_volumeTool == VolumeTool::None || m_volumeReading)
+        return;
+    m_volumeReading = true;
+    if (m_volumeTool == VolumeTool::WpCtl) {
+        runToolAsync({QStringLiteral("wpctl"), QStringLiteral("get-volume"),
+                      QStringLiteral("@DEFAULT_AUDIO_SINK@")},
+                     [this](bool ok, const QString &out) {
+                         m_volumeReading = false;
+                         if (!ok)
+                             return;
+                         // "Volume: 0.45 [MUTED]"
+                         const bool muted = out.contains(QLatin1String("MUTED"), Qt::CaseInsensitive);
+                         const QStringList words = out.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+                         bool parsed = false;
+                         double linear = 0;
+                         for (const QString &word : words) {
+                             linear = word.toDouble(&parsed);
+                             if (parsed)
+                                 break;
+                         }
+                         if (parsed)
+                             applyVolume(qRound(linear * 100.0), muted);
+                     });
+        return;
+    }
+    // pactl: the mute state, then the volume.
+    runToolAsync({QStringLiteral("pactl"), QStringLiteral("get-sink-mute"),
+                  QStringLiteral("@DEFAULT_SINK@")},
+                 [this](bool, const QString &mutedOut) {
+                     const bool muted = mutedOut.contains(QLatin1String("yes"), Qt::CaseInsensitive);
+                     runToolAsync({QStringLiteral("pactl"), QStringLiteral("get-sink-volume"),
+                                   QStringLiteral("@DEFAULT_SINK@")},
+                                  [this, muted](bool ok, const QString &out) {
+                                      m_volumeReading = false;
+                                      if (!ok)
+                                          return;
+                                      // "Volume: front-left: 43690 /  67% / -11.00 dB, ..."
+                                      static const QRegularExpression percentRegex(
+                                          QStringLiteral("(\\d+)%"));
+                                      const auto match = percentRegex.match(out);
+                                      if (match.hasMatch())
+                                          applyVolume(match.captured(1).toInt(), muted);
+                                  });
+                 });
 }
 
 void QuickSettings::setVolume(int percent)
@@ -288,14 +334,19 @@ void QuickSettings::writeBrightness(int percent)
         QStringLiteral("/org/gnome/SettingsDaemon/Power"),
         QStringLiteral("org.gnome.SettingsDaemon.Power.Screen"), QStringLiteral("SetPercentage"));
     call << percent;
-    const QDBusMessage reply = QDBusConnection::sessionBus().call(call, QDBus::Block, 500);
-    if (reply.type() == QDBusMessage::ReplyMessage)
-        return;
-    QFile file(QStringLiteral("/sys/class/backlight/%1/brightness").arg(m_backlightDevice));
-    if (file.open(QIODevice::WriteOnly))
-        file.write(QByteArray::number(value));
-    else
-        m_brightnessWriteTried = true;
+    // Asynchronous: a slow settings daemon must not stall the slider.
+    auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(call, 500), this);
+    const QString device = m_backlightDevice;
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, device, value](QDBusPendingCallWatcher *w) {
+        w->deleteLater();
+        if (!w->isError())
+            return;
+        QFile file(QStringLiteral("/sys/class/backlight/%1/brightness").arg(device));
+        if (file.open(QIODevice::WriteOnly))
+            file.write(QByteArray::number(value));
+        else
+            m_brightnessWriteTried = true;
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -334,33 +385,33 @@ void QuickSettings::setupNetwork()
                 SLOT(networkPropertiesChanged(QString, QVariantMap, QStringList)));
 }
 
+// State and WirelessEnabled in one asynchronous GetAll: NetworkManager
+// being slow or restarting no longer stalls the panel.
 void QuickSettings::readNetwork()
 {
-    QDBusConnection bus = QDBusConnection::systemBus();
-    auto readProperty = [&bus](const QString &property) -> QVariant {
-        QDBusMessage call = QDBusMessage::createMethodCall(
-            QString::fromLatin1(kNmService), QString::fromLatin1(kNmPath),
-            QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
-        call << QString::fromLatin1(kNmInterface) << property;
-        const QDBusMessage reply = bus.call(call, QDBus::BlockWithGui, 800);
-        if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
-            return {};
-        return reply.arguments().first();
-    };
-
-    // Properties::Get returns a variant; basic types demarshal to a plain
-    // QVariant, so read them directly.
-    const QVariant stateVariant = readProperty(QStringLiteral("State"));
-    const QVariant wifiVariant = readProperty(QStringLiteral("WirelessEnabled"));
-    const int state = stateVariant.isValid() ? stateVariant.toInt() : -1;
-    const bool wifi = wifiVariant.isValid() ? wifiVariant.toBool() : m_wifiEnabled;
-
-    if (state >= 0 && (state != m_networkState || wifi != m_wifiEnabled)) {
-        m_networkState = state;
-        m_wifiEnabled = wifi;
-        setNetworkStatus(state, wifi);
-        emit networkChanged();
-    }
+    QDBusMessage call = QDBusMessage::createMethodCall(QString::fromLatin1(kNmService),
+                                                       QString::fromLatin1(kNmPath),
+                                                       QStringLiteral("org.freedesktop.DBus.Properties"),
+                                                       QStringLiteral("GetAll"));
+    call << QString::fromLatin1(kNmInterface);
+    auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(call, 3000), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher *w) {
+        w->deleteLater();
+        const QDBusPendingReply<QVariantMap> reply = *w;
+        if (reply.isError())
+            return;
+        const QVariantMap properties = reply.value();
+        const QVariant stateVariant = properties.value(QStringLiteral("State"));
+        const QVariant wifiVariant = properties.value(QStringLiteral("WirelessEnabled"));
+        const int state = stateVariant.isValid() ? stateVariant.toInt() : -1;
+        const bool wifi = wifiVariant.isValid() ? wifiVariant.toBool() : m_wifiEnabled;
+        if (state >= 0 && (state != m_networkState || wifi != m_wifiEnabled)) {
+            m_networkState = state;
+            m_wifiEnabled = wifi;
+            setNetworkStatus(state, wifi);
+            emit networkChanged();
+        }
+    });
 }
 
 void QuickSettings::setNetworkStatus(int state, bool wifiEnabled)
@@ -417,7 +468,7 @@ void QuickSettings::dbusNameOwnerChanged(const QString &name, const QString &old
     if (!name.startsWith(QString::fromLatin1(kMprisPrefix)))
         return;
     if (!newOwner.isEmpty() && oldOwner.isEmpty())
-        addMediaPlayer(name);
+        addMediaPlayer(name, newOwner);
     else if (newOwner.isEmpty() && !oldOwner.isEmpty())
         removeMediaPlayer(name);
 }
@@ -434,11 +485,15 @@ void QuickSettings::scanMediaPlayers()
     }
 }
 
-void QuickSettings::addMediaPlayer(const QString &service)
+void QuickSettings::addMediaPlayer(const QString &service, const QString &owner)
 {
     if (m_mediaPlayers.contains(service))
         return;
     m_mediaPlayers.append(service);
+    QString unique = owner;
+    if (unique.isEmpty() && QDBusConnection::sessionBus().interface())
+        unique = QDBusConnection::sessionBus().interface()->serviceOwner(service).value();
+    m_mediaOwners.insert(service, unique);
     QDBusConnection::sessionBus().connect(service, QString::fromLatin1(kMprisPath),
                                           QStringLiteral("org.freedesktop.DBus.Properties"),
                                           QStringLiteral("PropertiesChanged"), this,
@@ -452,6 +507,8 @@ void QuickSettings::removeMediaPlayer(const QString &service)
 {
     if (!m_mediaPlayers.removeOne(service))
         return;
+    m_mediaOwners.remove(service);
+    m_playerStates.remove(service);
     QDBusConnection::sessionBus().disconnect(service, QString::fromLatin1(kMprisPath),
                                              QStringLiteral("org.freedesktop.DBus.Properties"),
                                              QStringLiteral("PropertiesChanged"), this,
@@ -460,47 +517,44 @@ void QuickSettings::removeMediaPlayer(const QString &service)
     pickMedia();
 }
 
-// Reads Metadata and PlaybackStatus of one player. Failures leave the player
-// in the list: a player may not be fully up yet, the next change heals it.
+// Reads every property of one player without blocking (GetAll); the
+// answer updates its cached state and the choice of player.
 void QuickSettings::readMediaPlayer(const QString &service)
 {
-    QDBusConnection bus = QDBusConnection::sessionBus();
-    auto read = [&bus, &service](const QString &property) -> QVariant {
-        QDBusMessage call = QDBusMessage::createMethodCall(
-            service, QString::fromLatin1(kMprisPath),
-            QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
-        call << QStringLiteral("org.mpris.MediaPlayer2.Player") << property;
-        const QDBusMessage reply = bus.call(call, QDBus::BlockWithGui, 600);
-        if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
-            return {};
-        return reply.arguments().first();
-    };
+    QDBusMessage call = QDBusMessage::createMethodCall(service, QString::fromLatin1(kMprisPath),
+                                                       QStringLiteral("org.freedesktop.DBus.Properties"),
+                                                       QStringLiteral("GetAll"));
+    call << QStringLiteral("org.mpris.MediaPlayer2.Player");
+    auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(call, 2000), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, service](QDBusPendingCallWatcher *w) {
+        w->deleteLater();
+        const QDBusPendingReply<QVariantMap> reply = *w;
+        if (reply.isError() || !m_mediaPlayers.contains(service))
+            return;
+        applyPlayerProperties(service, reply.value());
+        pickMedia();
+    });
+}
 
-    const QVariant metadata = read(QStringLiteral("Metadata"));
-    if (metadata.isValid()) {
-        QVariantMap map;
-        if (metadata.canConvert<QDBusArgument>()) {
-            const QDBusArgument argument = metadata.value<QDBusArgument>();
-            argument.beginArray();
-            while (!argument.atEnd()) {
-                QDBusArgument entry = argument;
-                entry.beginStructure();
-                QString key;
-                QVariant value;
-                entry >> key >> value;
-                entry.endStructure();
-                map.insert(key, value);
-            }
-            argument.endArray();
-            if (map.contains(QStringLiteral("xesam:title")))
-                m_mediaTitle = variantString(map.value(QStringLiteral("xesam:title")));
-            if (map.contains(QStringLiteral("xesam:artist")))
-                m_mediaArtist = variantString(map.value(QStringLiteral("xesam:artist")));
-        }
+void QuickSettings::applyPlayerProperties(const QString &service, const QVariantMap &properties)
+{
+    PlayerState &state = m_playerStates[service];
+    if (properties.contains(QStringLiteral("Metadata"))) {
+        const QVariantMap map = metadataMap(properties.value(QStringLiteral("Metadata")));
+        state.title = variantString(map.value(QStringLiteral("xesam:title")));
+        state.artist = variantString(map.value(QStringLiteral("xesam:artist")));
+        // Only schemes an Image can load: players also send data or
+        // private ones the panel cannot read.
+        const QString art = variantString(map.value(QStringLiteral("mpris:artUrl"))).trimmed();
+        const QString scheme = QUrl(art).scheme();
+        state.artUrl = (scheme == QLatin1String("file") || scheme == QLatin1String("https")
+                        || scheme == QLatin1String("http"))
+                           ? art
+                           : QString();
     }
-    const QVariant status = read(QStringLiteral("PlaybackStatus"));
-    if (status.isValid())
-        m_mediaPlaying = status.toString() == QLatin1String("Playing");
+    if (properties.contains(QStringLiteral("PlaybackStatus")))
+        state.playing = variantString(properties.value(QStringLiteral("PlaybackStatus")))
+                        == QLatin1String("Playing");
 }
 
 void QuickSettings::mediaPropertiesChanged(const QString &interface, const QVariantMap &changed,
@@ -508,76 +562,38 @@ void QuickSettings::mediaPropertiesChanged(const QString &interface, const QVari
 {
     if (interface != QLatin1String("org.mpris.MediaPlayer2.Player"))
         return;
-    const QString service = message().service();
-    if (!m_mediaPlayers.contains(service))
+    // The sender is the player's unique name (":1.42"), not its
+    // org.mpris.MediaPlayer2.<player> name.
+    const QString sender = message().service();
+    const QString service = m_mediaPlayers.contains(sender) ? sender : m_mediaOwners.key(sender);
+    if (service.isEmpty())
         return;
-    if (changed.contains(QStringLiteral("Metadata"))) {
-        // Cheap path: the change already carries the new values.
-        const QVariant metadata = changed.value(QStringLiteral("Metadata"));
-        if (metadata.canConvert<QDBusArgument>()) {
-            const QDBusArgument argument = metadata.value<QDBusArgument>();
-            argument.beginArray();
-            QVariantMap map;
-            while (!argument.atEnd()) {
-                QDBusArgument entry = argument;
-                entry.beginStructure();
-                QString key;
-                QVariant value;
-                entry >> key >> value;
-                entry.endStructure();
-                map.insert(key, value);
-            }
-            argument.endArray();
-            if (map.contains(QStringLiteral("xesam:title")))
-                m_mediaTitle = variantString(map.value(QStringLiteral("xesam:title")));
-            if (map.contains(QStringLiteral("xesam:artist")))
-                m_mediaArtist = variantString(map.value(QStringLiteral("xesam:artist")));
-        }
-    }
-    if (changed.contains(QStringLiteral("PlaybackStatus")))
-        m_mediaPlaying = variantString(changed.value(QStringLiteral("PlaybackStatus")))
-                         == QLatin1String("Playing");
+    applyPlayerProperties(service, changed);
     pickMedia();
 }
 
-// The popup shows one player: whoever is playing, else the newest player.
+// The popup shows and controls one player: one that is playing, else the
+// newest one.
 QString QuickSettings::mediaPlayer() const
 {
-    for (const QString &service : m_mediaPlayers) {
-        // Playback status is cached only for the picked player; players are
-        // few, so asking each one is fine and keeps this simple.
-        return service;
-    }
-    return QString();
+    return m_currentPlayer;
 }
 
 void QuickSettings::pickMedia()
 {
-    if (m_mediaPlayers.isEmpty()) {
-        m_mediaTitle.clear();
-        m_mediaArtist.clear();
-        m_mediaPlaying = false;
-        emit mediaChanged();
-        return;
-    }
-    // Prefer a playing player; otherwise keep the first service.
     QString chosen;
-    for (const QString &service : m_mediaPlayers) {
-        QDBusMessage call = QDBusMessage::createMethodCall(
-            service, QString::fromLatin1(kMprisPath),
-            QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
-        call << QStringLiteral("org.mpris.MediaPlayer2.Player")
-             << QStringLiteral("PlaybackStatus");
-        const QDBusMessage reply = QDBusConnection::sessionBus().call(call, QDBus::BlockWithGui, 400);
-        if (reply.type() == QDBusMessage::ReplyMessage && !reply.arguments().isEmpty()
-            && reply.arguments().first().toString() == QLatin1String("Playing")) {
+    for (const QString &service : std::as_const(m_mediaPlayers)) {
+        if (m_playerStates.value(service).playing)
             chosen = service;
-            break;
-        }
     }
-    if (chosen.isEmpty())
-        chosen = m_mediaPlayers.first();
-    readMediaPlayer(chosen);
+    if (chosen.isEmpty() && !m_mediaPlayers.isEmpty())
+        chosen = m_mediaPlayers.constLast();
+    const PlayerState state = m_playerStates.value(chosen);
+    m_currentPlayer = chosen;
+    m_mediaTitle = state.title;
+    m_mediaArtist = state.artist;
+    m_mediaArtUrl = state.artUrl;
+    m_mediaPlaying = state.playing;
     emit mediaChanged();
 }
 

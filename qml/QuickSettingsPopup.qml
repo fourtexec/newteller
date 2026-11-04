@@ -43,7 +43,7 @@ DropdownWindow {
     }
 
     cardWidth: 360
-    cardHeight: Math.max(240, Math.min(560, 24 + 46 * visibleRows + (Quick.mediaAvailable ? 74 : 0)))
+    cardHeight: Math.max(240, Math.min(560, 24 + 46 * visibleRows + (Quick.mediaAvailable ? (Quick.mediaArtUrl.length > 0 ? 84 : 74) : 0)))
     padding: 12
     scopeName: "newteller-quick-settings"
 
@@ -58,7 +58,7 @@ DropdownWindow {
 
         ShellTitleBar {
             Layout.fillWidth: true
-            title: "Quick settings"
+            title: qsTr("Quick settings")
             iconName: "sliders-horizontal"
             onCloseClicked: popup.hide()
         }
@@ -69,22 +69,47 @@ DropdownWindow {
             visible: Quick.mediaAvailable
             spacing: 2
 
-            Text {
+            RowLayout {
                 Layout.fillWidth: true
-                text: Quick.mediaTitle.length > 0 ? Quick.mediaTitle : "Not playing"
-                color: Theme.foreground
-                font.family: Theme.fontFamily
-                font.pointSize: Theme.fontSize + 1
-                elide: Text.ElideRight
-            }
-            Text {
-                Layout.fillWidth: true
-                visible: Quick.mediaArtist.length > 0
-                text: Quick.mediaArtist
-                color: Theme.muted
-                font.family: Theme.fontFamily
-                font.pointSize: Theme.fontSize - 1
-                elide: Text.ElideRight
+                spacing: 10
+
+                // The cover the player announces (mpris:artUrl).
+                Image {
+                    id: mediaArt
+                    objectName: "mediaArt"
+                    visible: Quick.mediaArtUrl.length > 0 && status === Image.Ready
+                    Layout.preferredWidth: 44
+                    Layout.preferredHeight: 44
+                    sourceSize.width: 88
+                    sourceSize.height: 88
+                    fillMode: Image.PreserveAspectCrop
+                    asynchronous: true
+                    smooth: true
+                    source: Quick.mediaArtUrl
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 2
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: Quick.mediaTitle.length > 0 ? Quick.mediaTitle : qsTr("Not playing")
+                        color: Theme.foreground
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSize + 1
+                        elide: Text.ElideRight
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        visible: Quick.mediaArtist.length > 0
+                        text: Quick.mediaArtist
+                        color: Theme.muted
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSize - 1
+                        elide: Text.ElideRight
+                    }
+                }
             }
             RowLayout {
                 Layout.fillWidth: true
@@ -131,7 +156,7 @@ DropdownWindow {
                 width: 34
                 height: 34
                 iconName: Quick.volumeMuted ? "volume-x" : "volume-2"
-                tooltipText: Quick.volumeMuted ? "Unmute" : "Mute"
+                tooltipText: Quick.volumeMuted ? qsTr("Unmute") : qsTr("Mute")
                 onClicked: Quick.toggleMuted()
             }
             SettingsSlider {
@@ -151,7 +176,7 @@ DropdownWindow {
                 visible: Session.soundSettingsTool.length > 0
                 width: 30
                 iconName: "chevron-right"
-                tooltipText: "Sound devices"
+                tooltipText: qsTr("Sound devices")
                 onClicked: {
                     popup.hide();
                     Session.openSoundSettings();
@@ -218,7 +243,7 @@ DropdownWindow {
                 spacing: 0
 
                 Text {
-                    text: "Wi-Fi"
+                    text: qsTr("Wi-Fi")
                     color: Theme.foreground
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize
@@ -235,7 +260,7 @@ DropdownWindow {
                 visible: Session.wifiAvailable && Quick.wifiEnabled && popup.wifiPopup !== null
                 width: 30
                 iconName: "chevron-right"
-                tooltipText: "Choose a network"
+                tooltipText: qsTr("Choose a network")
                 onClicked: {
                     popup.hide();
                     popup.wifiPopup.show();
@@ -280,7 +305,7 @@ DropdownWindow {
                 Layout.fillWidth: true
                 spacing: 0
                 Text {
-                    text: "Bluetooth"
+                    text: qsTr("Bluetooth")
                     color: Theme.foreground
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize
@@ -307,7 +332,7 @@ DropdownWindow {
                 visible: popup.bluetoothPopup !== null && Bluetooth.powered
                 width: 30
                 iconName: "chevron-right"
-                tooltipText: "Devices"
+                tooltipText: qsTr("Devices")
                 onClicked: {
                     popup.hide();
                     popup.bluetoothPopup.show();
@@ -345,7 +370,7 @@ DropdownWindow {
             }
             Text {
                 Layout.fillWidth: true
-                text: "Do not disturb"
+                text: qsTr("Do not disturb")
                 color: Theme.foreground
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSize
@@ -379,7 +404,7 @@ DropdownWindow {
             }
             Text {
                 Layout.fillWidth: true
-                text: "Night light"
+                text: qsTr("Night light")
                 color: Theme.foreground
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSize
@@ -411,9 +436,9 @@ DropdownWindow {
             }
             Repeater {
                 model: [
-                    { value: "power-saver", label: "Saver" },
-                    { value: "balanced", label: "Balanced" },
-                    { value: "performance", label: "Performance" }
+                    { value: "power-saver", label: qsTr("Saver") },
+                    { value: "balanced", label: qsTr("Balanced") },
+                    { value: "performance", label: qsTr("Performance") }
                 ]
                 delegate: TaskButton {
                     required property var modelData
@@ -479,19 +504,19 @@ DropdownWindow {
 
             TaskButton {
                 iconName: "settings"
-                label: "All settings"
+                label: qsTr("All settings")
                 onClicked: { Shell.openSettings(); popup.hide(); }
             }
             Item { Layout.fillWidth: true }
             TaskButton {
                 objectName: "quickLockButton"
                 iconName: "lock"
-                label: "Lock"
+                label: qsTr("Lock")
                 onClicked: { popup.hide(); Shell.lock(); }
             }
             TaskButton {
                 iconName: "bell"
-                label: "History"
+                label: qsTr("History")
                 onClicked: {
                     popup.hide();
                     if (popup.notificationCenter)

@@ -166,7 +166,9 @@ void SystemMonitor::setFlags(quint32 flags)
 
 quint32 SystemMonitor::flagsFromSettings() const
 {
-    quint32 flags = Rust::Metrics::Battery | Rust::Metrics::Uname;
+    quint32 flags = Rust::Metrics::Uname;
+    if (m_settings->value(QStringLiteral("system.battery"), true).toBool())
+        flags |= Rust::Metrics::Battery;
     if (m_settings->value(QStringLiteral("system.disks"), true).toBool())
         flags |= Rust::Metrics::Disks;
     if (m_settings->value(QStringLiteral("system.thermal"), true).toBool())

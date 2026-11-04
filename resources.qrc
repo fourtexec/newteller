@@ -1,6 +1,7 @@
 <!DOCTYPE RCC>
 <RCC version="1.0">
   <qresource prefix="/">
+    <file>i18n/ru.json</file>
     <file>qml/Main.qml</file>
     <file>qml/Anchoring.js</file>
     <file>qml/DropdownWindow.qml</file>
@@ -65,6 +66,7 @@
     <file>icons/bell-off.svg</file>
     <file>icons/bell-ring.svg</file>
     <file>icons/bluetooth.svg</file>
+    <file>icons/usb.svg</file>
     <file>icons/check.svg</file>
     <file>icons/chevron-left.svg</file>
     <file>icons/chevron-right.svg</file>

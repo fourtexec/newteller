@@ -145,7 +145,7 @@ Window {
 
             ShellTitleBar {
                 Layout.fillWidth: true
-                title: "Choose a file"
+                title: qsTr("Choose a file")
                 iconName: "folder"
                 onCloseClicked: picker.hide()
             }
@@ -196,27 +196,27 @@ Window {
                 spacing: 6
 
                 TaskButton {
-                    label: "Home"
+                    label: qsTr("Home")
                     iconName: "house"
                     onClicked: picker.enter(Shell.home)
                 }
                 TaskButton {
-                    label: "Pictures"
+                    label: qsTr("Pictures")
                     iconName: "image"
-                    onClicked: picker.enter(Shell.home + "/Pictures")
+                    onClicked: picker.enter(Shell.picturesPath)
                 }
                 TaskButton {
-                    label: "Documents"
+                    label: qsTr("Documents")
                     iconName: "file-text"
-                    onClicked: picker.enter(Shell.home + "/Documents")
+                    onClicked: picker.enter(Shell.documentsPath)
                 }
                 TaskButton {
-                    label: "Downloads"
+                    label: qsTr("Downloads")
                     iconName: "download"
-                    onClicked: picker.enter(Shell.home + "/Downloads")
+                    onClicked: picker.enter(Shell.downloadsPath)
                 }
                 TaskButton {
-                    label: picker.imagesOnly ? "All files" : "Images only"
+                    label: picker.imagesOnly ? qsTr("All files") : qsTr("Images only")
                     iconName: "funnel"
                     onClicked: {
                         picker.imagesOnly = !picker.imagesOnly;
@@ -330,13 +330,13 @@ Window {
                         sourceSize.height: 400
                         visible: picker.selectedPath.length > 0
                         source: picker.selectedPath.length > 0
-                                ? "file://" + picker.selectedPath : ""
+                                ? picker.fileUrlFor(picker.selectedPath) : ""
                     }
                     Text {
                         anchors.centerIn: parent
                         width: parent.width - 12
                         visible: picker.selectedPath.length === 0
-                        text: picker.selectedPath.length === 0 ? "Pick a file to preview it" : ""
+                        text: picker.selectedPath.length === 0 ? qsTr("Pick a file to preview it") : ""
                         color: Theme.muted
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSize - 2
@@ -361,7 +361,7 @@ Window {
                 }
                 TaskButton {
                     iconName: "check"
-                    label: "Choose"
+                    label: qsTr("Choose")
                     active: picker.selectedPath.length > 0
                     onClicked: {
                         if (picker.selectedPath.length > 0)
@@ -370,7 +370,7 @@ Window {
                 }
                 TaskButton {
                     iconName: "x"
-                    label: "Cancel"
+                    label: qsTr("Cancel")
                     onClicked: picker.hide()
                 }
             }

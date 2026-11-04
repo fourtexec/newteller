@@ -39,9 +39,17 @@ DropdownWindow {
         }
     }
 
-    // Builds a Monday-first 6x7 grid of the given month; empty cells null.
+    // The locale's first weekday (Monday in Russia, Sunday in the US), in
+    // the 0 = Sunday numbering of Date.getDay().
+    readonly property int firstWeekday: {
+        const first = Qt.locale().firstDayOfWeek;
+        return first >= 0 && first <= 6 ? first : 1;
+    }
+
+    // Builds a 6x7 grid of the given month starting on the locale's first
+    // weekday; empty cells null.
     function buildCalendar(year, month) {
-        const start = (new Date(year, month, 1).getDay() + 6) % 7;
+        const start = (new Date(year, month, 1).getDay() - clock.firstWeekday + 7) % 7;
         const days = new Date(year, month + 1, 0).getDate();
         const cells = [];
         for (var i = 0; i < start; ++i)
@@ -53,8 +61,11 @@ DropdownWindow {
         return cells;
     }
 
+    // The month on its own ("Ноябрь", not the "ноября" of a date), as the
+    // locale writes it, capitalised.
     function monthName(month) {
-        return Qt.formatDateTime(new Date(clock.viewYear, month, 1), "MMMM");
+        const name = Qt.locale().standaloneMonthName(month, Locale.LongFormat);
+        return name.length > 0 ? name.charAt(0).toUpperCase() + name.slice(1) : name;
     }
 
     ColumnLayout {
@@ -190,9 +201,10 @@ DropdownWindow {
             rowSpacing: 2
             property var cells: clock.buildCalendar(clock.viewYear, clock.viewMonth)
 
-            // Weekday header, Monday first.
+            // Weekday header from the locale's first weekday, in its short names.
             Repeater {
-                model: ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
+                model: [0, 1, 2, 3, 4, 5, 6].map(i => Qt.locale().standaloneDayName((clock.firstWeekday + i) % 7,
+                                                                                    Locale.ShortFormat))
                 delegate: Text {
                     required property var modelData
                     width: 40
@@ -240,7 +252,7 @@ DropdownWindow {
 
         Text {
             Layout.alignment: Qt.AlignHCenter
-            text: "Week " + Qt.formatDateTime(Shell.now, "ww")
+            text: qsTr("Week %1").arg(Qt.formatDateTime(Shell.now, "ww"))
             color: Theme.muted
             font.family: Theme.fontFamily
             font.pointSize: Theme.fontSize - 2

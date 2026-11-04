@@ -48,9 +48,10 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen:configfile=" + _config.name
 os.environ["QT_QUICK_BACKEND"] = "software"
 
 import PySide6  # noqa: E402
-from PySide6.QtCore import (Q_ARG, QDateTime, QDir, QEnum, QFile, QFileInfo, QMargins,  # noqa: E402
-                            QMetaObject, QObject, QPoint, QPointF, QRectF, QtMsgType, QTimer,
-                            QUrl, Property, Qt, Signal, Slot, qInstallMessageHandler)
+from PySide6.QtCore import (Q_ARG, Q_RETURN_ARG, QBuffer, QByteArray, QDateTime,  # noqa: E402
+                            QDir, QEnum, QFile, QFileInfo, QIODevice, QMargins, QMetaObject,
+                            QObject, QPoint, QPointF, QRectF, QtMsgType, QTimer, QTranslator, QUrl,
+                            Property, Qt, Signal, Slot, qInstallMessageHandler)
 from PySide6.QtGui import QColor, QGuiApplication, QImage, QImageReader  # noqa: E402
 from PySide6.QtQml import (QmlAnonymous, QmlAttached, QmlNamedElement,  # noqa: E402
                            QmlUncreatable, QQmlApplicationEngine, QQmlComponent)
@@ -444,6 +445,9 @@ class Shell(QObject):
     version = Property(str, lambda self: "0.3.0-test", constant=True)
     home = Property(str, lambda self: self._home, constant=True)
     desktopUrl = Property(str, lambda self: self._desktop, constant=True)
+    picturesPath = Property(str, lambda self: self._home + "/Pictures", constant=True)
+    documentsPath = Property(str, lambda self: self._home + "/Documents", constant=True)
+    downloadsPath = Property(str, lambda self: self._home + "/Downloads", constant=True)
     userName = Property(str, lambda self: "tester", constant=True)
     sessionType = Property(str, lambda self: "wayland", constant=True)
     hostname = Property(str, lambda self: "testhost", constant=True)
@@ -704,6 +708,7 @@ class Notifications(QObject):
         super().__init__()
         self._active = []
         self._history = []
+        self.calls = []
 
     active = Property("QVariantList", lambda self: self._active, notify=activeChanged)
     history = Property("QVariantList", lambda self: self._history, notify=historyChanged)
@@ -720,7 +725,7 @@ class Notifications(QObject):
 
     @Slot("QVariant", str)
     def invokeAction(self, notification_id, action_key):
-        pass
+        self.calls.append(("invokeAction", notification_id, action_key))
 
     @Slot()
     def clearHistory(self):
@@ -736,10 +741,20 @@ class Tray(QObject):
     """Stand-in for the TrayWatcher context property (src/tray.h)."""
 
     itemsChanged = Signal()
+    menuReady = Signal(str, "QVariantList")
+    menuChanged = Signal(str)
 
     def __init__(self):
         super().__init__()
         self.calls = []
+        self.menus = {"item-1": [
+            {"id": 1, "label": "Mute", "enabled": True, "visible": True, "separator": False,
+             "checkable": True, "checked": False, "iconName": "", "hasChildren": False,
+             "children": []},
+            {"id": 2, "label": "Quit", "enabled": True, "visible": True, "separator": False,
+             "checkable": False, "checked": False, "iconName": "", "hasChildren": False,
+             "children": []},
+        ]}
         self._items = [{
             "id": ":1.42|/StatusNotifierItem",
             "service": ":1.42",
@@ -781,9 +796,12 @@ class Tray(QObject):
     def hasMenu(self, item_id):
         return False
 
-    @Slot(str, result="QVariantList")
-    def menu(self, item_id):
-        return []
+    @Slot(str)
+    def requestMenu(self, item_id):
+        self.calls.append(("requestMenu", item_id))
+        # Answers later, like the real watcher's asynchronous GetLayout.
+        items = self.menus.get(item_id, [])
+        QTimer.singleShot(50, lambda: self.menuReady.emit(item_id, items))
 
     @Slot(str, int)
     def menuAboutToShow(self, item_id, menu_item_id):
@@ -1132,10 +1150,17 @@ class Quick(QObject):
     mediaTitle = Property(str, lambda self: "Test song", notify=mediaChanged)
     mediaArtist = Property(str, lambda self: "Test artist", notify=mediaChanged)
     mediaPlaying = Property(bool, lambda self: True, notify=mediaChanged)
+    mediaArtUrl = Property(str, lambda self: self._art, notify=mediaChanged)
 
     def __init__(self):
         super().__init__()
         self.calls = []
+        # A cover on disk, as players announce it (mpris:artUrl).
+        art_dir = tempfile.mkdtemp(prefix="newteller-art-")
+        cover = QImage(16, 16, QImage.Format_RGB32)
+        cover.fill(QColor("#cc6633"))
+        cover.save(os.path.join(art_dir, "cover.png"))
+        self._art = QUrl.fromLocalFile(os.path.join(art_dir, "cover.png")).toString()
 
     @Slot(int)
     def setVolume(self, percent):
@@ -1221,6 +1246,10 @@ def main():
     os.makedirs(os.path.join(work, "Pictures"))
     for name in ("notes.txt", "photo.png"):
         open(os.path.join(desktop_dir, name), "w").close()
+    # A launcher of an installed application (the desktop shows it as that
+    # application and starts it on a double-click).
+    with open(os.path.join(desktop_dir, "firefox.desktop"), "w") as f:
+        f.write("[Desktop Entry]\nType=Application\nName=Firefox\nExec=firefox\n")
     panel_plugin = os.path.join(work, "PanelWidget.qml")
     with open(panel_plugin, "w") as f:
         f.write("import QtQuick\nRectangle { width: 30; height: 30; color: Theme.accent }\n")
@@ -1317,6 +1346,53 @@ def main():
     missing_files = sorted(name for name in literal_icons
                            if not os.path.exists(os.path.join(icon_dir, name + ".svg")))
     check(not missing_files, f"every literal iconName has an icons/ file (missing: {missing_files})")
+    # Every control in the settings application changes something: its key
+    # is read by the C++ services, the compositor (through compositor.conf),
+    # another QML file or the settings page itself, not only by the control.
+    with open(os.path.join(ROOT, "qml", "SettingsApp.qml"), encoding="utf-8") as handle:
+        settings_qml = handle.read()
+    bound_keys = sorted(set(re.findall(r'settingKey:\s*"([^"]+)"', settings_qml)))
+    readers = []
+    for pattern in ("src/*.cpp", "src/*.h", "src/session/*.c", "qml/*.qml", "plugins/*/*.qml",
+                    "rust/crates/*/src/**/*.rs"):
+        for path in glob.glob(os.path.join(ROOT, pattern), recursive=True):
+            if path.endswith(("settings.cpp", "SettingsApp.qml")):
+                continue
+            with open(path, encoding="utf-8") as handle:
+                readers.append(handle.read())
+    page_reads = re.sub(r'settingKey:\s*"[^"]+"', "", settings_qml)
+    dead = [k for k in bound_keys
+            if not any(k in text for text in readers) and '"%s"' % k not in page_reads]
+    check(not dead, f"every settings control changes something (never read: {dead})")
+
+    # Translations (i18n/<language>.json, read by src/translator.cpp): every
+    # entry translates a real qsTr() text, keeps its %1 placeholders, and the
+    # file is compiled in.
+    def qml_unquote(text):
+        return text.replace("\\\\", "\x00").replace("\\n", "\n").replace('\\"', '"').replace("\x00", "\\")
+    source_texts = set()
+    for qml in glob.glob(os.path.join(ROOT, "qml", "*.qml")):
+        with open(qml, encoding="utf-8") as handle:
+            source_texts.update(qml_unquote(t) for t in
+                                re.findall(r'qsTr\("((?:[^"\\]|\\.)*)"\)', handle.read()))
+    # C++ messages shown in the UI go through tr("..." "...") (adjacent
+    # literals form one string).
+    for cpp in glob.glob(os.path.join(ROOT, "src", "*.cpp")):
+        with open(cpp, encoding="utf-8") as handle:
+            for call in re.findall(r'(?:\btr\(|QCoreApplication::translate\(\s*"[^"]*"\s*,)'
+                                   r'\s*((?:"(?:[^"\\]|\\.)*"\s*)+)\)', handle.read()):
+                parts = re.findall(r'"((?:[^"\\]|\\.)*)"', call)
+                source_texts.add(qml_unquote("".join(parts)))
+    for path in glob.glob(os.path.join(ROOT, "i18n", "*.json")):
+        with open(path, encoding="utf-8") as handle:
+            table = json.load(handle)
+        name = os.path.basename(path)
+        stale = sorted(k for k in table if k not in source_texts)
+        check(not stale, f"{name}: every entry is a qsTr() text of the QML (stale: {stale[:5]})")
+        broken = sorted(k for k, v in table.items()
+                        if sorted(re.findall(r"%\d", k)) != sorted(re.findall(r"%\d", v)))
+        check(not broken, f"{name}: translations keep their %N placeholders ({broken[:5]})")
+        check("i18n/" + name in qrc_files, f"{name} is listed in resources.qrc")
     on_disk = {os.path.basename(p) for p in glob.glob(os.path.join(icon_dir, "*.svg"))}
     unlisted = sorted(on_disk - qrc_icons)
     check(not unlisted, f"every icons/ file is listed in resources.qrc (unlisted: {unlisted})")
@@ -1540,6 +1616,24 @@ def main():
               "right-clicking the desktop opens its menu")
         desk.setProperty("contextMenuVisible", False)
 
+        # An icon placed with the old pixel setting (desktop.iconPositions,
+        # before the grid) keeps its place as the matching grid cell.
+        left, top = desk.property("gridLeft"), desk.property("gridTop")
+        cw, ch = desk.property("cellWidth"), desk.property("cellHeight")
+        settings.setValue("desktop.autoArrangeIcons", False)
+        settings.setValue("desktop.iconPositions",
+                          {"Projects": {"x": left + 3 * cw, "y": top + 2 * ch}})
+        QTest.qWait(120)
+        cells = desk.property("gridCells")
+        if hasattr(cells, "toVariant"):
+            cells = cells.toVariant()
+        cell = (cells or {}).get("icon:Projects", {})
+        check(cell.get("col") == 3 and cell.get("row") == 2,
+              f"an icon position from before the grid becomes its grid cell ({cell})")
+        settings.setValue("desktop.iconPositions", {})
+        settings.setValue("desktop.autoArrangeIcons", True)
+        QTest.qWait(60)
+
     # The dock: every running window becomes a dock entry, grouped per app.
     if panels:
         panel = next(w for w in panels if w.screen() is screens[0])
@@ -1575,6 +1669,23 @@ def main():
               and apps.launched and apps.launched[-1] == "org.gnome.Nautilus",
               f"a read-only entry launches its application instead ({window_list.calls}, "
               f"{apps.launched})")
+
+        # One button per window: a second window of an application sits right
+        # after the first one, not at the far end of the dock.
+        window_list._windows.append(
+            {"id": "w3", "title": "Firefox — second", "appId": "firefox",
+             "active": False, "minimized": False, "maximized": False})
+        window_list.windowsChanged.emit()
+        QTest.qWait(20)
+        grown = panel.property("dockEntries")
+        if hasattr(grown, "toVariant"):
+            grown = grown.toVariant()
+        order = [e["windows"][0]["id"] if e.get("windows") else e["appId"] for e in (grown or [])]
+        check("w1" in order and "w3" in order and order.index("w3") == order.index("w1") + 1,
+              f"a second window of one application gets the button next to the first ({order})")
+        window_list._windows.pop()
+        window_list.windowsChanged.emit()
+        QTest.qWait(20)
 
         # The dock buttons must have real geometry, not zero-height items: a
         # Flickable without an explicit height once collapsed the whole strip
@@ -1666,6 +1777,20 @@ def main():
         offgrid = [w.property("gridKey") for w in widgets if w.x() < -1000]
         check(not offgrid, f"every desktop element has a grid cell ({offgrid})")
 
+        launcher = next((w for w in widgets if w.property("gridKey") == "icon:firefox.desktop"), None)
+        check(launcher is not None and launcher.property("label") == "Firefox"
+              and launcher.property("resolvedIconName") == "firefox",
+              "a launcher on the desktop shows its application's name and icon "
+              f"({launcher and launcher.property('label')}, "
+              f"{launcher and launcher.property('resolvedIconName')})")
+        if launcher is not None:
+            centre = launcher.mapToScene(QPointF(launcher.width() / 2, 10)).toPoint()
+            apps.launched.clear()
+            QTest.mouseDClick(desktop, Qt.LeftButton, Qt.NoModifier, centre)
+            QTest.qWait(20)
+            check(apps.launched == ["firefox"],
+                  f"double-clicking a launcher starts its application ({apps.launched})")
+
     # One dock menu per panel.
     dock_menus = windows_of_kind("DockMenu")
     check(len(dock_menus) == len(panels),
@@ -1677,6 +1802,16 @@ def main():
           f"one clock popup per panel ({len(clock_popups)} vs {len(panels)})")
     if clock_popups:
         check(not clock_popups[0].isVisible(), "the clock popup starts hidden")
+        # 1 November 2026 is a Sunday: the last cell of the first row for a
+        # Monday-first locale, the first cell for a Sunday-first one.
+        first = clock_popups[0].property("firstWeekday")
+        cells = QMetaObject.invokeMethod(clock_popups[0], "buildCalendar", Qt.DirectConnection,
+                                         Q_RETURN_ARG("QVariant"),
+                                         Q_ARG("QVariant", 2026), Q_ARG("QVariant", 10))
+        cells = cells.toVariant() if hasattr(cells, "toVariant") else cells
+        expected = {1: 6, 0: 0}.get(first)
+        check(expected is not None and cells and cells.index(1) == expected and len(cells) % 7 == 0,
+              f"the calendar starts on the locale's first weekday ({first}: {cells[:8] if cells else cells})")
 
     # One tooltip window per panel, hidden until a button is hovered.
     tooltips = windows_of_kind("PanelToolTip")
@@ -1736,6 +1871,9 @@ def main():
         check(quick_popup.isVisible(), "toggling opens the quick settings popup")
         check(("refresh",) in quick.calls, "opening refreshes volume and brightness")
         check(quick_popup.height() >= 240, "the quick settings popup has content height")
+        art = quick_popup.findChild(QQuickItem, "mediaArt")
+        check(art is not None and art.isVisible() and art.property("implicitWidth") > 0,
+              "the media card shows the track's cover")
         QMetaObject.invokeMethod(quick_popup, "hide")
         QTest.qWait(300)
         check(not quick_popup.isVisible(), "closing the quick settings popup")
@@ -1908,13 +2046,29 @@ def main():
 
         if tray_menus:
             rect = QRectF(geometry.x() + 700, bar_top, 26, 48)
+            # An item whose menu is empty opens nothing.
+            QMetaObject.invokeMethod(tray_menus[0], "openFor",
+                                     Q_ARG("QVariant", "item-empty"), Q_ARG("QVariant", rect))
+            QTest.qWait(300)
+            check(not tray_menus[0].isVisible(), "an empty tray menu does not open")
             QMetaObject.invokeMethod(tray_menus[0], "openFor",
                                      Q_ARG("QVariant", "item-1"), Q_ARG("QVariant", rect))
             QTest.qWait(300)
+            check(("requestMenu", "item-1") in tray.calls, "the tray menu is requested, not fetched blocking")
             check(tray_menus[0].isVisible(), "opening the tray menu for an item")
+            current = tray_menus[0].property("currentItems")
+            current = current.toVariant() if hasattr(current, "toVariant") else current
+            check(len(current) == 2, f"the tray menu shows the application's entries ({len(current)})")
             card = on_screen(tray_menus[0], "the tray menu")
             check(card[0] <= 713 <= card[0] + card[2],
                   f"the tray menu hangs off its icon ({card})")
+            # The application changes its menu while it is open.
+            tray.menus["item-1"] = tray.menus["item-1"][:1]
+            tray.menuChanged.emit("item-1")
+            QTest.qWait(300)
+            current = tray_menus[0].property("currentItems")
+            current = current.toVariant() if hasattr(current, "toVariant") else current
+            check(len(current) == 1, f"an open tray menu follows the application's updates ({len(current)})")
             QMetaObject.invokeMethod(tray_menus[0], "close")
             QTest.qWait(300)
             check(not tray_menus[0].isVisible(), "the tray menu closes again")
@@ -2124,6 +2278,65 @@ def main():
             check(stack.property("count") == 2 and stack_ids() == [1, 2],
                   f"a re-arriving card lands in order ({stack_ids()})")
 
+            # A notification's own picture (image-data becomes a PNG data:
+            # URL in the daemon) shows in place of the app icon.
+            picture = QImage(8, 8, QImage.Format_RGB32)
+            picture.fill(QColor("#3366cc"))
+            png = QByteArray()
+            png_buffer = QBuffer(png)
+            png_buffer.open(QIODevice.WriteOnly)
+            picture.save(png_buffer, "PNG")
+            third = {"id": 3, "app": "Chat", "summary": "Anna", "body": "Hi", "icon": "bell",
+                     "image": "data:image/png;base64," + bytes(png.toBase64()).decode(),
+                     "actions": ["default", "", "reply", "Reply"], "timeout": 0, "value": 40}
+            notifications._active = [first, second, third]
+            notifications.activeChanged.emit()
+            QTest.qWait(300)
+            # Delegates are visual children only, so walk childItems().
+            def items_named(item, name):
+                found = [item] if item.objectName() == name else []
+                for child in item.childItems():
+                    found += items_named(child, name)
+                return found
+            images = [i for i in items_named(stack.property("contentItem"), "notificationImage")
+                      if i.isVisible()]
+            sizes = [(i.property("sourceSize").width(), i.property("sourceSize").height())
+                     for i in images]
+            # The image has decoded once its source size is known.
+            check(len(images) == 1 and images[0].property("source").toString().startswith("data:")
+                  and images[0].property("implicitWidth") > 0,
+                  f"a notification picture is shown ({len(images)} visible, {sizes})")
+
+            # "default" is what clicking the card does, not a button; the
+            # empty label next to it does not shift the other pairs.
+            labels = [b.property("label") for b in items_named(stack.property("contentItem"),
+                                                               "notificationAction")
+                      if b.isVisible()]
+            check(labels == ["Reply"], f"only real actions become buttons ({labels})")
+            bars = [b for b in items_named(stack.property("contentItem"), "notificationValue")
+                    if b.isVisible()]
+            check(len(bars) == 1 and abs(bars[0].childItems()[0].width() - bars[0].width() * 0.4) < 2,
+                  f"the value hint draws a level bar ({[(b.width(), b.childItems()[0].width()) for b in bars]})")
+            def card_of(item):
+                # The nearest ancestor that carries the card's entry.
+                while item is not None:
+                    entry = item.property("entry")
+                    entry = entry.toVariant() if hasattr(entry, "toVariant") else entry
+                    if isinstance(entry, dict) and "id" in entry:
+                        return item, entry["id"]
+                    item = item.parentItem()
+                return None, None
+            cards_found = [card_of(b) for b in items_named(stack.property("contentItem"),
+                                                           "notificationBody")]
+            notifications.calls.clear()
+            for card_item, card_number in cards_found:
+                if card_number == 3:
+                    # What the card's MouseArea calls (offscreen clicks do not
+                    # reach this window reliably).
+                    QMetaObject.invokeMethod(card_item, "activate")
+            check(("invokeAction", 3, "default") in notifications.calls,
+                  f"clicking a notification runs its default action ({notifications.calls})")
+
         notifications._active = []
         notifications.activeChanged.emit()
         QTest.qWait(400)  # the exit animation plays before the window hides
@@ -2157,6 +2370,33 @@ def main():
         check(settings_app.isVisible(), "Shell.settingsRequested opens the settings window")
         check(settings_app.isVisible() and settings_app.title() == "NewTeller Settings",
               "the settings window carries its title")
+
+        # The shell's Russian translation (src/translator.cpp reads the same
+        # JSON): installed live, every binding is re-evaluated without a QML
+        # warning, and a translated text shows.
+        class JsonTranslator(QTranslator):
+            def __init__(self, strings):
+                super().__init__()
+                self.strings = strings
+
+            def translate(self, context, source, disambiguation=None, n=-1):
+                return self.strings.get(source, "")
+
+            def isEmpty(self):
+                return not self.strings
+
+        with open(os.path.join(ROOT, "i18n", "ru.json"), encoding="utf-8") as handle:
+            russian = JsonTranslator(json.load(handle))
+        QGuiApplication.installTranslator(russian)
+        engine.retranslate()
+        QTest.qWait(50)
+        check(settings_app.title() == "Настройки NewTeller",
+              f"the shell switches to Russian live ({settings_app.title()!r})")
+        QGuiApplication.removeTranslator(russian)
+        engine.retranslate()
+        QTest.qWait(50)
+        check(settings_app.title() == "NewTeller Settings",
+              f"and back to English ({settings_app.title()!r})")
         page = settings_app.property("currentPage")
         check(page == "appearance", f"settings starts on the appearance page ({page})")
         pages = settings_app.property("pages")

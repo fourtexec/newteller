@@ -47,9 +47,9 @@ DropdownWindow {
         function onWifiConnectFinished(ok, ssid, message) {
             if (ok) {
                 popup.pendingSsid = "";
-                popup.statusText = "Connected to " + ssid;
+                popup.statusText = qsTr("Connected to %1").arg(ssid);
             } else if (ssid === popup.pendingSsid) {
-                popup.statusText = message.length > 0 ? message : "Enter the password for " + ssid;
+                popup.statusText = message.length > 0 ? message : qsTr("Enter the password for %1").arg(ssid);
                 passwordField.forceActiveFocus();
             } else {
                 popup.statusText = message;
@@ -63,7 +63,7 @@ DropdownWindow {
 
         ShellTitleBar {
             Layout.fillWidth: true
-            title: "Wi-Fi networks"
+            title: qsTr("Wi-Fi networks")
             iconName: "wifi"
             onCloseClicked: popup.hide()
         }
@@ -71,7 +71,7 @@ DropdownWindow {
         Text {
             Layout.fillWidth: true
             visible: popup.statusText.length > 0 || Session.wifiBusy
-            text: Session.wifiBusy ? "Working..." : popup.statusText
+            text: Session.wifiBusy ? qsTr("Working...") : popup.statusText
             wrapMode: Text.WordWrap
             color: Theme.muted
             font.family: Theme.fontFamily
@@ -108,7 +108,7 @@ DropdownWindow {
                         anchors.fill: parent
                         verticalAlignment: Text.AlignVCenter
                         visible: passwordField.text.length === 0
-                        text: "Password for " + popup.pendingSsid
+                        text: qsTr("Password for %1").arg(popup.pendingSsid)
                         color: Theme.muted
                         font: passwordField.font
                         elide: Text.ElideRight
@@ -116,7 +116,7 @@ DropdownWindow {
                 }
             }
             TaskButton {
-                label: "Join"
+                label: qsTr("Join")
                 onClicked: Session.connectWifi(popup.pendingSsid, passwordField.text)
             }
         }
@@ -218,7 +218,7 @@ DropdownWindow {
         Text {
             Layout.alignment: Qt.AlignHCenter
             visible: networks.count === 0 && Session.wifiStatus.length === 0
-            text: Session.wifiBusy ? "Searching for networks..." : "No networks found"
+            text: Session.wifiBusy ? qsTr("Searching for networks...") : qsTr("No networks found")
             color: Theme.muted
             font.family: Theme.fontFamily
             font.pointSize: Theme.fontSize
@@ -228,13 +228,13 @@ DropdownWindow {
             Layout.fillWidth: true
             TaskButton {
                 iconName: "rotate-cw"
-                label: "Rescan"
+                label: qsTr("Rescan")
                 onClicked: Session.scanWifi()
             }
             Item { Layout.fillWidth: true }
             TaskButton {
                 iconName: "x"
-                label: "Disconnect"
+                label: qsTr("Disconnect")
                 visible: {
                     for (var i = 0; i < Session.wifiNetworks.length; ++i) {
                         if (Session.wifiNetworks[i].active)

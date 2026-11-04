@@ -51,7 +51,7 @@ QtObject {
             } else if (name === "mic-mute") {
                 Shell.runShell("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"
                                + " || pactl set-source-mute @DEFAULT_SOURCE@ toggle");
-                root.osd.show("mic", -1, "Microphone mute toggled");
+                root.osd.show("mic", -1, qsTr("Microphone mute toggled"));
             } else if (name === "brightness-up" || name === "brightness-down") {
                 if (!Quick.brightnessAvailable)
                     return;
@@ -62,13 +62,13 @@ QtObject {
             } else if (name === "play-pause") {
                 Quick.mediaPlayPause();
                 root.osd.show(Quick.mediaPlaying ? "pause" : "play", -1,
-                              Quick.mediaTitle.length > 0 ? Quick.mediaTitle : "Play / pause");
+                              Quick.mediaTitle.length > 0 ? Quick.mediaTitle : qsTr("Play / pause"));
             } else if (name === "next") {
                 Quick.mediaNext();
-                root.osd.show("skip-forward", -1, "Next track");
+                root.osd.show("skip-forward", -1, qsTr("Next track"));
             } else if (name === "previous") {
                 Quick.mediaPrevious();
-                root.osd.show("skip-back", -1, "Previous track");
+                root.osd.show("skip-back", -1, qsTr("Previous track"));
             }
         }
     }
@@ -88,11 +88,11 @@ QtObject {
             const level = Math.round(System.batteryPercent);
             if (level <= 5 && root.batteryWarned > 5) {
                 root.batteryWarned = 5;
-                Shell.notify("Battery critically low",
-                             level + "% left. Plug in now or the computer will shut down.");
+                Shell.notify(qsTr("Battery critically low"),
+                             qsTr("%1% left. Plug in now or the computer will shut down.").arg(level));
             } else if (level <= 10 && root.batteryWarned > 10) {
                 root.batteryWarned = 10;
-                Shell.notify("Battery low", level + "% left. Plug in soon.");
+                Shell.notify(qsTr("Battery low"), qsTr("%1% left. Plug in soon.").arg(level));
             }
         }
     }

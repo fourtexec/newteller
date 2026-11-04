@@ -1,5 +1,11 @@
 # NewTeller — Rust integration handoff
 
+> **Historical.** This is the plan from the Rust integration round. Its to-do
+> list (sections 2 and 4) has been carried out: `System`, the Rust CMake
+> option, the CLI flags, the new themes and plugins all exist. For how to
+> change the project today, read `.claude/skills/newteller-development/SKILL.md`
+> and `README.md`; section 3 (gotchas) still applies.
+
 Status snapshot for the next session. Branch: `arena/a2300a50-newteller`.
 Constraint from the user: **do not build anything** (no `cmake`, no `cargo`, no
 compiles). Code must be written to be correct by inspection.

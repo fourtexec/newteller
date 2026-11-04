@@ -18,7 +18,7 @@ DropdownWindow {
 
         ShellTitleBar {
             Layout.fillWidth: true
-            title: "Clipboard"
+            title: qsTr("Clipboard")
             iconName: "clipboard"
             onCloseClicked: popup.hide()
         }
@@ -28,10 +28,10 @@ DropdownWindow {
             visible: !Clipboard.available || Clipboard.items.length === 0
             wrapMode: Text.WordWrap
             text: !Clipboard.available
-                  ? "Clipboard history needs wl-clipboard (sudo apt install wl-clipboard)."
+                  ? qsTr("Clipboard history needs wl-clipboard (sudo apt install wl-clipboard).")
                   : Settings.values["clipboard.historyEnabled"] === false
-                    ? "Clipboard history is off (Settings -> System)."
-                    : "Nothing copied yet. Copied text shows up here."
+                    ? qsTr("Clipboard history is off (Settings -> System).")
+                    : qsTr("Nothing copied yet. Copied text shows up here.")
             color: Theme.muted
             font.family: Theme.fontFamily
             font.pointSize: Theme.fontSize
@@ -100,7 +100,7 @@ DropdownWindow {
             Item { Layout.fillWidth: true }
             TaskButton {
                 iconName: "trash"
-                label: "Clear all"
+                label: qsTr("Clear all")
                 visible: Clipboard.items.length > 0
                 onClicked: Clipboard.clear()
             }

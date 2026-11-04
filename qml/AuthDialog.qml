@@ -125,7 +125,7 @@ Window {
                     anchors.verticalCenter: parent.verticalCenter
                     spacing: 2
                     Text {
-                        text: "Administrator access"
+                        text: qsTr("Administrator access")
                         color: Theme.foreground
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSize + 3
@@ -134,7 +134,7 @@ Window {
                     Text {
                         text: dialog.requester.length > 0
                               ? "“" + dialog.requester + "” wants to make changes to the system"
-                              : "A program wants to make changes to the system"
+                              : qsTr("A program wants to make changes to the system")
                         color: Theme.muted
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSize
@@ -156,7 +156,7 @@ Window {
 
             // Details, folded by default.
             Text {
-                text: (dialog.showDetails ? "▾ " : "▸ ") + "Details"
+                text: (dialog.showDetails ? "▾ " : "▸ ") + qsTr("Details")
                 color: Theme.muted
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSize - 1
@@ -180,8 +180,8 @@ Window {
                     color: Theme.muted
                     font.family: "monospace"
                     font.pointSize: Theme.fontSize - 2
-                    text: "Action: " + Polkit.actionId
-                          + (Polkit.program.length > 0 ? "\nCommand: " + Polkit.program : "")
+                    text: qsTr("Action: %1").arg(Polkit.actionId)
+                          + (Polkit.program.length > 0 ? "\n" + qsTr("Command: %1").arg(Polkit.program) : "")
                 }
             }
 
@@ -191,7 +191,7 @@ Window {
                 spacing: 6
                 Text {
                     anchors.verticalCenter: parent.verticalCenter
-                    text: "Account:"
+                    text: qsTr("Account:")
                     color: Theme.muted
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize
@@ -255,8 +255,8 @@ Window {
                         anchors.fill: parent
                         verticalAlignment: Text.AlignVCenter
                         visible: password.text.length === 0
-                        text: Polkit.busy ? "Checking..."
-                              : "Password for " + (Polkit.identities[Polkit.identityIndex] || "the administrator")
+                        text: Polkit.busy ? qsTr("Checking...")
+                              : qsTr("Password for %1").arg(Polkit.identities[Polkit.identityIndex] || qsTr("the administrator"))
                         color: Theme.muted
                         font: password.font
                         elide: Text.ElideRight
@@ -287,7 +287,7 @@ Window {
                     border.width: 1
                     Text {
                         anchors.centerIn: parent
-                        text: "Cancel"
+                        text: qsTr("Cancel")
                         color: Theme.foreground
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSize
@@ -308,7 +308,7 @@ Window {
                     color: allowArea.containsMouse ? Qt.darker(Theme.foreground, 1.15) : Theme.foreground
                     Text {
                         anchors.centerIn: parent
-                        text: Polkit.busy ? "Checking" : "Allow"
+                        text: Polkit.busy ? qsTr("Checking") : qsTr("Allow")
                         color: Theme.background
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSize

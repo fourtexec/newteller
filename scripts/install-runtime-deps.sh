@@ -45,6 +45,27 @@ apt_has() {
     [[ -n $candidate && $candidate != '(none)' ]]
 }
 
+# A terminal (Super+Return) and a file manager (Super+E, desktop folders)
+# are only added when the system has none, so nobody gets a second one.
+has_any_program() {
+    local program
+    for program in "$@"; do
+        command -v "$program" > /dev/null 2>&1 && return 0
+    done
+    return 1
+}
+# CI jobs never open a window: no extra applications there.
+in_ci() {
+    [[ -n ${CI:-} || -n ${GITHUB_ACTIONS:-} ]]
+}
+has_terminal() {
+    has_any_program x-terminal-emulator foot kitty alacritty wezterm ghostty konsole \
+        gnome-terminal ptyxis kgx xfce4-terminal tilix terminator qterminal lxterminal xterm
+}
+has_file_manager() {
+    has_any_program nautilus dolphin thunar Thunar pcmanfm pcmanfm-qt nemo caja
+}
+
 power_manager_installed() {
     local manager
     for manager in tlp laptop-mode-tools tuned tuned-ppd auto-cpufreq; do
@@ -88,7 +109,7 @@ install_debian() {
         xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk
         lxpolkit procps wdisplays
         network-manager wpasupplicant network-manager-gnome
-        blueman pavucontrol slurp wl-clipboard
+        blueman pavucontrol slurp wl-clipboard sound-theme-freedesktop udisks2
     )
     # Wi-Fi firmware for the common adapters (Debian: non-free-firmware;
     # Ubuntu: linux-firmware). Missing firmware is the usual reason an
@@ -96,6 +117,9 @@ install_debian() {
     wants_firmware && optional+=(linux-firmware firmware-iwlwifi firmware-realtek
                                  firmware-atheros firmware-brcm80211 firmware-misc-nonfree)
     power_manager_installed || optional+=(power-profiles-daemon)
+    optional+=(xdg-utils)
+    in_ci || has_terminal || optional+=(foot)
+    in_ci || has_file_manager || optional+=(thunar)
     local available=() package
     for package in "${optional[@]}"; do
         if apt_has "$package"; then
@@ -134,10 +158,13 @@ install_arch() {
         xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk
         polkit-gnome procps-ng wdisplays
         networkmanager wpa_supplicant network-manager-applet
-        blueman pavucontrol slurp wl-clipboard
+        blueman pavucontrol slurp wl-clipboard sound-theme-freedesktop udisks2
     )
     wants_firmware && optional+=(linux-firmware)
     power_manager_installed || optional+=(power-profiles-daemon)
+    optional+=(xdg-utils)
+    in_ci || has_terminal || optional+=(foot)
+    in_ci || has_file_manager || optional+=(thunar)
     local available=() package
     for package in "${optional[@]}"; do
         if pacman -Si "$package" > /dev/null 2>&1; then
@@ -169,10 +196,13 @@ install_fedora() {
         xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk
         lxpolkit procps-ng wdisplays
         NetworkManager NetworkManager-wifi wpa_supplicant network-manager-applet
-        blueman pavucontrol slurp wl-clipboard
+        blueman pavucontrol slurp wl-clipboard sound-theme-freedesktop udisks2
     )
     wants_firmware && optional+=(linux-firmware)
     power_manager_installed || optional+=(power-profiles-daemon)
+    optional+=(xdg-utils)
+    in_ci || has_terminal || optional+=(foot)
+    in_ci || has_file_manager || optional+=(Thunar)
     # dnf5 skips what this release does not have.
     dnf install -y --skip-unavailable "${optional[@]}"
 }

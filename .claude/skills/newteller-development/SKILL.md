@@ -31,6 +31,11 @@ and the checks that will fail if one is broken.
   **error**. Every function used before its definition needs a forward
   declaration near the top of `src/session/main.c`.
 - Keep user-facing text in English in the code; comments explain *why*.
+  Wrap QML texts in `qsTr("...")` and C++ messages shown in the UI in
+  `tr("...")` (use `.arg()` for values, never split a
+  sentence with `+`) and add the Russian text to `i18n/ru.json`
+  (`src/translator.cpp` reads it; the QML smoke test rejects stale entries
+  and lost `%1` placeholders). `shell.language` picks the language.
 - Commit with clear messages; never skip or weaken a test to get green.
 
 ## Layout

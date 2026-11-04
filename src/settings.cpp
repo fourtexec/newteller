@@ -19,6 +19,15 @@ QString Settings::configFile()
     return configDir() + QStringLiteral("/shell.json");
 }
 
+QString Settings::terminalCommand() const
+{
+    const QString configured = value(QStringLiteral("apps.terminalCommand")).toString().simplified();
+    const QString program = configured.section(QLatin1Char(' '), 0, 0);
+    if (!program.isEmpty() && !QStandardPaths::findExecutable(program).isEmpty())
+        return configured;
+    return QStringLiteral("newteller-terminal");
+}
+
 Settings::Settings(QObject *parent)
     : QObject(parent)
     , m_saveTimer(this)
@@ -92,8 +101,9 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("apps.recent"), QStringList());
     m_defaults.insert(QStringLiteral("apps.recentLimit"), 8);
     m_defaults.insert(QStringLiteral("apps.usage"), QVariantMap());
-    m_defaults.insert(QStringLiteral("apps.terminalCommand"),
-                      QStringLiteral("x-terminal-emulator -e"));
+    // newteller-terminal picks the installed terminal (x-terminal-emulator
+    // exists only on Debian and Ubuntu).
+    m_defaults.insert(QStringLiteral("apps.terminalCommand"), QStringLiteral("newteller-terminal"));
     m_defaults.insert(QStringLiteral("apps.maxApps"), 0);
     m_defaults.insert(QStringLiteral("system.interval"), 2000);
     m_defaults.insert(QStringLiteral("system.perCore"), false);
@@ -165,9 +175,11 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("desktop.iconTextShadow"), true);
     m_defaults.insert(QStringLiteral("desktop.showHiddenFiles"), false);
     m_defaults.insert(QStringLiteral("desktop.doubleClickSpeed"), 500);
-    // Saved drag-and-drop positions, keyed by the file name in ~/Desktop:
-    // { "notes.txt": { "x": 120, "y": 48 }, ... }.
+    // Pixel positions from before the desktop grid (desktop.gridPositions):
+    // { "notes.txt": { "x": 120, "y": 48 }, ... } and plugin id -> {x, y}.
+    // Read once to keep an old layout; the next drag or reset clears them.
     m_defaults.insert(QStringLiteral("desktop.iconPositions"), QVariantMap());
+    m_defaults.insert(QStringLiteral("desktop.widgetPositions"), QVariantMap());
 
     // ===== Notifications =====
     m_defaults.insert(QStringLiteral("notifications.theme"), QStringLiteral("system"));
@@ -178,6 +190,7 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("notifications.customForeground"), QString());
     m_defaults.insert(QStringLiteral("notifications.groupByApp"), false);
     m_defaults.insert(QStringLiteral("notifications.showAppIcon"), true);
+    m_defaults.insert(QStringLiteral("drives.notify"), true);
     m_defaults.insert(QStringLiteral("notifications.soundEnabled"), true);
     m_defaults.insert(QStringLiteral("notifications.soundFile"), QString());
     m_defaults.insert(QStringLiteral("notifications.doNotDisturbSchedule"), false);
@@ -228,6 +241,8 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("keyboard.repeatRate"), 25);
     m_defaults.insert(QStringLiteral("keyboard.repeatDelay"), 600);
     m_defaults.insert(QStringLiteral("keyboard.numlock"), false);
+    // Every window remembers its keyboard layout (as on Windows).
+    m_defaults.insert(QStringLiteral("keyboard.layoutPerWindow"), false);
     m_defaults.insert(QStringLiteral("keyboard.showIndicator"), true);
     // Pointer devices (libinput, applied by the compositor).
     m_defaults.insert(QStringLiteral("touchpad.tapToClick"), true);
@@ -244,6 +259,8 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("cursor.size"), 24);
     // Colour scheme applications follow: "system" (leave it), "dark", "light".
     m_defaults.insert(QStringLiteral("apps.colorScheme"), QStringLiteral("dark"));
+    // Language of the shell: "auto" follows the system locale; "en", "ru".
+    m_defaults.insert(QStringLiteral("shell.language"), QStringLiteral("auto"));
     // Virtual desktops (Ctrl+Super+Left/Right) and their panel indicator.
     m_defaults.insert(QStringLiteral("workspaces.count"), 4);
     m_defaults.insert(QStringLiteral("workspaces.showOnPanel"), true);

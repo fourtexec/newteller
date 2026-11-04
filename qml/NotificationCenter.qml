@@ -66,7 +66,7 @@ DropdownWindow {
 
         ShellTitleBar {
             Layout.fillWidth: true
-            title: "Notifications"
+            title: qsTr("Notifications")
             iconName: "bell"
             onCloseClicked: center.hide()
         }
@@ -89,7 +89,7 @@ DropdownWindow {
             }
             Text {
                 Layout.fillWidth: true
-                text: "Do not disturb"
+                text: qsTr("Do not disturb")
                 color: center.appearance.foreground
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSize
@@ -221,14 +221,14 @@ DropdownWindow {
                         height: 26
                         visible: row.isActive
                         iconName: "check"
-                        tooltipText: "Dismiss"
+                        tooltipText: qsTr("Dismiss")
                         onClicked: Notifications.dismiss(row.modelData.id)
                     }
                     TaskButton {
                         width: 26
                         height: 26
                         iconName: "x"
-                        tooltipText: "Remove"
+                        tooltipText: qsTr("Remove")
                         onClicked: Notifications.removeHistory(row.modelData.id)
                     }
                 }
@@ -260,7 +260,7 @@ DropdownWindow {
                 }
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: "No notifications"
+                    text: qsTr("No notifications")
                     color: center.appearance.muted
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize
@@ -269,7 +269,7 @@ DropdownWindow {
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: parent.width
                     horizontalAlignment: Text.AlignHCenter
-                    text: "Application notifications appear here\nand stay in the history."
+                    text: qsTr("Application notifications appear here\nand stay in the history.")
                     color: Qt.rgba(center.appearance.muted.r, center.appearance.muted.g,
                                    center.appearance.muted.b, 0.72)
                     font.family: Theme.fontFamily
@@ -291,14 +291,14 @@ DropdownWindow {
 
             TaskButton {
                 iconName: "trash"
-                label: "Clear all"
+                label: qsTr("Clear all")
                 enabled: center.entries.length > 0
                 onClicked: Notifications.clearHistory()
             }
             Item { Layout.fillWidth: true }
             TaskButton {
                 iconName: "settings"
-                label: "Settings"
+                label: qsTr("Settings")
                 onClicked: { Shell.openSettings(); center.hide(); }
             }
         }

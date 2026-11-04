@@ -206,6 +206,12 @@ void PolkitAgent::registerAgent()
     if (!subject) {
         qWarning("NewTeller: no login session for the administrator prompt: %s",
                  error ? error->message : "unknown error");
+        // Any other agent would fail the same way (and lxpolkit shows an
+        // "Error" window for it), so SessionServices starts none.
+        QCoreApplication::instance()->setProperty(
+            "newteller.polkitAgentError",
+            QStringLiteral("no login session: %1")
+                .arg(QString::fromUtf8(error ? error->message : "unknown error")));
         g_clear_error(&error);
         return;
     }
@@ -222,6 +228,9 @@ void PolkitAgent::registerAgent()
                  error ? error->message : "unknown error");
         if (error && g_strrstr(error->message, "already exists"))
             QCoreApplication::instance()->setProperty("newteller.polkitAgentElsewhere", true);
+        QCoreApplication::instance()->setProperty(
+            "newteller.polkitAgentError",
+            QString::fromUtf8(error ? error->message : "unknown error"));
         g_clear_error(&error);
         g_object_unref(listener);
         return;
@@ -336,7 +345,7 @@ void PolkitAgent::sessionCompleted(bool gained)
     }
     // Wrong password (or PAM refused): ask again, like every other prompt.
     ++m_attempts;
-    m_error = QStringLiteral("That password did not work. Try again.");
+    m_error = tr("That password did not work. Try again.");
     m_busy = false;
     emit changed();
     QTimer::singleShot(0, this, [this] { startSession(); });

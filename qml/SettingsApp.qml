@@ -19,26 +19,26 @@ Window {
 
     // The page identifiers and their sidebar entries.
     readonly property var pages: [
-        { id: "appearance", label: "Appearance", icon: "palette" },
-        { id: "panel", label: "Panel & dock", icon: "panel-bottom" },
-        { id: "desktop", label: "Desktop", icon: "monitor" },
-        { id: "startmenu", label: "Start menu", icon: "search" },
-        { id: "apps", label: "Applications", icon: "package" },
-        { id: "system", label: "System", icon: "cpu" },
-        { id: "notifications", label: "Notifications", icon: "bell" },
-        { id: "plugins", label: "Plugins", icon: "puzzle" },
-        { id: "hotkeys", label: "Hotkeys", icon: "keyboard" },
-        { id: "animations", label: "Animations", icon: "sparkles" },
-        { id: "windows", label: "Windows", icon: "app-window" },
-        { id: "keyboard", label: "Keyboard", icon: "keyboard" },
-        { id: "mouse", label: "Mouse & touchpad", icon: "mouse" },
-        { id: "display", label: "Displays", icon: "monitor" },
-        { id: "power", label: "Power & lock", icon: "power" },
-        { id: "about", label: "About", icon: "info" }
+        { id: "appearance", label: qsTr("Appearance"), icon: "palette" },
+        { id: "panel", label: qsTr("Panel & dock"), icon: "panel-bottom" },
+        { id: "desktop", label: qsTr("Desktop"), icon: "monitor" },
+        { id: "startmenu", label: qsTr("Start menu"), icon: "search" },
+        { id: "apps", label: qsTr("Applications"), icon: "package" },
+        { id: "system", label: qsTr("System"), icon: "cpu" },
+        { id: "notifications", label: qsTr("Notifications"), icon: "bell" },
+        { id: "plugins", label: qsTr("Plugins"), icon: "puzzle" },
+        { id: "hotkeys", label: qsTr("Hotkeys"), icon: "keyboard" },
+        { id: "animations", label: qsTr("Animations"), icon: "sparkles" },
+        { id: "windows", label: qsTr("Windows"), icon: "app-window" },
+        { id: "keyboard", label: qsTr("Keyboard"), icon: "keyboard" },
+        { id: "mouse", label: qsTr("Mouse & touchpad"), icon: "mouse" },
+        { id: "display", label: qsTr("Displays"), icon: "monitor" },
+        { id: "power", label: qsTr("Power & lock"), icon: "power" },
+        { id: "about", label: qsTr("About"), icon: "info" }
     ]
     property string currentPage: "appearance"
 
-    readonly property var wallpaperFolders: [Shell.home + "/Pictures", "/usr/share/backgrounds"]
+    readonly property var wallpaperFolders: [Shell.picturesPath, "/usr/share/backgrounds"]
     property int wallpaperFolderIndex: 0
 
     // Theme editor state (values of the selected theme being edited).
@@ -128,7 +128,7 @@ Window {
             Settings.reset(keys[i]);
         Settings.flush();
         confirmBox.visible = false;
-        Shell.notify("NewTeller", "All settings were reset to their defaults.");
+        Shell.notify("NewTeller", qsTr("All settings were reset to their defaults."));
     }
 
     function exportSettings() {
@@ -136,9 +136,9 @@ Window {
         const path = Shell.home + "/newteller-settings-" + stamp + ".json";
         const body = JSON.stringify(Settings.values, null, 2);
         if (Shell.saveTextFile(path, body))
-            Shell.notify("NewTeller", "A copy of the settings was saved to " + path);
+            Shell.notify("NewTeller", qsTr("A copy of the settings was saved to %1").arg(path));
         else
-            Shell.notify("NewTeller", "The settings copy could not be written.");
+            Shell.notify("NewTeller", qsTr("The settings copy could not be written."));
     }
 
     function setPinned(list) {
@@ -239,7 +239,7 @@ Window {
                         font.bold: true
                     }
                     Text {
-                        text: "version " + Shell.version
+                        text: qsTr("version %1").arg(Shell.version)
                         color: Theme.muted
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSize - 2
@@ -265,7 +265,7 @@ Window {
             Item { height: 4; width: 1 }
             Text {
                 leftPadding: 10
-                text: "The settings are built into the\nnewteller binary and always\navailable."
+                text: qsTr("The settings are built into the\nnewteller binary and always\navailable.")
                 color: Theme.muted
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSize - 2
@@ -313,12 +313,12 @@ Window {
                         spacing: 16
 
                         SettingsSection {
-                            title: "Theme"
-                            subtitle: "Pick one of the themes; custom themes live in " + Theme.userThemesPath()
+                            title: qsTr("Theme")
+                            subtitle: qsTr("Pick one of the themes; custom themes live in %1").arg(Theme.userThemesPath())
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Preview"
+                                title: qsTr("Preview")
 
                                 Rectangle {
                                     width: 260
@@ -371,10 +371,10 @@ Window {
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Selected theme"
+                                title: qsTr("Selected theme")
                                 settingKey: "theme.name"
                                 subtitle: Theme.hasUserTheme(settingsWindow.themeEditorName)
-                                          ? "This theme has user customisations on disk."
+                                          ? qsTr("This theme has user customisations on disk.")
                                           : ""
 
                                 Flow {
@@ -399,95 +399,96 @@ Window {
                         }
 
                         SettingsSection {
-                            title: "Applications"
-                            subtitle: "GTK, GNOME, Firefox and Chromium-based applications follow this choice."
+                            title: qsTr("Language")
+                            subtitle: qsTr("The language of the panel, menus and settings. Applications follow the system language.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Application colour scheme"
+                                title: qsTr("Shell language")
+                                settingKey: "shell.language"
+                                SettingsChoice {
+                                    settingKey: "shell.language"
+                                    // Language names stay in their own language.
+                                    model: [
+                                        { value: "auto", label: qsTr("System language") },
+                                        { value: "en", label: "English" },
+                                        { value: "ru", label: "Русский" }
+                                    ]
+                                }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: qsTr("Applications")
+                            subtitle: qsTr("GTK, GNOME, Firefox and Chromium-based applications follow this choice.")
+
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Application colour scheme")
                                 settingKey: "apps.colorScheme"
                                 SettingsChoice {
                                     settingKey: "apps.colorScheme"
                                     model: [
-                                        { value: "dark", label: "Dark" },
-                                        { value: "light", label: "Light" },
-                                        { value: "system", label: "Leave as is" }
+                                        { value: "dark", label: qsTr("Dark") },
+                                        { value: "light", label: qsTr("Light") },
+                                        { value: "system", label: qsTr("Leave as is") }
                                     ]
                                 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "GTK theme"
-                                subtitle: "Installed in /usr/share/themes or ~/.themes. Overrides the colour scheme's default theme."
+                                title: qsTr("GTK theme")
+                                subtitle: qsTr("Installed in /usr/share/themes or ~/.themes. Overrides the colour scheme's default theme.")
                                 settingKey: "apps.gtkTheme"
                                 SettingsChoice {
                                     id: gtkFlow
                                     width: Math.min(420, appearanceColumn.width * 0.6)
                                     settingKey: "apps.gtkTheme"
-                                    model: [{ value: "", label: "Default" }].concat(
+                                    model: [{ value: "", label: qsTr("Default") }].concat(
                                         Session.gtkThemes().map(function (t) { return { value: t, label: t }; }))
                                 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Icon theme"
+                                title: qsTr("Icon theme")
                                 settingKey: "apps.iconTheme"
                                 SettingsChoice {
                                     id: iconFlow
                                     width: Math.min(420, appearanceColumn.width * 0.6)
                                     settingKey: "apps.iconTheme"
-                                    model: [{ value: "", label: "Default" }].concat(
+                                    model: [{ value: "", label: qsTr("Default") }].concat(
                                         Session.iconThemes().map(function (t) { return { value: t, label: t }; }))
                                 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Application font"
-                                subtitle: "Name and size, e.g. \"Noto Sans 11\". Empty: unchanged."
+                                title: qsTr("Application font")
+                                subtitle: qsTr("Name and size, e.g. \"Noto Sans 11\". Empty: unchanged.")
                                 settingKey: "apps.font"
                                 SettingsTextField { settingKey: "apps.font"; placeholder: "(unchanged)" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Text size in applications"
+                                title: qsTr("Text size in applications")
                                 settingKey: "apps.textScale"
                                 SettingsSlider { settingKey: "apps.textScale"; from: 0.8; to: 1.6; step: 0.05; suffix: "x" }
                             }
                         }
 
                         SettingsSection {
-                            title: "Theme variants"
-                            subtitle: "Automatically switch themes based on system preferences."
+                            title: qsTr("Theme variants")
+                            subtitle: qsTr("Automatically switch themes based on system preferences.")
 
-                            SettingsRow {
-                                width: parent.width
-                                title: "Follow system theme"
-                                settingKey: "theme.followSystem"
-                                SettingsSwitch {}
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: "System theme preference"
-                                visible: Settings.values["theme.followSystem"] === true
-                                settingKey: "theme.systemTheme"
-                                SettingsChoice {
-                                    model: [
-                                        { value: "auto", label: "Auto-detect" },
-                                        { value: "light", label: "Light" },
-                                        { value: "dark", label: "Dark" }
-                                    ]
-                                }
-                            }
                         }
 
                         SettingsSection {
-                            title: "Theme editor"
-                            subtitle: "Colours and typography of " + (settingsWindow.themeEditorName || Theme.name)
-                                      + ". Saving writes a user theme file that overrides the built-in one."
+                            title: qsTr("Theme editor")
+                            subtitle: qsTr("Colours and typography of %1. Saving writes a user theme file that overrides the built-in one.")
+                                          .arg(settingsWindow.themeEditorName || Theme.name)
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Background"
+                                title: qsTr("Background")
                                 SettingsColorField {
                                     id: backgroundField
                                     onEdited: (hex) => settingsWindow.saveTheme()
@@ -496,7 +497,7 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Foreground"
+                                title: qsTr("Foreground")
                                 SettingsColorField {
                                     id: foregroundField
                                     onEdited: (hex) => settingsWindow.saveTheme()
@@ -505,7 +506,7 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Accent"
+                                title: qsTr("Accent")
                                 SettingsColorField {
                                     id: accentField
                                     onEdited: (hex) => settingsWindow.saveTheme()
@@ -514,7 +515,7 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Surface"
+                                title: qsTr("Surface")
                                 SettingsColorField {
                                     id: surfaceField
                                     onEdited: (hex) => settingsWindow.saveTheme()
@@ -523,7 +524,7 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Border"
+                                title: qsTr("Border")
                                 SettingsColorField {
                                     id: borderField
                                     onEdited: (hex) => settingsWindow.saveTheme()
@@ -532,7 +533,7 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Muted text"
+                                title: qsTr("Muted text")
                                 SettingsColorField {
                                     id: mutedField
                                     onEdited: (hex) => settingsWindow.saveTheme()
@@ -541,23 +542,23 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Panel opacity"
+                                title: qsTr("Panel opacity")
                                 SettingsSlider { id: opacityBox; from: 0.3; to: 1.0; step: 0.01; onChanged: (v) => settingsWindow.saveTheme() }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Corner radius"
+                                title: qsTr("Corner radius")
                                 SettingsStepper { id: radiusBox; from: 0; to: 24; onChanged: (v) => settingsWindow.saveTheme() }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Font size"
+                                title: qsTr("Font size")
                                 SettingsStepper { id: fontSizeBox; from: 6; to: 16; onChanged: (v) => settingsWindow.saveTheme() }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Font family"
-                                subtitle: "Every font installed on the system."
+                                title: qsTr("Font family")
+                                subtitle: qsTr("Every font installed on the system.")
                                 TaskButton {
                                     id: fontFamilyButton
                                     iconName: "type"
@@ -568,19 +569,18 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Save changes"
-                                subtitle: "The file is written to " + Theme.userThemesPath()
-                                          + " and applied immediately."
+                                title: qsTr("Save changes")
+                                subtitle: qsTr("The file is written to %1 and applied immediately.").arg(Theme.userThemesPath())
                                 Row {
                                     spacing: 6
                                     TaskButton {
                                         iconName: "save"
-                                        label: "Save theme"
+                                        label: qsTr("Save theme")
                                         onClicked: settingsWindow.saveTheme()
                                     }
                                     TaskButton {
                                         iconName: "eraser"
-                                        label: "Discard custom copy"
+                                        label: qsTr("Discard custom copy")
                                         visible: Theme.hasUserTheme(settingsWindow.themeEditorName)
                                         onClicked: settingsWindow.resetTheme()
                                     }
@@ -589,33 +589,33 @@ Window {
                         }
 
                         SettingsSection {
-                            title: "Panel styling"
-                            subtitle: "Choose panel material and optional custom colors. Frosted/liquid highlights are lightweight; real backdrop blur depends on the compositor."
+                            title: qsTr("Panel styling")
+                            subtitle: qsTr("Choose panel material and optional custom colors. Frosted/liquid highlights are lightweight; real backdrop blur depends on the compositor.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Panel surface"
-                                subtitle: "Theme, opaque, half-transparent, frosted or liquid glass."
+                                title: qsTr("Panel surface")
+                                subtitle: qsTr("Theme, opaque, half-transparent, frosted or liquid glass.")
                                 settingKey: "panel.material"
                                 SettingsChoice {
                                     model: [
-                                        { value: "theme", label: "Theme" },
-                                        { value: "opaque", label: "Opaque" },
-                                        { value: "translucent", label: "Half transparent" },
-                                        { value: "frosted", label: "Frosted glass" },
-                                        { value: "liquid", label: "Liquid glass" }
+                                        { value: "theme", label: qsTr("Theme") },
+                                        { value: "opaque", label: qsTr("Opaque") },
+                                        { value: "translucent", label: qsTr("Half transparent") },
+                                        { value: "frosted", label: qsTr("Frosted glass") },
+                                        { value: "liquid", label: qsTr("Liquid glass") }
                                     ]
                                 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Use custom panel colors"
+                                title: qsTr("Use custom panel colors")
                                 settingKey: "panel.customColors"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Panel background"
+                                title: qsTr("Panel background")
                                 visible: Settings.values["panel.customColors"] === true
                                 settingKey: "panel.backgroundColor"
                                 SettingsColorField {
@@ -626,7 +626,7 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Panel foreground"
+                                title: qsTr("Panel foreground")
                                 visible: Settings.values["panel.customColors"] === true
                                 settingKey: "panel.foregroundColor"
                                 SettingsColorField {
@@ -637,7 +637,7 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Panel opacity"
+                                title: qsTr("Panel opacity")
                                 visible: Settings.values["panel.customColors"] === true
                                          && (Settings.values["panel.material"] || "theme") === "theme"
                                 settingKey: "panel.backgroundOpacity"
@@ -646,22 +646,21 @@ Window {
                         }
 
                         SettingsSection {
-                            title: "Dock styling"
-                            subtitle: "The floating glass dock. The material controls the pill behind "
-                                      + "the icons, not each icon separately."
+                            title: qsTr("Dock styling")
+                            subtitle: qsTr("The floating glass dock. The material controls the pill behind the icons, not each icon separately.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Dock material"
-                                subtitle: "Half transparent, non transparent, frosted glass or liquid glass."
+                                title: qsTr("Dock material")
+                                subtitle: qsTr("Half transparent, non transparent, frosted glass or liquid glass.")
                                 settingKey: "dock.material"
                                 SettingsChoice {
                                     model: [
-                                        { value: "none", label: "No glass" },
-                                        { value: "opaque", label: "Non transparent" },
-                                        { value: "translucent", label: "Half transparent" },
-                                        { value: "frosted", label: "Frosted glass" },
-                                        { value: "liquid", label: "Liquid glass" }
+                                        { value: "none", label: qsTr("No glass") },
+                                        { value: "opaque", label: qsTr("Non transparent") },
+                                        { value: "translucent", label: qsTr("Half transparent") },
+                                        { value: "frosted", label: qsTr("Frosted glass") },
+                                        { value: "liquid", label: qsTr("Liquid glass") }
                                     ]
                                 }
                             }
@@ -671,18 +670,18 @@ Window {
                             // behind it changes. Clicking one applies it.
                             SettingsRow {
                                 width: parent.width
-                                title: "Material preview"
-                                subtitle: "Click a pill to apply it to the dock."
+                                title: qsTr("Material preview")
+                                subtitle: qsTr("Click a pill to apply it to the dock.")
 
                                 Row {
                                     spacing: 6
 
                                     Repeater {
                                         model: [
-                                            { value: "translucent", label: "Half" },
-                                            { value: "opaque", label: "Solid" },
-                                            { value: "frosted", label: "Frosted" },
-                                            { value: "liquid", label: "Liquid" }
+                                            { value: "translucent", label: qsTr("Half") },
+                                            { value: "opaque", label: qsTr("Solid") },
+                                            { value: "frosted", label: qsTr("Frosted") },
+                                            { value: "liquid", label: qsTr("Liquid") }
                                         ]
 
                                         delegate: Item {
@@ -778,7 +777,7 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Dock tint"
+                                title: qsTr("Dock tint")
                                 visible: Settings.values["dock.material"] !== "none"
                                 settingKey: "dock.backgroundColor"
                                 SettingsColorField {
@@ -789,46 +788,46 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Dock opacity"
-                                subtitle: "Biases the material: left is clearer, right is more solid."
+                                title: qsTr("Dock opacity")
+                                subtitle: qsTr("Biases the material: left is clearer, right is more solid.")
                                 visible: Settings.values["dock.material"] !== "none"
                                 settingKey: "dock.backgroundOpacity"
                                 SettingsSlider { from: 0.2; to: 1.0; step: 0.05 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Show labels"
+                                title: qsTr("Show labels")
                                 settingKey: "dock.showLabels"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Label position"
+                                title: qsTr("Label position")
                                 settingKey: "dock.labelPosition"
                                 SettingsChoice {
                                     model: [
-                                        { value: "bottom", label: "Bottom" },
-                                        { value: "right", label: "Right" },
-                                        { value: "top", label: "Top" },
-                                        { value: "left", label: "Left" }
+                                        { value: "bottom", label: qsTr("Bottom") },
+                                        { value: "right", label: qsTr("Right") },
+                                        { value: "top", label: qsTr("Top") },
+                                        { value: "left", label: qsTr("Left") }
                                     ]
                                 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Icon color mode"
+                                title: qsTr("Icon color mode")
                                 settingKey: "dock.iconColorMode"
                                 SettingsChoice {
                                     model: [
-                                        { value: "theme", label: "Theme color" },
-                                        { value: "custom", label: "Custom color" },
-                                        { value: "original", label: "Original icon colors" }
+                                        { value: "theme", label: qsTr("Theme color") },
+                                        { value: "custom", label: qsTr("Custom color") },
+                                        { value: "original", label: qsTr("Original icon colors") }
                                     ]
                                 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Custom icon color"
+                                title: qsTr("Custom icon color")
                                 visible: Settings.values["dock.iconColorMode"] === "custom"
                                 settingKey: "dock.customIconColor"
                                 SettingsColorField {
@@ -840,49 +839,49 @@ Window {
                         }
 
                         SettingsSection {
-                            title: "Window style"
-                            subtitle: "The frame of shell popups — start menu, run dialog, dock menu and clock. Radius/border -1 and opacity 0 use the selected material defaults."
+                            title: qsTr("Window style")
+                            subtitle: qsTr("The frame of shell popups — start menu, run dialog, dock menu and clock. Radius/border -1 and opacity 0 use the selected material defaults.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Style"
+                                title: qsTr("Style")
                                 settingKey: "windows.style"
                                 SettingsChoice {
                                     model: [
-                                        { value: "card", label: "Card" },
-                                        { value: "glass", label: "Glass" },
-                                        { value: "flat", label: "Flat" },
-                                        { value: "outline", label: "Outline" }
+                                        { value: "card", label: qsTr("Card") },
+                                        { value: "glass", label: qsTr("Glass") },
+                                        { value: "flat", label: qsTr("Flat") },
+                                        { value: "outline", label: qsTr("Outline") }
                                     ]
                                 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Surface material"
-                                subtitle: "Opaque, half-transparent, frosted or liquid glass. Frosted and liquid styles use low-cost Qt Quick highlights."
+                                title: qsTr("Surface material")
+                                subtitle: qsTr("Opaque, half-transparent, frosted or liquid glass. Frosted and liquid styles use low-cost Qt Quick highlights.")
                                 settingKey: "windows.material"
                                 SettingsChoice {
                                     model: [
-                                        { value: "theme", label: "Theme" },
-                                        { value: "opaque", label: "Opaque" },
-                                        { value: "translucent", label: "Half transparent" },
-                                        { value: "frosted", label: "Frosted glass" },
-                                        { value: "liquid", label: "Liquid glass" }
+                                        { value: "theme", label: qsTr("Theme") },
+                                        { value: "opaque", label: qsTr("Opaque") },
+                                        { value: "translucent", label: qsTr("Half transparent") },
+                                        { value: "frosted", label: qsTr("Frosted glass") },
+                                        { value: "liquid", label: qsTr("Liquid glass") }
                                     ]
                                 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Material preview"
-                                subtitle: "Click a swatch to apply it to the shell popups."
+                                title: qsTr("Material preview")
+                                subtitle: qsTr("Click a swatch to apply it to the shell popups.")
                                 Row {
                                     spacing: 6
                                     Repeater {
                                         model: [
-                                            { value: "opaque", label: "Opaque" },
-                                            { value: "translucent", label: "Half" },
-                                            { value: "frosted", label: "Frosted" },
-                                            { value: "liquid", label: "Liquid" }
+                                            { value: "opaque", label: qsTr("Opaque") },
+                                            { value: "translucent", label: qsTr("Half") },
+                                            { value: "frosted", label: qsTr("Frosted") },
+                                            { value: "liquid", label: qsTr("Liquid") }
                                         ]
                                         delegate: Item {
                                             required property var modelData
@@ -922,29 +921,29 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Corner radius"
+                                title: qsTr("Corner radius")
                                 subtitle: "-1 follows the theme radius."
                                 settingKey: "windows.radius"
                                 SettingsStepper { from: -1; to: 32; suffix: " px" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Background opacity"
+                                title: qsTr("Background opacity")
                                 subtitle: "0 uses the selected material's preset opacity."
                                 settingKey: "windows.opacityPercent"
                                 SettingsSlider { from: 0; to: 100; step: 5; suffix: " %" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Border width"
+                                title: qsTr("Border width")
                                 subtitle: "-1 follows the theme."
                                 settingKey: "windows.borderWidth"
                                 SettingsStepper { from: -1; to: 6; suffix: " px" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Border colour"
-                                subtitle: "Empty follows the theme."
+                                title: qsTr("Border colour")
+                                subtitle: qsTr("Empty follows the theme.")
 
                                 Row {
                                     spacing: 6
@@ -956,20 +955,20 @@ Window {
                                     }
                                     TaskButton {
                                         iconName: "rotate-ccw"
-                                        label: "Follow theme"
+                                        label: qsTr("Follow theme")
                                         onClicked: Settings.reset("windows.borderColor")
                                     }
                                 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Shadow"
+                                title: qsTr("Shadow")
                                 settingKey: "windows.shadow"
                                 SettingsStepper { from: 0; to: 3 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Preview"
+                                title: qsTr("Preview")
 
                                 Item {
                                     width: 280
@@ -1010,70 +1009,69 @@ Window {
                         spacing: 16
 
                         SettingsSection {
-                            title: "Panel"
+                            title: qsTr("Panel")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Position"
+                                title: qsTr("Position")
                                 settingKey: "panel.position"
                                 SettingsChoice {
                                     model: [
-                                        { value: "bottom", label: "Bottom" },
-                                        { value: "top", label: "Top" },
-                                        { value: "left", label: "Left" },
-                                        { value: "right", label: "Right" }
+                                        { value: "bottom", label: qsTr("Bottom") },
+                                        { value: "top", label: qsTr("Top") },
+                                        { value: "left", label: qsTr("Left") },
+                                        { value: "right", label: qsTr("Right") }
                                     ]
                                 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Thickness"
+                                title: qsTr("Thickness")
                                 settingKey: "panel.height"
                                 SettingsSlider { from: 20; to: 100; step: 2; suffix: " px" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Screen edge gap"
+                                title: qsTr("Screen edge gap")
                                 settingKey: "panel.margin"
                                 SettingsSlider { from: 0; to: 24; step: 1; suffix: " px" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Auto-hide"
-                                subtitle: "Slide the panel away until the pointer touches its edge."
+                                title: qsTr("Auto-hide")
+                                subtitle: qsTr("Slide the panel away until the pointer touches its edge.")
                                 settingKey: "panel.autoHide"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Auto-hide delay"
+                                title: qsTr("Auto-hide delay")
                                 settingKey: "panel.autoHideDelay"
-                                SettingsStepper { from: 0; to: 5000; step: 100; suffix: " ms" }
+                                SettingsStepper { from: 0; to: 5000; step: 100; suffix: qsTr(" ms") }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Running badge"
-                                subtitle: "Mark running applications on their dock buttons."
+                                title: qsTr("Running badge")
+                                subtitle: qsTr("Mark running applications on their dock buttons.")
                                 settingKey: "panel.showRunning"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Quick settings indicators"
-                                subtitle: "The bell and the indicators button at the end of the bar: "
-                                          + "notification centre, volume, brightness, network and media."
+                                title: qsTr("Quick settings indicators")
+                                subtitle: qsTr("The bell and the indicators button at the end of the bar: notification centre, volume, brightness, network and media.")
                                 settingKey: "panel.indicators"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Show date next to the clock"
+                                title: qsTr("Show date next to the clock")
                                 settingKey: "panel.showDate"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Clock format"
+                                title: qsTr("Clock format")
                                 settingKey: "panel.clockFormat"
                                 SettingsChoice {
                                     model: [
@@ -1085,174 +1083,163 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Date format"
+                                title: qsTr("Date format")
                                 settingKey: "panel.dateFormat"
                                 SettingsTextField {}
                             }
                         }
 
                         SettingsSection {
-                            title: "Dock"
-                            subtitle: "Every started application appears in the dock: real windows "
-                                      + "are tracked on X11 and Wayland, and the process list fills in the rest."
+                            title: qsTr("Dock")
+                            subtitle: qsTr("Every started application appears in the dock: real windows are tracked on X11 and Wayland, and the process list fills in the rest.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Show open windows"
+                                title: qsTr("Show open windows")
                                 settingKey: "dock.showWindows"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Group windows of one application"
-                                subtitle: "Off: every window has its own button."
+                                title: qsTr("Group windows of one application")
+                                subtitle: qsTr("Off: every window has its own button.")
                                 settingKey: "dock.group"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Dock icon size"
+                                title: qsTr("Dock icon size")
                                 settingKey: "dock.iconSize"
                                 SettingsSlider { from: 16; to: 48; step: 2; suffix: " px" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Background zone"
-                                subtitle: "Applications whose windows are all minimised gather in a "
-                                          + "dimmed zone at the end of the dock."
+                                title: qsTr("Background zone")
+                                subtitle: qsTr("Applications whose windows are all minimised gather in a dimmed zone at the end of the dock.")
                                 settingKey: "dock.separateBackground"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Shrink icons on overflow"
-                                subtitle: "The dock icons shrink when many applications run at once; "
-                                          + "the strip scrolls when even that is not enough."
+                                title: qsTr("Shrink icons on overflow")
+                                subtitle: qsTr("The dock icons shrink when many applications run at once; the strip scrolls when even that is not enough.")
                                 settingKey: "dock.shrinkIcons"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Window previews"
-                                subtitle: "Show a live thumbnail of every window in the dock menu. "
-                                          + "Built from X11/XWayland windows; native Wayland "
-                                          + "windows show their application icon instead."
+                                title: qsTr("Window previews")
+                                subtitle: qsTr("Show a live thumbnail of every window in the dock menu. Built from X11/XWayland windows; native Wayland windows show their application icon instead.")
                                 settingKey: "dock.thumbnails"
                                 SettingsSwitch {}
                             }
                         }
 
                         SettingsSection {
-                            title: "Panel layout"
-                            subtitle: "Advanced panel positioning and spacing options."
+                            title: qsTr("Panel layout")
+                            subtitle: qsTr("Advanced panel positioning and spacing options.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Left spacing"
+                                title: qsTr("Left spacing")
                                 settingKey: "panel.leftSpacing"
                                 SettingsSlider { from: 0; to: 64; step: 2; suffix: " px" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Right spacing"
+                                title: qsTr("Right spacing")
                                 settingKey: "panel.rightSpacing"
                                 SettingsSlider { from: 0; to: 64; step: 2; suffix: " px" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Zone spacing"
+                                title: qsTr("Zone spacing")
                                 settingKey: "panel.zoneSpacing"
                                 SettingsSlider { from: 0; to: 24; step: 2; suffix: " px" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Dock position in panel"
+                                title: qsTr("Dock position in panel")
                                 settingKey: "dock.position"
                                 SettingsChoice {
                                     model: [
-                                        { value: "left", label: "Left" },
-                                        { value: "center", label: "Center" },
-                                        { value: "right", label: "Right" }
+                                        { value: "left", label: qsTr("Left") },
+                                        { value: "center", label: qsTr("Center") },
+                                        { value: "right", label: qsTr("Right") }
                                     ]
                                 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Center dock buttons"
+                                title: qsTr("Center dock buttons")
                                 settingKey: "panel.centerDock"
                                 SettingsSwitch {}
                             }
                         }
 
                         SettingsSection {
-                            title: "Dock layout"
-                            subtitle: "Advanced dock configuration options."
+                            title: qsTr("Dock layout")
+                            subtitle: qsTr("Advanced dock configuration options.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Multi-row dock"
+                                title: qsTr("Multi-row dock")
                                 settingKey: "dock.multiRow"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Number of rows"
+                                title: qsTr("Number of rows")
                                 settingKey: "dock.rows"
                                 SettingsStepper { from: 1; to: 3 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Scrollable dock"
+                                title: qsTr("Scrollable dock")
                                 settingKey: "dock.scrollable"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Icon spacing"
+                                title: qsTr("Icon spacing")
                                 settingKey: "dock.iconSpacing"
                                 SettingsSlider { from: 0; to: 24; step: 2; suffix: " px" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Shrink icons on overflow"
+                                title: qsTr("Shrink icons on overflow")
                                 settingKey: "dock.shrinkIcons"
                                 SettingsSwitch {}
                             }
                         }
 
                         SettingsSection {
-                            title: "System tray"
-                            subtitle: "The shell acts as the StatusNotifierWatcher of the session: "
-                                      + "applications register their tray icons with it. Left click "
-                                      + "activates, middle click triggers the secondary action, and "
-                                      + "right click opens the item's menu."
+                            title: qsTr("System tray")
+                            subtitle: qsTr("The shell acts as the StatusNotifierWatcher of the session: applications register their tray icons with it. Left click activates, middle click triggers the secondary action, and right click opens the item's menu.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Show the system tray"
-                                subtitle: "Hidden when another tray host owns the session."
+                                title: qsTr("Show the system tray")
+                                subtitle: qsTr("Hidden when another tray host owns the session.")
                                 settingKey: "tray.enabled"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Render tray menus"
-                                subtitle: "Use the application's DBusMenu for right clicks instead "
-                                          + "of asking it to open its own context menu."
+                                title: qsTr("Render tray menus")
+                                subtitle: qsTr("Use the application's DBusMenu for right clicks instead of asking it to open its own context menu.")
                                 settingKey: "tray.menus"
                                 SettingsSwitch {}
                             }
                         }
 
                         SettingsSection {
-                            title: "Pinned applications"
-                            subtitle: "Desktop file ids, as in /usr/share/applications. Right-click a dock "
-                                      + "button at runtime for per-window actions, or right-click an "
-                                      + "application in the start menu to pin or unpin it."
+                            title: qsTr("Pinned applications")
+                            subtitle: qsTr("Desktop file ids, as in /usr/share/applications. Right-click a dock button at runtime for per-window actions, or right-click an application in the start menu to pin or unpin it.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Pinned list"
+                                title: qsTr("Pinned list")
 
                                 Column {
                                     width: 420
@@ -1296,7 +1283,7 @@ Window {
                                         }
                                         TaskButton {
                                             iconName: "plus"
-                                            label: "Pin"
+                                            label: qsTr("Pin")
                                             onClicked: {
                                                 const id = pinField.text.trim();
                                                 if (id.length === 0)
@@ -1333,11 +1320,11 @@ Window {
                         spacing: 16
 
                         SettingsSection {
-                            title: "Wallpaper"
+                            title: qsTr("Wallpaper")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Current wallpaper"
+                                title: qsTr("Current wallpaper")
                                 settingKey: "desktop.wallpaper"
 
                                 Row {
@@ -1376,7 +1363,7 @@ Window {
                                             anchors.centerIn: parent
                                             visible: !Settings.value("desktop.wallpaper", "")
                                                      || wallpaperPreview.status === Image.Error
-                                            text: "Solid colour"
+                                            text: qsTr("Solid colour")
                                             color: Theme.muted
                                             font.family: Theme.fontFamily
                                             font.pointSize: Theme.fontSize - 1
@@ -1387,25 +1374,25 @@ Window {
                                         spacing: 6
                                         TaskButton {
                                             iconName: "image"
-                                            label: "Browse images"
+                                            label: qsTr("Browse images")
                                             onClicked: {
                                                 wallpaperOverlay.visible = true;
                                             }
                                         }
                                         TaskButton {
                                             iconName: "folder"
-                                            label: "Choose from file manager"
+                                            label: qsTr("Choose from file manager")
                                             onClicked: settingsWindow.pickWallpaper(
                                                            settingsWindow.wallpaperFolder())
                                         }
                                         TaskButton {
                                             iconName: "shuffle"
-                                            label: "Random picture"
+                                            label: qsTr("Random picture")
                                             onClicked: wallpaperOverlay.pickRandom()
                                         }
                                         TaskButton {
                                             iconName: "x"
-                                            label: "No wallpaper"
+                                            label: qsTr("No wallpaper")
                                             onClicked: Settings.setValue("desktop.wallpaper", "")
                                         }
                                     }
@@ -1414,74 +1401,74 @@ Window {
                         }
 
                         SettingsSection {
-                            title: "Wallpaper"
+                            title: qsTr("Wallpaper")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Default wallpaper"
-                                subtitle: "Shown while no picture is chosen and no background colour is set."
+                                title: qsTr("Default wallpaper")
+                                subtitle: qsTr("Shown while no picture is chosen and no background colour is set.")
                                 settingKey: "desktop.defaultWallpaper"
                                 SettingsSwitch { settingKey: "desktop.defaultWallpaper" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Wallpaper mode"
+                                title: qsTr("Wallpaper mode")
                                 settingKey: "desktop.wallpaperMode"
                                 SettingsChoice {
                                     model: [
-                                        { value: "fill", label: "Fill" },
-                                        { value: "fit", label: "Fit" },
-                                        { value: "stretch", label: "Stretch" },
-                                        { value: "tile", label: "Tile" },
-                                        { value: "center", label: "Center" }
+                                        { value: "fill", label: qsTr("Fill") },
+                                        { value: "fit", label: qsTr("Fit") },
+                                        { value: "stretch", label: qsTr("Stretch") },
+                                        { value: "tile", label: qsTr("Tile") },
+                                        { value: "center", label: qsTr("Center") }
                                     ]
                                 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Wallpaper blur"
+                                title: qsTr("Wallpaper blur")
                                 settingKey: "desktop.wallpaperBlur"
                                 SettingsSlider { from: 0; to: 50; step: 1; suffix: " px" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Wallpaper darken"
+                                title: qsTr("Wallpaper darken")
                                 settingKey: "desktop.wallpaperDarken"
                                 SettingsSlider { from: 0; to: 100; step: 5; suffix: " %" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Per-monitor wallpapers"
+                                title: qsTr("Per-monitor wallpapers")
                                 settingKey: "desktop.perMonitorWallpaper"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Wallpaper slideshow"
+                                title: qsTr("Wallpaper slideshow")
                                 settingKey: "desktop.wallpaperSlideshow"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Slideshow interval"
+                                title: qsTr("Slideshow interval")
                                 settingKey: "desktop.wallpaperSlideshowInterval"
-                                SettingsStepper { from: 10; to: 3600; step: 10; suffix: " s" }
+                                SettingsStepper { from: 10; to: 3600; step: 10; suffix: qsTr(" s") }
                             }
                         }
 
                         SettingsSection {
-                            title: "Desktop background"
-                            subtitle: "Custom background color when no wallpaper is set."
+                            title: qsTr("Desktop background")
+                            subtitle: qsTr("Custom background color when no wallpaper is set.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Use gradient background"
+                                title: qsTr("Use gradient background")
                                 settingKey: "desktop.backgroundGradient"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Background color"
+                                title: qsTr("Background color")
                                 visible: !Settings.values["desktop.backgroundGradient"]
                                 settingKey: "desktop.backgroundColor"
                                 SettingsColorField {
@@ -1493,41 +1480,41 @@ Window {
                         }
 
                         SettingsSection {
-                            title: "Icons"
+                            title: qsTr("Icons")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Show desktop icons"
+                                title: qsTr("Show desktop icons")
                                 settingKey: "desktop.showIcons"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Icon size"
+                                title: qsTr("Icon size")
                                 settingKey: "desktop.iconSize"
                                 SettingsSlider { from: 24; to: 96; step: 4; suffix: " px" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Grid width"
+                                title: qsTr("Grid width")
                                 settingKey: "desktop.cellWidth"
                                 SettingsSlider { from: 64; to: 160; step: 8; suffix: " px" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Grid height"
+                                title: qsTr("Grid height")
                                 settingKey: "desktop.cellHeight"
                                 SettingsSlider { from: 64; to: 180; step: 8; suffix: " px" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Right-click menu"
+                                title: qsTr("Right-click menu")
                                 settingKey: "desktop.contextMenu"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Icon color"
+                                title: qsTr("Icon color")
                                 settingKey: "desktop.iconColor"
                                 SettingsColorField {
                                     id: desktopIconColorField
@@ -1537,39 +1524,40 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Icon shadow"
+                                title: qsTr("Icon shadow")
                                 settingKey: "desktop.iconShadow"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Icon glow"
+                                title: qsTr("Icon glow")
                                 settingKey: "desktop.iconGlow"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Show hidden files"
+                                title: qsTr("Show hidden files")
                                 settingKey: "desktop.showHiddenFiles"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Auto-arrange icons"
-                                subtitle: "Drag an icon on the desktop to place it freely; "
-                                          + "auto-arrange then turns itself off."
+                                title: qsTr("Auto-arrange icons")
+                                subtitle: qsTr("Drag an icon on the desktop to place it freely; auto-arrange then turns itself off.")
                                 settingKey: "desktop.autoArrangeIcons"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Icon layout"
-                                subtitle: "Forget every dragged position and return to the grid."
+                                title: qsTr("Icon layout")
+                                subtitle: qsTr("Forget every dragged position and return to the grid.")
                                 TaskButton {
                                     iconName: "rotate-ccw"
-                                    label: "Reset layout"
+                                    label: qsTr("Reset layout")
                                     onClicked: Settings.setValues({
                                         "desktop.gridPositions": ({}),
+                                        "desktop.iconPositions": ({}),
+                                        "desktop.widgetPositions": ({}),
                                         "desktop.autoArrangeIcons": true
                                     })
                                 }
@@ -1596,41 +1584,41 @@ Window {
                         spacing: 16
 
                         SettingsSection {
-                            title: "Start menu"
+                            title: qsTr("Start menu")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Width"
+                                title: qsTr("Width")
                                 settingKey: "startmenu.width"
                                 SettingsSlider { from: 300; to: 700; step: 10; suffix: " px" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Height"
+                                title: qsTr("Height")
                                 settingKey: "startmenu.height"
                                 SettingsSlider { from: 400; to: 900; step: 10; suffix: " px" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Typo tolerant search"
+                                title: qsTr("Typo tolerant search")
                                 settingKey: "startmenu.fuzzy"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Recently used row"
+                                title: qsTr("Recently used row")
                                 settingKey: "startmenu.showRecent"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Recent list length"
+                                title: qsTr("Recent list length")
                                 settingKey: "apps.recentLimit"
                                 SettingsStepper { from: 0; to: 30 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Search result limit"
+                                title: qsTr("Search result limit")
                                 settingKey: "startmenu.limit"
                                 SettingsStepper { from: 10; to: 500; step: 10 }
                             }
@@ -1656,50 +1644,50 @@ Window {
                         spacing: 16
 
                         SettingsSection {
-                            title: "Applications"
+                            title: qsTr("Applications")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Terminal command"
-                                subtitle: "Used by \"Open terminal\"; empty means auto-detect."
+                                title: qsTr("Terminal command")
+                                subtitle: qsTr("Used by \"Open terminal\"; empty means auto-detect.")
                                 settingKey: "apps.terminalCommand"
                                 SettingsTextField { width: 260 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Application catalogue cap"
-                                subtitle: "0 keeps every installed application."
+                                title: qsTr("Application catalogue cap")
+                                subtitle: qsTr("0 keeps every installed application.")
                                 settingKey: "apps.maxApps"
                                 SettingsStepper { from: 0; to: 2000; step: 50 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Usage history"
-                                subtitle: "Clears the recent row and the ranking boost."
+                                title: qsTr("Usage history")
+                                subtitle: qsTr("Clears the recent row and the ranking boost.")
                                 TaskButton {
                                     iconName: "eraser"
-                                    label: "Clear recent list"
+                                    label: qsTr("Clear recent list")
                                     onClicked: {
                                         Apps.forgetRecent();
-                                        Shell.notify("NewTeller", "The recent applications list was cleared.");
+                                        Shell.notify("NewTeller", qsTr("The recent applications list was cleared."));
                                     }
                                 }
                             }
                         }
 
                         SettingsSection {
-                            title: "Startup applications"
-                            subtitle: "Applications to launch automatically when NewTeller starts."
+                            title: qsTr("Startup applications")
+                            subtitle: qsTr("Applications to launch automatically when NewTeller starts.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Startup delay (seconds)"
+                                title: qsTr("Startup delay (seconds)")
                                 settingKey: "startup.delay"
-                                SettingsStepper { from: 0; to: 60; step: 1; suffix: " s" }
+                                SettingsStepper { from: 0; to: 60; step: 1; suffix: qsTr(" s") }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Startup applications list"
+                                title: qsTr("Startup applications list")
 
                                 Column {
                                     width: 420
@@ -1740,11 +1728,11 @@ Window {
                                         SettingsTextField {
                                             id: startupField
                                             width: 300
-                                            placeholder: "Application name or .desktop file"
+                                            placeholder: qsTr("Application name or .desktop file")
                                         }
                                         TaskButton {
                                             iconName: "plus"
-                                            label: "Add"
+                                            label: qsTr("Add")
                                             onClicked: {
                                                 const id = startupField.text.trim();
                                                 if (id.length === 0)
@@ -1762,8 +1750,8 @@ Window {
                         }
 
                         SettingsSection {
-                            title: "Started by the system"
-                            subtitle: "XDG autostart entries from ~/.config/autostart and /etc/xdg/autostart. Applications add them with their own \"start at login\" option; delete the file in ~/.config/autostart to stop one."
+                            title: qsTr("Started by the system")
+                            subtitle: qsTr("XDG autostart entries from ~/.config/autostart and /etc/xdg/autostart. Applications add them with their own \"start at login\" option; delete the file in ~/.config/autostart to stop one.")
 
                             Repeater {
                                 model: Session.autostartEntries()
@@ -1775,7 +1763,7 @@ Window {
                                     subtitle: modelData.exec
 
                                     Text {
-                                        text: modelData.file.indexOf("/etc/") === 0 ? "System" : "Personal"
+                                        text: modelData.file.indexOf("/etc/") === 0 ? qsTr("System") : qsTr("Personal")
                                         color: Theme.muted
                                         font.family: Theme.fontFamily
                                         font.pointSize: Theme.fontSize - 1
@@ -1785,25 +1773,13 @@ Window {
                         }
 
                         SettingsSection {
-                            title: "Search"
-                            subtitle: "Application search behavior."
+                            title: qsTr("Search")
+                            subtitle: qsTr("Application search behavior.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Max search results"
-                                settingKey: "search.maxResults"
-                                SettingsStepper { from: 10; to: 500; step: 10 }
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: "Show category chips"
+                                title: qsTr("Show category chips")
                                 settingKey: "search.showCategories"
-                                SettingsSwitch {}
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: "Show category icons"
-                                settingKey: "search.categoryIcons"
                                 SettingsSwitch {}
                             }
                         }
@@ -1828,118 +1804,74 @@ Window {
                         spacing: 16
 
                         SettingsSection {
-                            title: "Metrics"
-                            subtitle: "The shared ticker behind the system monitor widgets."
+                            title: qsTr("Metrics")
+                            subtitle: qsTr("The shared ticker behind the system monitor widgets.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Sampling interval"
+                                title: qsTr("Sampling interval")
                                 settingKey: "system.interval"
-                                SettingsStepper { from: 250; to: 60000; step: 250; suffix: " ms" }
+                                SettingsStepper { from: 250; to: 60000; step: 250; suffix: qsTr(" ms") }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Per-core CPU"
+                                title: qsTr("Per-core CPU")
                                 settingKey: "system.perCore"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Show CPU temperature"
-                                settingKey: "system.showCpuTemp"
-                                SettingsSwitch {}
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: "Show GPU info"
-                                settingKey: "system.showGpu"
-                                SettingsSwitch {}
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: "Show fan speed"
-                                settingKey: "system.showFanSpeed"
-                                SettingsSwitch {}
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: "Battery"
+                                title: qsTr("Battery")
                                 settingKey: "system.battery"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Thermal zones"
+                                title: qsTr("Thermal zones")
                                 settingKey: "system.thermal"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Disks"
-                                subtitle: "The most expensive part of a snapshot."
+                                title: qsTr("Disks")
+                                subtitle: qsTr("The most expensive part of a snapshot.")
                                 settingKey: "system.disks"
                                 SettingsSwitch {}
                             }
+                        }
+
+                        SettingsSection {
+                            title: qsTr("Caching")
+                            subtitle: qsTr("Improve performance by caching frequently used data.")
+
                             SettingsRow {
                                 width: parent.width
-                                title: "Config file watching"
-                                settingKey: "watch.debounce"
-                                SettingsStepper { from: 0; to: 10000; step: 50; suffix: " ms" }
+                                title: qsTr("Icon cache")
+                                settingKey: "icons.cache"
+                                SettingsSwitch {}
                             }
                         }
 
                         SettingsSection {
-                            title: "Caching"
-                            subtitle: "Improve performance by caching frequently used data."
+                            title: qsTr("Clipboard")
+                            subtitle: qsTr("Clipboard history and management.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Icon cache"
-                                settingKey: "cache.iconCache"
-                                SettingsSwitch {}
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: "Max icon cache size"
-                                visible: Settings.values["cache.iconCache"] === true
-                                settingKey: "cache.maxIconCacheSize"
-                                SettingsStepper { from: 100; to: 5000; step: 100 }
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: "Search cache"
-                                settingKey: "cache.searchCache"
-                                SettingsSwitch {}
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: "Max search cache size"
-                                visible: Settings.values["cache.searchCache"] === true
-                                settingKey: "cache.maxSearchCacheSize"
-                                SettingsStepper { from: 100; to: 2000; step: 100 }
-                            }
-                        }
-
-                        SettingsSection {
-                            title: "Clipboard"
-                            subtitle: "Clipboard history and management."
-
-                            SettingsRow {
-                                width: parent.width
-                                title: "Enable clipboard history"
+                                title: qsTr("Enable clipboard history")
                                 settingKey: "clipboard.historyEnabled"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "History size"
+                                title: qsTr("History size")
                                 visible: Settings.values["clipboard.historyEnabled"] === true
                                 settingKey: "clipboard.historySize"
                                 SettingsStepper { from: 10; to: 1000; step: 10 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Persist history across restarts"
+                                title: qsTr("Persist history across restarts")
                                 visible: Settings.values["clipboard.historyEnabled"] === true
                                 settingKey: "clipboard.persistHistory"
                                 SettingsSwitch {}
@@ -1966,112 +1898,110 @@ Window {
                         spacing: 16
 
                         SettingsSection {
-                            title: "Popups"
-                            subtitle: "The built-in daemon serves org.freedesktop.Notifications, "
-                                      + "so notify-send and every application reach the shell. "
-                                      + "newteller-ctl notify works through the private socket."
+                            title: qsTr("Popups")
+                            subtitle: qsTr("The built-in daemon serves org.freedesktop.Notifications, so notify-send and every application reach the shell. newteller-ctl notify works through the private socket.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Notification popups"
+                                title: qsTr("Notification popups")
                                 settingKey: "notifications.enabled"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Do not disturb"
-                                subtitle: "Popups stay hidden; critical notifications still come through."
+                                title: qsTr("Do not disturb")
+                                subtitle: qsTr("Popups stay hidden; critical notifications still come through.")
                                 settingKey: "notifications.doNotDisturb"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Corner"
+                                title: qsTr("Corner")
                                 settingKey: "notifications.position"
                                 SettingsChoice {
                                     model: [
-                                        { value: "top-left", label: "Top left" },
-                                        { value: "top-center", label: "Top center" },
-                                        { value: "top-right", label: "Top right" },
-                                        { value: "bottom-left", label: "Bottom left" },
-                                        { value: "bottom-center", label: "Bottom center" },
-                                        { value: "bottom-right", label: "Bottom right" }
+                                        { value: "top-left", label: qsTr("Top left") },
+                                        { value: "top-center", label: qsTr("Top center") },
+                                        { value: "top-right", label: qsTr("Top right") },
+                                        { value: "bottom-left", label: qsTr("Bottom left") },
+                                        { value: "bottom-center", label: qsTr("Bottom center") },
+                                        { value: "bottom-right", label: qsTr("Bottom right") }
                                     ]
                                 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Duration"
+                                title: qsTr("Duration")
                                 subtitle: "0 keeps a popup until it is clicked."
                                 settingKey: "notifications.duration"
-                                SettingsStepper { from: 0; to: 120; suffix: " s" }
+                                SettingsStepper { from: 0; to: 120; suffix: qsTr(" s") }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "History length"
+                                title: qsTr("History length")
                                 settingKey: "notifications.historyLimit"
                                 SettingsStepper { from: 5; to: 200; step: 5 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Try it"
+                                title: qsTr("Try it")
                                 TaskButton {
                                     iconName: "bell-ring"
-                                    label: "Send a test notification"
+                                    label: qsTr("Send a test notification")
                                     onClicked: Shell.notify("NewTeller",
-                                                            "This is what a notification looks like.")
+                                                            qsTr("This is what a notification looks like."))
                                 }
                             }
                         }
 
                         SettingsSection {
-                            title: "Appearance"
-                            subtitle: "Customize the look of notifications."
+                            title: qsTr("Appearance")
+                            subtitle: qsTr("Customize the look of notifications.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Notification theme"
+                                title: qsTr("Notification theme")
                                 settingKey: "notifications.theme"
                                 SettingsChoice {
                                     model: [
-                                        { value: "system", label: "System theme" },
-                                        { value: "light", label: "Light" },
-                                        { value: "dark", label: "Dark" },
-                                        { value: "custom", label: "Custom colors" }
+                                        { value: "system", label: qsTr("System theme") },
+                                        { value: "light", label: qsTr("Light") },
+                                        { value: "dark", label: qsTr("Dark") },
+                                        { value: "custom", label: qsTr("Custom colors") }
                                     ]
                                 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Notification surface"
-                                subtitle: "Used by popups and the notification centre."
+                                title: qsTr("Notification surface")
+                                subtitle: qsTr("Used by popups and the notification centre.")
                                 settingKey: "notifications.material"
                                 SettingsChoice {
                                     model: [
-                                        { value: "theme", label: "Theme" },
-                                        { value: "opaque", label: "Opaque" },
-                                        { value: "translucent", label: "Half transparent" },
-                                        { value: "frosted", label: "Frosted glass" },
-                                        { value: "liquid", label: "Liquid glass" }
+                                        { value: "theme", label: qsTr("Theme") },
+                                        { value: "opaque", label: qsTr("Opaque") },
+                                        { value: "translucent", label: qsTr("Half transparent") },
+                                        { value: "frosted", label: qsTr("Frosted glass") },
+                                        { value: "liquid", label: qsTr("Liquid glass") }
                                     ]
                                 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Surface opacity"
+                                title: qsTr("Surface opacity")
                                 subtitle: "0 uses the selected material's preset opacity."
                                 settingKey: "notifications.opacityPercent"
                                 SettingsSlider { from: 0; to: 100; step: 5; suffix: " %" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Corner radius"
+                                title: qsTr("Corner radius")
                                 settingKey: "notifications.cornerRadius"
                                 SettingsStepper { from: -1; to: 32; suffix: " px" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Custom background"
+                                title: qsTr("Custom background")
                                 visible: Settings.values["notifications.theme"] === "custom"
                                 settingKey: "notifications.customBackground"
                                 SettingsColorField {
@@ -2082,7 +2012,7 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Custom foreground"
+                                title: qsTr("Custom foreground")
                                 visible: Settings.values["notifications.theme"] === "custom"
                                 settingKey: "notifications.customForeground"
                                 SettingsColorField {
@@ -2093,85 +2023,85 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Group notifications by app"
-                                settingKey: "notifications.groupByApp"
+                                title: qsTr("Show app icon")
+                                settingKey: "notifications.showAppIcon"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Show app icon"
-                                settingKey: "notifications.showAppIcon"
+                                title: qsTr("Announce removable drives")
+                                subtitle: qsTr("A USB stick or memory card that is plugged in gets Open and Eject buttons.")
+                                settingKey: "drives.notify"
                                 SettingsSwitch {}
                             }
                         }
 
                         SettingsSection {
-                            title: "Sounds"
+                            title: qsTr("Sounds")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Enable notification sounds"
+                                title: qsTr("Enable notification sounds")
                                 settingKey: "notifications.soundEnabled"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Sound file"
+                                title: qsTr("Sound file")
                                 visible: Settings.values["notifications.soundEnabled"] === true
                                 settingKey: "notifications.soundFile"
-                                SettingsTextField { width: 260; placeholder: "Leave empty for default" }
+                                SettingsTextField { width: 260; placeholder: qsTr("Leave empty for default") }
                             }
                         }
 
                         SettingsSection {
-                            title: "Do Not Disturb scheduling"
+                            title: qsTr("Do Not Disturb scheduling")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Enable scheduled DND"
+                                title: qsTr("Enable scheduled DND")
                                 settingKey: "notifications.doNotDisturbSchedule"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Start time"
+                                title: qsTr("Start time")
                                 visible: Settings.values["notifications.doNotDisturbSchedule"] === true
                                 settingKey: "notifications.dndStartTime"
-                                SettingsTextField { width: 120; placeholder: "HH:mm (24h)" }
+                                SettingsTextField { width: 120; placeholder: qsTr("HH:mm (24h)") }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "End time"
+                                title: qsTr("End time")
                                 visible: Settings.values["notifications.doNotDisturbSchedule"] === true
                                 settingKey: "notifications.dndEndTime"
-                                SettingsTextField { width: 120; placeholder: "HH:mm (24h)" }
+                                SettingsTextField { width: 120; placeholder: qsTr("HH:mm (24h)") }
                             }
                         }
 
                         SettingsSection {
-                            title: "Daemon"
-                            subtitle: "When another notification daemon owns the session, NewTeller "
-                                      + "only shows the notifications that arrive on its own socket."
+                            title: qsTr("Daemon")
+                            subtitle: qsTr("When another notification daemon owns the session, NewTeller only shows the notifications that arrive on its own socket.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "D-Bus service"
+                                title: qsTr("D-Bus service")
                                 Text {
                                     color: Theme.foreground
                                     font.family: Theme.fontFamily
                                     font.pointSize: Theme.fontSize
                                     anchors.verticalCenter: parent.verticalCenter
                                     text: Notifications.ownsDBus
-                                          ? "This shell serves org.freedesktop.Notifications"
-                                          : "Another daemon owns org.freedesktop.Notifications"
+                                          ? qsTr("This shell serves org.freedesktop.Notifications")
+                                          : qsTr("Another daemon owns org.freedesktop.Notifications")
                                 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Recent notifications"
+                                title: qsTr("Recent notifications")
                                 TaskButton {
                                     iconName: "eraser"
-                                    label: "Clear history"
+                                    label: qsTr("Clear history")
                                     onClicked: Notifications.clearHistory()
                                 }
                             }
@@ -2216,27 +2146,27 @@ Window {
                         spacing: 16
 
                         SettingsSection {
-                            title: "Plugins"
-                            subtitle: "QML widgets from ~/.config/newteller/plugins and /usr/share/newteller/plugins."
+                            title: qsTr("Plugins")
+                            subtitle: qsTr("QML widgets from ~/.config/newteller/plugins and /usr/share/newteller/plugins.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Rescan on change"
+                                title: qsTr("Rescan on change")
                                 settingKey: "plugins.autoRescan"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Show plugin descriptions"
+                                title: qsTr("Show plugin descriptions")
                                 settingKey: "plugins.showDescriptions"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Rescan"
+                                title: qsTr("Rescan")
                                 TaskButton {
                                     iconName: "rotate-cw"
-                                    label: "Rescan now"
+                                    label: qsTr("Rescan now")
                                     onClicked: Plugins.rescan()
                                 }
                             }
@@ -2263,27 +2193,21 @@ Window {
                         }
 
                         SettingsSection {
-                            title: "Plugin marketplace"
-                            subtitle: "Online plugin discovery (experimental)."
+                            title: qsTr("Plugin marketplace")
+                            subtitle: qsTr("Online plugin discovery (experimental).")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Enable online plugins"
+                                title: qsTr("Enable online plugins")
                                 settingKey: "plugins.onlineEnabled"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Auto-update plugins"
-                                settingKey: "plugins.autoUpdate"
-                                SettingsSwitch {}
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: "Browse plugins"
+                                title: qsTr("Browse plugins")
                                 TaskButton {
                                     iconName: "globe"
-                                    label: "Open plugin marketplace"
+                                    label: qsTr("Open plugin marketplace")
                                     visible: Settings.values["plugins.onlineEnabled"] === true
                                     onClicked: Shell.openUrl("https://github.com/fourtexec/newteller-plugins")
                                 }
@@ -2310,118 +2234,123 @@ Window {
                         spacing: 16
 
                         SettingsSection {
-                            title: "Keyboard shortcuts"
-                            subtitle: "Global hotkeys for shell actions. Multiple keys can be separated by commas."
+                            title: qsTr("Keyboard shortcuts")
+                            subtitle: qsTr("The shortcuts built into NewTeller. Your own ones are added under Windows -> Your shortcuts and take priority.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Enable hotkeys"
-                                settingKey: "hotkeys.enabled"
-                                SettingsSwitch {}
-                            }
-                        }
-
-                        SettingsSection {
-                            title: "Shell actions"
-
-                            SettingsRow {
-                                width: parent.width
-                                title: "Open start menu"
-                                settingKey: "hotkeys.startMenu"
-                                SettingsTextField { width: 180; placeholder: "Meta (Windows key)" }
+                                title: qsTr("Open start menu")
+                                subtitle: "Super"
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Run dialog"
-                                settingKey: "hotkeys.runDialog"
-                                SettingsTextField { width: 180; placeholder: "Alt+F2" }
+                                title: qsTr("Run a command")
+                                subtitle: "Alt+F2, Super+R"
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Open settings"
-                                settingKey: "hotkeys.settings"
-                                SettingsTextField { width: 180; placeholder: "Meta+, or Meta+S" }
+                                title: qsTr("Open terminal")
+                                subtitle: "Super+Return"
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Open notification centre"
-                                settingKey: "hotkeys.notificationCenter"
-                                SettingsTextField { width: 180; placeholder: "Meta+N" }
+                                title: qsTr("Open file manager")
+                                subtitle: "Super+E"
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Open quick settings"
-                                settingKey: "hotkeys.quickSettings"
-                                SettingsTextField { width: 180; placeholder: "Meta+Q" }
-                            }
-                        }
-
-                        SettingsSection {
-                            title: "System actions"
-
-                            SettingsRow {
-                                width: parent.width
-                                title: "Lock screen"
-                                settingKey: "hotkeys.lockScreen"
-                                SettingsTextField { width: 180; placeholder: "Meta+L" }
+                                title: qsTr("Open settings")
+                                subtitle: "Super+S, Super+I"
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Log out"
-                                settingKey: "hotkeys.logout"
-                                SettingsTextField { width: 180; placeholder: "Meta+Shift+Q" }
+                                title: qsTr("Open quick settings")
+                                subtitle: "Super+A"
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Sleep"
-                                settingKey: "hotkeys.sleep"
-                                SettingsTextField { width: 180; placeholder: "Meta+Shift+S" }
+                                title: qsTr("Open notification centre")
+                                subtitle: "Super+N"
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Reboot"
-                                settingKey: "hotkeys.reboot"
-                                SettingsTextField { width: 180; placeholder: "Meta+Shift+R" }
+                                title: qsTr("Clipboard history")
+                                subtitle: "Super+V"
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Shut down"
-                                settingKey: "hotkeys.shutdown"
-                                SettingsTextField { width: 180; placeholder: "Meta+Shift+P" }
-                            }
-                        }
-
-                        SettingsSection {
-                            title: "Application launchers"
-
-                            SettingsRow {
-                                width: parent.width
-                                title: "Open terminal"
-                                settingKey: "hotkeys.terminal"
-                                SettingsTextField { width: 180; placeholder: "Meta+T" }
+                                title: qsTr("Lock now")
+                                subtitle: "Super+L"
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Open file manager"
-                                settingKey: "hotkeys.fileManager"
-                                SettingsTextField { width: 180; placeholder: "Meta+E" }
+                                title: qsTr("Close the window")
+                                subtitle: "Super+Q, Alt+F4"
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Application switcher"
-                                settingKey: "hotkeys.switcher"
-                                SettingsTextField { width: 180; placeholder: "Alt+Tab" }
+                                title: qsTr("Snap to the left or right half")
+                                subtitle: "Super+Left, Super+Right"
                             }
-                        }
-
-                        SettingsSection {
-                            title: "Hotkey reference"
-                            subtitle: "Modifier keys: Meta (Windows), Ctrl, Alt, Shift. Combine with +. Example: Ctrl+Alt+T"
-
                             SettingsRow {
                                 width: parent.width
-                                title: "Available keys"
-                                subtitle: "Letters (A-Z), numbers (0-9), F1-F12, arrow keys, Enter, Space, Tab, Escape, Backspace, Delete, Insert, Home, End, PageUp, PageDown"
+                                title: qsTr("Maximise and restore")
+                                subtitle: "Super+Up, Super+Down, Super+M"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Fullscreen")
+                                subtitle: "Super+F"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Show the desktop")
+                                subtitle: "Super+D"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Overview of the windows")
+                                subtitle: "Super+Tab"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Switch windows")
+                                subtitle: "Alt+Tab"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Switch desktops")
+                                subtitle: "Ctrl+Super+Left/Right, Super+Page Up/Down"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Move the window to another screen")
+                                subtitle: "Super+Shift+Left, Super+Shift+Right"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Next keyboard layout")
+                                subtitle: "Super+Space"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Screenshot")
+                                subtitle: "Print; Shift+Print or Super+Shift+S for an area"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("End a frozen application")
+                                subtitle: "Ctrl+Shift+Esc"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Give the shortcuts back to the desktop")
+                                subtitle: "Super+Escape"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Text console")
+                                subtitle: "Ctrl+Alt+F1 ... F12"
                             }
                         }
                     }
@@ -2445,20 +2374,20 @@ Window {
                         spacing: 16
 
                         SettingsSection {
-                            title: "Desktop effects"
-                            subtitle: "Drawn by the NewTeller compositor: rounded window corners, blur behind see-through panels and menus, and window animations."
+                            title: qsTr("Desktop effects")
+                            subtitle: qsTr("Drawn by the NewTeller compositor: rounded window corners, blur behind see-through panels and menus, and window animations.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Effects"
-                                subtitle: "Off: the plain, fastest drawing path."
+                                title: qsTr("Effects")
+                                subtitle: qsTr("Off: the plain, fastest drawing path.")
                                 settingKey: "effects.enabled"
                                 SettingsSwitch { settingKey: "effects.enabled" }
                             }
                             SettingsRow {
                                 width: parent.width
                                 visible: Settings.values["effects.enabled"] !== false
-                                title: "Window corner radius"
+                                title: qsTr("Window corner radius")
                                 subtitle: "0 = square corners."
                                 settingKey: "effects.cornerRadius"
                                 SettingsSlider { settingKey: "effects.cornerRadius"; from: 0; to: 24; step: 1; suffix: " px" }
@@ -2466,8 +2395,8 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 visible: Settings.values["effects.enabled"] !== false
-                                title: "Blur behind panels and menus"
-                                subtitle: "Applies to frosted, liquid and translucent materials (Appearance)."
+                                title: qsTr("Blur behind panels and menus")
+                                subtitle: qsTr("Applies to frosted, liquid and translucent materials (Appearance).")
                                 settingKey: "effects.blur"
                                 SettingsSwitch { settingKey: "effects.blur" }
                             }
@@ -2475,15 +2404,15 @@ Window {
                                 width: parent.width
                                 visible: Settings.values["effects.enabled"] !== false
                                          && Settings.values["effects.blur"] !== false
-                                title: "Blur strength"
+                                title: qsTr("Blur strength")
                                 settingKey: "effects.blurStrength"
                                 SettingsSlider { settingKey: "effects.blurStrength"; from: 1; to: 4; step: 1 }
                             }
                             SettingsRow {
                                 width: parent.width
                                 visible: Settings.values["effects.enabled"] !== false
-                                title: "Window animations"
-                                subtitle: "Open, close, minimize and desktop switching."
+                                title: qsTr("Window animations")
+                                subtitle: qsTr("Open, close, minimize and desktop switching.")
                                 settingKey: "effects.animations"
                                 SettingsSwitch { settingKey: "effects.animations" }
                             }
@@ -2491,7 +2420,7 @@ Window {
                                 width: parent.width
                                 visible: Settings.values["effects.enabled"] !== false
                                          && Settings.values["effects.animations"] !== false
-                                title: "Animation speed"
+                                title: qsTr("Animation speed")
                                 subtitle: "1.0 = normal, 2.0 = twice as fast."
                                 settingKey: "effects.animationSpeed"
                                 SettingsSlider { settingKey: "effects.animationSpeed"; from: 0.5; to: 3.0; step: 0.1 }
@@ -2499,18 +2428,19 @@ Window {
                         }
 
                         SettingsSection {
-                            title: "Animation controls"
-                            subtitle: "Enable or disable animations and adjust their speed."
+                            title: qsTr("Animation controls")
+                            subtitle: qsTr("Enable or disable animations and adjust their speed.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Enable animations globally"
+                                title: qsTr("Enable animations globally")
+                                subtitle: qsTr("Menus, cards, the dock and the panel. Window animations are above.")
                                 settingKey: "animations.enabled"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Animation speed multiplier"
+                                title: qsTr("Animation speed multiplier")
                                 subtitle: "1.0 = normal speed, 0.5 = half speed, 2.0 = double speed"
                                 settingKey: "animations.speed"
                                 SettingsSlider { from: 0.1; to: 3.0; step: 0.1; onChanged: (v) => Settings.setValue("animations.speed", Math.round(v * 10) / 10) }
@@ -2518,43 +2448,15 @@ Window {
                         }
 
                         SettingsSection {
-                            title: "Panel animations"
+                            title: qsTr("Preview")
+                            subtitle: qsTr("Test animation speed with this demo")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Panel hide/show animation"
-                                settingKey: "animations.panelHide"
-                                SettingsSwitch {}
-                            }
-                        }
-
-                        SettingsSection {
-                            title: "Window animations"
-
-                            SettingsRow {
-                                width: parent.width
-                                title: "Window open/close animations"
-                                settingKey: "windows.enableAnimations"
-                                SettingsSwitch {}
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: "Window animation speed"
-                                settingKey: "windows.animationSpeed"
-                                SettingsSlider { from: 0.1; to: 3.0; step: 0.1; onChanged: (v) => Settings.setValue("windows.animationSpeed", Math.round(v * 10) / 10) }
-                            }
-                        }
-
-                        SettingsSection {
-                            title: "Preview"
-                            subtitle: "Test animation speed with this demo"
-
-                            SettingsRow {
-                                width: parent.width
-                                title: "Animation demo"
+                                title: qsTr("Animation demo")
                                 TaskButton {
                                     iconName: "play"
-                                    label: "Test animation"
+                                    label: qsTr("Test animation")
                                     onClicked: {
                                         // Create a simple animation demo
                                         demoBox.color = Theme.accent
@@ -2620,78 +2522,78 @@ Window {
                         }
 
                         SettingsSection {
-                            title: "Title bars"
-                            subtitle: "Drawn by NewTeller for applications that ask for them (Qt and KDE apps, X11 programs, terminals). GTK and GNOME apps draw their own."
+                            title: qsTr("Title bars")
+                            subtitle: qsTr("Drawn by NewTeller for applications that ask for them (Qt and KDE apps, X11 programs, terminals). GTK and GNOME apps draw their own.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Title bars for apps without a preference"
-                                subtitle: "Off: such apps draw their own frame."
+                                title: qsTr("Title bars for apps without a preference")
+                                subtitle: qsTr("Off: such apps draw their own frame.")
                                 settingKey: "decorations.server"
                                 SettingsSwitch { settingKey: "decorations.server" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Buttons"
+                                title: qsTr("Buttons")
                                 settingKey: "decorations.buttonsLeft"
                                 SettingsChoice {
                                     settingKey: "decorations.buttonsLeft"
                                     model: [
-                                        { value: false, label: "Right (Windows, GNOME)" },
-                                        { value: true, label: "Left (macOS)" }
+                                        { value: false, label: qsTr("Right (Windows, GNOME)") },
+                                        { value: true, label: qsTr("Left (macOS)") }
                                     ]
                                 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Minimize button"
+                                title: qsTr("Minimize button")
                                 settingKey: "decorations.showMinimize"
                                 SettingsSwitch { settingKey: "decorations.showMinimize" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Maximize button"
+                                title: qsTr("Maximize button")
                                 settingKey: "decorations.showMaximize"
                                 SettingsSwitch { settingKey: "decorations.showMaximize" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Centre the title"
+                                title: qsTr("Centre the title")
                                 settingKey: "decorations.titleCentered"
                                 SettingsSwitch { settingKey: "decorations.titleCentered" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Title bar height"
+                                title: qsTr("Title bar height")
                                 settingKey: "decorations.titleHeight"
                                 SettingsSlider { settingKey: "decorations.titleHeight"; from: 20; to: 48; step: 1; suffix: " px" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Border width"
+                                title: qsTr("Border width")
                                 settingKey: "decorations.border"
                                 SettingsStepper { settingKey: "decorations.border"; from: 0; to: 8; step: 1; suffix: " px" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Title font"
-                                subtitle: "Pango name, e.g. \"Inter Bold 10\". Empty: the theme font."
+                                title: qsTr("Title font")
+                                subtitle: qsTr("Pango name, e.g. \"Inter Bold 10\". Empty: the theme font.")
                                 settingKey: "decorations.font"
                                 SettingsTextField { settingKey: "decorations.font"; placeholder: "(theme font)" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Colours follow the theme"
+                                title: qsTr("Colours follow the theme")
                                 settingKey: "decorations.followTheme"
                                 SettingsSwitch { settingKey: "decorations.followTheme" }
                             }
                             Repeater {
                                 model: [
-                                    { key: "decorations.activeBackground", label: "Active title bar" },
-                                    { key: "decorations.activeForeground", label: "Active title text" },
-                                    { key: "decorations.inactiveBackground", label: "Inactive title bar" },
-                                    { key: "decorations.inactiveForeground", label: "Inactive title text" },
-                                    { key: "decorations.closeHover", label: "Close button highlight" }
+                                    { key: "decorations.activeBackground", label: qsTr("Active title bar") },
+                                    { key: "decorations.activeForeground", label: qsTr("Active title text") },
+                                    { key: "decorations.inactiveBackground", label: qsTr("Inactive title bar") },
+                                    { key: "decorations.inactiveForeground", label: qsTr("Inactive title text") },
+                                    { key: "decorations.closeHover", label: qsTr("Close button highlight") }
                                 ]
                                 delegate: SettingsRow {
                                     required property var modelData
@@ -2718,51 +2620,51 @@ Window {
                         }
 
                         SettingsSection {
-                            title: "Behaviour"
+                            title: qsTr("Behaviour")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Focus follows the mouse"
-                                subtitle: "The window under the pointer gets the keyboard, without being raised."
+                                title: qsTr("Focus follows the mouse")
+                                subtitle: qsTr("The window under the pointer gets the keyboard, without being raised.")
                                 settingKey: "windows.focusFollowsMouse"
                                 SettingsSwitch { settingKey: "windows.focusFollowsMouse" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "New windows open"
+                                title: qsTr("New windows open")
                                 settingKey: "windows.placement"
                                 SettingsChoice {
                                     settingKey: "windows.placement"
                                     model: [
-                                        { value: "center", label: "Centred" },
-                                        { value: "cascade", label: "Cascaded" },
-                                        { value: "mouse", label: "Under the pointer" }
+                                        { value: "center", label: qsTr("Centred") },
+                                        { value: "cascade", label: qsTr("Cascaded") },
+                                        { value: "mouse", label: qsTr("Under the pointer") }
                                     ]
                                 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Snap windows dragged to a screen edge"
+                                title: qsTr("Snap windows dragged to a screen edge")
                                 settingKey: "windows.snapping"
                                 SettingsSwitch { settingKey: "windows.snapping" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Alt+Tab shows windows of every desktop"
+                                title: qsTr("Alt+Tab shows windows of every desktop")
                                 settingKey: "switcher.allWorkspaces"
                                 SettingsSwitch { settingKey: "switcher.allWorkspaces" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Desktop switching wraps around"
+                                title: qsTr("Desktop switching wraps around")
                                 settingKey: "workspaces.wrap"
                                 SettingsSwitch { settingKey: "workspaces.wrap" }
                             }
                         }
 
                         SettingsSection {
-                            title: "Your shortcuts"
-                            subtitle: "Run any command from a key combination, e.g. Super+T -> konsole, Ctrl+Alt+F -> firefox. They take priority over the built-in ones."
+                            title: qsTr("Your shortcuts")
+                            subtitle: qsTr("Run any command from a key combination, e.g. Super+T -> konsole, Ctrl+Alt+F -> firefox. They take priority over the built-in ones.")
 
                             Repeater {
                                 model: windowsColumn.shortcuts
@@ -2785,13 +2687,13 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Add a shortcut"
+                                title: qsTr("Add a shortcut")
                                 Row {
                                     spacing: 6
                                     SettingsTextField {
                                         id: shortcutKeys
                                         width: 140
-                                        placeholder: "Super+T"
+                                        placeholder: qsTr("Super+T")
                                     }
                                     SettingsTextField {
                                         id: shortcutCommand
@@ -2800,7 +2702,7 @@ Window {
                                     }
                                     TaskButton {
                                         iconName: "plus"
-                                        label: "Add"
+                                        label: qsTr("Add")
                                         onClicked: {
                                             const keys = shortcutKeys.text.trim();
                                             const command = shortcutCommand.text.trim();
@@ -2866,15 +2768,15 @@ Window {
                         }
 
                         SettingsSection {
-                            title: "Input languages"
+                            title: qsTr("Input languages")
                             subtitle: keyboardColumn.layouts.length === 0
-                                      ? "Following the system keyboard settings (/etc/default/keyboard). Add a layout to choose your own."
-                                      : "Super+Space or the switch keys below cycle through them; the panel shows the current one."
+                                      ? qsTr("Following the system keyboard settings (/etc/default/keyboard). Add a layout to choose your own.")
+                                      : qsTr("Super+Space or the switch keys below cycle through them; the panel shows the current one.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Your layouts"
-                                subtitle: "Click a layout to make it the first one; × removes it."
+                                title: qsTr("Your layouts")
+                                subtitle: qsTr("Click a layout to make it the first one; × removes it.")
                                 settingKey: "keyboard.layouts"
 
                                 Flow {
@@ -2900,7 +2802,7 @@ Window {
                                     }
                                     Text {
                                         visible: keyboardColumn.layouts.length === 0
-                                        text: "System default"
+                                        text: qsTr("System default")
                                         color: Theme.muted
                                         font.family: Theme.fontFamily
                                         font.pointSize: Theme.fontSize
@@ -2909,7 +2811,7 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Add a layout"
+                                title: qsTr("Add a layout")
 
                                 Flow {
                                     id: addLayoutFlow
@@ -2929,66 +2831,73 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Switch layouts with"
-                                subtitle: "Super+Space always works as well."
+                                title: qsTr("Switch layouts with")
+                                subtitle: qsTr("Super+Space always works as well.")
                                 settingKey: "keyboard.switchKeys"
                                 SettingsChoice {
                                     settingKey: "keyboard.switchKeys"
                                     model: [
-                                        { value: "grp:alt_shift_toggle", label: "Alt+Shift" },
-                                        { value: "grp:ctrl_shift_toggle", label: "Ctrl+Shift" },
-                                        { value: "grp:caps_toggle", label: "Caps Lock" },
-                                        { value: "", label: "Super+Space only" }
+                                        { value: "grp:alt_shift_toggle", label: qsTr("Alt+Shift") },
+                                        { value: "grp:ctrl_shift_toggle", label: qsTr("Ctrl+Shift") },
+                                        { value: "grp:caps_toggle", label: qsTr("Caps Lock") },
+                                        { value: "", label: qsTr("Super+Space only") }
                                     ]
                                 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Show the layout on the panel"
+                                title: qsTr("Show the layout on the panel")
                                 settingKey: "keyboard.showIndicator"
                                 SettingsSwitch { settingKey: "keyboard.showIndicator" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Remember the layout per window")
+                                subtitle: qsTr("Each window keeps the layout it was used with, as on Windows; new windows start with the first one.")
+                                settingKey: "keyboard.layoutPerWindow"
+                                SettingsSwitch { settingKey: "keyboard.layoutPerWindow" }
                             }
                         }
 
                         SettingsSection {
-                            title: "Typing"
+                            title: qsTr("Typing")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Repeat delay"
-                                subtitle: "How long a key is held before it repeats."
+                                title: qsTr("Repeat delay")
+                                subtitle: qsTr("How long a key is held before it repeats.")
                                 settingKey: "keyboard.repeatDelay"
-                                SettingsSlider { settingKey: "keyboard.repeatDelay"; from: 150; to: 1000; step: 25; suffix: " ms" }
+                                SettingsSlider { settingKey: "keyboard.repeatDelay"; from: 150; to: 1000; step: 25; suffix: qsTr(" ms") }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Repeat rate"
+                                title: qsTr("Repeat rate")
                                 settingKey: "keyboard.repeatRate"
-                                SettingsSlider { settingKey: "keyboard.repeatRate"; from: 5; to: 60; step: 1; suffix: " /s" }
+                                SettingsSlider { settingKey: "keyboard.repeatRate"; from: 5; to: 60; step: 1; suffix: qsTr(" /s") }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Num Lock on at login"
+                                title: qsTr("Num Lock on at login")
                                 settingKey: "keyboard.numlock"
                                 SettingsSwitch { settingKey: "keyboard.numlock" }
                             }
                         }
 
                         SettingsSection {
-                            title: "Advanced"
-                            subtitle: "XKB names, comma separated, in the same order as the layouts."
+                            title: qsTr("Advanced")
+                            subtitle: qsTr("XKB names, comma separated, in the same order as the layouts.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Variants"
-                                subtitle: "For example \",phonetic\" for a phonetic second layout."
+                                title: qsTr("Variants")
+                                subtitle: qsTr("For example \",phonetic\" for a phonetic second layout.")
                                 settingKey: "keyboard.variants"
                                 SettingsTextField { settingKey: "keyboard.variants"; placeholder: "(default)" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Extra XKB options"
-                                subtitle: "For example ctrl:nocaps or compose:ralt."
+                                title: qsTr("Extra XKB options")
+                                subtitle: qsTr("For example ctrl:nocaps or compose:ralt.")
                                 settingKey: "keyboard.options"
                                 SettingsTextField { settingKey: "keyboard.options"; placeholder: "(none)" }
                             }
@@ -3014,92 +2923,91 @@ Window {
                         spacing: 16
 
                         SettingsSection {
-                            title: "Touchpad"
-                            subtitle: "Applied right away to every touchpad."
+                            title: qsTr("Touchpad")
+                            subtitle: qsTr("Applied right away to every touchpad.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Tap to click"
-                                subtitle: "One finger taps click, two fingers right-click."
+                                title: qsTr("Tap to click")
+                                subtitle: qsTr("One finger taps click, two fingers right-click.")
                                 settingKey: "touchpad.tapToClick"
                                 SettingsSwitch { settingKey: "touchpad.tapToClick" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Natural scrolling"
-                                subtitle: "Content follows the fingers, like on a phone."
+                                title: qsTr("Natural scrolling")
+                                subtitle: qsTr("Content follows the fingers, like on a phone.")
                                 settingKey: "touchpad.naturalScroll"
                                 SettingsSwitch { settingKey: "touchpad.naturalScroll" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Disable while typing"
+                                title: qsTr("Disable while typing")
                                 settingKey: "touchpad.disableWhileTyping"
                                 SettingsSwitch { settingKey: "touchpad.disableWhileTyping" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Touchpad gestures"
-                                subtitle: "Three fingers sideways move the active window; four "
-                                          + "fingers sideways switch desktops."
+                                title: qsTr("Touchpad gestures")
+                                subtitle: qsTr("Three fingers sideways move the active window; four fingers sideways switch desktops.")
                                 settingKey: "touchpad.gestures"
                                 SettingsSwitch { settingKey: "touchpad.gestures" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Pointer speed"
+                                title: qsTr("Pointer speed")
                                 settingKey: "touchpad.speed"
                                 SettingsSlider { settingKey: "touchpad.speed"; from: -1; to: 1; step: 0.1 }
                             }
                         }
 
                         SettingsSection {
-                            title: "Mouse"
+                            title: qsTr("Mouse")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Pointer speed"
+                                title: qsTr("Pointer speed")
                                 settingKey: "mouse.speed"
                                 SettingsSlider { settingKey: "mouse.speed"; from: -1; to: 1; step: 0.1 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Natural scrolling"
+                                title: qsTr("Natural scrolling")
                                 settingKey: "mouse.naturalScroll"
                                 SettingsSwitch { settingKey: "mouse.naturalScroll" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Left-handed buttons"
+                                title: qsTr("Left-handed buttons")
                                 settingKey: "mouse.leftHanded"
                                 SettingsSwitch { settingKey: "mouse.leftHanded" }
                             }
                         }
 
                         SettingsSection {
-                            title: "Cursor"
+                            title: qsTr("Cursor")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Cursor size"
+                                title: qsTr("Cursor size")
                                 settingKey: "cursor.size"
                                 SettingsStepper { settingKey: "cursor.size"; from: 16; to: 96; step: 8; suffix: " px" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Cursor theme"
-                                subtitle: "An installed theme name, e.g. Adwaita or breeze_cursors. Empty = default."
+                                title: qsTr("Cursor theme")
+                                subtitle: qsTr("An installed theme name, e.g. Adwaita or breeze_cursors. Empty = default.")
                                 settingKey: "cursor.theme"
                                 SettingsTextField { settingKey: "cursor.theme"; placeholder: "(default)" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Installed cursor themes"
+                                title: qsTr("Installed cursor themes")
                                 SettingsChoice {
                                     id: cursorFlow
                                     width: Math.min(420, mouseColumn.width * 0.6)
                                     settingKey: "cursor.theme"
-                                    model: [{ value: "", label: "Default" }].concat(
+                                    model: [{ value: "", label: qsTr("Default") }].concat(
                                         Session.cursorThemes().map(function (t) { return { value: t, label: t }; }))
                                 }
                             }
@@ -3214,13 +3122,13 @@ Window {
                                 spacing: 10
                                 Text {
                                     anchors.verticalCenter: parent.verticalCenter
-                                    text: "Keep these display settings? Reverting in " + displayColumn.revertIn + " s"
+                                    text: qsTr("Keep these display settings? Reverting in %1 s").arg(displayColumn.revertIn)
                                     color: Theme.foreground
                                     font.family: Theme.fontFamily
                                     font.pointSize: Theme.fontSize
                                 }
-                                TaskButton { label: "Keep"; onClicked: displayColumn.keep() }
-                                TaskButton { label: "Revert"; onClicked: displayColumn.revert() }
+                                TaskButton { label: qsTr("Keep"); onClicked: displayColumn.keep() }
+                                TaskButton { label: qsTr("Revert"); onClicked: displayColumn.revert() }
                             }
                         }
                         Text {
@@ -3235,7 +3143,7 @@ Window {
                         Text {
                             width: parent.width
                             visible: displayColumn.screens.length === 0
-                            text: "The screens are managed by the NewTeller session; this page needs it running."
+                            text: qsTr("The screens are managed by the NewTeller session; this page needs it running.")
                             color: Theme.muted
                             wrapMode: Text.WordWrap
                             font.family: Theme.fontFamily
@@ -3256,7 +3164,7 @@ Window {
 
                                 SettingsRow {
                                     width: parent.width
-                                    title: "Use this screen"
+                                    title: qsTr("Use this screen")
                                     SettingsSwitch {
                                         checked: screenSection.modelData.enabled
                                         onChanged: (v) => displayColumn.apply(screenSection.modelData, { enabled: v }, true)
@@ -3265,7 +3173,7 @@ Window {
                                 SettingsRow {
                                     width: parent.width
                                     visible: screenSection.modelData.enabled
-                                    title: "Resolution"
+                                    title: qsTr("Resolution")
                                     Flow {
                                         id: resolutionFlow
                                         width: Math.min(420, displayColumn.width * 0.6)
@@ -3288,7 +3196,7 @@ Window {
                                     width: parent.width
                                     visible: screenSection.modelData.enabled
                                              && displayColumn.refreshRates(screenSection.modelData).length > 1
-                                    title: "Refresh rate"
+                                    title: qsTr("Refresh rate")
                                     Flow {
                                         width: Math.min(420, displayColumn.width * 0.6)
                                         spacing: 4
@@ -3307,8 +3215,8 @@ Window {
                                 SettingsRow {
                                     width: parent.width
                                     visible: screenSection.modelData.enabled
-                                    title: "Scale"
-                                    subtitle: "Bigger text and controls on high-density screens."
+                                    title: qsTr("Scale")
+                                    subtitle: qsTr("Bigger text and controls on high-density screens.")
                                     SettingsChoice {
                                         value: Math.round(screenSection.modelData.scale * 100)
                                         model: [
@@ -3323,11 +3231,11 @@ Window {
                                 SettingsRow {
                                     width: parent.width
                                     visible: screenSection.modelData.enabled
-                                    title: "Rotation"
+                                    title: qsTr("Rotation")
                                     SettingsChoice {
                                         value: screenSection.modelData.transform
                                         model: [
-                                            { value: 0, label: "Normal" }, { value: 1, label: "90°" },
+                                            { value: 0, label: qsTr("Normal") }, { value: 1, label: "90°" },
                                             { value: 2, label: "180°" }, { value: 3, label: "270°" }
                                         ]
                                         onChanged: (v) => displayColumn.apply(screenSection.modelData, { transform: v }, true)
@@ -3336,8 +3244,8 @@ Window {
                                 SettingsRow {
                                     width: parent.width
                                     visible: screenSection.modelData.enabled && displayColumn.screens.length > 1
-                                    title: "Position"
-                                    subtitle: "Relative to the other screen."
+                                    title: qsTr("Position")
+                                    subtitle: qsTr("Relative to the other screen.")
                                     SettingsChoice {
                                         readonly property var other: {
                                             for (var i = 0; i < displayColumn.screens.length; ++i) {
@@ -3348,8 +3256,8 @@ Window {
                                             return null;
                                         }
                                         model: [
-                                            { value: "left", label: "Left of it" }, { value: "right", label: "Right of it" },
-                                            { value: "above", label: "Above" }, { value: "below", label: "Below" }
+                                            { value: "left", label: qsTr("Left of it") }, { value: "right", label: qsTr("Right of it") },
+                                            { value: "above", label: qsTr("Above") }, { value: "below", label: qsTr("Below") }
                                         ]
                                         onChanged: (v) => {
                                             const o = other;
@@ -3373,12 +3281,12 @@ Window {
                         }
 
                         SettingsSection {
-                            title: "More"
+                            title: qsTr("More")
                             SettingsRow {
                                 width: parent.width
-                                title: "Advanced arrangement"
+                                title: qsTr("Advanced arrangement")
                                 subtitle: Session.displaySettingsTool.length > 0
-                                          ? "Drag screens freely in wdisplays."
+                                          ? qsTr("Drag screens freely in wdisplays.")
                                           : "wlr-randr and kanshi also work with NewTeller."
                                 TaskButton {
                                     iconName: "monitor"
@@ -3390,71 +3298,71 @@ Window {
                         }
 
                         SettingsSection {
-                            title: "Desktops & switching"
-                            subtitle: "Ctrl+Super+Left/Right (or Super+Page Up/Down) moves between desktops; add Shift to take the window along. Alt+Tab walks through the windows of the current desktop."
+                            title: qsTr("Desktops & switching")
+                            subtitle: qsTr("Ctrl+Super+Left/Right (or Super+Page Up/Down) moves between desktops; add Shift to take the window along. Alt+Tab walks through the windows of the current desktop.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Number of desktops"
+                                title: qsTr("Number of desktops")
                                 settingKey: "workspaces.count"
                                 SettingsStepper { settingKey: "workspaces.count"; from: 1; to: 9; step: 1 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Show desktops on the panel"
+                                title: qsTr("Show desktops on the panel")
                                 settingKey: "workspaces.showOnPanel"
                                 SettingsSwitch { settingKey: "workspaces.showOnPanel" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Show the window list during Alt+Tab"
+                                title: qsTr("Show the window list during Alt+Tab")
                                 settingKey: "switcher.showOverlay"
                                 SettingsSwitch { settingKey: "switcher.showOverlay" }
                             }
                         }
 
                         SettingsSection {
-                            title: "Night light"
+                            title: qsTr("Night light")
                             subtitle: Session.nightLightAvailable
-                                      ? "Warmer colours in the evening are easier on the eyes."
-                                      : "Needs wlsunset (sudo apt install wlsunset)."
+                                      ? qsTr("Warmer colours in the evening are easier on the eyes.")
+                                      : qsTr("Needs wlsunset (sudo apt install wlsunset).")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Night light"
+                                title: qsTr("Night light")
                                 settingKey: "nightLight.enabled"
                                 SettingsSwitch { settingKey: "nightLight.enabled" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Colour temperature"
-                                subtitle: "Lower is warmer."
+                                title: qsTr("Colour temperature")
+                                subtitle: qsTr("Lower is warmer.")
                                 settingKey: "nightLight.temperature"
                                 SettingsSlider { settingKey: "nightLight.temperature"; from: 2500; to: 5500; step: 100; suffix: " K" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "When"
+                                title: qsTr("When")
                                 settingKey: "nightLight.schedule"
                                 SettingsChoice {
                                     settingKey: "nightLight.schedule"
                                     model: [
-                                        { value: "custom", label: "From - to" },
-                                        { value: "always", label: "Always on" }
+                                        { value: "custom", label: qsTr("From - to") },
+                                        { value: "always", label: qsTr("Always on") }
                                     ]
                                 }
                             }
                             SettingsRow {
                                 width: parent.width
                                 visible: Settings.values["nightLight.schedule"] !== "always"
-                                title: "Turn on at"
+                                title: qsTr("Turn on at")
                                 settingKey: "nightLight.from"
                                 SettingsTextField { width: 90; settingKey: "nightLight.from"; placeholder: "20:00" }
                             }
                             SettingsRow {
                                 width: parent.width
                                 visible: Settings.values["nightLight.schedule"] !== "always"
-                                title: "Turn off at"
+                                title: qsTr("Turn off at")
                                 settingKey: "nightLight.to"
                                 SettingsTextField { width: 90; settingKey: "nightLight.to"; placeholder: "07:00" }
                             }
@@ -3480,46 +3388,46 @@ Window {
                         spacing: 16
 
                         SettingsSection {
-                            title: "Screen lock"
+                            title: qsTr("Screen lock")
                             subtitle: Session.lockAvailable
-                                      ? "Super+L locks the screen. Your password unlocks it."
-                                      : "The screen locker is not installed: install gtklock (or swaylock)"
+                                      ? qsTr("Super+L locks the screen. Your password unlocks it.")
+                                      : qsTr("The screen locker is not installed: install gtklock (or swaylock)")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Built-in administrator prompt"
+                                title: qsTr("Built-in administrator prompt")
                                 subtitle: Polkit.registered
-                                          ? "Active: NewTeller asks for the administrator password itself. Applies after logging in again."
-                                          : "Off or unavailable: " + (Session.polkitAgent.length > 0
-                                                                       ? Session.polkitAgent : "no polkit agent")
-                                            + " asks instead. Applies after logging in again."
+                                          ? qsTr("Active: NewTeller asks for the administrator password itself. Applies after logging in again.")
+                                          : qsTr("Off or unavailable: %1 asks instead. Applies after logging in again.")
+                                                .arg(Session.polkitAgent.length > 0 ? Session.polkitAgent
+                                                                                    : qsTr("no polkit agent"))
                                 settingKey: "security.builtinAgent"
                                 SettingsSwitch { settingKey: "security.builtinAgent" }
                             }
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Lock after inactivity"
+                                title: qsTr("Lock after inactivity")
                                 subtitle: "0 = never."
                                 settingKey: "power.lockAfter"
                                 SettingsStepper { settingKey: "power.lockAfter"; from: 0; to: 240; step: 1; suffix: " min" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Lock before suspend"
+                                title: qsTr("Lock before suspend")
                                 settingKey: "power.lockOnSleep"
                                 SettingsSwitch { settingKey: "power.lockOnSleep" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Wallpaper on the lock screen"
+                                title: qsTr("Wallpaper on the lock screen")
                                 settingKey: "lock.useWallpaper"
                                 SettingsSwitch { settingKey: "lock.useWallpaper" }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Lock screen colour"
-                                subtitle: "Behind the wallpaper, or the whole background without one."
+                                title: qsTr("Lock screen colour")
+                                subtitle: qsTr("Behind the wallpaper, or the whole background without one.")
                                 settingKey: "lock.color"
                                 Row {
                                     spacing: 8
@@ -3537,24 +3445,24 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Lock now"
+                                title: qsTr("Lock now")
                                 TaskButton {
                                     iconName: "lock"
-                                    label: "Lock"
+                                    label: qsTr("Lock")
                                     onClicked: Shell.lock()
                                 }
                             }
                         }
 
                         SettingsSection {
-                            title: "Screen"
+                            title: qsTr("Screen")
                             subtitle: Session.idleAvailable
-                                      ? "Video players keep the screen on while they play."
-                                      : "Idle timers need swayidle (sudo apt install swayidle)."
+                                      ? qsTr("Video players keep the screen on while they play.")
+                                      : qsTr("Idle timers need swayidle (sudo apt install swayidle).")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Turn the screen off after"
+                                title: qsTr("Turn the screen off after")
                                 subtitle: "0 = never. Any key or mouse movement wakes it."
                                 settingKey: "power.screenOffAfter"
                                 SettingsStepper { settingKey: "power.screenOffAfter"; from: 0; to: 240; step: 1; suffix: " min" }
@@ -3562,10 +3470,10 @@ Window {
                         }
 
                         SettingsSection {
-                            title: "Administrator prompts"
+                            title: qsTr("Administrator prompts")
                             subtitle: Session.polkitAgent.length > 0
-                                      ? "Authentication agent: " + Session.polkitAgent
-                                      : "No polkit agent found; install lxpolkit so programs can ask for the administrator password."
+                                      ? qsTr("Authentication agent: %1").arg(Session.polkitAgent)
+                                      : qsTr("No polkit agent found; install lxpolkit so programs can ask for the administrator password.")
                         }
                     }
                 }
@@ -3588,11 +3496,11 @@ Window {
                         spacing: 16
 
                         SettingsSection {
-                            title: "This system"
+                            title: qsTr("This system")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Version"
+                                title: qsTr("Version")
                                 Text {
                                     text: "NewTeller " + Shell.version
                                     color: Theme.foreground
@@ -3603,7 +3511,7 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Computer"
+                                title: qsTr("Computer")
                                 Text {
                                     text: Shell.hostname + " · " + Shell.distro + " · kernel " + Shell.kernelVersion
                                     color: Theme.foreground
@@ -3614,7 +3522,7 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Session"
+                                title: qsTr("Session")
                                 Text {
                                     text: (Shell.isWayland ? "Wayland" : "X11") + " as " + Shell.userName
                                     color: Theme.foreground
@@ -3625,7 +3533,7 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Window tracking"
+                                title: qsTr("Window tracking")
                                 Text {
                                     text: Windows.backend === "x11" ? "EWMH (X11)"
                                           : Windows.backend === "wayland" ? "wlr-foreign-toplevel (Wayland)"
@@ -3638,7 +3546,7 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Applications"
+                                title: qsTr("Applications")
                                 Text {
                                     text: Apps.count + " in the catalogue"
                                     color: Theme.foreground
@@ -3649,7 +3557,7 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Memory and uptime"
+                                title: qsTr("Memory and uptime")
                                 Text {
                                     text: System.memoryText + " · up " + System.uptimeText
                                     color: Theme.foreground
@@ -3661,34 +3569,34 @@ Window {
                         }
 
                         SettingsSection {
-                            title: "Files"
+                            title: qsTr("Files")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Configuration"
+                                title: qsTr("Configuration")
                                 subtitle: Settings.configPath()
 
                                 TaskButton {
                                     iconName: "file-code"
-                                    label: "Open JSON"
+                                    label: qsTr("Open JSON")
                                     onClicked: Shell.openConfig()
                                 }
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: "Export"
-                                subtitle: "Writes a JSON copy of the current settings next to your home folder."
+                                title: qsTr("Export")
+                                subtitle: qsTr("Writes a JSON copy of the current settings next to your home folder.")
                                 TaskButton {
                                     iconName: "download"
-                                    label: "Export a copy"
+                                    label: qsTr("Export a copy")
                                     onClicked: settingsWindow.exportSettings()
                                 }
                             }
                         }
 
                         SettingsSection {
-                            title: "Configuration problems"
-                            subtitle: "Reported by the same validator as newteller-ctl validate."
+                            title: qsTr("Configuration problems")
+                            subtitle: qsTr("Reported by the same validator as newteller-ctl validate.")
                             visible: Settings.validate().length > 0
 
                             Repeater {
@@ -3704,16 +3612,15 @@ Window {
                         }
 
                         SettingsSection {
-                            title: "Danger zone"
+                            title: qsTr("Danger zone")
 
                             SettingsRow {
                                 width: parent.width
-                                title: "Reset everything"
-                                subtitle: "Every key of " + Settings.configPath()
-                                          + " returns to its default. Themes on disk are kept."
+                                title: qsTr("Reset everything")
+                                subtitle: qsTr("Every key of %1 returns to its default. Themes on disk are kept.").arg(Settings.configPath())
                                 TaskButton {
                                     iconName: "rotate-ccw"
-                                    label: "Reset all settings"
+                                    label: qsTr("Reset all settings")
                                     onClicked: confirmBox.visible = true
                                 }
                             }
@@ -3750,7 +3657,7 @@ Window {
             }
             Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: Settings.dirty ? "Saving…" : "All changes saved"
+                text: Settings.dirty ? qsTr("Saving…") : qsTr("All changes saved")
                 color: Theme.muted
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSize - 1
@@ -3761,7 +3668,7 @@ Window {
             anchors.right: parent.right
             anchors.rightMargin: 14
             anchors.verticalCenter: parent.verticalCenter
-            text: "Settings apply live — no restart needed"
+            text: qsTr("Settings apply live — no restart needed")
             color: Theme.muted
             font.family: Theme.fontFamily
             font.pointSize: Theme.fontSize - 1
@@ -3790,7 +3697,7 @@ Window {
             if (slash > 0)
                 dir = path.substring(0, slash);
         }
-        return Shell.folderPath(dir.length > 0 ? dir : (Shell.home + "/Pictures"));
+        return Shell.folderPath(dir.length > 0 ? dir : (Shell.picturesPath));
     }
 
     // Never store anything the desktop cannot render as a wallpaper: the
@@ -3812,7 +3719,7 @@ Window {
         const dir = Shell.folderPath(startDir === undefined || startDir === null ? "" : startDir);
         filePortalDir = dir;
         if (FilePortal.available) {
-            FilePortal.pickFile("Choose a wallpaper", dir, true);
+            FilePortal.pickFile(qsTr("Choose a wallpaper"), dir, true);
         } else {
             filePicker.openFor(dir, true);
         }
@@ -3889,7 +3796,7 @@ Window {
                     delegate: TaskButton {
                         required property var modelData
                         required property int index
-                        label: index === 0 ? "Pictures" : "System backgrounds"
+                        label: index === 0 ? qsTr("Pictures") : qsTr("System backgrounds")
                         active: settingsWindow.wallpaperFolderIndex === index
                         onClicked: settingsWindow.wallpaperFolderIndex = index
                     }
@@ -3897,12 +3804,12 @@ Window {
                 Item { width: 12; height: 1 }
                 TaskButton {
                     iconName: "shuffle"
-                    label: "Random"
+                    label: qsTr("Random")
                     onClicked: wallpaperOverlay.pickRandom()
                 }
                 TaskButton {
                     iconName: "x"
-                    label: "Close"
+                    label: qsTr("Close")
                     onClicked: wallpaperOverlay.visible = false
                 }
             }
@@ -3955,7 +3862,7 @@ Window {
                 Text {
                     anchors.centerIn: parent
                     visible: wallpaperGrid.count === 0
-                    text: "No pictures in this folder"
+                    text: qsTr("No pictures in this folder")
                     color: Theme.muted
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize
@@ -4004,7 +3911,7 @@ Window {
                 spacing: 12
 
                 Text {
-                    text: "Reset all settings?"
+                    text: qsTr("Reset all settings?")
                     color: Theme.foreground
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize + 3
@@ -4012,7 +3919,7 @@ Window {
                 }
                 Text {
                     width: parent.width
-                    text: "Every key of shell.json returns to its default. This cannot be undone."
+                    text: qsTr("Every key of shell.json returns to its default. This cannot be undone.")
                     color: Theme.muted
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize
@@ -4022,12 +3929,12 @@ Window {
                     spacing: 8
                     TaskButton {
                         iconName: "check"
-                        label: "Reset"
+                        label: qsTr("Reset")
                         onClicked: settingsWindow.resetAllSettings()
                     }
                     TaskButton {
                         iconName: "x"
-                        label: "Cancel"
+                        label: qsTr("Cancel")
                         onClicked: confirmBox.visible = false
                     }
                 }

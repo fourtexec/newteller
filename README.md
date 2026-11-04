@@ -62,13 +62,43 @@ inside VirtualBox. The implemented pieces are:
 - Start menu: highlighted fuzzy search, category chips, recently used row,
   Lock / Log out / Sleep / Restart / Shut down, Settings; right-click an
   application to pin or unpin it on the dock
-- Desktop icons can be dragged to any position; the layout is saved in
-  `desktop.iconPositions` and restored on the next start (right-click the
-  desktop to auto-arrange or reset it)
+- Desktop icons and widgets share one invisible grid: an icon takes a cell,
+  a widget the cells its size needs, nothing overlaps, and dragging snaps to
+  the nearest free cells. The layout is saved in `desktop.gridPositions`
+  (right-click the desktop to auto-arrange or reset it). A launcher
+  (`.desktop` file) of an installed application shows that application's
+  icon and name and starts it on a double-click; other launchers start only
+  when they are marked executable (otherwise they open as text)
 - **Notification centre: the bell at the end of the panel.** The history of the
   built-in notification daemon, newest first, with per-entry removal, a clear-all
   button and the do-not-disturb switch; the bell counts what arrived while it
   was closed. Per-row removal is `Notifications.removeHistory()` on the daemon.
+- **Notification sounds** (`notifications.soundEnabled`): a new popup plays
+  the application's `sound-file`, the chosen `notifications.soundFile` or
+  the theme's message sound (canberra-gtk-play, pw-play or paplay); never
+  under do-not-disturb or for `suppress-sound`.
+- **Notification popups** follow the spec's hints: pictures (`image-data`,
+  `image-path`), a click runs the `default` action, `transient` ones stay out
+  of the history, `resident` ones stay after an action, and a popup tagged
+  with `x-canonical-private-synchronous` or `x-dunst-stack-tag` replaces the
+  previous one with that tag (volume and brightness scripts); `value`
+  (0-100) draws a level bar.
+- **Bluetooth pairing agent**: keyboards show the code to type and phones
+  the code to compare as notifications with Pair / Cancel; without an
+  agent BlueZ could only pair devices that need no confirmation. The code
+  gets through do-not-disturb and goes away once the device is paired.
+- **Removable drives** (`drives.notify`): a USB stick or memory card that is
+  plugged in is announced with Open (mounts it through UDisks2 and opens the
+  folder) and Eject (unmounts it and powers the drive off); internal disks
+  and loop devices stay quiet. Needs udisks2.
+- **Search in the wrong layout**: the start menu and the run dialog retry a
+  query that finds nothing in the other keyboard layout, so "ашкуащч" finds
+  Firefox and "nthv" finds Терминал (ЙЦУКЕН <-> QWERTY).
+- **Russian interface.** The shell follows the system language (`ru_RU`
+  gives a Russian panel, menus and settings); Settings → Appearance →
+  Language (`shell.language`: `auto`, `en`, `ru`) switches it live.
+  Translations live in `i18n/<language>.json` (English text -> translation)
+  and need no Qt Linguist tools to build.
 - **Settings application: a full settings GUI built into the shell.** Every key of
   `shell.json`, a theme editor, plugin management, diagnostics and config export —
   see [Settings application](#settings-application). The QML is compiled into the
@@ -126,6 +156,38 @@ inside VirtualBox. The implemented pieces are:
   password field, "Allow" and "Cancel"; a wrong password is reported and
   asked again. `security.builtinAgent` turns it off (an external agent such
   as lxpolkit is used then, as when the build has no libpolkit-agent-1).
+  The session runs exactly one agent: polkit agents from the
+  distribution's autostart (`*polkit*`, `*policykit*`) are skipped, and when
+  polkit refuses the built-in agent (no login session, no polkit daemon) no
+  external one is started either - it would fail the same way and only show
+  an "Error" window. The Security settings page shows the reason.
+- **Graphics tablets**: the pen moves the pointer and touching the
+  tablet clicks (no pressure yet).
+- **Touchscreens**: a touch goes to the surface under the finger and
+  focuses its window like a click; shell cards close on a touch outside.
+- **Virtual machines and remote desktops** can take every key
+  (keyboard-shortcuts-inhibit) while they have the focus, Super and
+  Alt+Tab included; `Super+Escape` gives the desktop its shortcuts back,
+  and `Ctrl+Alt+F1..F12` always works.
+- **Games and 3D views**: relative pointer motion and pointer locking or
+  confinement (pointer-constraints), so mouse look works in Wayland and
+  XWayland games, Blender and remote desktops.
+- **Drag and drop** between applications and inside them (files from the
+  file manager into a browser or mail, text, tabs), with the dragged icon
+  under the pointer.
+- **Input methods (IBus, fcitx5).** The compositor relays text fields
+  (text-input-v3) to the input method (input-method-v2): composed text,
+  pre-edit and the candidate window under the text cursor work in Wayland
+  applications. Without an input method, text fields are left alone, so GTK
+  keeps handling dead keys and compose itself; the lock screen never goes
+  through an input method.
+- **Video keeps the screen awake.** The shell serves
+  `org.freedesktop.ScreenSaver` (Inhibit / UnInhibit), which VLC, browsers
+  and XWayland applications use while they play; Wayland applications use
+  the idle-inhibit protocol. An inhibition ends with UnInhibit or when the
+  application quits, so a crashed player never keeps the screen on.
+  Flatpak applications reach it through the portal (`Inhibit=gtk` in
+  `newteller-portals.conf`).
 - **Open with root.** The dock's right-click menu and the start menu's
   right-click menu start an application as root:
   `newteller-run-as-root` runs it through pkexec (the administrator prompt
@@ -145,6 +207,8 @@ inside VirtualBox. The implemented pieces are:
   layout from `/etc/default/keyboard`); `Super+Space` or Alt+Shift (or
   Ctrl+Shift / Caps Lock) switches, and the panel shows the current layout.
   Repeat rate/delay, Num Lock and raw XKB variants/options are there too.
+  `keyboard.layoutPerWindow` ("Remember the layout per window") gives every
+  window its own layout, as on Windows: switching windows switches back.
 - **Mouse & touchpad.** Tap to click, natural scrolling, disable while
   typing, pointer speed and left-handed buttons, applied live through
   libinput; cursor theme and size.
@@ -183,7 +247,8 @@ inside VirtualBox. The implemented pieces are:
   firmware packages, and starts NetworkManager.
 - **Clipboard history** on `Super+V` (wl-clipboard): the texts copied in the
   session, newest first; click one to copy it again. Kept in memory unless
-  `clipboard.persistHistory` is on.
+  `clipboard.persistHistory` is on. Passwords that a password manager marks as secret
+  (KeePassXC, Bitwarden and others) are never recorded.
 - **Power profiles** (power-profiles-daemon) in quick settings and low-battery
   notifications at 10% and 5%.
 - **Night light** (wlsunset) on a schedule or always, from quick settings or
@@ -192,7 +257,8 @@ inside VirtualBox. The implemented pieces are:
   xdg-desktop-portal-wlr, a polkit agent for administrator prompts, and
   `Ctrl+Alt+F1…F12` to switch virtual terminals.
 - Screenshots: `Print` captures the whole screen, `Shift+Print` or `Super+Shift+S` an
-  area picked with the mouse (slurp); the PNG lands in `~/Pictures/Screenshots`, is
+  area picked with the mouse (slurp); the PNG lands in `Screenshots` inside the pictures folder (`~/Pictures`, or its
+  localized name from `user-dirs.dirs`), is
   copied to the clipboard (wl-copy) and announced through the notification daemon
 - Multi-monitor: one desktop and one panel per screen
 - Rust core (application search index, metrics sampler, config, watcher) with a
@@ -297,6 +363,9 @@ writes from its settings, and listens on a control socket (`$NEWTELLER_IPC`):
 `newteller-compositor --msg reload|lock|locked|dpms on|dpms off|layout next|workspace N|outputs|windows|kill ID|exit`.
 `windows` marks frozen windows with the `h` flag and reports each window's
 process id; `kill ID` force-quits one (never the compositor or the shell).
+`idle-inhibit on|off` keeps the screen awake while the connection that sent
+it stays open (the shell uses it for `org.freedesktop.ScreenSaver`); without
+an argument it reports whether anything inhibits idle (`ok 1` / `ok 0`).
 Watchers get `event hung ID`, `event responsive ID`, `event closed ID` and
 `event click X Y` (any button press, so open shell cards can close).
 
@@ -420,7 +489,7 @@ All keys, with their defaults:
 | `panel.pinned` | `[]` | desktop file IDs pinned to the panel |
 | `panel.material` | `"theme"` | `theme`, `opaque`, `translucent`, `frosted` or `liquid` panel surface |
 | `dock.showWindows` | `true` | show running applications/windows in the dock |
-| `dock.group` | `true` | merge all windows of one application into one dock button |
+| `dock.group` | `false` | merge all windows of one application into one dock button (off: one button per window, windows of one application side by side) |
 | `dock.iconSize` | `28` | dock button icon size in pixels |
 | `dock.material` | `"translucent"` | floating dock surface: `none`, `opaque` (non-transparent), `translucent` (half transparent), `frosted` or `liquid` |
 | `dock.backgroundColor` / `dock.backgroundOpacity` | `""` / `0.5` | dock surface tint, and an opacity bias around the material preset (`0.5` = the material's own transparency, lower is clearer, higher is more solid) |
@@ -449,14 +518,14 @@ All keys, with their defaults:
 | `desktop.iconSize` | `48` | icon size in pixels |
 | `desktop.cellWidth` / `desktop.cellHeight` | `96` / `110` | icon grid cell |
 | `desktop.contextMenu` | `true` | desktop right-click menu |
-| `desktop.iconPositions` | `{}` | saved drag-and-drop positions, keyed by file name |
+| `desktop.gridPositions` | `{}` | saved grid cells: `"icon:<file name>"` / `"widget:<plugin id>"` -> `{col, row}` |
 | `icons.path` / `icons.set` | `""` / `"lucide"` | extra IconKit checkout overriding the bundled icons / set folder inside it |
 | `icons.cache` | `true` | cache resolved icons |
 | `plugins.disabled` | `[]` | plugin IDs to disable |
 | `plugins.autoRescan` | `true` | rescan when the plugin directories change |
 | `apps.recent` / `apps.recentLimit` | `[]` / `8` | usage history and row length |
 | `apps.usage` | `{}` | launch counts (drives the recent row and ranking) |
-| `apps.terminalCommand` | `""` | terminal used by "Open terminal" (auto-detected when empty) |
+| `apps.terminalCommand` | `"newteller-terminal"` | prefix that runs a command in a terminal (`kitty -e`, `gnome-terminal --`); `newteller-terminal`, also used when the named program is missing, picks the installed terminal (`x-terminal-emulator` on Debian, else foot, kitty, alacritty, wezterm, konsole, gnome-terminal, …) |
 | `apps.maxApps` | `0` | cap on the catalogue (0 = unlimited) |
 | `system.interval` | `2000` | metrics sampling interval in ms |
 | `system.perCore` | `false` | per-core CPU metrics |
@@ -562,7 +631,8 @@ It manages the whole configuration of the shell:
 - **Panel & dock** — position, thickness, edge gap, auto-hide with delay, running
   badge, clock/date formats; dock behaviour (show running applications, group
   windows of one application, icon size) and the pinned applications list.
-- **Desktop** — wallpaper browser over `~/Pictures` and `/usr/share/backgrounds`
+- **Desktop** — wallpaper browser over the pictures folder (`~/Pictures` or its localized
+  XDG name) and `/usr/share/backgrounds`
   (with a random pick), icon visibility and grid sizes, right-click menu toggle.
   "Choose from file manager" opens the file chooser that is already installed in
   the system (the freedesktop FileChooser portal — the GTK dialog on GNOME, the

@@ -189,7 +189,7 @@ void FilePortal::pickFile(const QString &title, const QString &startFolder, bool
         // A second, unrestricted entry so the dialog can still show every
         // file (the portal expects at least one filter to be selectable).
         FilterSet all;
-        all.name = QStringLiteral("All files");
+        all.name = tr("All files");
         all.patterns.append(FilterPattern { 0 /* glob */, QStringLiteral("*") });
         options.insert(QStringLiteral("filters"),
                        QVariant::fromValue(QList<FilterSet> { images, all }));
@@ -210,7 +210,7 @@ void FilePortal::pickFile(const QString &title, const QString &startFolder, bool
                                                        QLatin1String(kFileChooser),
                                                        QStringLiteral("OpenFile"));
     call << QString() /* parent window: the portal picks its own placement */
-         << (title.isEmpty() ? QStringLiteral("Choose a file") : title)
+         << (title.isEmpty() ? tr("Choose a file") : title)
          << options;
     auto *watcher = new QDBusPendingCallWatcher(bus.asyncCall(call), this);
     connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, watcher]() {

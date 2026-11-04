@@ -110,7 +110,7 @@ Window {
 
             ShellTitleBar {
                 Layout.fillWidth: true
-                title: "Run a command"
+                title: qsTr("Run a command")
                 iconName: "app-window"
                 onCloseClicked: dialog.hide()
             }
@@ -148,7 +148,7 @@ Window {
                         anchors.fill: parent
                         verticalAlignment: Text.AlignVCenter
                         visible: input.text.length === 0
-                        text: "Run a command or search applications..."
+                        text: qsTr("Run a command or search applications...")
                         color: Theme.muted
                         font: input.font
                     }
@@ -159,7 +159,7 @@ Window {
             Text {
                 Layout.fillWidth: true
                 visible: (Settings.values["run.history"] || []).length > 0
-                text: "Up/Down walks the command history"
+                text: qsTr("Up/Down walks the command history")
                 horizontalAlignment: Text.AlignHCenter
                 color: Qt.rgba(Theme.muted.r, Theme.muted.g, Theme.muted.b, 0.7)
                 font.family: Theme.fontFamily

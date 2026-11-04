@@ -104,8 +104,11 @@ Window {
                 summary: e.summary || "",
                 body: e.body || "",
                 icon: e.icon || "",
+                image: e.image || "",
+                value: e.value === undefined ? -1 : e.value,
                 actions: JSON.stringify(e.actions || []),
-                timeout: e.timeout || 0
+                timeout: e.timeout || 0,
+                revision: e.revision || 0
             };
             var at = -1;
             for (var j = 0; j < cards.count; ++j) {
@@ -114,12 +117,15 @@ Window {
                     break;
                 }
             }
-            if (at < 0)
+            if (at < 0) {
                 cards.append(cardData);
-            else if (at !== i)
-                cards.move(at, i, 1);
-            else
+            } else {
+                // A moved card is updated too (replaced notifications keep
+                // their id but not their text).
+                if (at !== i)
+                    cards.move(at, i, 1);
                 cards.set(i, cardData);
+            }
         }
         syncVisibility();
     }
@@ -231,33 +237,78 @@ Window {
                 summary: model.summary,
                 body: model.body,
                 icon: model.icon,
+                image: model.image,
+                value: model.value,
                 actions: notif.parseActions(model.actions),
                 timeout: model.timeout
             })
-            readonly property var actions: entry.actions.filter(a => a && a.length > 0)
+            // The spec sends key/label pairs. "default" is not a button: it
+            // is what clicking the notification itself does (open the chat,
+            // the mail). Keys come first so an empty label cannot shift them.
+            readonly property var buttons: {
+                const list = entry.actions || [];
+                const out = [];
+                for (let i = 0; i + 1 < list.length; i += 2) {
+                    const key = String(list[i] || "");
+                    if (key.length > 0 && key !== "default")
+                        out.push({ key: key, label: String(list[i + 1] || "") || key });
+                }
+                return out;
+            }
+            readonly property bool hasDefault: {
+                const list = entry.actions || [];
+                for (let i = 0; i < list.length; i += 2) {
+                    if (list[i] === "default")
+                        return true;
+                }
+                return false;
+            }
             // 1.0 -> 0.0 while the timeout runs; drives the progress line.
             property real progress: (entry.timeout || 0) > 0 ? 1.0 : 0.0
+            // A new revision (the notification was replaced) starts the
+            // timeout again.
+            readonly property int revision: model.revision
 
             // Expire on the daemon-side timeout (0 = sticky).
+            function arm() {
+                if ((card.entry.timeout || 0) > 0 && card.visible) {
+                    lifeTimer.restart();
+                    lifeAnimation.restart();
+                } else {
+                    lifeTimer.stop();
+                    lifeAnimation.stop();
+                }
+            }
+            onRevisionChanged: arm()
+            onVisibleChanged: arm()
+            Component.onCompleted: arm()
             Timer {
                 id: lifeTimer
-                running: card.entry.timeout > 0 && card.visible
                 interval: card.entry.timeout || 0
                 onTriggered: Notifications.dismiss(card.entry.id, 1)
             }
             NumberAnimation {
+                id: lifeAnimation
                 target: card
                 property: "progress"
                 from: 1.0
                 to: 0.0
                 duration: Math.max(1, card.entry.timeout || 1)
-                running: lifeTimer.running
+            }
+
+            // A click on the card: its default action, or just dismiss it.
+            function activate() {
+                if (card.hasDefault)
+                    Notifications.invokeAction(card.entry.id, "default");
+                else
+                    Notifications.dismiss(card.entry.id, 2);
             }
 
             MouseArea {
+                objectName: "notificationBody"
                 anchors.fill: parent
-                enabled: card.actions.length === 0
-                onClicked: Notifications.dismiss(card.entry.id, 2)
+                cursorShape: card.hasDefault ? Qt.PointingHandCursor : Qt.ArrowCursor
+                onClicked: card.activate()
             }
 
             RowLayout {
@@ -277,11 +328,27 @@ Window {
                 }
 
                 Item {
+                    // notifications.showAppIcon; the notification's own
+                    // picture (an avatar, a cover) shows either way.
+                    readonly property bool hasImage: (card.entry.image || "").length > 0
+                    visible: hasImage || Settings.values["notifications.showAppIcon"] !== false
                     Layout.preferredWidth: 38
                     Layout.preferredHeight: 38
                     Layout.alignment: Qt.AlignTop
+                    Image {
+                        objectName: "notificationImage"
+                        anchors.fill: parent
+                        visible: parent.hasImage
+                        sourceSize.width: 96
+                        sourceSize.height: 96
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                        smooth: true
+                        source: card.entry.image || ""
+                    }
                     Rectangle {
                         anchors.fill: parent
+                        visible: !parent.hasImage
                         radius: 12
                         color: Qt.rgba(notif.appearance.accent.r, notif.appearance.accent.g,
                                       notif.appearance.accent.b, 0.18)
@@ -340,24 +407,44 @@ Window {
                         elide: Text.ElideRight
                     }
 
+                    // The value hint: a level or progress (volume scripts,
+                    // copies), 0-100.
+                    Rectangle {
+                        objectName: "notificationValue"
+                        Layout.fillWidth: true
+                        Layout.topMargin: 4
+                        Layout.preferredHeight: 4
+                        visible: (card.entry.value === undefined ? -1 : card.entry.value) >= 0
+                        radius: 2
+                        color: Qt.rgba(notif.appearance.foreground.r, notif.appearance.foreground.g,
+                                       notif.appearance.foreground.b, 0.16)
+                        Rectangle {
+                            anchors.left: parent.left
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            width: parent.width * Math.max(0, Math.min(100, card.entry.value || 0)) / 100
+                            radius: 2
+                            color: notif.appearance.accent
+                            Behavior on width {
+                                NumberAnimation { duration: motion.fast }
+                            }
+                        }
+                    }
+
                     Row {
                         Layout.fillWidth: true
                         Layout.topMargin: 4
                         spacing: 6
-                        visible: card.actions.length > 0
+                        visible: card.buttons.length > 0
 
                         Repeater {
-                            // The spec sends key/label pairs.
-                            model: Math.floor(card.actions.length / 2)
+                            model: card.buttons
 
                             delegate: TaskButton {
-                                required property int index
-                                readonly property int at: index * 2
-                                label: card.actions.length > at + 1 ? card.actions[at + 1]
-                                                                    : card.actions[at]
-                                onClicked: {
-                                    Notifications.invokeAction(card.entry.id, card.actions[at]);
-                                }
+                                required property var modelData
+                                objectName: "notificationAction"
+                                label: modelData.label
+                                onClicked: Notifications.invokeAction(card.entry.id, modelData.key)
                             }
                         }
                     }

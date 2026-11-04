@@ -32,6 +32,28 @@ QStringList listValue(QSettings &s, const QString &key)
     return textValue(s, key).split(QLatin1Char(';'), Qt::SkipEmptyParts);
 }
 
+// Localised keys: key[lang_COUNTRY], then key[lang], then key - for every
+// localisable field, not only Name (GenericName[ru], Comment[ru], ...).
+QString localizedText(QSettings &s, const QString &key, const QString &lang)
+{
+    QString value = textValue(s, QStringLiteral("%1[%2]").arg(key, lang));
+    if (value.isEmpty() && lang.contains(QLatin1Char('_')))
+        value = textValue(s, QStringLiteral("%1[%2]").arg(key, lang.section(QLatin1Char('_'), 0, 0)));
+    if (value.isEmpty())
+        value = textValue(s, key);
+    return value;
+}
+
+QStringList localizedList(QSettings &s, const QString &key, const QString &lang)
+{
+    QStringList value = listValue(s, QStringLiteral("%1[%2]").arg(key, lang));
+    if (value.isEmpty() && lang.contains(QLatin1Char('_')))
+        value = listValue(s, QStringLiteral("%1[%2]").arg(key, lang.section(QLatin1Char('_'), 0, 0)));
+    if (value.isEmpty())
+        value = listValue(s, key);
+    return value;
+}
+
 // Case folded name used for sorting and comparisons.
 QString foldName(const QString &name)
 {
@@ -306,23 +328,14 @@ bool AppModel::parseDesktop(const QString &path, AppEntry &out, const QString &l
     if (out.noDisplay || out.hidden)
         return false;
 
-    // Localisation: Name[lang_COUNTRY], then Name[lang], then Name.
-    QString name = textValue(s, QStringLiteral("Name[%1]").arg(lang));
-    if (name.isEmpty())
-        name = textValue(s, QStringLiteral("Name[%1]").arg(lang.section(QLatin1Char('_'), 0, 0)));
-    if (name.isEmpty())
-        name = textValue(s, QStringLiteral("Name"));
+    const QString name = localizedText(s, QStringLiteral("Name"), lang);
     if (name.isEmpty())
         return false;
 
     out.path = path;
     out.name = name;
-    out.genericName = textValue(s, QStringLiteral("GenericName[%1]").arg(lang));
-    if (out.genericName.isEmpty())
-        out.genericName = textValue(s, QStringLiteral("GenericName"));
-    out.comment = textValue(s, QStringLiteral("Comment[%1]").arg(lang));
-    if (out.comment.isEmpty())
-        out.comment = textValue(s, QStringLiteral("Comment"));
+    out.genericName = localizedText(s, QStringLiteral("GenericName"), lang);
+    out.comment = localizedText(s, QStringLiteral("Comment"), lang);
     out.exec = textValue(s, QStringLiteral("Exec"));
     out.tryExec = textValue(s, QStringLiteral("TryExec"));
     out.icon = textValue(s, QStringLiteral("Icon"));
@@ -331,9 +344,7 @@ bool AppModel::parseDesktop(const QString &path, AppEntry &out, const QString &l
     out.dbusActivatable = s.value(QStringLiteral("DBusActivatable"), false).toBool();
     out.startupWmClass = textValue(s, QStringLiteral("StartupWMClass"));
     out.categories = listValue(s, QStringLiteral("Categories"));
-    out.keywords = listValue(s, QStringLiteral("Keywords[%1]").arg(lang));
-    if (out.keywords.isEmpty())
-        out.keywords = listValue(s, QStringLiteral("Keywords"));
+    out.keywords = localizedList(s, QStringLiteral("Keywords"), lang);
     out.mimeTypes = listValue(s, QStringLiteral("MimeType"));
     out.onlyShowIn = listValue(s, QStringLiteral("OnlyShowIn"));
     out.notShowIn = listValue(s, QStringLiteral("NotShowIn"));
@@ -346,13 +357,12 @@ bool AppModel::parseDesktop(const QString &path, AppEntry &out, const QString &l
         if (!group.startsWith(QLatin1String("Desktop Action ")))
             continue;
         s.beginGroup(group);
-        const QString actionName = textValue(s, QStringLiteral("Name[%1]").arg(lang));
+        const QString actionName = localizedText(s, QStringLiteral("Name"), lang);
         const QString actionExec = textValue(s, QStringLiteral("Exec"));
         if (!actionExec.isEmpty()) {
             QVariantMap action;
             action.insert(QStringLiteral("id"), group.section(QLatin1Char(' '), 2));
-            action.insert(QStringLiteral("name"),
-                          actionName.isEmpty() ? textValue(s, QStringLiteral("Name")) : actionName);
+            action.insert(QStringLiteral("name"), actionName);
             action.insert(QStringLiteral("exec"), actionExec);
             action.insert(QStringLiteral("icon"), textValue(s, QStringLiteral("Icon")));
             out.actions.append(action);
@@ -448,7 +458,48 @@ int AppModel::indexOf(const QString &id) const
     return m_indexById.value(id, -1);
 }
 
+// Russian ЙЦУКЕН and English QWERTY share the keys: a query typed in the
+// wrong layout ("ашкуащч", "ntrcn") becomes the intended one.
+static QString swapKeyboardLayout(const QString &query)
+{
+    static const QString english = QStringLiteral("qwertyuiop[]asdfghjkl;'zxcvbnm,.`");
+    static const QString russian = QStringLiteral("йцукенгшщзхъфывапролджэячсмитьбюё");
+    bool cyrillic = false;
+    for (const QChar c : query) {
+        if (c.script() == QChar::Script_Cyrillic) {
+            cyrillic = true;
+            break;
+        }
+    }
+    const QString &from = cyrillic ? russian : english;
+    const QString &to = cyrillic ? english : russian;
+    QString out;
+    out.reserve(query.size());
+    for (const QChar c : query) {
+        const QChar lower = c.toLower();
+        const int at = from.indexOf(lower);
+        if (at < 0) {
+            out += c;
+            continue;
+        }
+        const QChar mapped = to.at(at);
+        out += c.isUpper() ? mapped.toUpper() : mapped;
+    }
+    return out;
+}
+
 QVariantList AppModel::searchDetailed(const QString &query, int limit) const
+{
+    QVariantList hits = searchDetailedOnce(query, limit);
+    if (hits.isEmpty() && !query.trimmed().isEmpty()) {
+        const QString swapped = swapKeyboardLayout(query);
+        if (swapped != query)
+            hits = searchDetailedOnce(swapped, limit);
+    }
+    return hits;
+}
+
+QVariantList AppModel::searchDetailedOnce(const QString &query, int limit) const
 {
     if (!m_index.isValid())
         return {};
@@ -478,9 +529,20 @@ QVariantMap AppModel::searchResult(const QString &query, int limit) const
 
 QVariantList AppModel::search(const QString &query, int limit) const
 {
+    QVariantList hits = searchOnce(query, limit);
+    if (hits.isEmpty() && !query.trimmed().isEmpty()) {
+        const QString swapped = swapKeyboardLayout(query);
+        if (swapped != query)
+            hits = searchOnce(swapped, limit);
+    }
+    return hits;
+}
+
+QVariantList AppModel::searchOnce(const QString &query, int limit) const
+{
     // Rust path: ranked hits, each expanded to the full application map so the
     // existing QML keeps working and gains score/kind/highlight for free.
-    const QVariantList hits = searchDetailed(query, limit);
+    const QVariantList hits = searchDetailedOnce(query, limit);
     if (!hits.isEmpty() || (m_index.isValid() && !query.trimmed().isEmpty())) {
         QVariantList out;
         out.reserve(hits.size());
@@ -642,8 +704,7 @@ QVariantList AppModel::launchArgs(const QString &id, const QStringList &files) c
         return {};
     const AppEntry &app = m_apps.at(row);
 
-    const QString terminalCommand = m_settings->value(
-        QStringLiteral("apps.terminalCommand"), QStringLiteral("x-terminal-emulator -e")).toString();
+    const QString terminalCommand = m_settings->terminalCommand();
 
     if (Rust::available()) {
         // Full spec behaviour: quoting, %i/%c/%k expansion, %u/%f file lists,
@@ -681,7 +742,7 @@ bool AppModel::launch(const QString &id, const QStringList &files)
 {
     const QVariantList args = launchArgs(id, files);
     if (args.isEmpty()) {
-        emit launchFailed(id, QStringLiteral("no such application or empty Exec line"));
+        emit launchFailed(id, tr("The application's launcher has no command to run."));
         return false;
     }
 
@@ -692,13 +753,13 @@ bool AppModel::launch(const QString &id, const QStringList &files)
 
     const QString program = argv.takeFirst();
     if (program.isEmpty()) {
-        emit launchFailed(id, QStringLiteral("empty program"));
+        emit launchFailed(id, tr("The application's launcher has no command to run."));
         return false;
     }
 
     const bool ok = QProcess::startDetached(program, argv);
     if (!ok) {
-        emit launchFailed(id, QStringLiteral("QProcess::startDetached failed for %1").arg(program));
+        emit launchFailed(id, tr("%1 was not found. The application may have been removed.").arg(program));
         return false;
     }
 
@@ -719,7 +780,7 @@ bool AppModel::launchAsRoot(const QString &id)
 {
     const QString helper = QStandardPaths::findExecutable(QStringLiteral("newteller-run-as-root"));
     if (helper.isEmpty() || QStandardPaths::findExecutable(QStringLiteral("pkexec")).isEmpty()) {
-        emit launchFailed(id, QStringLiteral("pkexec or newteller-run-as-root is not installed"));
+        emit launchFailed(id, tr("pkexec is not installed (sudo apt install pkexec)."));
         return false;
     }
     const QVariantList args = launchArgs(id);
@@ -727,7 +788,7 @@ bool AppModel::launchAsRoot(const QString &id)
     for (const QVariant &arg : args)
         argv << arg.toString();
     if (argv.isEmpty() || argv.constFirst().isEmpty()) {
-        emit launchFailed(id, QStringLiteral("no such application or empty Exec line"));
+        emit launchFailed(id, tr("The application's launcher has no command to run."));
         return false;
     }
     // pkexec wants an absolute program path.
@@ -735,7 +796,7 @@ bool AppModel::launchAsRoot(const QString &id)
     if (!program.isEmpty())
         argv[0] = program;
     if (!QProcess::startDetached(helper, argv)) {
-        emit launchFailed(id, QStringLiteral("could not start %1").arg(helper));
+        emit launchFailed(id, tr("%1 could not be started.").arg(helper));
         return false;
     }
     rememberRecent(id);
@@ -757,8 +818,7 @@ bool AppModel::launchAction(const QString &id, const QString &actionId)
         if (exec.isEmpty())
             return false;
 
-        const QString terminalCommand = m_settings->value(
-            QStringLiteral("apps.terminalCommand"), QStringLiteral("x-terminal-emulator -e")).toString();
+        const QString terminalCommand = m_settings->terminalCommand();
         QStringList argv = Rust::available()
                                ? Rust::Index::execArgv(exec,
                                                        action.value(QStringLiteral("icon")).toString(),

@@ -160,6 +160,16 @@ if [[ $reply != ok* || -z $window_id ]]; then
     echo "the compositor lists no windows ($reply)" >&2
     exit 1
 fi
+# No polkit agent window: polkit refuses the built-in agent here (no login
+# session), and an external agent started anyway only showed an "Error"
+# window - the same one users saw at every login.
+agent_windows=$(printf '%s' "${reply#ok }" | tr '\037' '\n' \
+    | awk -F $'\x1e' 'tolower($3) ~ /polkit/ { print $3 ": " $4 }')
+if [[ -n $agent_windows ]]; then
+    echo "a polkit agent opened a window at login: $agent_windows" >&2
+    exit 1
+fi
+echo "session smoke: no polkit agent window at login"
 reply=$(msg thumbnail "$window_id" 200 || true)
 thumb=${reply#ok }
 if [[ $reply != ok* || ! -s $thumb ]]; then
@@ -279,6 +289,124 @@ if has_shell_name; then
         echo 'the shell did not open the start menu over D-Bus' >&2
         exit 1
     fi
+
+    # org.freedesktop.Notifications as applications call it (libnotify uses
+    # the interface name and the spec's argument order), and replaces_id
+    # updates a notification in place with the same id.
+    notify() {
+        gdbus call --session --dest org.freedesktop.Notifications \
+            --object-path /org/freedesktop/Notifications \
+            --method org.freedesktop.Notifications.Notify \
+            session-smoke "$1" '' 'Download' "$2" '[]' '{}' 'int32 5000' 2>&1
+    }
+    first=$(notify 0 '10%')
+    first_id=$(printf '%s' "$first" | sed -n 's/.*uint32 \([0-9]*\).*/\1/p')
+    if [[ -z $first_id ]]; then
+        echo "applications cannot send notifications: $first" >&2
+        exit 1
+    fi
+    second=$(notify "$first_id" '90%')
+    if [[ $second != *"uint32 $first_id,"* ]]; then
+        echo "replacing notification $first_id gave another id: $second" >&2
+        exit 1
+    fi
+    info=$(gdbus call --session --dest org.freedesktop.Notifications \
+        --object-path /org/freedesktop/Notifications \
+        --method org.freedesktop.Notifications.GetServerInformation 2>&1)
+    if [[ $info != "('NewTeller', "* ]]; then
+        echo "GetServerInformation is not four strings: $info" >&2
+        exit 1
+    fi
+    echo "session smoke: notifications arrive over D-Bus and update in place (id $first_id)"
+
+    # A tray application registers its StatusNotifierItem with the shell's
+    # watcher through the org.kde.StatusNotifierWatcher interface.
+    if ! "$python" - <<'PY'
+import os, sys
+from PySide6.QtCore import QCoreApplication, QObject, Property, ClassInfo
+from PySide6.QtDBus import QDBusConnection, QDBusInterface
+app = QCoreApplication(sys.argv)
+@ClassInfo({"D-Bus Interface": "org.kde.StatusNotifierItem"})
+class Item(QObject):
+    Category = Property(str, lambda self: "ApplicationStatus")
+    Id = Property(str, lambda self: "session-smoke")
+    Title = Property(str, lambda self: "Session smoke tray item")
+    Status = Property(str, lambda self: "Active")
+    IconName = Property(str, lambda self: "dialog-information")
+bus = QDBusConnection.sessionBus()
+name = "org.kde.StatusNotifierItem-%d-1" % os.getpid()
+item = Item()
+bus.registerObject("/StatusNotifierItem", item, QDBusConnection.ExportAllProperties)
+bus.registerService(name)
+watcher = QDBusInterface("org.kde.StatusNotifierWatcher", "/StatusNotifierWatcher",
+                         "org.kde.StatusNotifierWatcher", bus)
+reply = watcher.call("RegisterStatusNotifierItem", name)
+if reply.errorName():
+    print("RegisterStatusNotifierItem failed:", reply.errorName(), reply.errorMessage(),
+          file=sys.stderr)
+    sys.exit(1)
+registered = watcher.property("RegisteredStatusNotifierItems") or []
+if not any(name in entry for entry in registered):
+    print("the watcher does not list the item:", registered, file=sys.stderr)
+    sys.exit(1)
+PY
+    then
+        echo 'a tray application could not register its icon' >&2
+        exit 1
+    fi
+    echo 'session smoke: tray applications register with the StatusNotifierWatcher'
+
+    # org.freedesktop.ScreenSaver.Inhibit (video players, XWayland apps)
+    # keeps the screen awake while the caller stays on the bus, and is
+    # released when it leaves.
+    if [[ $(msg idle-inhibit || true) != 'ok 0' ]]; then
+        echo "idle is inhibited before anyone asked ($(msg idle-inhibit || true))" >&2
+        exit 1
+    fi
+    "$python" - <<'PY' &
+import sys, time
+from PySide6.QtCore import QCoreApplication
+from PySide6.QtDBus import QDBusConnection, QDBusInterface
+app = QCoreApplication(sys.argv)
+bus = QDBusConnection.sessionBus()
+screensaver = QDBusInterface("org.freedesktop.ScreenSaver", "/org/freedesktop/ScreenSaver",
+                             "org.freedesktop.ScreenSaver", bus)
+reply = screensaver.call("Inhibit", "session-smoke", "playing a video")
+if reply.errorName():
+    print("Inhibit failed:", reply.errorName(), reply.errorMessage(), file=sys.stderr)
+    sys.exit(1)
+time.sleep(3)  # stay on the bus: the inhibition holds until we leave
+PY
+    inhibitor=$!
+    inhibited=
+    for _ in $(seq 1 20); do
+        if [[ $(msg idle-inhibit || true) == 'ok 1' ]]; then
+            inhibited=1
+            break
+        fi
+        sleep 0.1
+    done
+    if [[ -z $inhibited ]]; then
+        echo 'org.freedesktop.ScreenSaver.Inhibit did not keep the screen awake' >&2
+        exit 1
+    fi
+    wait "$inhibitor" || {
+        echo 'calling org.freedesktop.ScreenSaver.Inhibit failed' >&2
+        exit 1
+    }
+    released=
+    for _ in $(seq 1 30); do
+        if [[ $(msg idle-inhibit || true) == 'ok 0' ]]; then
+            released=1
+            break
+        fi
+        sleep 0.1
+    done
+    if [[ -z $released ]]; then
+        echo 'an inhibition outlived the application that took it' >&2
+        exit 1
+    fi
+    echo 'session smoke: org.freedesktop.ScreenSaver inhibits idle and lets go'
 else
     echo 'session smoke: no session bus or gdbus, skipping the start menu check' >&2
 fi

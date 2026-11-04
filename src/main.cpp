@@ -12,8 +12,12 @@
 #include "polkitagent.h"
 #include "quicksettings.h"
 #include "sessionservices.h"
+#include "screensaver.h"
+#include "translator.h"
 #include "clipboardhistory.h"
 #include "bluetooth.h"
+#include "bluetoothagent.h"
+#include "drivemonitor.h"
 #include "settings.h"
 #include "shellcontroller.h"
 #include "shellwindow.h"
@@ -26,6 +30,9 @@
 #include <QDesktopServices>
 #include <QFile>
 #include <QGuiApplication>
+#include <QDBusConnection>
+#include <QLocale>
+#include <memory>
 #include <QIcon>
 #include <QJsonDocument>
 #include <QLockFile>
@@ -223,6 +230,17 @@ int main(int argc, char *argv[])
     WindowList windows;
     NotificationDaemon notifications(&settings);
     ShellController shell(&settings, &notifications);
+    // A launch that fails (the program was removed, a broken launcher)
+    // would otherwise do nothing visible.
+    QObject::connect(&apps, &AppModel::launchFailed, &notifications,
+                     [&apps, &notifications](const QString &id, const QString &reason) {
+                         QString name = apps.byId(id).value(QStringLiteral("name")).toString();
+                         if (name.isEmpty())
+                             name = id;
+                         notifications.send(QStringLiteral("NewTeller"),
+                                            QCoreApplication::translate("main", "Could not start %1").arg(name),
+                                            reason, QStringLiteral("app-window"));
+                     });
     PluginManager plugins(&settings);
     SystemMonitor system(&settings);
     TrayWatcher tray(&settings);
@@ -232,8 +250,22 @@ int main(int argc, char *argv[])
     PolkitAgent polkit(&settings);
     SessionServices session(&settings);
     session.setTheme(&theme);
+    // org.freedesktop.ScreenSaver, only inside the NewTeller session (another
+    // desktop serves it itself).
+    ScreenSaverService screenSaver(qEnvironmentVariable("NEWTELLER_SESSION") == QLatin1String("1"));
+    QObject::connect(&screenSaver, &ScreenSaverService::inhibitedChanged, &session,
+                     &SessionServices::setIdleInhibited);
+    QObject::connect(&screenSaver, &ScreenSaverService::lockRequested, &session, &SessionServices::lock);
     ClipboardHistory clipboard(&settings);
     Bluetooth bluetooth;
+    // Pairing codes and confirmations (org.bluez.Agent1), only in the
+    // NewTeller session: another desktop has its own agent.
+    std::unique_ptr<BluetoothAgent> bluetoothAgent;
+    if (qEnvironmentVariable("NEWTELLER_SESSION") == QLatin1String("1"))
+        bluetoothAgent = std::make_unique<BluetoothAgent>(&notifications, QDBusConnection::systemBus());
+    std::unique_ptr<DriveMonitor> driveMonitor;
+    if (qEnvironmentVariable("NEWTELLER_SESSION") == QLatin1String("1"))
+        driveMonitor = std::make_unique<DriveMonitor>(&notifications, &settings, QDBusConnection::systemBus());
     // Declared before the engine: the engine owns the QML objects that hold
     // connections to this object, and it must therefore be destroyed first.
     FilePortal filePortal;
@@ -256,7 +288,34 @@ int main(int argc, char *argv[])
     qmlRegisterUncreatableType<ShellWindow>("NewTeller", 1, 0, "ShellWindow",
                                             QStringLiteral("ShellWindow is only available as an attached property"));
 
+    // The shell's language: shell.language ("auto" = the system locale),
+    // switched live when the setting changes.
+    JsonTranslator translator;
+    auto applyLanguage = [&translator, &settings]() {
+        QCoreApplication::removeTranslator(&translator);
+        const QString language = JsonTranslator::resolveLanguage(
+            settings.value(QStringLiteral("shell.language"), QStringLiteral("auto")).toString());
+        if (translator.loadLanguage(language))
+            QCoreApplication::installTranslator(&translator);
+        // Dates, month and day names follow a language chosen explicitly;
+        // "auto" keeps the system locale.
+        const QString setting = settings.value(QStringLiteral("shell.language")).toString();
+        QLocale::setDefault(setting.isEmpty() || setting == QLatin1String("auto") ? QLocale::system()
+                                                                                  : QLocale(language));
+    };
+    applyLanguage();
+
     QQmlApplicationEngine engine;
+    QObject::connect(&settings, &Settings::changed, &engine, [&](const QString &key) {
+        if (key == QLatin1String("shell.language") || key.isEmpty()) {
+            applyLanguage();
+            engine.retranslate();
+            // Texts that C++ hands to QML (network state, layout names)
+            // are only re-read on their own change signals.
+            emit quick.networkChanged();
+            emit session.keyboardChanged();
+        }
+    });
     engine.addImageProvider(QStringLiteral("theme"), new ThemeIconProvider);
     engine.addImageProvider(QStringLiteral("windowthumb"), new WindowThumbnailProvider);
     engine.addImageProvider(QStringLiteral("tray"), createTrayImageProvider(&tray));

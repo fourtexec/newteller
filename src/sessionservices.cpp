@@ -206,6 +206,8 @@ SessionServices::SessionServices(Settings *settings, QObject *parent)
         // A restarted compositor forgot the blur regions.
         for (const QString &command : std::as_const(m_blurCommands))
             sendCommand(command);
+        if (m_idleInhibited)
+            sendCommand(QStringLiteral("idle-inhibit on"));
         emit compositorChanged();
     });
     connect(&m_socket, &QLocalSocket::disconnected, this, [this] {
@@ -443,35 +445,36 @@ QString SessionServices::keyboardLayoutLabel() const
 
 QString SessionServices::layoutDisplayName(const QString &code) const
 {
-    static const QHash<QString, QString> names = {
-        {QStringLiteral("us"), QStringLiteral("English (US)")},
-        {QStringLiteral("gb"), QStringLiteral("English (UK)")},
-        {QStringLiteral("ru"), QStringLiteral("Russian")},
-        {QStringLiteral("ua"), QStringLiteral("Ukrainian")},
-        {QStringLiteral("by"), QStringLiteral("Belarusian")},
-        {QStringLiteral("kz"), QStringLiteral("Kazakh")},
-        {QStringLiteral("de"), QStringLiteral("German")},
-        {QStringLiteral("fr"), QStringLiteral("French")},
-        {QStringLiteral("es"), QStringLiteral("Spanish")},
-        {QStringLiteral("it"), QStringLiteral("Italian")},
-        {QStringLiteral("pl"), QStringLiteral("Polish")},
-        {QStringLiteral("cz"), QStringLiteral("Czech")},
-        {QStringLiteral("pt"), QStringLiteral("Portuguese")},
-        {QStringLiteral("br"), QStringLiteral("Portuguese (Brazil)")},
-        {QStringLiteral("tr"), QStringLiteral("Turkish")},
-        {QStringLiteral("gr"), QStringLiteral("Greek")},
-        {QStringLiteral("il"), QStringLiteral("Hebrew")},
-        {QStringLiteral("ara"), QStringLiteral("Arabic")},
-        {QStringLiteral("jp"), QStringLiteral("Japanese")},
-        {QStringLiteral("cn"), QStringLiteral("Chinese")},
-        {QStringLiteral("kr"), QStringLiteral("Korean")},
-        {QStringLiteral("ge"), QStringLiteral("Georgian")},
-        {QStringLiteral("am"), QStringLiteral("Armenian")},
-        {QStringLiteral("se"), QStringLiteral("Swedish")},
-        {QStringLiteral("fi"), QStringLiteral("Finnish")},
-        {QStringLiteral("no"), QStringLiteral("Norwegian")},
-        {QStringLiteral("dk"), QStringLiteral("Danish")},
-        {QStringLiteral("nl"), QStringLiteral("Dutch")},
+    // Built per call: tr() follows a live language switch.
+    const QHash<QString, QString> names = {
+        {QStringLiteral("us"), tr("English (US)")},
+        {QStringLiteral("gb"), tr("English (UK)")},
+        {QStringLiteral("ru"), tr("Russian")},
+        {QStringLiteral("ua"), tr("Ukrainian")},
+        {QStringLiteral("by"), tr("Belarusian")},
+        {QStringLiteral("kz"), tr("Kazakh")},
+        {QStringLiteral("de"), tr("German")},
+        {QStringLiteral("fr"), tr("French")},
+        {QStringLiteral("es"), tr("Spanish")},
+        {QStringLiteral("it"), tr("Italian")},
+        {QStringLiteral("pl"), tr("Polish")},
+        {QStringLiteral("cz"), tr("Czech")},
+        {QStringLiteral("pt"), tr("Portuguese")},
+        {QStringLiteral("br"), tr("Portuguese (Brazil)")},
+        {QStringLiteral("tr"), tr("Turkish")},
+        {QStringLiteral("gr"), tr("Greek")},
+        {QStringLiteral("il"), tr("Hebrew")},
+        {QStringLiteral("ara"), tr("Arabic")},
+        {QStringLiteral("jp"), tr("Japanese")},
+        {QStringLiteral("cn"), tr("Chinese")},
+        {QStringLiteral("kr"), tr("Korean")},
+        {QStringLiteral("ge"), tr("Georgian")},
+        {QStringLiteral("am"), tr("Armenian")},
+        {QStringLiteral("se"), tr("Swedish")},
+        {QStringLiteral("fi"), tr("Finnish")},
+        {QStringLiteral("no"), tr("Norwegian")},
+        {QStringLiteral("dk"), tr("Danish")},
+        {QStringLiteral("nl"), tr("Dutch")},
     };
     const QString key = code.trimmed().toLower();
     return names.value(key, code);
@@ -500,6 +503,14 @@ void SessionServices::setKeyboardLayout(int index)
 // ---------------------------------------------------------------------------
 // Lock, blanking, logout
 // ---------------------------------------------------------------------------
+
+void SessionServices::setIdleInhibited(bool inhibited)
+{
+    if (m_idleInhibited == inhibited)
+        return;
+    m_idleInhibited = inhibited;
+    sendCommand(inhibited ? QStringLiteral("idle-inhibit on") : QStringLiteral("idle-inhibit off"));
+}
 
 void SessionServices::lock()
 {
@@ -608,6 +619,8 @@ QString SessionServices::compositorConfigText() const
     text += confLine(QStringLiteral("keyboard.repeatDelay"),
                      QString::number(qBound(100, value("keyboard.repeatDelay").toInt(), 2000)));
     text += confLine(QStringLiteral("keyboard.numlock"), boolText(value("keyboard.numlock")));
+    text += confLine(QStringLiteral("keyboard.layoutPerWindow"),
+                     boolText(value("keyboard.layoutPerWindow")));
     text += confLine(QStringLiteral("touchpad.tapToClick"), boolText(value("touchpad.tapToClick")));
     text += confLine(QStringLiteral("touchpad.naturalScroll"), boolText(value("touchpad.naturalScroll")));
     text += confLine(QStringLiteral("touchpad.disableWhileTyping"),
@@ -1077,7 +1090,7 @@ QString SessionServices::wifiDevice()
 {
     m_wifiStatus.clear();
     if (!wifiAvailable()) {
-        m_wifiStatus = QStringLiteral("NetworkManager is not running. Install and start it "
+        m_wifiStatus = tr("NetworkManager is not running. Install and start it "
                                       "(network-manager / NetworkManager) to use Wi-Fi.");
         return QString();
     }
@@ -1097,24 +1110,24 @@ QString SessionServices::wifiDevice()
             const bool enabled = nmProperty(kNmPath, kNm, QStringLiteral("WirelessEnabled")).toBool();
             const bool hardware = nmProperty(kNmPath, kNm, QStringLiteral("WirelessHardwareEnabled")).toBool();
             if (!hardware)
-                m_wifiStatus = QStringLiteral("Wi-Fi is blocked by the hardware switch or the airplane-mode key.");
+                m_wifiStatus = tr("Wi-Fi is blocked by the hardware switch or the airplane-mode key.");
             else if (!enabled)
-                m_wifiStatus = QStringLiteral("Wi-Fi is turned off.");
+                m_wifiStatus = tr("Wi-Fi is turned off.");
             else
-                m_wifiStatus = QStringLiteral("The Wi-Fi adapter %1 (driver %2) is not ready - "
+                m_wifiStatus = tr("The Wi-Fi adapter %1 (driver %2) is not ready - "
                                               "its firmware may be missing.").arg(iface, driver);
         }
         return device.path();
     }
     if (!unmanaged.isEmpty()) {
-        m_wifiStatus = QStringLiteral("The Wi-Fi adapter %1 is not managed by NetworkManager "
+        m_wifiStatus = tr("The Wi-Fi adapter %1 is not managed by NetworkManager "
                                       "(it is configured in /etc/network/interfaces). Remove it "
                                       "there and restart NetworkManager.").arg(unmanaged);
     } else if (sysfsHasWireless()) {
-        m_wifiStatus = QStringLiteral("NetworkManager does not see the Wi-Fi adapter. "
+        m_wifiStatus = tr("NetworkManager does not see the Wi-Fi adapter. "
                                       "Restart NetworkManager or check its configuration.");
     } else {
-        m_wifiStatus = QStringLiteral("No Wi-Fi adapter was found: its driver or firmware is "
+        m_wifiStatus = tr("No Wi-Fi adapter was found: its driver or firmware is "
                                       "missing (see 'dmesg | grep -i firmware').");
     }
     return QString();
@@ -1122,7 +1135,11 @@ QString SessionServices::wifiDevice()
 
 void SessionServices::readAccessPoints()
 {
-    const QString device = wifiDevice();
+    readAccessPointsOf(wifiDevice());
+}
+
+void SessionServices::readAccessPointsOf(const QString &device)
+{
     m_wifiNetworks.clear();
     if (!device.isEmpty() && m_wifiStatus.isEmpty()) {
         const QString active = nmProperty(device, kNmWireless, QStringLiteral("ActiveAccessPoint"))
@@ -1168,7 +1185,7 @@ void SessionServices::readAccessPoints()
 void SessionServices::scanWifi()
 {
     const QString device = wifiDevice();
-    readAccessPoints();
+    readAccessPointsOf(device);
     if (device.isEmpty() || !m_wifiStatus.isEmpty())
         return;
     // Ask for a fresh scan; the list is read again once it had time to run.
@@ -1198,7 +1215,7 @@ void SessionServices::connectWifi(const QString &ssid, const QString &password)
     }
     if (network.value(QStringLiteral("enterprise")).toBool()) {
         emit wifiConnectFinished(false, ssid,
-                                 QStringLiteral("This is an enterprise (802.1X) network; set it up "
+                                 tr("This is an enterprise (802.1X) network; set it up "
                                                 "with nm-connection-editor."));
         return;
     }
@@ -1239,7 +1256,7 @@ void SessionServices::connectWifi(const QString &ssid, const QString &password)
                         QVariant::fromValue(QDBusObjectPath(accessPoint))}, 5000);
     } else {
         if (secure && password.isEmpty()) {
-            emit wifiConnectFinished(false, ssid, QStringLiteral("Enter the password for %1").arg(ssid));
+            emit wifiConnectFinished(false, ssid, tr("Enter the password for %1").arg(ssid));
             return;
         }
         NMSettingsMap settings;
@@ -1295,9 +1312,9 @@ void SessionServices::connectWifi(const QString &ssid, const QString &password)
         m_wifiBusy = false;
         readAccessPoints();
         emit wifiConnectFinished(ok, ssid, ok ? QString()
-                                              : QStringLiteral("Could not connect to %1 - "
-                                                               "wrong password or the network "
-                                                               "refused it.").arg(ssid));
+                                              : tr("Could not connect to %1 - "
+                                                   "wrong password or the network "
+                                                   "refused it.").arg(ssid));
     });
     poll->start();
 }
@@ -1368,7 +1385,7 @@ QString SessionServices::killWindow(int id)
     }
     if (reply.startsWith(QLatin1String("error ")))
         return reply.mid(6);
-    return QStringLiteral("The compositor did not answer.");
+    return tr("The compositor did not answer.");
 }
 
 QVariantList SessionServices::hungWindows() const
@@ -1492,7 +1509,7 @@ QString SessionServices::setOutput(const QString &name, bool enabled, int width,
     if (reply == QLatin1String("ok"))
         return QString();
     if (reply.isEmpty())
-        return QStringLiteral("The compositor did not answer.");
+        return tr("The compositor did not answer.");
     return reply.startsWith(QLatin1String("error ")) ? reply.mid(6) : reply;
 }
 
@@ -1567,8 +1584,19 @@ void SessionServices::runAutostart()
         // or the first one installed): a second one from the distribution's
         // autostart fails to register and shows "An authentication agent
         // already exists for the given subject" on every login.
-        const QString base = QFileInfo(program).fileName().toLower();
-        if (base.contains(QLatin1String("polkit")) || base == QLatin1String("lxpolkit"))
+        // LXQt names its agent "policykit", and some entries start the agent
+        // through `env VAR=... /path/agent`, so look past an env prefix.
+        QString agent = program;
+        if (QFileInfo(program).fileName() == QLatin1String("env")) {
+            for (const QString &arg : std::as_const(args)) {
+                if (!arg.contains(QLatin1Char('=')) && !arg.startsWith(QLatin1Char('-'))) {
+                    agent = arg;
+                    break;
+                }
+            }
+        }
+        const QString base = QFileInfo(agent).fileName().toLower();
+        if (base.contains(QLatin1String("polkit")) || base.contains(QLatin1String("policykit")))
             continue;
         // nm-applet only shows up in a StatusNotifier tray in indicator mode;
         // its stock autostart entry asks for the old X11 tray icon.
@@ -1592,6 +1620,16 @@ void SessionServices::startPolkitAgent()
         m_polkitAgent = QStringLiteral("(already running)");
         return;
     }
+    // The built-in agent tried and polkit refused it (no login session, no
+    // polkit daemon): an external agent fails the same way and only shows an
+    // "Error" window at every login, so none is started. External agents are
+    // for builds without the built-in one, or when it is turned off.
+    const QString builtinError =
+        QCoreApplication::instance()->property("newteller.polkitAgentError").toString();
+    if (!builtinError.isEmpty()) {
+        m_polkitAgent = QStringLiteral("none (%1)").arg(builtinError);
+        return;
+    }
     // The first agent that is installed; a second agent in the same session
     // simply fails to register and exits.
     const QStringList candidates{
@@ -1606,6 +1644,7 @@ void SessionServices::startPolkitAgent()
         QStringLiteral("/usr/lib/polkit-kde-authentication-agent-1"),
         QStringLiteral("/usr/libexec/kf6/polkit-kde-authentication-agent-1"),
         QStringLiteral("/usr/libexec/xfce-polkit"),
+        QStringLiteral("/usr/bin/lxqt-policykit-agent"),
     };
     for (const QString &candidate : candidates) {
         if (QFileInfo(candidate).isExecutable()) {

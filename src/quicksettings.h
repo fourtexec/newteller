@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QHash>
+#include <functional>
 #include <QObject>
 #include <QProcess>
 #include <QStringList>
@@ -48,6 +50,8 @@ class QuickSettings : public QObject, protected QDBusContext {
     Q_PROPERTY(QString mediaPlayer READ mediaPlayer NOTIFY mediaChanged)
     Q_PROPERTY(QString mediaTitle READ mediaTitle NOTIFY mediaChanged)
     Q_PROPERTY(QString mediaArtist READ mediaArtist NOTIFY mediaChanged)
+    // mpris:artUrl of the current track (file://, http(s)://), or empty.
+    Q_PROPERTY(QString mediaArtUrl READ mediaArtUrl NOTIFY mediaChanged)
     Q_PROPERTY(bool mediaPlaying READ mediaPlaying NOTIFY mediaChanged)
 
 public:
@@ -69,6 +73,7 @@ public:
     QString mediaPlayer() const;
     QString mediaTitle() const { return m_mediaTitle; }
     QString mediaArtist() const { return m_mediaArtist; }
+    QString mediaArtUrl() const { return m_mediaArtUrl; }
     bool mediaPlaying() const { return m_mediaPlaying; }
 
     // Volume ------------------------------------------------------------------
@@ -113,12 +118,16 @@ private:
     void setNetworkStatus(int state, bool wifiEnabled);
     void setupMedia();
     void scanMediaPlayers();
-    void addMediaPlayer(const QString &service);
+    void addMediaPlayer(const QString &service, const QString &owner = QString());
     void removeMediaPlayer(const QString &service);
     void readMediaPlayer(const QString &service);
+    void applyPlayerProperties(const QString &service, const QVariantMap &properties);
     void pickMedia();
     void callPlayer(const QString &method);
-    bool runTool(const QStringList &arguments, QString *output) const;
+    // Runs a mixer tool without blocking the UI thread; done(ok, stdout).
+    // A tool that hangs (a stuck audio server) is killed after 3 s.
+    void runToolAsync(const QStringList &arguments, std::function<void(bool, const QString &)> done);
+    void applyVolume(int percent, bool muted);
 
     Settings *m_settings = nullptr;
     QTimer m_tickTimer;
@@ -139,7 +148,21 @@ private:
     QString m_networkStatus;
     // Media
     QStringList m_mediaPlayers; // org.mpris.MediaPlayer2.* services
+    // Well-known name -> unique name of its owner: signals arrive from the
+    // unique name, never from org.mpris.MediaPlayer2.<player>.
+    QHash<QString, QString> m_mediaOwners;
+    // What each player plays, from GetAll and PropertiesChanged.
+    struct PlayerState {
+        bool playing = false;
+        QString title;
+        QString artist;
+        QString artUrl;
+    };
+    QHash<QString, PlayerState> m_playerStates;
+    QString m_currentPlayer; // the player the popup shows and controls
+    bool m_volumeReading = false; // one mixer read at a time
     QString m_mediaTitle;
     QString m_mediaArtist;
+    QString m_mediaArtUrl;
     bool m_mediaPlaying = false;
 };
