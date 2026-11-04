@@ -1608,6 +1608,27 @@ def main():
         check("org.gnome.Nautilus" not in settings._values["panel.pinned"],
               f"unpinning removes the id again ({settings._values['panel.pinned']})")
 
+        # Shut down asks first; closing the menu cancels, confirming runs it.
+        QMetaObject.invokeMethod(menu, "show")
+        QTest.qWait(50)
+        confirm = menu.findChild(QObject, "powerConfirm")
+        shell.calls.clear()
+        QMetaObject.invokeMethod(menu, "askPower", Q_ARG("QVariant", "powerOff"))
+        QTest.qWait(50)
+        check(confirm is not None and confirm.property("visible") and ("powerOff",) not in shell.calls,
+              "Shut down asks for confirmation instead of shutting down at once")
+        QMetaObject.invokeMethod(menu, "hide")
+        QTest.qWait(400)
+        check(menu.property("pendingPower") == "" and ("powerOff",) not in shell.calls,
+              "closing the start menu cancels the shutdown")
+        QMetaObject.invokeMethod(menu, "show")
+        QTest.qWait(50)
+        QMetaObject.invokeMethod(menu, "askPower", Q_ARG("QVariant", "powerOff"))
+        QMetaObject.invokeMethod(menu, "runPower")
+        QTest.qWait(50)
+        check(("powerOff",) in shell.calls, f"confirming shuts down ({shell.calls})")
+        QTest.qWait(400)
+
         # The same menu puts a copy of the application's launcher on the desktop.
         menu.setProperty("pinTarget", {"id": "org.gnome.Nautilus",
                                        "path": "/usr/share/applications/org.gnome.Nautilus.desktop"})
