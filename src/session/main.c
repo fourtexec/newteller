@@ -29,6 +29,7 @@
 #include <wlr/types/wlr_data_control_v1.h>
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_export_dmabuf_v1.h>
+#include <wlr/types/wlr_ext_foreign_toplevel_list_v1.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
 #include <wlr/types/wlr_gamma_control_v1.h>
 #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
@@ -54,6 +55,7 @@
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_screencopy_v1.h>
 #include <wlr/types/wlr_seat.h>
+#include <wlr/types/wlr_security_context_v1.h>
 #include <wlr/types/wlr_session_lock_v1.h>
 #include <wlr/types/wlr_server_decoration.h>
 #include <wlr/types/wlr_single_pixel_buffer_v1.h>
@@ -67,6 +69,9 @@
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_activation_v1.h>
 #include <wlr/types/wlr_xdg_decoration_v1.h>
+#include <wlr/types/wlr_xdg_foreign_registry.h>
+#include <wlr/types/wlr_xdg_foreign_v1.h>
+#include <wlr/types/wlr_xdg_foreign_v2.h>
 #include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
@@ -256,6 +261,8 @@ struct View {
 
     struct wlr_scene_tree *tree;
     struct wlr_foreign_toplevel_handle_v1 *handle;
+    // ext-foreign-toplevel-list: the read-only window list (portals, tools).
+    struct wlr_ext_foreign_toplevel_handle_v1 *extHandle;
 
     bool mapped;
     bool minimized;
@@ -499,6 +506,11 @@ struct Server {
     struct wlr_xdg_shell *xdgShell;
     struct wlr_layer_shell_v1 *layerShell;
     struct wlr_foreign_toplevel_manager_v1 *foreignToplevels;
+    struct wlr_ext_foreign_toplevel_list_v1 *extToplevels;
+    // Sandboxed clients (Flatpak) are known by their security context and
+    // kept away from the privileged protocols (globalFilter).
+    struct wlr_security_context_manager_v1 *securityContexts;
+    struct wl_listener securityContextsDestroy;
     struct wlr_xdg_activation_v1 *activation;
     struct wlr_server_decoration_manager *serverDecoration;
     // org_kde_kwin_server_decoration objects (GTK 3 asks through this one).
@@ -1252,9 +1264,21 @@ static void viewUpdateDecoration(struct View *view)
     }
 }
 
+static void updateExtToplevel(struct View *view)
+{
+    if (!view->extHandle)
+        return;
+    const struct wlr_ext_foreign_toplevel_handle_v1_state state = {
+        .title = viewTitle(view),
+        .app_id = viewAppId(view),
+    };
+    wlr_ext_foreign_toplevel_handle_v1_update_state(view->extHandle, &state);
+}
+
 static void updateForeignToplevel(struct View *view)
 {
     viewUpdateDecoration(view);
+    updateExtToplevel(view);
     if (!view->handle)
         return;
     wlr_foreign_toplevel_handle_v1_set_title(view->handle, viewTitle(view));
@@ -1318,11 +1342,54 @@ static void viewSetActivated(struct View *view, bool activated)
     viewUpdateDecoration(view);
 }
 
+// The window a dialog belongs to (xdg parent, X11 transient-for), if it is
+// one of ours and mapped.
+static struct View *viewParent(struct View *view)
+{
+    struct View *other;
+    wl_list_for_each(other, &view->server->views, link) {
+        if (other == view || !other->mapped)
+            continue;
+        if (view->xdg && view->xdg->parent && other->xdg == view->xdg->parent)
+            return other;
+        if (view->x11 && view->x11->parent && other->x11 == view->x11->parent)
+            return other;
+    }
+    return NULL;
+}
+
+// Always on top itself, or a dialog of such a window (it must not open
+// under its pinned parent).
+static bool viewPinned(struct View *view)
+{
+    for (int depth = 0; view && depth < 8; ++depth) {
+        if (view->alwaysOnTop)
+            return true;
+        view = viewParent(view);
+    }
+    return false;
+}
+
+// Raises a window and then its dialogs, so a dialog never ends up hidden
+// behind the window it belongs to.
+static void raiseWithChildren(struct View *view, int depth)
+{
+    if (!view->tree || depth > 8)
+        return;
+    wlr_scene_node_raise_to_top(&view->tree->node);
+    struct View *child;
+    wl_list_for_each_reverse(child, &view->server->views, link) {
+        if (child != view && child->mapped && !child->overrideRedirect
+            && viewParent(child) == view)
+            raiseWithChildren(child, depth + 1);
+    }
+}
+
 static void viewRaise(struct View *view)
 {
     if (!view->tree)
         return;
-    wlr_scene_node_raise_to_top(&view->tree->node);
+    raiseWithChildren(view, 0);
     wl_list_remove(&view->link);
     wl_list_insert(&view->server->views, &view->link);
     raisePinnedViews(view->server);
@@ -1345,7 +1412,7 @@ static void raisePinnedViews(struct Server *server)
         return;
     // Least recently used first, so the most recent one ends on top.
     wl_list_for_each_reverse(view, &server->views, link) {
-        if (view->alwaysOnTop && view->tree && !view->overrideRedirect)
+        if (view->tree && !view->overrideRedirect && viewPinned(view))
             wlr_scene_node_raise_to_top(&view->tree->node);
     }
     wl_list_for_each_reverse(view, &server->views, link) {
@@ -1943,6 +2010,23 @@ static void centerView(struct View *view)
         return;
     }
 
+    // A dialog opens centred over its window (file choosers, "save
+    // changes?"), kept inside that window's screen.
+    struct View *parent = viewParent(view);
+    if (parent && !parent->minimized) {
+        struct wlr_box parentArea = usableBoxForView(parent);
+        parentArea = frameContentBox(view, parentArea);
+        int x = parent->x + (parent->width - view->width) / 2;
+        int y = parent->y + (parent->height - view->height) / 2;
+        if (x + view->width > parentArea.x + parentArea.width)
+            x = parentArea.x + parentArea.width - view->width;
+        if (y + view->height > parentArea.y + parentArea.height)
+            y = parentArea.y + parentArea.height - view->height;
+        viewSetPosition(view, x < parentArea.x ? parentArea.x : x,
+                        y < parentArea.y ? parentArea.y : y);
+        return;
+    }
+
     struct wlr_output *output = wlr_output_layout_output_at(
         view->server->outputLayout, view->server->cursor->x,
         view->server->cursor->y);
@@ -2026,6 +2110,14 @@ static void handleViewForeignFullscreen(struct wl_listener *listener, void *data
 
 static void ensureForeignToplevel(struct View *view)
 {
+    if (!view->extHandle && !view->overrideRedirect && view->server->extToplevels) {
+        const struct wlr_ext_foreign_toplevel_handle_v1_state state = {
+            .title = viewTitle(view),
+            .app_id = viewAppId(view),
+        };
+        view->extHandle = wlr_ext_foreign_toplevel_handle_v1_create(view->server->extToplevels,
+                                                                    &state);
+    }
     if (view->handle || view->overrideRedirect || !view->server->foreignToplevels)
         return;
 
@@ -2043,6 +2135,26 @@ static void ensureForeignToplevel(struct View *view)
     view->foreignFullscreen.notify = handleViewForeignFullscreen;
     wl_signal_add(&view->handle->events.request_fullscreen, &view->foreignFullscreen);
     updateForeignToplevel(view);
+}
+
+// The window leaves the window lists (the dock, portals) when it is
+// unmapped, not only when it is destroyed: applications that "close to
+// the tray" hide their window and would otherwise stay on the dock.
+static void destroyForeignToplevel(struct View *view)
+{
+    if (view->handle) {
+        wl_list_remove(&view->foreignActivate.link);
+        wl_list_remove(&view->foreignClose.link);
+        wl_list_remove(&view->foreignMinimize.link);
+        wl_list_remove(&view->foreignMaximize.link);
+        wl_list_remove(&view->foreignFullscreen.link);
+        wlr_foreign_toplevel_handle_v1_destroy(view->handle);
+        view->handle = NULL;
+    }
+    if (view->extHandle) {
+        wlr_ext_foreign_toplevel_handle_v1_destroy(view->extHandle);
+        view->extHandle = NULL;
+    }
 }
 
 static void destroyView(struct View *view)
@@ -2086,15 +2198,7 @@ static void destroyView(struct View *view)
         view->xdgDecoration = NULL;
     }
 
-    if (view->handle) {
-        wl_list_remove(&view->foreignActivate.link);
-        wl_list_remove(&view->foreignClose.link);
-        wl_list_remove(&view->foreignMinimize.link);
-        wl_list_remove(&view->foreignMaximize.link);
-        wl_list_remove(&view->foreignFullscreen.link);
-        wlr_foreign_toplevel_handle_v1_destroy(view->handle);
-        view->handle = NULL;
-    }
+    destroyForeignToplevel(view);
 
     if (view->tree)
         wlr_scene_node_destroy(&view->tree->node);
@@ -4524,8 +4628,7 @@ static void handleXdgUnmap(struct wl_listener *listener, void *data)
         restoreFocus(view->server);
     }
     broadcastWorkspaces(view->server);
-    if (view->handle)
-        wlr_foreign_toplevel_handle_v1_set_activated(view->handle, false);
+    destroyForeignToplevel(view);
 }
 
 static void handleXdgDestroy(struct wl_listener *listener, void *data)
@@ -6129,6 +6232,7 @@ static void handleX11Unmap(struct wl_listener *listener, void *data)
         restoreFocus(view->server);
     }
     broadcastWorkspaces(view->server);
+    destroyForeignToplevel(view);
 }
 
 static void handleX11Destroy(struct wl_listener *listener, void *data)
@@ -7859,6 +7963,52 @@ static void handleActivationRequest(struct wl_listener *listener, void *data)
     }
 }
 
+// Protocols that read the screen, the clipboard or the input of every
+// application, draw over the desktop or control outputs. A sandboxed client
+// (one with a security context, e.g. a Flatpak app) never gets them.
+static bool globalFilter(const struct wl_client *client, const struct wl_global *global,
+                         void *data)
+{
+    struct Server *server = data;
+    if (!server->securityContexts
+        || !wlr_security_context_manager_v1_lookup_client(server->securityContexts, client))
+        return true;
+    static const char *const privileged[] = {
+        "zwlr_layer_shell_v1",
+        "zwlr_screencopy_manager_v1",
+        "zwlr_export_dmabuf_manager_v1",
+        "zwlr_data_control_manager_v1",
+        "ext_data_control_manager_v1",
+        "zwlr_foreign_toplevel_manager_v1",
+        "ext_foreign_toplevel_list_v1",
+        "zwlr_output_manager_v1",
+        "zwlr_output_power_manager_v1",
+        "zwlr_gamma_control_manager_v1",
+        "zwp_virtual_keyboard_manager_v1",
+        "zwlr_virtual_pointer_manager_v1",
+        "zwp_input_method_manager_v2",
+        "ext_session_lock_manager_v1",
+        "zwp_keyboard_shortcuts_inhibit_manager_v1",
+        "wp_security_context_manager_v1",
+    };
+    const struct wl_interface *interface = wl_global_get_interface(global);
+    for (size_t i = 0; interface && i < sizeof(privileged) / sizeof(privileged[0]); ++i) {
+        if (strcmp(interface->name, privileged[i]) == 0)
+            return false;
+    }
+    return true;
+}
+
+// The display tears the manager down before the last globals; the filter
+// may still run for them and must not read the freed manager.
+static void handleSecurityContextsDestroy(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct Server *server = wl_container_of(listener, server, securityContextsDestroy);
+    wl_list_remove(&server->securityContextsDestroy.link);
+    server->securityContexts = NULL;
+}
+
 static void setupProtocols(struct Server *server)
 {
     server->compositor = wlr_compositor_create(server->display, 6,
@@ -7897,6 +8047,26 @@ static void setupProtocols(struct Server *server)
     server->layerShell = wlr_layer_shell_v1_create(server->display, 4);
     server->foreignToplevels = wlr_foreign_toplevel_manager_v1_create(
         server->display);
+    // The read-only window list (ext-foreign-toplevel-list): screen sharing
+    // pickers and other tools list windows with it.
+    server->extToplevels = wlr_ext_foreign_toplevel_list_v1_create(server->display, 1);
+    // xdg-foreign: a portal's file chooser or print dialog (another
+    // process) becomes a child of the application window that asked.
+    struct wlr_xdg_foreign_registry *foreignRegistry =
+        wlr_xdg_foreign_registry_create(server->display);
+    if (foreignRegistry) {
+        wlr_xdg_foreign_v1_create(server->display, foreignRegistry);
+        wlr_xdg_foreign_v2_create(server->display, foreignRegistry);
+    }
+    // security-context: Flatpak tags its sandboxed connections; they do
+    // not see the privileged globals (see globalFilter).
+    server->securityContexts = wlr_security_context_manager_v1_create(server->display);
+    if (server->securityContexts) {
+        server->securityContextsDestroy.notify = handleSecurityContextsDestroy;
+        wl_signal_add(&server->securityContexts->events.destroy,
+                      &server->securityContextsDestroy);
+    }
+    wl_display_set_global_filter(server->display, globalFilter, server);
     server->activation = wlr_xdg_activation_v1_create(server->display);
     server->activationRequest.notify = handleActivationRequest;
     wl_signal_add(&server->activation->events.request_activate,

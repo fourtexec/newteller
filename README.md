@@ -11,8 +11,12 @@ inside another Wayland or X11 session for development, but that is now the fallb
 the product.
 
 - **Session:** a small wlroots 0.18/0.19 compositor (`newteller-compositor`)
-  with layer-shell, xdg-shell, XWayland, foreign-toplevel, screenshots, clipboard,
-  idle-inhibit and the usual input protocols. `newteller-session` is the login-session
+  with layer-shell, xdg-shell, XWayland, foreign-toplevel (wlr and ext),
+  xdg-foreign (portal dialogs attach to their application), security-context
+  (sandboxed Flatpak apps cannot capture the screen, read the clipboard of
+  others, inject input or draw over the desktop), screenshots, clipboard,
+  idle-inhibit and the usual input protocols. Dialogs open centred over their
+  window and stay above it. `newteller-session` is the login-session
   entry point.
 - **Core:** C++20 + Qt 6 (settings, themes, application catalogue, session actions, plugin loader)
 - **UI:** QML components with JavaScript logic, rendered by Qt Quick's scene graph (panel, start menu, desktop, widgets, plugins). The shell does not embed Chromium/WebEngine; a literal HTML/CSS UI would need a browser engine or a separate, much larger custom renderer.
