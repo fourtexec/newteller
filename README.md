@@ -77,6 +77,11 @@ inside VirtualBox. The implemented pieces are:
   the application's `sound-file`, the chosen `notifications.soundFile` or
   the theme's message sound (canberra-gtk-play, pw-play or paplay); never
   under do-not-disturb or for `suppress-sound`.
+- **Notification popups** follow the spec's hints: pictures (`image-data`,
+  `image-path`), a click runs the `default` action, `transient` ones stay out
+  of the history, `resident` ones stay after an action, and a popup tagged
+  with `x-canonical-private-synchronous` or `x-dunst-stack-tag` replaces the
+  previous one with that tag (volume and brightness scripts).
 - **Bluetooth pairing agent**: keyboards show the code to type and phones
   the code to compare as notifications with Pair / Cancel; without an
   agent BlueZ could only pair devices that need no confirmation. The code

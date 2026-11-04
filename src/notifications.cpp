@@ -271,6 +271,23 @@ uint NotificationDaemon::publish(uint replacesId, const QString &appName, const 
                                  const QString &summary, const QString &body, const QStringList &actions,
                                  const QVariantMap &hints, int expireTimeout)
 {
+    // Scripts tag their volume or brightness popups instead of keeping an
+    // id (notify-send -h string:x-canonical-private-synchronous:volume, or
+    // dunst's x-dunst-stack-tag): a new one replaces the one on screen with
+    // the same tag and app.
+    QString stackTag = hints.value(QStringLiteral("x-canonical-private-synchronous")).toString();
+    if (stackTag.isEmpty())
+        stackTag = hints.value(QStringLiteral("x-dunst-stack-tag")).toString();
+    if (replacesId == 0 && !stackTag.isEmpty()) {
+        for (const QVariant &active : std::as_const(m_active)) {
+            const QVariantMap map = active.toMap();
+            if (map.value(QStringLiteral("stackTag")).toString() == stackTag
+                && map.value(QStringLiteral("app")).toString()
+                       == (appName.isEmpty() ? QStringLiteral("NewTeller") : appName))
+                replacesId = map.value(QStringLiteral("id")).toUInt();
+        }
+    }
+
     // replaces_id updates a notification in place and keeps its id
     // (progress, volume, "now playing"). It is not closed: the application
     // would take NotificationClosed for the user dismissing it.
@@ -339,6 +356,7 @@ uint NotificationDaemon::publish(uint replacesId, const QString &appName, const 
     entry.insert(QStringLiteral("timeout"), timeout);
     // resident: stays on screen after one of its actions was clicked.
     entry.insert(QStringLiteral("resident"), hints.value(QStringLiteral("resident")).toBool());
+    entry.insert(QStringLiteral("stackTag"), stackTag);
 
     // transient: shown, but not kept in the history (volume, progress).
     if (!hints.value(QStringLiteral("transient")).toBool()) {
