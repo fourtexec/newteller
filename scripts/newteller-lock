@@ -134,7 +134,24 @@ elif command -v gtklock >/dev/null 2>&1; then
 fi
 
 if ! command -v swaylock >/dev/null 2>&1; then
-    echo 'newteller-lock: neither gtklock nor swaylock is installed' >&2
+    note 'neither gtklock nor swaylock is installed'
+    # Say it on screen too: otherwise Super+L does nothing and the user
+    # walks away from an unlocked session.
+    case "${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}" in
+        ru*) summary='Экран не заблокирован'
+             body='Не установлен ни gtklock, ни swaylock. Установите один из них (sudo apt install swaylock).' ;;
+        *) summary='The screen is not locked'
+           body='Neither gtklock nor swaylock is installed. Install one of them (sudo apt install swaylock).' ;;
+    esac
+    if command -v gdbus >/dev/null 2>&1; then
+        gdbus call --session --dest org.freedesktop.Notifications \
+            --object-path /org/freedesktop/Notifications \
+            --method org.freedesktop.Notifications.Notify \
+            "NewTeller" 0 "lock" "$summary" "$body" "[]" "{'urgency': <byte 2>}" "int32 -1" \
+            >/dev/null 2>&1
+    elif command -v notify-send >/dev/null 2>&1; then
+        notify-send -u critical "$summary" "$body" >/dev/null 2>&1
+    fi
     exit 1
 fi
 
