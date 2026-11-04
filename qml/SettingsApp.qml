@@ -2098,12 +2098,6 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: qsTr("Group notifications by app")
-                                settingKey: "notifications.groupByApp"
-                                SettingsSwitch {}
-                            }
-                            SettingsRow {
-                                width: parent.width
                                 title: qsTr("Show app icon")
                                 settingKey: "notifications.showAppIcon"
                                 SettingsSwitch {}
@@ -2315,117 +2309,122 @@ Window {
 
                         SettingsSection {
                             title: qsTr("Keyboard shortcuts")
-                            subtitle: qsTr("Global hotkeys for shell actions. Multiple keys can be separated by commas.")
-
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Enable hotkeys")
-                                settingKey: "hotkeys.enabled"
-                                SettingsSwitch {}
-                            }
-                        }
-
-                        SettingsSection {
-                            title: qsTr("Shell actions")
+                            subtitle: qsTr("The shortcuts built into NewTeller. Your own ones are added under Windows -> Your shortcuts and take priority.")
 
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Open start menu")
-                                settingKey: "hotkeys.startMenu"
-                                SettingsTextField { width: 180; placeholder: qsTr("Meta (Windows key)") }
+                                subtitle: "Super"
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: qsTr("Run dialog")
-                                settingKey: "hotkeys.runDialog"
-                                SettingsTextField { width: 180; placeholder: "Alt+F2" }
+                                title: qsTr("Run a command")
+                                subtitle: "Alt+F2, Super+R"
                             }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Open settings")
-                                settingKey: "hotkeys.settings"
-                                SettingsTextField { width: 180; placeholder: "Meta+, or Meta+S" }
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Open notification centre")
-                                settingKey: "hotkeys.notificationCenter"
-                                SettingsTextField { width: 180; placeholder: "Meta+N" }
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Open quick settings")
-                                settingKey: "hotkeys.quickSettings"
-                                SettingsTextField { width: 180; placeholder: "Meta+Q" }
-                            }
-                        }
-
-                        SettingsSection {
-                            title: qsTr("System actions")
-
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Lock screen")
-                                settingKey: "hotkeys.lockScreen"
-                                SettingsTextField { width: 180; placeholder: "Meta+L" }
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Log out")
-                                settingKey: "hotkeys.logout"
-                                SettingsTextField { width: 180; placeholder: "Meta+Shift+Q" }
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Sleep")
-                                settingKey: "hotkeys.sleep"
-                                SettingsTextField { width: 180; placeholder: "Meta+Shift+S" }
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Reboot")
-                                settingKey: "hotkeys.reboot"
-                                SettingsTextField { width: 180; placeholder: "Meta+Shift+R" }
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Shut down")
-                                settingKey: "hotkeys.shutdown"
-                                SettingsTextField { width: 180; placeholder: "Meta+Shift+P" }
-                            }
-                        }
-
-                        SettingsSection {
-                            title: qsTr("Application launchers")
-
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Open terminal")
-                                settingKey: "hotkeys.terminal"
-                                SettingsTextField { width: 180; placeholder: "Meta+T" }
+                                subtitle: "Super+Return"
                             }
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Open file manager")
-                                settingKey: "hotkeys.fileManager"
-                                SettingsTextField { width: 180; placeholder: "Meta+E" }
+                                subtitle: "Super+E"
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: qsTr("Application switcher")
-                                settingKey: "hotkeys.switcher"
-                                SettingsTextField { width: 180; placeholder: "Alt+Tab" }
+                                title: qsTr("Open settings")
+                                subtitle: "Super+S, Super+I"
                             }
-                        }
-
-                        SettingsSection {
-                            title: qsTr("Hotkey reference")
-                            subtitle: qsTr("Modifier keys: Meta (Windows), Ctrl, Alt, Shift. Combine with +. Example: Ctrl+Alt+T")
-
                             SettingsRow {
                                 width: parent.width
-                                title: qsTr("Available keys")
-                                subtitle: qsTr("Letters (A-Z), numbers (0-9), F1-F12, arrow keys, Enter, Space, Tab, Escape, Backspace, Delete, Insert, Home, End, PageUp, PageDown")
+                                title: qsTr("Open quick settings")
+                                subtitle: "Super+A"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Open notification centre")
+                                subtitle: "Super+N"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Clipboard history")
+                                subtitle: "Super+V"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Lock now")
+                                subtitle: "Super+L"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Close the window")
+                                subtitle: "Super+Q, Alt+F4"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Snap to the left or right half")
+                                subtitle: "Super+Left, Super+Right"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Maximise and restore")
+                                subtitle: "Super+Up, Super+Down, Super+M"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Fullscreen")
+                                subtitle: "Super+F"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Show the desktop")
+                                subtitle: "Super+D"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Overview of the windows")
+                                subtitle: "Super+Tab"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Switch windows")
+                                subtitle: "Alt+Tab"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Switch desktops")
+                                subtitle: "Ctrl+Super+Left/Right, Super+Page Up/Down"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Move the window to another screen")
+                                subtitle: "Super+Shift+Left, Super+Shift+Right"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Next keyboard layout")
+                                subtitle: "Super+Space"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Screenshot")
+                                subtitle: "Print; Shift+Print or Super+Shift+S for an area"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("End a frozen application")
+                                subtitle: "Ctrl+Shift+Esc"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Give the shortcuts back to the desktop")
+                                subtitle: "Super+Escape"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Text console")
+                                subtitle: "Ctrl+Alt+F1 ... F12"
                             }
                         }
                     }
@@ -2509,6 +2508,7 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Enable animations globally")
+                                subtitle: qsTr("Menus, cards, the dock and the panel. Window animations are above.")
                                 settingKey: "animations.enabled"
                                 SettingsSwitch {}
                             }
@@ -2518,34 +2518,6 @@ Window {
                                 subtitle: "1.0 = normal speed, 0.5 = half speed, 2.0 = double speed"
                                 settingKey: "animations.speed"
                                 SettingsSlider { from: 0.1; to: 3.0; step: 0.1; onChanged: (v) => Settings.setValue("animations.speed", Math.round(v * 10) / 10) }
-                            }
-                        }
-
-                        SettingsSection {
-                            title: qsTr("Panel animations")
-
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Panel hide/show animation")
-                                settingKey: "animations.panelHide"
-                                SettingsSwitch {}
-                            }
-                        }
-
-                        SettingsSection {
-                            title: qsTr("Window animations")
-
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Window open/close animations")
-                                settingKey: "windows.enableAnimations"
-                                SettingsSwitch {}
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Window animation speed")
-                                settingKey: "windows.animationSpeed"
-                                SettingsSlider { from: 0.1; to: 3.0; step: 0.1; onChanged: (v) => Settings.setValue("windows.animationSpeed", Math.round(v * 10) / 10) }
                             }
                         }
 

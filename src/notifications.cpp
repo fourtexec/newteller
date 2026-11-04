@@ -6,6 +6,7 @@
 #include <QtDBus/QDBusError>
 #include <QtDBus/QDBusMetaType>
 #include <QDateTime>
+#include <QTime>
 #include <QDir>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -243,7 +244,8 @@ uint NotificationDaemon::publish(uint replacesId, const QString &appName, const 
     }
 
     const bool critical = hints.value(QStringLiteral("urgency")).toInt() >= kUrgencyCritical;
-    const bool dnd = m_settings->value(QStringLiteral("notifications.doNotDisturb"), false).toBool()
+    const bool dnd = (m_settings->value(QStringLiteral("notifications.doNotDisturb"), false).toBool()
+                      || scheduledQuiet())
                      && !critical;
 
     QVariantMap entry;
@@ -284,6 +286,24 @@ uint NotificationDaemon::publish(uint replacesId, const QString &appName, const 
         playSound(hints);
     }
     return id;
+}
+
+// notifications.doNotDisturbSchedule: quiet between dndStartTime and
+// dndEndTime ("HH:mm"); a start after the end spans midnight (22:00-07:00).
+bool NotificationDaemon::scheduledQuiet() const
+{
+    if (!m_settings->value(QStringLiteral("notifications.doNotDisturbSchedule"), false).toBool())
+        return false;
+    const QTime start = QTime::fromString(
+        m_settings->value(QStringLiteral("notifications.dndStartTime")).toString().trimmed(), QStringLiteral("H:mm"));
+    const QTime end = QTime::fromString(
+        m_settings->value(QStringLiteral("notifications.dndEndTime")).toString().trimmed(), QStringLiteral("H:mm"));
+    if (!start.isValid() || !end.isValid() || start == end)
+        return false;
+    const QTime now = QTime::currentTime();
+    if (start < end)
+        return now >= start && now < end;
+    return now >= start || now < end;
 }
 
 // notifications.soundEnabled: a new popup plays the application's

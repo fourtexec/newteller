@@ -295,6 +295,8 @@ Window {
                 }
 
                 Item {
+                    // notifications.showAppIcon
+                    visible: Settings.values["notifications.showAppIcon"] !== false
                     Layout.preferredWidth: 38
                     Layout.preferredHeight: 38
                     Layout.alignment: Qt.AlignTop

@@ -101,6 +101,7 @@ private:
     void readSocket();
     void trimHistory();
     void playSound(const QVariantMap &hints);
+    bool scheduledQuiet() const;
 
     Settings *m_settings;
     QVariantList m_active;
