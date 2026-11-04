@@ -743,7 +743,7 @@ bool AppModel::launch(const QString &id, const QStringList &files)
 {
     const QVariantList args = launchArgs(id, files);
     if (args.isEmpty()) {
-        emit launchFailed(id, QStringLiteral("no such application or empty Exec line"));
+        emit launchFailed(id, tr("The application's launcher has no command to run."));
         return false;
     }
 
@@ -754,13 +754,13 @@ bool AppModel::launch(const QString &id, const QStringList &files)
 
     const QString program = argv.takeFirst();
     if (program.isEmpty()) {
-        emit launchFailed(id, QStringLiteral("empty program"));
+        emit launchFailed(id, tr("The application's launcher has no command to run."));
         return false;
     }
 
     const bool ok = QProcess::startDetached(program, argv);
     if (!ok) {
-        emit launchFailed(id, QStringLiteral("QProcess::startDetached failed for %1").arg(program));
+        emit launchFailed(id, tr("%1 was not found. The application may have been removed.").arg(program));
         return false;
     }
 
@@ -781,7 +781,7 @@ bool AppModel::launchAsRoot(const QString &id)
 {
     const QString helper = QStandardPaths::findExecutable(QStringLiteral("newteller-run-as-root"));
     if (helper.isEmpty() || QStandardPaths::findExecutable(QStringLiteral("pkexec")).isEmpty()) {
-        emit launchFailed(id, QStringLiteral("pkexec or newteller-run-as-root is not installed"));
+        emit launchFailed(id, tr("pkexec is not installed (sudo apt install pkexec)."));
         return false;
     }
     const QVariantList args = launchArgs(id);
@@ -789,7 +789,7 @@ bool AppModel::launchAsRoot(const QString &id)
     for (const QVariant &arg : args)
         argv << arg.toString();
     if (argv.isEmpty() || argv.constFirst().isEmpty()) {
-        emit launchFailed(id, QStringLiteral("no such application or empty Exec line"));
+        emit launchFailed(id, tr("The application's launcher has no command to run."));
         return false;
     }
     // pkexec wants an absolute program path.
@@ -797,7 +797,7 @@ bool AppModel::launchAsRoot(const QString &id)
     if (!program.isEmpty())
         argv[0] = program;
     if (!QProcess::startDetached(helper, argv)) {
-        emit launchFailed(id, QStringLiteral("could not start %1").arg(helper));
+        emit launchFailed(id, tr("%1 could not be started.").arg(helper));
         return false;
     }
     rememberRecent(id);

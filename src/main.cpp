@@ -230,6 +230,17 @@ int main(int argc, char *argv[])
     WindowList windows;
     NotificationDaemon notifications(&settings);
     ShellController shell(&settings, &notifications);
+    // A launch that fails (the program was removed, a broken launcher)
+    // would otherwise do nothing visible.
+    QObject::connect(&apps, &AppModel::launchFailed, &notifications,
+                     [&apps, &notifications](const QString &id, const QString &reason) {
+                         QString name = apps.byId(id).value(QStringLiteral("name")).toString();
+                         if (name.isEmpty())
+                             name = id;
+                         notifications.send(QStringLiteral("NewTeller"),
+                                            QCoreApplication::translate("main", "Could not start %1").arg(name),
+                                            reason, QStringLiteral("app-window"));
+                     });
     PluginManager plugins(&settings);
     SystemMonitor system(&settings);
     TrayWatcher tray(&settings);

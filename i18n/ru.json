@@ -4,7 +4,9 @@
  " s": " с",
  "%1 can be removed": "%1 можно отключить",
  "%1 connected": "Подключено: %1",
+ "%1 could not be started.": "Не удалось запустить %1.",
  "%1 drive": "Накопитель %1",
+ "%1 was not found. The application may have been removed.": "%1 не найден. Возможно, приложение было удалено.",
  "%1% left. Plug in now or the computer will shut down.": "Осталось %1%. Подключите зарядку, иначе компьютер выключится.",
  "%1% left. Plug in soon.": "Осталось %1%. Скоро понадобится зарядка.",
  "A USB stick or memory card that is plugged in gets Open and Eject buttons.": "Для подключённой флешки или карты памяти появятся кнопки «Открыть» и «Извлечь».",
@@ -150,6 +152,7 @@
  "Could not connect to %1 - wrong password or the network refused it.": "Не удалось подключиться к %1 — неверный пароль или сеть отказала в подключении.",
  "Could not eject %1": "Не удалось извлечь %1",
  "Could not open %1": "Не удалось открыть %1",
+ "Could not start %1": "Не удалось запустить %1",
  "Ctrl+Super+Left/Right (or Super+Page Up/Down) moves between desktops; add Shift to take the window along. Alt+Tab walks through the windows of the current desktop.": "Ctrl+Super+Влево/Вправо (или Super+Page Up/Down) переключает рабочие столы; с Shift окно переезжает вместе с вами. Alt+Tab перебирает окна текущего рабочего стола.",
  "Current wallpaper": "Текущие обои",
  "Cursor": "Курсор",
@@ -573,6 +576,7 @@
  "That password did not work. Try again.": "Пароль не подошёл. Попробуйте ещё раз.",
  "The Wi-Fi adapter %1 (driver %2) is not ready - its firmware may be missing.": "Адаптер Wi-Fi %1 (драйвер %2) не готов — возможно, не хватает прошивки.",
  "The Wi-Fi adapter %1 is not managed by NetworkManager (it is configured in /etc/network/interfaces). Remove it there and restart NetworkManager.": "Адаптер Wi-Fi %1 не управляется NetworkManager (он настроен в /etc/network/interfaces). Уберите его оттуда и перезапустите NetworkManager.",
+ "The application's launcher has no command to run.": "В ярлыке приложения нет команды для запуска.",
  "The bell and the indicators button at the end of the bar: notification centre, volume, brightness, network and media.": "Колокольчик и кнопка индикаторов в конце панели: центр уведомлений, громкость, яркость, сеть и медиа.",
  "The built-in daemon serves org.freedesktop.Notifications, so notify-send and every application reach the shell. newteller-ctl notify works through the private socket.": "Встроенная служба обслуживает org.freedesktop.Notifications, так что notify-send и любые приложения отправляют уведомления в оболочку. newteller-ctl notify работает через личный сокет.",
  "The compositor did not answer.": "Композитор не ответил.",
@@ -673,5 +677,6 @@
  "Your shortcuts": "Ваши сочетания",
  "Zone spacing": "Отступ между зонами",
  "no polkit agent": "нет агента polkit",
+ "pkexec is not installed (sudo apt install pkexec).": "pkexec не установлен (sudo apt install pkexec).",
  "the administrator": "администратора"
 }
