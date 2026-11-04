@@ -95,6 +95,10 @@ public:
                                   const QString &icon = QString()) const;
     // Text currently in the clipboard, for the desktop paste action.
     Q_INVOKABLE QString clipboardText() const;
+    // Files copied in a file manager (text/uri-list on the clipboard) are
+    // copied into the folder (path or file:// URL) in the background; returns
+    // how many will be copied, 0 when the clipboard holds no files.
+    Q_INVOKABLE int pasteFiles(const QString &folder) const;
     // Writes a text file (used by the desktop "Paste" action).
     Q_INVOKABLE bool saveTextFile(const QString &path, const QString &text) const;
     // Moves a file or folder (path or file:// URL) to the trash, where it can

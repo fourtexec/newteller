@@ -14,6 +14,9 @@
 #include <QGuiApplication>
 #include <QImageReader>
 #include <QProcess>
+#include <QThread>
+#include <QPointer>
+#include <QMimeData>
 #include <QStandardPaths>
 #include <QSysInfo>
 #include <QUrl>
@@ -564,6 +567,101 @@ QString ShellController::clipboardText() const
     }
     const QClipboard *clipboard = QGuiApplication::clipboard();
     return clipboard != nullptr ? clipboard->text() : QString();
+}
+
+namespace {
+// "name.txt" -> "name 2.txt" (then 3, 4...) while the name is taken.
+QString freeName(const QDir &dir, const QString &name, bool isDir)
+{
+    if (!dir.exists(name))
+        return name;
+    const QFileInfo info(name);
+    const QString stem = isDir || info.completeSuffix().isEmpty() || info.baseName().isEmpty()
+                             ? name : info.baseName();
+    const QString suffix = stem == name ? QString() : QLatin1Char('.') + info.completeSuffix();
+    for (int n = 2; n < 10000; ++n) {
+        const QString candidate = QStringLiteral("%1 %2%3").arg(stem).arg(n).arg(suffix);
+        if (!dir.exists(candidate))
+            return candidate;
+    }
+    return QString();
+}
+
+// Copies a file or a whole folder; false at the first failure.
+bool copyTree(const QString &source, const QString &target)
+{
+    const QFileInfo info(source);
+    if (!info.isDir() || info.isSymLink())
+        return info.isSymLink() ? QFile::link(info.symLinkTarget(), target) : QFile::copy(source, target);
+    if (!QDir().mkpath(target))
+        return false;
+    const QDir dir(source);
+    const QStringList entries = dir.entryList(QDir::AllEntries | QDir::Hidden | QDir::System | QDir::NoDotAndDotDot);
+    for (const QString &entry : entries) {
+        if (!copyTree(dir.absoluteFilePath(entry), target + QLatin1Char('/') + entry))
+            return false;
+    }
+    return true;
+}
+} // namespace
+
+int ShellController::pasteFiles(const QString &folder) const
+{
+    QStringList sources;
+    if (!qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")
+        && !QStandardPaths::findExecutable(QStringLiteral("wl-paste")).isEmpty()) {
+        QProcess types;
+        types.start(QStringLiteral("wl-paste"), {QStringLiteral("--list-types")});
+        if (types.waitForFinished(1000)
+            && QString::fromUtf8(types.readAllStandardOutput()).split(QLatin1Char('\n'))
+                   .contains(QStringLiteral("text/uri-list"))) {
+            QProcess paste;
+            paste.start(QStringLiteral("wl-paste"),
+                        {QStringLiteral("--no-newline"), QStringLiteral("--type"), QStringLiteral("text/uri-list")});
+            if (paste.waitForFinished(1000)) {
+                const QStringList lines = QString::fromUtf8(paste.readAllStandardOutput()).split(QLatin1Char('\n'));
+                for (QString line : lines) {
+                    line = line.trimmed();
+                    if (line.startsWith(QLatin1String("file:")))
+                        sources << QUrl(line).toLocalFile();
+                }
+            }
+        }
+    } else if (const QClipboard *clipboard = QGuiApplication::clipboard()) {
+        if (const QMimeData *data = clipboard->mimeData()) {
+            for (const QUrl &url : data->urls()) {
+                if (url.isLocalFile())
+                    sources << url.toLocalFile();
+            }
+        }
+    }
+    sources.removeAll(QString());
+    if (sources.isEmpty())
+        return 0;
+
+    const QString target = expandHome(folder.trimmed());
+    // A big folder takes a while: copy in the background, report at the end.
+    QPointer<const ShellController> self(this);
+    QThread *worker = QThread::create([self, sources, target] {
+        const QDir dir(target);
+        QStringList failed;
+        for (const QString &source : sources) {
+            const QFileInfo from(source);
+            const QString name = freeName(dir, from.fileName(), from.isDir());
+            if (name.isEmpty() || !QFileInfo::exists(source) || !copyTree(source, dir.absoluteFilePath(name)))
+                failed << QFileInfo(source).fileName();
+        }
+        if (!failed.isEmpty() && self) {
+            QMetaObject::invokeMethod(const_cast<ShellController *>(self.data()), [self, failed] {
+                if (self)
+                    self->notify(tr("Could not paste %1").arg(failed.join(QStringLiteral(", "))),
+                                 tr("You may not be allowed to change this folder, or the disk is full."));
+            }, Qt::QueuedConnection);
+        }
+    });
+    connect(worker, &QThread::finished, worker, &QObject::deleteLater);
+    worker->start();
+    return int(sources.size());
 }
 
 bool ShellController::saveTextFile(const QString &path, const QString &text) const

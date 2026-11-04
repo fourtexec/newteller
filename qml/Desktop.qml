@@ -742,6 +742,10 @@ Window {
                 label: qsTr("Paste")
                 onClicked: {
                     contextMenu.visible = false;
+                    // Files copied in a file manager are copied here; any
+                    // other clipboard text becomes a text file.
+                    if (Shell.pasteFiles(Shell.desktopUrl) > 0)
+                        return;
                     const text = Shell.clipboardText();
                     if (text.length > 0) {
                         const stamp = Qt.formatDateTime(Shell.now, "yyyyMMdd-hhmmss");
