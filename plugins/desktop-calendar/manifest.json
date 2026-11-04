@@ -10,7 +10,6 @@
   "description": "Monthly calendar widget with current date highlighting.",
   "settings": {
     "showWeekNumbers": false,
-    "firstDayOfWeek": 0,
     "showHeader": true,
     "showTodayMarker": true
   }

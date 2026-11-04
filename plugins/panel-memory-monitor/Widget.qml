@@ -71,8 +71,8 @@ Rectangle {
                 return
             if (hovered)
                 win.showToolTip(widget,
-                                "Memory " + Math.round(widget.memoryPercent) + "% ("
-                                + widget.memoryText + ")")
+                                qsTr("Memory %1% (%2)").arg(Math.round(widget.memoryPercent))
+                                                       .arg(widget.memoryText))
             else if (typeof win.hideToolTip === "function")
                 win.hideToolTip()
         }

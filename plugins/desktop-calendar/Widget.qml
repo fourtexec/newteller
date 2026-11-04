@@ -8,8 +8,10 @@ Rectangle {
     readonly property var pluginSettings: (parent && parent.modelData && parent.modelData.settings)
                                           ? parent.modelData.settings : ({})
     property bool showWeekNumbers: pluginSettings.showWeekNumbers === true
+    // 0 = Sunday ... 6 = Saturday; the locale's own first weekday unless
+    // the manifest sets one.
     property int firstDayOfWeek: pluginSettings.firstDayOfWeek !== undefined
-                                 ? Number(pluginSettings.firstDayOfWeek) : 0
+                                 ? Number(pluginSettings.firstDayOfWeek) : Qt.locale().firstDayOfWeek % 7
     property bool showHeader: pluginSettings.showHeader !== false
     property bool showTodayMarker: pluginSettings.showTodayMarker !== false
 
@@ -20,9 +22,12 @@ Rectangle {
     property int displayYear: currentYear
     property int displayMonth: currentMonth
 
-    readonly property var weekDays: ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
-    readonly property var monthNames: ["January", "February", "March", "April", "May", "June",
-                                       "July", "August", "September", "October", "November", "December"]
+    // The locale's names, as the month stands on its own ("Ноябрь").
+    readonly property var weekDays: [0, 1, 2, 3, 4, 5, 6].map(day => Qt.locale().standaloneDayName(day, Locale.ShortFormat))
+    readonly property var monthNames: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11].map(month => {
+        const name = Qt.locale().standaloneMonthName(month, Locale.LongFormat);
+        return name.length > 0 ? name.charAt(0).toUpperCase() + name.slice(1) : name;
+    })
 
     readonly property int daysInMonth: new Date(displayYear, displayMonth + 1, 0).getDate()
     readonly property int firstDay: new Date(displayYear, displayMonth, 1).getDay()
