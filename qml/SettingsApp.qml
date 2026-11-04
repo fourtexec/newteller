@@ -38,7 +38,7 @@ Window {
     ]
     property string currentPage: "appearance"
 
-    readonly property var wallpaperFolders: [Shell.home + "/Pictures", "/usr/share/backgrounds"]
+    readonly property var wallpaperFolders: [Shell.picturesPath, "/usr/share/backgrounds"]
     property int wallpaperFolderIndex: 0
 
     // Theme editor state (values of the selected theme being edited).
@@ -3690,7 +3690,7 @@ Window {
             if (slash > 0)
                 dir = path.substring(0, slash);
         }
-        return Shell.folderPath(dir.length > 0 ? dir : (Shell.home + "/Pictures"));
+        return Shell.folderPath(dir.length > 0 ? dir : (Shell.picturesPath));
     }
 
     // Never store anything the desktop cannot render as a wallpaper: the

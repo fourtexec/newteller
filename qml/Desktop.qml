@@ -137,7 +137,7 @@ Window {
     // Images in ~/Pictures, used by "Change wallpaper".
     FolderListModel {
         id: wallpaperFiles
-        folder: Shell.home + "/Pictures"
+        folder: Shell.picturesPath
         nameFilters: ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp", "*.gif", "*.svg", "*.xpm",
                       "*.tif", "*.tiff", "*.avif", "*.heic", "*.jxl"]
         showDirs: false
@@ -668,7 +668,7 @@ Window {
                         const next = Math.floor(Math.random() * wallpaperFiles.count);
                         Settings.setValue("desktop.wallpaper", wallpaperFiles.get(next).filePath);
                     } else {
-                        Shell.openPath(Shell.home + "/Pictures");
+                        Shell.openPath(Shell.picturesPath);
                     }
                 }
             }

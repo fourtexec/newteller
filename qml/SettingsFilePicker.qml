@@ -203,17 +203,17 @@ Window {
                 TaskButton {
                     label: qsTr("Pictures")
                     iconName: "image"
-                    onClicked: picker.enter(Shell.home + "/Pictures")
+                    onClicked: picker.enter(Shell.picturesPath)
                 }
                 TaskButton {
                     label: qsTr("Documents")
                     iconName: "file-text"
-                    onClicked: picker.enter(Shell.home + "/Documents")
+                    onClicked: picker.enter(Shell.documentsPath)
                 }
                 TaskButton {
                     label: qsTr("Downloads")
                     iconName: "download"
-                    onClicked: picker.enter(Shell.home + "/Downloads")
+                    onClicked: picker.enter(Shell.downloadsPath)
                 }
                 TaskButton {
                     label: picker.imagesOnly ? qsTr("All files") : qsTr("Images only")

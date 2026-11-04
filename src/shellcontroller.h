@@ -20,6 +20,10 @@ class ShellController : public QObject {
     Q_PROPERTY(QString version READ version CONSTANT)
     Q_PROPERTY(QString home READ home CONSTANT)
     Q_PROPERTY(QString desktopUrl READ desktopUrl CONSTANT)
+    // XDG user folders: localized names (~/Изображения) come from user-dirs.dirs.
+    Q_PROPERTY(QString picturesPath READ picturesPath CONSTANT)
+    Q_PROPERTY(QString documentsPath READ documentsPath CONSTANT)
+    Q_PROPERTY(QString downloadsPath READ downloadsPath CONSTANT)
     Q_PROPERTY(QString userName READ userName CONSTANT)
     Q_PROPERTY(QString sessionType READ sessionType CONSTANT)
     Q_PROPERTY(QString hostname READ hostname CONSTANT)
@@ -36,6 +40,9 @@ public:
     QString version() const { return QStringLiteral(NEWTELLER_VERSION); }
     QString home() const;
     QString desktopUrl() const;
+    QString picturesPath() const;
+    QString documentsPath() const;
+    QString downloadsPath() const;
     QString userName() const;
     QString sessionType() const;
     QString hostname() const;

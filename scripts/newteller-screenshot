@@ -5,7 +5,7 @@
 #   newteller-screenshot --area   a region picked with the mouse (Shift+Print,
 #                                 Super+Shift+S); needs slurp
 #
-# The PNG goes to ~/Pictures/Screenshots and, when wl-copy is installed, to
+# The PNG goes to Screenshots in the pictures folder (~/Pictures) and, when wl-copy is installed, to
 # the clipboard as well, ready to paste.
 set -eu
 
@@ -16,7 +16,21 @@ case "${1:-}" in
     *) echo "usage: newteller-screenshot [--area]" >&2; exit 2 ;;
 esac
 
-pictures="${XDG_PICTURES_DIR:-$HOME/Pictures}"
+# The pictures folder is localized on many systems (~/Изображения): ask
+# xdg-user-dir, or read user-dirs.dirs ourselves when it is not installed.
+pictures="${XDG_PICTURES_DIR:-}"
+if [ -z "$pictures" ] && command -v xdg-user-dir >/dev/null 2>&1; then
+    pictures="$(xdg-user-dir PICTURES 2>/dev/null || true)"
+    [ "$pictures" = "$HOME" ] && pictures=""
+fi
+if [ -z "$pictures" ]; then
+    dirs="${XDG_CONFIG_HOME:-$HOME/.config}/user-dirs.dirs"
+    if [ -r "$dirs" ]; then
+        pictures="$(sed -n 's/^XDG_PICTURES_DIR="\(.*\)"$/\1/p' "$dirs" | tail -n 1)"
+        pictures="$(printf '%s' "$pictures" | sed "s|^\$HOME|$HOME|")"
+    fi
+fi
+[ -n "$pictures" ] || pictures="$HOME/Pictures"
 dir="$pictures/Screenshots"
 mkdir -p "$dir"
 file="$dir/Screenshot_$(date +%Y%m%d-%H%M%S)-$$.png"

@@ -246,7 +246,8 @@ inside VirtualBox. The implemented pieces are:
   xdg-desktop-portal-wlr, a polkit agent for administrator prompts, and
   `Ctrl+Alt+F1…F12` to switch virtual terminals.
 - Screenshots: `Print` captures the whole screen, `Shift+Print` or `Super+Shift+S` an
-  area picked with the mouse (slurp); the PNG lands in `~/Pictures/Screenshots`, is
+  area picked with the mouse (slurp); the PNG lands in `Screenshots` inside the pictures folder (`~/Pictures`, or its
+  localized name from `user-dirs.dirs`), is
   copied to the clipboard (wl-copy) and announced through the notification daemon
 - Multi-monitor: one desktop and one panel per screen
 - Rust core (application search index, metrics sampler, config, watcher) with a
@@ -619,7 +620,8 @@ It manages the whole configuration of the shell:
 - **Panel & dock** — position, thickness, edge gap, auto-hide with delay, running
   badge, clock/date formats; dock behaviour (show running applications, group
   windows of one application, icon size) and the pinned applications list.
-- **Desktop** — wallpaper browser over `~/Pictures` and `/usr/share/backgrounds`
+- **Desktop** — wallpaper browser over the pictures folder (`~/Pictures` or its localized
+  XDG name) and `/usr/share/backgrounds`
   (with a random pick), icon visibility and grid sizes, right-click menu toggle.
   "Choose from file manager" opens the file chooser that is already installed in
   the system (the freedesktop FileChooser portal — the GTK dialog on GNOME, the

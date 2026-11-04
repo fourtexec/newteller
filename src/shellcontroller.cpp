@@ -115,6 +115,21 @@ QString ShellController::desktopUrl() const
     return QUrl::fromLocalFile(dir).toString();
 }
 
+QString ShellController::picturesPath() const
+{
+    return QStandardPaths::writableLocation(QStandardPaths::PicturesLocation);
+}
+
+QString ShellController::documentsPath() const
+{
+    return QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
+}
+
+QString ShellController::downloadsPath() const
+{
+    return QStandardPaths::writableLocation(QStandardPaths::DownloadLocation);
+}
+
 QString ShellController::userName() const
 {
     return qEnvironmentVariable("USER");
