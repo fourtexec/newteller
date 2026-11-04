@@ -1335,7 +1335,8 @@ def main():
     # literals form one string).
     for cpp in glob.glob(os.path.join(ROOT, "src", "*.cpp")):
         with open(cpp, encoding="utf-8") as handle:
-            for call in re.findall(r'\btr\(\s*((?:"(?:[^"\\]|\\.)*"\s*)+)\)', handle.read()):
+            for call in re.findall(r'(?:\btr\(|QCoreApplication::translate\(\s*"[^"]*"\s*,)'
+                                   r'\s*((?:"(?:[^"\\]|\\.)*"\s*)+)\)', handle.read()):
                 parts = re.findall(r'"((?:[^"\\]|\\.)*)"', call)
                 source_texts.add(qml_unquote("".join(parts)))
     for path in glob.glob(os.path.join(ROOT, "i18n", "*.json")):

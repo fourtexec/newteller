@@ -345,7 +345,7 @@ void PolkitAgent::sessionCompleted(bool gained)
     }
     // Wrong password (or PAM refused): ask again, like every other prompt.
     ++m_attempts;
-    m_error = QStringLiteral("That password did not work. Try again.");
+    m_error = tr("That password did not work. Try again.");
     m_busy = false;
     emit changed();
     QTimer::singleShot(0, this, [this] { startSession(); });

@@ -445,35 +445,36 @@ QString SessionServices::keyboardLayoutLabel() const
 
 QString SessionServices::layoutDisplayName(const QString &code) const
 {
-    static const QHash<QString, QString> names = {
-        {QStringLiteral("us"), QStringLiteral("English (US)")},
-        {QStringLiteral("gb"), QStringLiteral("English (UK)")},
-        {QStringLiteral("ru"), QStringLiteral("Russian")},
-        {QStringLiteral("ua"), QStringLiteral("Ukrainian")},
-        {QStringLiteral("by"), QStringLiteral("Belarusian")},
-        {QStringLiteral("kz"), QStringLiteral("Kazakh")},
-        {QStringLiteral("de"), QStringLiteral("German")},
-        {QStringLiteral("fr"), QStringLiteral("French")},
-        {QStringLiteral("es"), QStringLiteral("Spanish")},
-        {QStringLiteral("it"), QStringLiteral("Italian")},
-        {QStringLiteral("pl"), QStringLiteral("Polish")},
-        {QStringLiteral("cz"), QStringLiteral("Czech")},
-        {QStringLiteral("pt"), QStringLiteral("Portuguese")},
-        {QStringLiteral("br"), QStringLiteral("Portuguese (Brazil)")},
-        {QStringLiteral("tr"), QStringLiteral("Turkish")},
-        {QStringLiteral("gr"), QStringLiteral("Greek")},
-        {QStringLiteral("il"), QStringLiteral("Hebrew")},
-        {QStringLiteral("ara"), QStringLiteral("Arabic")},
-        {QStringLiteral("jp"), QStringLiteral("Japanese")},
-        {QStringLiteral("cn"), QStringLiteral("Chinese")},
-        {QStringLiteral("kr"), QStringLiteral("Korean")},
-        {QStringLiteral("ge"), QStringLiteral("Georgian")},
-        {QStringLiteral("am"), QStringLiteral("Armenian")},
-        {QStringLiteral("se"), QStringLiteral("Swedish")},
-        {QStringLiteral("fi"), QStringLiteral("Finnish")},
-        {QStringLiteral("no"), QStringLiteral("Norwegian")},
-        {QStringLiteral("dk"), QStringLiteral("Danish")},
-        {QStringLiteral("nl"), QStringLiteral("Dutch")},
+    // Built per call: tr() follows a live language switch.
+    const QHash<QString, QString> names = {
+        {QStringLiteral("us"), tr("English (US)")},
+        {QStringLiteral("gb"), tr("English (UK)")},
+        {QStringLiteral("ru"), tr("Russian")},
+        {QStringLiteral("ua"), tr("Ukrainian")},
+        {QStringLiteral("by"), tr("Belarusian")},
+        {QStringLiteral("kz"), tr("Kazakh")},
+        {QStringLiteral("de"), tr("German")},
+        {QStringLiteral("fr"), tr("French")},
+        {QStringLiteral("es"), tr("Spanish")},
+        {QStringLiteral("it"), tr("Italian")},
+        {QStringLiteral("pl"), tr("Polish")},
+        {QStringLiteral("cz"), tr("Czech")},
+        {QStringLiteral("pt"), tr("Portuguese")},
+        {QStringLiteral("br"), tr("Portuguese (Brazil)")},
+        {QStringLiteral("tr"), tr("Turkish")},
+        {QStringLiteral("gr"), tr("Greek")},
+        {QStringLiteral("il"), tr("Hebrew")},
+        {QStringLiteral("ara"), tr("Arabic")},
+        {QStringLiteral("jp"), tr("Japanese")},
+        {QStringLiteral("cn"), tr("Chinese")},
+        {QStringLiteral("kr"), tr("Korean")},
+        {QStringLiteral("ge"), tr("Georgian")},
+        {QStringLiteral("am"), tr("Armenian")},
+        {QStringLiteral("se"), tr("Swedish")},
+        {QStringLiteral("fi"), tr("Finnish")},
+        {QStringLiteral("no"), tr("Norwegian")},
+        {QStringLiteral("dk"), tr("Danish")},
+        {QStringLiteral("nl"), tr("Dutch")},
     };
     const QString key = code.trimmed().toLower();
     return names.value(key, code);
@@ -1309,9 +1310,9 @@ void SessionServices::connectWifi(const QString &ssid, const QString &password)
         m_wifiBusy = false;
         readAccessPoints();
         emit wifiConnectFinished(ok, ssid, ok ? QString()
-                                              : QStringLiteral("Could not connect to %1 - "
-                                                               "wrong password or the network "
-                                                               "refused it.").arg(ssid));
+                                              : tr("Could not connect to %1 - "
+                                                   "wrong password or the network "
+                                                   "refused it.").arg(ssid));
     });
     poll->start();
 }
@@ -1382,7 +1383,7 @@ QString SessionServices::killWindow(int id)
     }
     if (reply.startsWith(QLatin1String("error ")))
         return reply.mid(6);
-    return QStringLiteral("The compositor did not answer.");
+    return tr("The compositor did not answer.");
 }
 
 QVariantList SessionServices::hungWindows() const
@@ -1506,7 +1507,7 @@ QString SessionServices::setOutput(const QString &name, bool enabled, int width,
     if (reply == QLatin1String("ok"))
         return QString();
     if (reply.isEmpty())
-        return QStringLiteral("The compositor did not answer.");
+        return tr("The compositor did not answer.");
     return reply.startsWith(QLatin1String("error ")) ? reply.mid(6) : reply;
 }
 

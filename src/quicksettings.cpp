@@ -1,6 +1,7 @@
 #include "quicksettings.h"
 #include "settings.h"
 
+#include <QCoreApplication>
 #include <QDBusArgument>
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
@@ -26,14 +27,14 @@ constexpr auto kMprisPath = "/org/mpris/MediaPlayer2";
 QString networkStateText(int state, bool wifiEnabled)
 {
     if (state >= 70)
-        return QStringLiteral("Connected");
+        return QCoreApplication::translate("QuickSettings", "Connected");
     if (state >= 60)
-        return QStringLiteral("Connecting...");
+        return QCoreApplication::translate("QuickSettings", "Connecting...");
     if (state >= 30)
-        return QStringLiteral("Disconnecting...");
+        return QCoreApplication::translate("QuickSettings", "Disconnecting...");
     if (!wifiEnabled)
-        return QStringLiteral("Wi-Fi off");
-    return QStringLiteral("Disconnected");
+        return QCoreApplication::translate("QuickSettings", "Wi-Fi off");
+    return QCoreApplication::translate("QuickSettings", "Disconnected");
 }
 
 // MPRIS Metadata (a{sv}) as a map. qdbus_cast reads the dictionary itself;
