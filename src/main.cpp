@@ -28,6 +28,7 @@
 #include <QDesktopServices>
 #include <QFile>
 #include <QGuiApplication>
+#include <QLocale>
 #include <QIcon>
 #include <QJsonDocument>
 #include <QLockFile>
@@ -273,6 +274,11 @@ int main(int argc, char *argv[])
             settings.value(QStringLiteral("shell.language"), QStringLiteral("auto")).toString());
         if (translator.loadLanguage(language))
             QCoreApplication::installTranslator(&translator);
+        // Dates, month and day names follow a language chosen explicitly;
+        // "auto" keeps the system locale.
+        const QString setting = settings.value(QStringLiteral("shell.language")).toString();
+        QLocale::setDefault(setting.isEmpty() || setting == QLatin1String("auto") ? QLocale::system()
+                                                                                  : QLocale(language));
     };
     applyLanguage();
 

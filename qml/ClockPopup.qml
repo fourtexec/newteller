@@ -53,8 +53,11 @@ DropdownWindow {
         return cells;
     }
 
+    // The month on its own ("Ноябрь", not the "ноября" of a date), as the
+    // locale writes it, capitalised.
     function monthName(month) {
-        return Qt.formatDateTime(new Date(clock.viewYear, month, 1), "MMMM");
+        const name = Qt.locale().standaloneMonthName(month, Locale.LongFormat);
+        return name.length > 0 ? name.charAt(0).toUpperCase() + name.slice(1) : name;
     }
 
     ColumnLayout {
@@ -190,9 +193,9 @@ DropdownWindow {
             rowSpacing: 2
             property var cells: clock.buildCalendar(clock.viewYear, clock.viewMonth)
 
-            // Weekday header, Monday first.
+            // Weekday header, Monday first, in the locale's short names.
             Repeater {
-                model: ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
+                model: [1, 2, 3, 4, 5, 6, 0].map(day => Qt.locale().standaloneDayName(day, Locale.ShortFormat))
                 delegate: Text {
                     required property var modelData
                     width: 40
