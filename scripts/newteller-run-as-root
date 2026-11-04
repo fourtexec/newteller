@@ -18,6 +18,21 @@ if [[ $# -eq 0 ]]; then
 fi
 if ! command -v pkexec > /dev/null 2>&1; then
     echo 'newteller-run-as-root: pkexec is not installed' >&2
+    # Started from a menu: without a word on screen nothing would happen.
+    case "${LC_ALL:-${LC_MESSAGES:-${LANG:-}}}" in
+        ru*) summary='Не удалось запустить от имени администратора'
+             body='pkexec не установлен (sudo apt install pkexec).' ;;
+        *) summary='Could not run as administrator'
+           body='pkexec is not installed (sudo apt install pkexec).' ;;
+    esac
+    if command -v notify-send > /dev/null 2>&1; then
+        notify-send -i shield "$summary" "$body" > /dev/null 2>&1
+    elif command -v gdbus > /dev/null 2>&1; then
+        gdbus call --session --dest org.freedesktop.Notifications \
+            --object-path /org/freedesktop/Notifications \
+            --method org.freedesktop.Notifications.Notify \
+            "NewTeller" 0 "shield" "$summary" "$body" "[]" "{}" "int32 -1" > /dev/null 2>&1
+    fi
     exit 1
 fi
 
