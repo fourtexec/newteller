@@ -1366,6 +1366,28 @@ def main():
     dead = [k for k in bound_keys
             if not any(k in text for text in readers) and '"%s"' % k not in page_reads]
     check(not dead, f"every settings control changes something (never read: {dead})")
+    # English interface text in QML goes through qsTr(), or the Russian
+    # interface shows it untranslated: labels, returned strings and the
+    # branches of a ?: that pick a label.
+    english = r'[A-Z][a-z]+(?: [a-z]+)*[.!]?'
+    label_patterns = [
+        re.compile(r'\b(?:text|label|title|subtitle|placeholder|tooltipText)\s*:\s*"(' + english + r')"'),
+        re.compile(r'\breturn\s+"(' + english + r')"'),
+    ]
+    ternary_pattern = re.compile(r'[?:]\s*"(' + english + r')"\s*(?:[:;)]|$)')
+    # Names that are the same in every language.
+    untranslated = {"NewTeller", "English", "Super", "Sans", "Wayland"}
+    bare = []
+    for path in sorted(glob.glob(os.path.join(ROOT, "qml", "*.qml"))):
+        with open(path, encoding="utf-8") as handle:
+            for number, line in enumerate(handle, 1):
+                code = line.split("//")[0]
+                patterns = label_patterns + ([ternary_pattern] if "?" in code else [])
+                for pattern in patterns:
+                    for match in pattern.finditer(code):
+                        if match.group(1) not in untranslated:
+                            bare.append(f"{os.path.basename(path)}:{number} {match.group(1)!r}")
+    check(not bare, f"interface text in QML goes through qsTr() (bare: {bare})")
 
     # Translations (i18n/<language>.json, read by src/translator.cpp): every
     # entry translates a real qsTr() text, keeps its %1 placeholders, and the
