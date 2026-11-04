@@ -119,7 +119,7 @@ DropdownWindow {
                 id: row
                 required property var modelData
                 width: list.width
-                height: rowBody.implicitHeight + 18
+                height: Math.max(rowBody.implicitHeight, rowIcon.visible ? 32 : 0) + 18
                 radius: center.appearance.cornerRadius >= 0
                         ? center.appearance.cornerRadius : Theme.radius
                 color: rowHover.hovered
@@ -154,9 +154,47 @@ DropdownWindow {
                     color: center.appearance.accent
                 }
 
+                // The notification's picture (an avatar, a cover) or its
+                // app icon, like the popup showed it.
+                Item {
+                    id: rowIcon
+                    readonly property bool hasImage: (row.modelData.image || "").length > 0
+                    readonly property bool hasIcon: (row.modelData.icon || "").length > 0
+                    visible: hasImage || (hasIcon && Settings.values["notifications.showAppIcon"] !== false)
+                    anchors.left: parent.left
+                    anchors.leftMargin: 12
+                    anchors.top: parent.top
+                    anchors.topMargin: 10
+                    width: visible ? 30 : 0
+                    height: 30
+                    Image {
+                        objectName: "historyImage"
+                        anchors.fill: parent
+                        visible: rowIcon.hasImage
+                        sourceSize.width: 60
+                        sourceSize.height: 60
+                        fillMode: Image.PreserveAspectCrop
+                        asynchronous: true
+                        smooth: true
+                        source: row.modelData.image || ""
+                    }
+                    Image {
+                        anchors.centerIn: parent
+                        visible: !rowIcon.hasImage
+                        width: 20
+                        height: 20
+                        sourceSize.width: 40
+                        sourceSize.height: 40
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true
+                        source: !rowIcon.hasImage && rowIcon.hasIcon
+                                ? Shell.tintedIcon(row.modelData.icon, center.appearance.foreground) : ""
+                    }
+                }
+
                 ColumnLayout {
                     id: rowBody
-                    anchors.left: parent.left
+                    anchors.left: rowIcon.visible ? rowIcon.right : parent.left
                     anchors.right: rowControls.left
                     anchors.top: parent.top
                     anchors.margins: 9

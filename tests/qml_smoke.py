@@ -1843,12 +1843,27 @@ def main():
         QMetaObject.invokeMethod(center, "toggle")
         QTest.qWait(300)  # the open animation plays
         check(center.isVisible(), "toggling opens the notification centre")
+        avatar = QImage(8, 8, QImage.Format_RGB32)
+        avatar.fill(QColor("#33aa66"))
+        avatar_png = QByteArray()
+        avatar_buffer = QBuffer(avatar_png)
+        avatar_buffer.open(QIODevice.WriteOnly)
+        avatar.save(avatar_buffer, "PNG")
         notifications._history = [
-            {"id": 1, "app": "Mail", "summary": "Hello", "body": "First", "time": 1000},
-            {"id": 2, "app": "Chat", "summary": "Yo", "body": "Second", "time": 2000},
+            {"id": 1, "app": "Mail", "summary": "Hello", "body": "First", "time": 1000,
+             "icon": "bell", "image": ""},
+            {"id": 2, "app": "Chat", "summary": "Yo", "body": "Second", "time": 2000, "icon": "",
+             "image": "data:image/png;base64," + bytes(avatar_png.toBase64()).decode()},
         ]
         notifications.historyChanged.emit()
-        QTest.qWait(50)
+        QTest.qWait(300)
+        # A row shows the notification's picture, as its popup did.
+        center_items = []
+        walk_items(center.contentItem(), center_items)
+        pictures = [i for i in center_items if isinstance(i, QQuickItem)
+                    and i.objectName() == "historyImage" and i.isVisible()]
+        check(len(pictures) == 1 and pictures[0].property("implicitWidth") > 0,
+              f"the history shows a notification's picture ({len(pictures)})")
         # Everything on screen counts as seen; closing keeps the mark.
         check(int(center.property("unreadCount")) == 0,
               f"an open centre counts as seen ({center.property('unreadCount')})")
