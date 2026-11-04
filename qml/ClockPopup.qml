@@ -39,9 +39,17 @@ DropdownWindow {
         }
     }
 
-    // Builds a Monday-first 6x7 grid of the given month; empty cells null.
+    // The locale's first weekday (Monday in Russia, Sunday in the US), in
+    // the 0 = Sunday numbering of Date.getDay().
+    readonly property int firstWeekday: {
+        const first = Qt.locale().firstDayOfWeek;
+        return first >= 0 && first <= 6 ? first : 1;
+    }
+
+    // Builds a 6x7 grid of the given month starting on the locale's first
+    // weekday; empty cells null.
     function buildCalendar(year, month) {
-        const start = (new Date(year, month, 1).getDay() + 6) % 7;
+        const start = (new Date(year, month, 1).getDay() - clock.firstWeekday + 7) % 7;
         const days = new Date(year, month + 1, 0).getDate();
         const cells = [];
         for (var i = 0; i < start; ++i)
@@ -193,9 +201,10 @@ DropdownWindow {
             rowSpacing: 2
             property var cells: clock.buildCalendar(clock.viewYear, clock.viewMonth)
 
-            // Weekday header, Monday first, in the locale's short names.
+            // Weekday header from the locale's first weekday, in its short names.
             Repeater {
-                model: [1, 2, 3, 4, 5, 6, 0].map(day => Qt.locale().standaloneDayName(day, Locale.ShortFormat))
+                model: [0, 1, 2, 3, 4, 5, 6].map(i => Qt.locale().standaloneDayName((clock.firstWeekday + i) % 7,
+                                                                                    Locale.ShortFormat))
                 delegate: Text {
                     required property var modelData
                     width: 40

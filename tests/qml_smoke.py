@@ -48,9 +48,9 @@ os.environ["QT_QPA_PLATFORM"] = "offscreen:configfile=" + _config.name
 os.environ["QT_QUICK_BACKEND"] = "software"
 
 import PySide6  # noqa: E402
-from PySide6.QtCore import (Q_ARG, QBuffer, QByteArray, QDateTime, QDir, QEnum,  # noqa: E402
-                            QFile, QFileInfo, QIODevice, QMargins, QMetaObject, QObject,
-                            QPoint, QPointF, QRectF, QtMsgType, QTimer, QTranslator, QUrl,
+from PySide6.QtCore import (Q_ARG, Q_RETURN_ARG, QBuffer, QByteArray, QDateTime,  # noqa: E402
+                            QDir, QEnum, QFile, QFileInfo, QIODevice, QMargins, QMetaObject,
+                            QObject, QPoint, QPointF, QRectF, QtMsgType, QTimer, QTranslator, QUrl,
                             Property, Qt, Signal, Slot, qInstallMessageHandler)
 from PySide6.QtGui import QColor, QGuiApplication, QImage, QImageReader  # noqa: E402
 from PySide6.QtQml import (QmlAnonymous, QmlAttached, QmlNamedElement,  # noqa: E402
@@ -1802,6 +1802,16 @@ def main():
           f"one clock popup per panel ({len(clock_popups)} vs {len(panels)})")
     if clock_popups:
         check(not clock_popups[0].isVisible(), "the clock popup starts hidden")
+        # 1 November 2026 is a Sunday: the last cell of the first row for a
+        # Monday-first locale, the first cell for a Sunday-first one.
+        first = clock_popups[0].property("firstWeekday")
+        cells = QMetaObject.invokeMethod(clock_popups[0], "buildCalendar", Qt.DirectConnection,
+                                         Q_RETURN_ARG("QVariant"),
+                                         Q_ARG("QVariant", 2026), Q_ARG("QVariant", 10))
+        cells = cells.toVariant() if hasattr(cells, "toVariant") else cells
+        expected = {1: 6, 0: 0}.get(first)
+        check(expected is not None and cells and cells.index(1) == expected and len(cells) % 7 == 0,
+              f"the calendar starts on the locale's first weekday ({first}: {cells[:8] if cells else cells})")
 
     # One tooltip window per panel, hidden until a button is hovered.
     tooltips = windows_of_kind("PanelToolTip")
