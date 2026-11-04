@@ -3,10 +3,23 @@
 #include <QDir>
 #include <QFile>
 #include <QJsonDocument>
+#include <QJSValue>
 #include <QJsonObject>
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QDebug>
+
+namespace {
+// Lists and objects set from QML arrive as a QJSValue, which QJsonDocument
+// writes as null: the dock pins, the run history and the sticky notes were
+// lost on the next start. Keep plain QVariantList / QVariantMap instead.
+QVariant plainValue(const QVariant &value)
+{
+    if (value.metaType() == QMetaType::fromType<QJSValue>())
+        return value.value<QJSValue>().toVariant();
+    return value;
+}
+} // namespace
 
 QString Settings::configDir()
 {
@@ -195,6 +208,8 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("weather.location"), QString());
     m_defaults.insert(QStringLiteral("weather.units"), QStringLiteral("metric"));
     m_defaults.insert(QStringLiteral("weather.showForecast"), true);
+    // The sticky notes widget: [{id, text, x, y, width, height}, ...].
+    m_defaults.insert(QStringLiteral("stickyNotes.notes"), QVariantList());
     m_defaults.insert(QStringLiteral("notifications.soundEnabled"), true);
     m_defaults.insert(QStringLiteral("notifications.soundFile"), QString());
     m_defaults.insert(QStringLiteral("notifications.doNotDisturbSchedule"), false);
@@ -376,8 +391,12 @@ void Settings::load()
         // Resilient load: falls back to the `.bak` file when the JSON is broken.
         const QVariantMap result = Rust::loadConfig(configFile());
         const QVariantMap value = result.value(QStringLiteral("value")).toMap();
-        for (auto it = value.constBegin(); it != value.constEnd(); ++it)
-            merged.insert(it.key(), it.value());
+        for (auto it = value.constBegin(); it != value.constEnd(); ++it) {
+            // null: a list or object an older version failed to save; the
+            // default is better than nothing.
+            if (!it.value().isNull())
+                merged.insert(it.key(), it.value());
+        }
         const QString error = result.value(QStringLiteral("error")).toString();
         if (!error.isEmpty())
             qWarning() << "newteller: settings:" << error;
@@ -389,8 +408,10 @@ void Settings::load()
             const QJsonDocument doc = QJsonDocument::fromJson(body, &err);
             if (err.error == QJsonParseError::NoError && doc.isObject()) {
                 const QVariantMap user = doc.object().toVariantMap();
-                for (auto it = user.cbegin(); it != user.cend(); ++it)
-                    merged.insert(it.key(), it.value());
+                for (auto it = user.cbegin(); it != user.cend(); ++it) {
+                    if (!it.value().isNull())
+                        merged.insert(it.key(), it.value());
+                }
             } else {
                 qWarning() << "newteller: invalid settings file" << configFile()
                            << err.errorString();
@@ -468,8 +489,9 @@ QVariant Settings::value(const QString &key, const QVariant &fallback) const
     return m_values.value(key, fallback);
 }
 
-void Settings::setValue(const QString &key, const QVariant &value)
+void Settings::setValue(const QString &key, const QVariant &input)
 {
+    const QVariant value = plainValue(input);
     if (m_values.value(key) == value)
         return;
     m_values.insert(key, value);
@@ -482,8 +504,9 @@ void Settings::setValues(const QVariantMap &values)
 {
     bool touched = false;
     for (auto it = values.constBegin(); it != values.constEnd(); ++it) {
-        if (m_values.value(it.key()) != it.value()) {
-            m_values.insert(it.key(), it.value());
+        const QVariant value = plainValue(it.value());
+        if (m_values.value(it.key()) != value) {
+            m_values.insert(it.key(), value);
             touched = true;
             emit changed(it.key());
         }
