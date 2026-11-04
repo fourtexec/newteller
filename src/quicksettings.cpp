@@ -50,19 +50,6 @@ QVariantMap metadataMap(const QVariant &metadata)
     return metadata.toMap();
 }
 
-// The value of a Properties.Get reply. Its out argument is a D-Bus variant,
-// which QtDBus hands over wrapped in QDBusVariant - plain numbers and
-// strings too - so toInt()/toString() on the raw argument give 0 and "".
-QVariant propertyValue(const QDBusMessage &reply)
-{
-    if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
-        return {};
-    const QVariant value = reply.arguments().constFirst();
-    if (value.userType() == qMetaTypeId<QDBusVariant>())
-        return qvariant_cast<QDBusVariant>(value).variant();
-    return value;
-}
-
 // Extracts a plain string from a D-Bus variant, looking through QDBusArgument
 // wrappers (Metadata arrives as a{sv} with nested types). The argument is
 // read through a const QDBusArgument: the non-const begin*() calls are the
@@ -346,14 +333,19 @@ void QuickSettings::writeBrightness(int percent)
         QStringLiteral("/org/gnome/SettingsDaemon/Power"),
         QStringLiteral("org.gnome.SettingsDaemon.Power.Screen"), QStringLiteral("SetPercentage"));
     call << percent;
-    const QDBusMessage reply = QDBusConnection::sessionBus().call(call, QDBus::Block, 500);
-    if (reply.type() == QDBusMessage::ReplyMessage)
-        return;
-    QFile file(QStringLiteral("/sys/class/backlight/%1/brightness").arg(m_backlightDevice));
-    if (file.open(QIODevice::WriteOnly))
-        file.write(QByteArray::number(value));
-    else
-        m_brightnessWriteTried = true;
+    // Asynchronous: a slow settings daemon must not stall the slider.
+    auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(call, 500), this);
+    const QString device = m_backlightDevice;
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this, device, value](QDBusPendingCallWatcher *w) {
+        w->deleteLater();
+        if (!w->isError())
+            return;
+        QFile file(QStringLiteral("/sys/class/backlight/%1/brightness").arg(device));
+        if (file.open(QIODevice::WriteOnly))
+            file.write(QByteArray::number(value));
+        else
+            m_brightnessWriteTried = true;
+    });
 }
 
 // ---------------------------------------------------------------------------
@@ -392,28 +384,33 @@ void QuickSettings::setupNetwork()
                 SLOT(networkPropertiesChanged(QString, QVariantMap, QStringList)));
 }
 
+// State and WirelessEnabled in one asynchronous GetAll: NetworkManager
+// being slow or restarting no longer stalls the panel.
 void QuickSettings::readNetwork()
 {
-    QDBusConnection bus = QDBusConnection::systemBus();
-    auto readProperty = [&bus](const QString &property) -> QVariant {
-        QDBusMessage call = QDBusMessage::createMethodCall(
-            QString::fromLatin1(kNmService), QString::fromLatin1(kNmPath),
-            QStringLiteral("org.freedesktop.DBus.Properties"), QStringLiteral("Get"));
-        call << QString::fromLatin1(kNmInterface) << property;
-        return propertyValue(bus.call(call, QDBus::BlockWithGui, 800));
-    };
-
-    const QVariant stateVariant = readProperty(QStringLiteral("State"));
-    const QVariant wifiVariant = readProperty(QStringLiteral("WirelessEnabled"));
-    const int state = stateVariant.isValid() ? stateVariant.toInt() : -1;
-    const bool wifi = wifiVariant.isValid() ? wifiVariant.toBool() : m_wifiEnabled;
-
-    if (state >= 0 && (state != m_networkState || wifi != m_wifiEnabled)) {
-        m_networkState = state;
-        m_wifiEnabled = wifi;
-        setNetworkStatus(state, wifi);
-        emit networkChanged();
-    }
+    QDBusMessage call = QDBusMessage::createMethodCall(QString::fromLatin1(kNmService),
+                                                       QString::fromLatin1(kNmPath),
+                                                       QStringLiteral("org.freedesktop.DBus.Properties"),
+                                                       QStringLiteral("GetAll"));
+    call << QString::fromLatin1(kNmInterface);
+    auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(call, 3000), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher *w) {
+        w->deleteLater();
+        const QDBusPendingReply<QVariantMap> reply = *w;
+        if (reply.isError())
+            return;
+        const QVariantMap properties = reply.value();
+        const QVariant stateVariant = properties.value(QStringLiteral("State"));
+        const QVariant wifiVariant = properties.value(QStringLiteral("WirelessEnabled"));
+        const int state = stateVariant.isValid() ? stateVariant.toInt() : -1;
+        const bool wifi = wifiVariant.isValid() ? wifiVariant.toBool() : m_wifiEnabled;
+        if (state >= 0 && (state != m_networkState || wifi != m_wifiEnabled)) {
+            m_networkState = state;
+            m_wifiEnabled = wifi;
+            setNetworkStatus(state, wifi);
+            emit networkChanged();
+        }
+    });
 }
 
 void QuickSettings::setNetworkStatus(int state, bool wifiEnabled)
