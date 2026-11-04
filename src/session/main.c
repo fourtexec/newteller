@@ -1556,8 +1556,9 @@ static void viewRestoreSnap(struct View *view)
 }
 
 // Snap the focused window to one half of the output's usable area. The
-// direction is a wlr edge: WLR_EDGE_LEFT/RIGHT for the two halves, and
-// WLR_EDGE_TOP for maximise. WLR_EDGE_BOTTOM restores the saved geometry.
+// direction is a wlr edge: WLR_EDGE_LEFT/RIGHT for the two halves, one of
+// them with TOP or BOTTOM for a quarter, WLR_EDGE_TOP alone for maximise.
+// WLR_EDGE_BOTTOM alone restores the saved geometry.
 static void viewSnap(struct View *view, uint32_t edge)
 {
     if (!view || view->overrideRedirect)
@@ -1578,7 +1579,11 @@ static void viewSnap(struct View *view, uint32_t edge)
         viewSetMaximized(view, true);
         return;
     }
-    if (edge != WLR_EDGE_LEFT && edge != WLR_EDGE_RIGHT)
+    // A half (left or right), or a quarter: a side plus top or bottom.
+    const uint32_t side = edge & (WLR_EDGE_LEFT | WLR_EDGE_RIGHT);
+    const uint32_t vertical = edge & (WLR_EDGE_TOP | WLR_EDGE_BOTTOM);
+    if ((side != WLR_EDGE_LEFT && side != WLR_EDGE_RIGHT)
+        || vertical == (WLR_EDGE_TOP | WLR_EDGE_BOTTOM))
         return;
     if (view->maximized)
         viewSetMaximized(view, false);
@@ -1594,8 +1599,10 @@ static void viewSnap(struct View *view, uint32_t edge)
 
     const struct wlr_box area = usableBoxForView(view);
     const int half = area.width / 2;
-    struct wlr_box outer = {edge == WLR_EDGE_LEFT ? area.x : area.x + area.width - half,
-                            area.y, half, area.height};
+    const int height = vertical ? area.height / 2 : area.height;
+    struct wlr_box outer = {side == WLR_EDGE_LEFT ? area.x : area.x + area.width - half,
+                            vertical == WLR_EDGE_BOTTOM ? area.y + area.height - height : area.y,
+                            half, height};
     struct wlr_box content = frameContentBox(view, outer);
     viewSetPosition(view, content.x, content.y);
     viewSetSize(view, content.width, content.height);
@@ -2817,10 +2824,17 @@ static void cursorButton(struct wl_listener *listener, void *data)
             && server->config.snapping) {
             struct View *view = server->grabbedView;
             const struct wlr_box area = usableBoxForView(view);
+            // Corners (the outer 10% of a side) give quarters.
+            const int cornerReach = area.height / 10 > 24 ? area.height / 10 : 24;
+            uint32_t row = 0;
+            if (server->cursor->y <= area.y + cornerReach)
+                row = WLR_EDGE_TOP;
+            else if (server->cursor->y >= area.y + area.height - cornerReach)
+                row = WLR_EDGE_BOTTOM;
             if (server->cursor->x <= area.x + 12)
-                viewSnap(view, WLR_EDGE_LEFT);
+                viewSnap(view, WLR_EDGE_LEFT | row);
             else if (server->cursor->x >= area.x + area.width - 12)
-                viewSnap(view, WLR_EDGE_RIGHT);
+                viewSnap(view, WLR_EDGE_RIGHT | row);
             else if (server->cursor->y <= area.y + 10)
                 viewSnap(view, WLR_EDGE_TOP);
         }
@@ -3996,14 +4010,21 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
     if (logo && (sym == XKB_KEY_Left || sym == XKB_KEY_Right
                  || sym == XKB_KEY_Up || sym == XKB_KEY_Down)) {
         if (server->focusedView) {
+            // As on Windows: a half goes to a quarter with Up/Down, a
+            // quarter back to its half; Left/Right keep a quarter's row.
+            struct View *view = server->focusedView;
+            const uint32_t side = (uint32_t)view->snapEdges & (WLR_EDGE_LEFT | WLR_EDGE_RIGHT);
+            const uint32_t row = (uint32_t)view->snapEdges & (WLR_EDGE_TOP | WLR_EDGE_BOTTOM);
             if (sym == XKB_KEY_Left)
-                viewSnap(server->focusedView, WLR_EDGE_LEFT);
+                viewSnap(view, WLR_EDGE_LEFT | row);
             else if (sym == XKB_KEY_Right)
-                viewSnap(server->focusedView, WLR_EDGE_RIGHT);
+                viewSnap(view, WLR_EDGE_RIGHT | row);
             else if (sym == XKB_KEY_Up)
-                viewSnap(server->focusedView, WLR_EDGE_TOP);
+                viewSnap(view, side == 0 ? WLR_EDGE_TOP
+                               : row == WLR_EDGE_BOTTOM ? side : side | WLR_EDGE_TOP);
             else
-                viewSnap(server->focusedView, WLR_EDGE_BOTTOM);
+                viewSnap(view, side == 0 ? WLR_EDGE_BOTTOM
+                               : row == WLR_EDGE_TOP ? side : side | WLR_EDGE_BOTTOM);
         }
         return true;
     }
