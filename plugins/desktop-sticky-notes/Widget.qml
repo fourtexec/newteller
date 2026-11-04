@@ -17,8 +17,8 @@ Rectangle {
     // the note being typed in.
     property var notes: []
 
-    Component.onCompleted: {
-        // A list from C++ is array-like, not always an Array: copy it.
+    // A list from C++ is array-like, not always an Array: copy it.
+    function savedNotes() {
         const saved = Settings.values["stickyNotes.notes"];
         const loaded = [];
         for (let i = 0; saved && i < saved.length; ++i) {
@@ -26,7 +26,24 @@ Rectangle {
             if (note && note.id !== undefined)
                 loaded.push(JSON.parse(JSON.stringify(note)));
         }
-        notes = loaded;
+        return loaded;
+    }
+
+    Component.onCompleted: notes = savedNotes()
+
+    // Every screen's desktop has its own copy of the widget: when another
+    // copy saved, take its notes - unless this one is being edited, which
+    // would lose what is typed here.
+    property bool editing: false
+    Connections {
+        target: Settings
+        function onValuesChanged() {
+            if (saveTimer.running || widget.editing)
+                return;
+            const saved = widget.savedNotes();
+            if (JSON.stringify(saved) !== JSON.stringify(widget.notes))
+                widget.notes = saved;
+        }
     }
 
     Timer {
@@ -271,6 +288,7 @@ Rectangle {
                 if (text !== note.noteText)
                     note.noteEdited(text)
             }
+            onActiveFocusChanged: widget.editing = activeFocus
 
             Text {
                 visible: editor.text.length === 0 && !editor.activeFocus
