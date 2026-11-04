@@ -49,8 +49,9 @@ os.environ["QT_QUICK_BACKEND"] = "software"
 
 import PySide6  # noqa: E402
 from PySide6.QtCore import (Q_ARG, QBuffer, QByteArray, QDateTime, QDir, QEnum,  # noqa: E402
-                            QFile, QFileInfo, QMargins, QIODevice, QMetaObject, QObject, QPoint, QPointF, QRectF, QtMsgType, QTimer,
-                            QTranslator, QUrl, Property, Qt, Signal, Slot, qInstallMessageHandler)
+                            QFile, QFileInfo, QIODevice, QMargins, QMetaObject, QObject,
+                            QPoint, QPointF, QRectF, QtMsgType, QTimer, QTranslator, QUrl,
+                            Property, Qt, Signal, Slot, qInstallMessageHandler)
 from PySide6.QtGui import QColor, QGuiApplication, QImage, QImageReader  # noqa: E402
 from PySide6.QtQml import (QmlAnonymous, QmlAttached, QmlNamedElement,  # noqa: E402
                            QmlUncreatable, QQmlApplicationEngine, QQmlComponent)
@@ -707,6 +708,7 @@ class Notifications(QObject):
         super().__init__()
         self._active = []
         self._history = []
+        self.calls = []
 
     active = Property("QVariantList", lambda self: self._active, notify=activeChanged)
     history = Property("QVariantList", lambda self: self._history, notify=historyChanged)
@@ -723,7 +725,7 @@ class Notifications(QObject):
 
     @Slot("QVariant", str)
     def invokeAction(self, notification_id, action_key):
-        pass
+        self.calls.append(("invokeAction", notification_id, action_key))
 
     @Slot()
     def clearHistory(self):
@@ -2266,7 +2268,7 @@ def main():
             picture.save(png_buffer, "PNG")
             third = {"id": 3, "app": "Chat", "summary": "Anna", "body": "Hi", "icon": "bell",
                      "image": "data:image/png;base64," + bytes(png.toBase64()).decode(),
-                     "actions": [], "timeout": 0}
+                     "actions": ["default", "", "reply", "Reply"], "timeout": 0}
             notifications._active = [first, second, third]
             notifications.activeChanged.emit()
             QTest.qWait(300)
@@ -2284,6 +2286,32 @@ def main():
             check(len(images) == 1 and images[0].property("source").toString().startswith("data:")
                   and images[0].property("implicitWidth") > 0,
                   f"a notification picture is shown ({len(images)} visible, {sizes})")
+
+            # "default" is what clicking the card does, not a button; the
+            # empty label next to it does not shift the other pairs.
+            labels = [b.property("label") for b in items_named(stack.property("contentItem"),
+                                                               "notificationAction")
+                      if b.isVisible()]
+            check(labels == ["Reply"], f"only real actions become buttons ({labels})")
+            def card_of(item):
+                # The nearest ancestor that carries the card's entry.
+                while item is not None:
+                    entry = item.property("entry")
+                    entry = entry.toVariant() if hasattr(entry, "toVariant") else entry
+                    if isinstance(entry, dict) and "id" in entry:
+                        return item, entry["id"]
+                    item = item.parentItem()
+                return None, None
+            cards_found = [card_of(b) for b in items_named(stack.property("contentItem"),
+                                                           "notificationBody")]
+            notifications.calls.clear()
+            for card_item, card_number in cards_found:
+                if card_number == 3:
+                    # What the card's MouseArea calls (offscreen clicks do not
+                    # reach this window reliably).
+                    QMetaObject.invokeMethod(card_item, "activate")
+            check(("invokeAction", 3, "default") in notifications.calls,
+                  f"clicking a notification runs its default action ({notifications.calls})")
 
         notifications._active = []
         notifications.activeChanged.emit()

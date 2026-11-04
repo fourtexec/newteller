@@ -240,7 +240,27 @@ Window {
                 actions: notif.parseActions(model.actions),
                 timeout: model.timeout
             })
-            readonly property var actions: entry.actions.filter(a => a && a.length > 0)
+            // The spec sends key/label pairs. "default" is not a button: it
+            // is what clicking the notification itself does (open the chat,
+            // the mail). Keys come first so an empty label cannot shift them.
+            readonly property var buttons: {
+                const list = entry.actions || [];
+                const out = [];
+                for (let i = 0; i + 1 < list.length; i += 2) {
+                    const key = String(list[i] || "");
+                    if (key.length > 0 && key !== "default")
+                        out.push({ key: key, label: String(list[i + 1] || "") || key });
+                }
+                return out;
+            }
+            readonly property bool hasDefault: {
+                const list = entry.actions || [];
+                for (let i = 0; i < list.length; i += 2) {
+                    if (list[i] === "default")
+                        return true;
+                }
+                return false;
+            }
             // 1.0 -> 0.0 while the timeout runs; drives the progress line.
             property real progress: (entry.timeout || 0) > 0 ? 1.0 : 0.0
             // A new revision (the notification was replaced) starts the
@@ -274,10 +294,19 @@ Window {
                 duration: Math.max(1, card.entry.timeout || 1)
             }
 
+            // A click on the card: its default action, or just dismiss it.
+            function activate() {
+                if (card.hasDefault)
+                    Notifications.invokeAction(card.entry.id, "default");
+                else
+                    Notifications.dismiss(card.entry.id, 2);
+            }
+
             MouseArea {
+                objectName: "notificationBody"
                 anchors.fill: parent
-                enabled: card.actions.length === 0
-                onClicked: Notifications.dismiss(card.entry.id, 2)
+                cursorShape: card.hasDefault ? Qt.PointingHandCursor : Qt.ArrowCursor
+                onClicked: card.activate()
             }
 
             RowLayout {
@@ -380,20 +409,16 @@ Window {
                         Layout.fillWidth: true
                         Layout.topMargin: 4
                         spacing: 6
-                        visible: card.actions.length > 0
+                        visible: card.buttons.length > 0
 
                         Repeater {
-                            // The spec sends key/label pairs.
-                            model: Math.floor(card.actions.length / 2)
+                            model: card.buttons
 
                             delegate: TaskButton {
-                                required property int index
-                                readonly property int at: index * 2
-                                label: card.actions.length > at + 1 ? card.actions[at + 1]
-                                                                    : card.actions[at]
-                                onClicked: {
-                                    Notifications.invokeAction(card.entry.id, card.actions[at]);
-                                }
+                                required property var modelData
+                                objectName: "notificationAction"
+                                label: modelData.label
+                                onClicked: Notifications.invokeAction(card.entry.id, modelData.key)
                             }
                         }
                     }
