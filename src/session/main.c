@@ -44,6 +44,7 @@
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_output_management_v1.h>
+#include <wlr/types/wlr_output_power_management_v1.h>
 #include <wlr/types/wlr_pointer_gestures_v1.h>
 #include <wlr/types/wlr_pointer.h>
 #include <wlr/types/wlr_presentation_time.h>
@@ -648,6 +649,9 @@ struct Server {
 
     struct wlr_output_manager_v1 *outputManager;
     struct wlr_gamma_control_manager_v1 *gammaManager;
+    // wlr-output-power-management: wlopm and idle tools turn screens off.
+    struct wlr_output_power_manager_v1 *outputPowerManager;
+    struct wl_listener outputPowerSetMode;
 
     int ipcFd;
     struct wl_event_source *ipcSource;
@@ -5226,19 +5230,36 @@ static void handleLayoutChange(struct wl_listener *listener, void *data)
 }
 
 // `dpms off|on`: blank the monitors without forgetting their configuration.
+static void setOutputPower(struct Output *output, bool on)
+{
+    if (output->disabled || output->poweredOff == !on)
+        return;
+    struct wlr_output_state state;
+    wlr_output_state_init(&state);
+    wlr_output_state_set_enabled(&state, on);
+    if (wlr_output_commit_state(output->output, &state))
+        output->poweredOff = !on;
+    wlr_output_state_finish(&state);
+}
+
 static void setOutputsPower(struct Server *server, bool on)
 {
     struct Output *output;
-    wl_list_for_each(output, &server->outputs, link) {
-        if (output->disabled || output->poweredOff == !on)
-            continue;
-        struct wlr_output_state state;
-        wlr_output_state_init(&state);
-        wlr_output_state_set_enabled(&state, on);
-        if (wlr_output_commit_state(output->output, &state))
-            output->poweredOff = !on;
-        wlr_output_state_finish(&state);
-    }
+    wl_list_for_each(output, &server->outputs, link)
+        setOutputPower(output, on);
+}
+
+// wlopm --off / --on (and idle tools that use the protocol). Screens that
+// Settings -> Displays switched off stay off.
+static void handleOutputPowerSetMode(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, outputPowerSetMode);
+    const struct wlr_output_power_v1_set_mode_event *event = data;
+    struct Output *output = outputFromWlr(server, event->output);
+    if (!output)
+        return;
+    setOutputPower(output, event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON);
+    scheduleAllFrames(server);
 }
 
 static void handleGammaSet(struct wl_listener *listener, void *data)
@@ -8107,6 +8128,9 @@ static void setupProtocols(struct Server *server)
     server->gammaManager = wlr_gamma_control_manager_v1_create(server->display);
     server->gammaSetGamma.notify = handleGammaSet;
     wl_signal_add(&server->gammaManager->events.set_gamma, &server->gammaSetGamma);
+    server->outputPowerManager = wlr_output_power_manager_v1_create(server->display);
+    server->outputPowerSetMode.notify = handleOutputPowerSetMode;
+    wl_signal_add(&server->outputPowerManager->events.set_mode, &server->outputPowerSetMode);
     server->idleNotifier = wlr_idle_notifier_v1_create(server->display);
     struct wlr_idle_inhibit_manager_v1 *idleInhibit =
         wlr_idle_inhibit_v1_create(server->display);
@@ -8521,6 +8545,7 @@ static int run(struct Server *server)
     wl_list_remove(&server->outputManagerTest.link);
     wl_list_remove(&server->layoutChange.link);
     wl_list_remove(&server->gammaSetGamma.link);
+    wl_list_remove(&server->outputPowerSetMode.link);
     wl_list_remove(&server->newXdgDecoration.link);
     wl_list_remove(&server->newKdeDecoration.link);
     wlr_log(WLR_DEBUG, "destroying cursor");

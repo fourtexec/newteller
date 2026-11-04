@@ -12,6 +12,7 @@ the product.
 
 - **Session:** a small wlroots 0.18/0.19 compositor (`newteller-compositor`)
   with layer-shell, xdg-shell, XWayland, foreign-toplevel (wlr and ext),
+  output power management (`wlopm --off '*'`),
   xdg-foreign (portal dialogs attach to their application), security-context
   (sandboxed Flatpak apps cannot capture the screen, read the clipboard of
   others, inject input or draw over the desktop), screenshots, clipboard,
