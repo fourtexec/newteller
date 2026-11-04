@@ -475,6 +475,21 @@ void ShellController::notify(const QString &title, const QString &body) const
 
 QString ShellController::clipboardText() const
 {
+    // Wayland hands the clipboard only to the focused surface, which the
+    // desktop is not: wl-paste reads it through wlr-data-control. It runs on
+    // a click, bounded to a second so a hung clipboard owner cannot freeze
+    // the shell.
+    if (!qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")
+        && !QStandardPaths::findExecutable(QStringLiteral("wl-paste")).isEmpty()) {
+        QProcess paste;
+        paste.start(QStringLiteral("wl-paste"),
+                    {QStringLiteral("--no-newline"), QStringLiteral("--type"), QStringLiteral("text")});
+        if (paste.waitForFinished(1000) && paste.exitStatus() == QProcess::NormalExit
+            && paste.exitCode() == 0)
+            return QString::fromUtf8(paste.readAllStandardOutput());
+        paste.kill();
+        paste.waitForFinished(100);
+    }
     const QClipboard *clipboard = QGuiApplication::clipboard();
     return clipboard != nullptr ? clipboard->text() : QString();
 }
