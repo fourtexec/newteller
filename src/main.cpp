@@ -295,6 +295,10 @@ int main(int argc, char *argv[])
         if (key == QLatin1String("shell.language") || key.isEmpty()) {
             applyLanguage();
             engine.retranslate();
+            // Texts that C++ hands to QML (network state, layout names)
+            // are only re-read on their own change signals.
+            emit quick.networkChanged();
+            emit session.keyboardChanged();
         }
     });
     engine.addImageProvider(QStringLiteral("theme"), new ThemeIconProvider);
