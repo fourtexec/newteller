@@ -1501,7 +1501,7 @@ QString SessionServices::setOutput(const QString &name, bool enabled, int width,
                                    int refresh, int x, int y, double scale, int transform)
 {
     if (name.contains(QLatin1Char(' ')) || name.isEmpty())
-        return QStringLiteral("unknown screen");
+        return tr("Unknown screen");
     const QString reply = query(QStringLiteral("output-set %1 %2 %3x%4@%5 %6 %7 %8 %9")
                                     .arg(name, enabled ? QStringLiteral("on") : QStringLiteral("off"))
                                     .arg(width).arg(height).arg(refresh).arg(x).arg(y)
@@ -1617,7 +1617,7 @@ void SessionServices::startPolkitAgent()
     // Another agent already serves this session (started by the display
     // manager or a script): starting one more would only show an error.
     if (QCoreApplication::instance()->property("newteller.polkitAgentElsewhere").toBool()) {
-        m_polkitAgent = QStringLiteral("(already running)");
+        m_polkitAgent = tr("another agent, already running");
         return;
     }
     // The built-in agent tried and polkit refused it (no login session, no
