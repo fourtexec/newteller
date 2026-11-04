@@ -1378,7 +1378,8 @@ def main():
     # Names that are the same in every language.
     untranslated = {"NewTeller", "English", "Super", "Sans", "Wayland"}
     bare = []
-    for path in sorted(glob.glob(os.path.join(ROOT, "qml", "*.qml"))):
+    for path in sorted(glob.glob(os.path.join(ROOT, "qml", "*.qml"))
+                       + glob.glob(os.path.join(ROOT, "plugins", "*", "*.qml"))):
         with open(path, encoding="utf-8") as handle:
             for number, line in enumerate(handle, 1):
                 code = line.split("//")[0]
