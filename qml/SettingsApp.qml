@@ -3524,7 +3524,7 @@ Window {
                                 width: parent.width
                                 title: qsTr("Session")
                                 Text {
-                                    text: (Shell.isWayland ? "Wayland" : "X11") + " as " + Shell.userName
+                                    text: qsTr("%1 as %2").arg(Shell.isWayland ? "Wayland" : "X11").arg(Shell.userName)
                                     color: Theme.foreground
                                     font.family: Theme.fontFamily
                                     font.pointSize: Theme.fontSize

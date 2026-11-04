@@ -313,13 +313,13 @@ DropdownWindow {
                 Text {
                     text: {
                         if (!Bluetooth.powered)
-                            return "Off";
+                            return qsTr("Off");
                         var names = [];
                         for (var i = 0; i < Bluetooth.devices.length; ++i) {
                             if (Bluetooth.devices[i].connected)
                                 names.push(Bluetooth.devices[i].name);
                         }
-                        return names.length > 0 ? names.join(", ") : "On";
+                        return names.length > 0 ? names.join(", ") : qsTr("On");
                     }
                     color: Theme.muted
                     font.family: Theme.fontFamily

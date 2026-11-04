@@ -55,10 +55,10 @@ DropdownWindow {
                   ? dockMenu.entry.app.icon : "app-window"
         title: {
             if (!dockMenu.entry)
-                return "Application";
+                return qsTr("Application");
             if (dockMenu.entry.app && dockMenu.entry.app.name)
                 return dockMenu.entry.app.name;
-            return dockMenu.entry.title || "Application";
+            return dockMenu.entry.title || qsTr("Application");
         }
         onCloseClicked: dockMenu.close()
     }

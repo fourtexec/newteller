@@ -131,7 +131,7 @@ DropdownWindow {
                     TaskButton {
                         enabled: Bluetooth.busyDevice.length === 0
                         label: modelData.connected ? qsTr("Disconnect")
-                               : modelData.paired ? "Connect" : "Pair"
+                               : modelData.paired ? qsTr("Connect") : qsTr("Pair")
                         onClicked: {
                             popup.statusText = "";
                             if (modelData.connected)

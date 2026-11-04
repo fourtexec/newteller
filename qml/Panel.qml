@@ -682,7 +682,7 @@ Window {
             required property int index
             readonly property var entry: modelData
             readonly property string appName: entry.app && entry.app.name ? entry.app.name
-                                                                          : (entry.title || "Application")
+                                                                          : (entry.title || qsTr("Application"))
 
             height: Math.round(dockAppsRepeater.extent)
             width: panel.vertical ? Math.round(dockAppsRepeater.extent) : implicitWidth
