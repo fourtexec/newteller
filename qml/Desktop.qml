@@ -518,9 +518,19 @@ Window {
                 MouseArea {
                     id: iconMouse
                     anchors.fill: parent
+                    acceptedButtons: Qt.LeftButton | Qt.RightButton
                     cursorShape: iconDelegate.dragging ? Qt.ClosedHandCursor : Qt.PointingHandCursor
 
+                    // Right button: the icon's own menu (open, copy path, trash).
+                    onClicked: (mouse) => {
+                        if (mouse.button !== Qt.RightButton)
+                            return;
+                        const at = iconDelegate.mapToItem(null, mouse.x, mouse.y);
+                        desk.openIconMenu(iconDelegate.fileUrl.toString(), at.x, at.y);
+                    }
                     onPressed: (mouse) => {
+                        if (mouse.button !== Qt.LeftButton)
+                            return;
                         iconDelegate.dragging = false;
                         const scene = iconDelegate.mapToItem(null, mouse.x, mouse.y);
                         iconDelegate.pressSceneX = scene.x;
@@ -551,8 +561,8 @@ Window {
                                             Qt.size(iconDelegate.width, iconDelegate.height));
                         iconDelegate.dragging = false;
                     }
-                    onDoubleClicked: {
-                        if (iconDelegate.dragging)
+                    onDoubleClicked: (mouse) => {
+                        if (iconDelegate.dragging || mouse.button !== Qt.LeftButton)
                             return;
                         if (iconDelegate.knownLauncher)
                             Apps.launch(iconDelegate.launcherApp.id);
@@ -620,6 +630,7 @@ Window {
                 return;
             contextMenu.x = Math.min(mouse.x, desk.width - contextMenu.width - 8);
             contextMenu.y = Math.min(mouse.y, desk.height - contextMenu.height - 8);
+            iconMenu.visible = false;
             contextMenu.visible = true;
         }
     }
@@ -754,14 +765,81 @@ Window {
         }
     }
 
-    // Clicking anywhere else closes the menu.
+    // --- a desktop icon's menu ------------------------------------------
+    property string iconMenuUrl: ""
+    readonly property string iconMenuPath: iconMenuUrl.length > 0
+                                           ? decodeURIComponent(iconMenuUrl.replace(/^file:\/\//, "")) : ""
+
+    function openIconMenu(url, x, y) {
+        contextMenu.visible = false;
+        iconMenuUrl = url;
+        iconMenu.x = Math.max(8, Math.min(x, desk.width - iconMenu.width - 8));
+        iconMenu.y = Math.max(8, Math.min(y, desk.height - iconMenu.height - 8));
+        iconMenu.visible = true;
+    }
+
+    function iconMenuAction(action) {
+        iconMenu.visible = false;
+        if (action === "open")
+            Shell.openUrl(iconMenuUrl);
+        else if (action === "copyPath")
+            Shell.copyToClipboard(iconMenuPath);
+        else if (action === "trash")
+            Shell.moveToTrash(iconMenuUrl);
+    }
+
+    Rectangle {
+        id: iconMenu
+        objectName: "iconMenu"
+        visible: false
+        width: 200
+        height: iconMenuColumn.implicitHeight + 12
+        radius: Theme.radius
+        color: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, Theme.opacity)
+        border.width: 1
+        border.color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.6)
+        z: 100
+
+        Column {
+            id: iconMenuColumn
+            anchors.fill: parent
+            anchors.margins: 6
+            spacing: 2
+
+            TaskButton {
+                width: parent.width
+                fillWidth: true
+                iconName: "folder"
+                label: qsTr("Open")
+                onClicked: desk.iconMenuAction("open")
+            }
+            TaskButton {
+                width: parent.width
+                fillWidth: true
+                iconName: "clipboard"
+                label: qsTr("Copy path")
+                onClicked: desk.iconMenuAction("copyPath")
+            }
+            TaskButton {
+                width: parent.width
+                fillWidth: true
+                iconName: "trash"
+                label: qsTr("Move to Trash")
+                onClicked: desk.iconMenuAction("trash")
+            }
+        }
+    }
+
+    // Clicking anywhere else closes the menus.
     MouseArea {
         anchors.fill: parent
         z: 99
-        enabled: contextMenu.visible
+        enabled: contextMenu.visible || iconMenu.visible
         onPressed: (mouse) => {
             if (!contextMenu.contains(mapToItem(contextMenu, mouse.x, mouse.y)))
                 contextMenu.visible = false;
+            if (!iconMenu.contains(mapToItem(iconMenu, mouse.x, mouse.y)))
+                iconMenu.visible = false;
             mouse.accepted = false;
         }
     }

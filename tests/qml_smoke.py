@@ -483,6 +483,15 @@ class Shell(QObject):
     def clipboardText(self):
         return "pasted text"
 
+    @Slot(str, result=bool)
+    def moveToTrash(self, path):
+        self.calls.append(("moveToTrash", path))
+        return True
+
+    @Slot(str)
+    def copyToClipboard(self, text):
+        self.calls.append(("copyToClipboard", text))
+
     @Slot(str, str, result=bool)
     def saveTextFile(self, path, text):
         self.calls.append(("saveTextFile", path))
@@ -1647,6 +1656,32 @@ def main():
         check(desk.property("contextMenuVisible") is True,
               "right-clicking the desktop opens its menu")
         desk.setProperty("contextMenuVisible", False)
+
+        # Right-clicking an icon opens the icon's own menu: open, copy the
+        # path, move to the trash (restorable, unlike a delete).
+        desk_items = []
+
+        def collect(item):
+            desk_items.append(item)
+            for child in item.childItems():
+                collect(child)
+        collect(desk.contentItem())
+        icons = [i for i in desk_items if isinstance(i, QQuickItem)
+                 and i.objectName() == "desktopIcon" and i.isVisible()]
+        icon_menu = desk.findChild(QQuickItem, "iconMenu")
+        check(bool(icons) and icon_menu is not None, f"desktop icons and their menu exist ({len(icons)})")
+        if icons and icon_menu is not None:
+            target = icons[0]
+            url = target.property("fileUrl").toString()
+            spot = target.mapToScene(QPointF(target.width() / 2, target.height() / 2))
+            QTest.mouseClick(desk, Qt.RightButton, Qt.NoModifier, QPoint(int(spot.x()), int(spot.y())))
+            QTest.qWait(50)
+            check(icon_menu.isVisible() and not desk.property("contextMenuVisible"),
+                  "right-clicking an icon opens its menu, not the desktop's")
+            shell.calls.clear()
+            QMetaObject.invokeMethod(desk, "iconMenuAction", Q_ARG("QVariant", "trash"))
+            check(("moveToTrash", url) in shell.calls and not icon_menu.isVisible(),
+                  f"Move to Trash sends the icon's file to the trash ({shell.calls})")
 
         # An icon placed with the old pixel setting (desktop.iconPositions,
         # before the grid) keeps its place as the matching grid cell.

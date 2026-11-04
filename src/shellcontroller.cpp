@@ -394,6 +394,20 @@ void ShellController::openPath(const QString &path) const
     openOrSay(QUrl::fromLocalFile(expandHome(path)));
 }
 
+bool ShellController::moveToTrash(const QString &path) const
+{
+    QString local = path.trimmed();
+    if (local.startsWith(QLatin1String("file:")))
+        local = QUrl(local).toLocalFile();
+    local = expandHome(local);
+    // QFile follows the freedesktop trash: the file manager can restore it.
+    if (!local.isEmpty() && QFileInfo::exists(local) && QFile::moveToTrash(local))
+        return true;
+    notify(tr("Could not move %1 to the trash").arg(QFileInfo(local).fileName()),
+           tr("It may be on a drive without a trash folder, or you may not be allowed to change it."));
+    return false;
+}
+
 void ShellController::openOrSay(const QUrl &url) const
 {
     // Qt hands the URL to xdg-open (or the OpenURI portal); without them a

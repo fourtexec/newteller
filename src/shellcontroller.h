@@ -96,6 +96,9 @@ public:
     Q_INVOKABLE QString clipboardText() const;
     // Writes a text file (used by the desktop "Paste" action).
     Q_INVOKABLE bool saveTextFile(const QString &path, const QString &text) const;
+    // Moves a file or folder (path or file:// URL) to the trash, where it can
+    // be restored; says so on screen when that fails.
+    Q_INVOKABLE bool moveToTrash(const QString &path) const;
     // Machine and configuration diagnostics, same shape as `newteller-ctl doctor`.
     Q_INVOKABLE QVariantMap diagnostics() const;
 
