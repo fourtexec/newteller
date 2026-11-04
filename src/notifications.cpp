@@ -200,6 +200,15 @@ QString NotificationDaemon::GetServerInformation(QString &vendor, QString &versi
     return QStringLiteral("NewTeller");
 }
 
+uint NotificationDaemon::sendWithActions(const QString &appName, const QString &summary,
+                                         const QString &body, const QString &icon,
+                                         const QStringList &actions)
+{
+    // Critical: it gets through do-not-disturb and stays until answered.
+    return publish(0, appName, icon, summary, body, actions,
+                   {{QStringLiteral("urgency"), QVariant::fromValue<uchar>(kUrgencyCritical)}}, 0);
+}
+
 uint NotificationDaemon::send(const QString &appName, const QString &summary, const QString &body,
                               const QString &icon, int expireTimeoutMs)
 {

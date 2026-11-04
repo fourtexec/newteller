@@ -73,6 +73,9 @@ inside VirtualBox. The implemented pieces are:
   built-in notification daemon, newest first, with per-entry removal, a clear-all
   button and the do-not-disturb switch; the bell counts what arrived while it
   was closed. Per-row removal is `Notifications.removeHistory()` on the daemon.
+- **Bluetooth pairing agent**: keyboards show the code to type and phones
+  the code to compare as notifications with Pair / Cancel; without an
+  agent BlueZ could only pair devices that need no confirmation.
 - **Search in the wrong layout**: the start menu and the run dialog retry a
   query that finds nothing in the other keyboard layout, so "ашкуащч" finds
   Firefox and "nthv" finds Терминал (ЙЦУКЕН <-> QWERTY).

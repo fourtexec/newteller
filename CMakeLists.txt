@@ -104,6 +104,7 @@ qt_add_executable(newteller
     src/polkitagent.cpp
     src/screensaver.cpp
     src/translator.cpp
+    src/bluetoothagent.cpp
 )
 
 target_compile_definitions(newteller PRIVATE NEWTELLER_VERSION="${PROJECT_VERSION}")

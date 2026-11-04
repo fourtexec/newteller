@@ -16,6 +16,7 @@
 #include "translator.h"
 #include "clipboardhistory.h"
 #include "bluetooth.h"
+#include "bluetoothagent.h"
 #include "settings.h"
 #include "shellcontroller.h"
 #include "shellwindow.h"
@@ -28,7 +29,9 @@
 #include <QDesktopServices>
 #include <QFile>
 #include <QGuiApplication>
+#include <QDBusConnection>
 #include <QLocale>
+#include <memory>
 #include <QIcon>
 #include <QJsonDocument>
 #include <QLockFile>
@@ -243,6 +246,11 @@ int main(int argc, char *argv[])
     QObject::connect(&screenSaver, &ScreenSaverService::lockRequested, &session, &SessionServices::lock);
     ClipboardHistory clipboard(&settings);
     Bluetooth bluetooth;
+    // Pairing codes and confirmations (org.bluez.Agent1), only in the
+    // NewTeller session: another desktop has its own agent.
+    std::unique_ptr<BluetoothAgent> bluetoothAgent;
+    if (qEnvironmentVariable("NEWTELLER_SESSION") == QLatin1String("1"))
+        bluetoothAgent = std::make_unique<BluetoothAgent>(&notifications, QDBusConnection::systemBus());
     // Declared before the engine: the engine owns the QML objects that hold
     // connections to this object, and it must therefore be destroyed first.
     FilePortal filePortal;
