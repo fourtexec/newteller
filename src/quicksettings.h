@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QHash>
+#include <functional>
 #include <QObject>
 #include <QProcess>
 #include <QStringList>
@@ -119,7 +120,10 @@ private:
     void readMediaPlayer(const QString &service);
     void pickMedia();
     void callPlayer(const QString &method);
-    bool runTool(const QStringList &arguments, QString *output) const;
+    // Runs a mixer tool without blocking the UI thread; done(ok, stdout).
+    // A tool that hangs (a stuck audio server) is killed after 3 s.
+    void runToolAsync(const QStringList &arguments, std::function<void(bool, const QString &)> done);
+    void applyVolume(int percent, bool muted);
 
     Settings *m_settings = nullptr;
     QTimer m_tickTimer;
@@ -143,6 +147,7 @@ private:
     // Well-known name -> unique name of its owner: signals arrive from the
     // unique name, never from org.mpris.MediaPlayer2.<player>.
     QHash<QString, QString> m_mediaOwners;
+    bool m_volumeReading = false; // one mixer read at a time
     QString m_mediaTitle;
     QString m_mediaArtist;
     bool m_mediaPlaying = false;

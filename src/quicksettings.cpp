@@ -2,6 +2,7 @@
 #include "settings.h"
 
 #include <QCoreApplication>
+#include <memory>
 #include <QDBusArgument>
 #include <QDBusConnection>
 #include <QDBusConnectionInterface>
@@ -144,67 +145,90 @@ void QuickSettings::detectVolumeTool()
         m_volumeTool = VolumeTool::None;
 }
 
-bool QuickSettings::runTool(const QStringList &arguments, QString *output) const
+void QuickSettings::runToolAsync(const QStringList &arguments,
+                                 std::function<void(bool, const QString &)> done)
 {
-    QProcess process;
-    process.start(arguments.first(), arguments.mid(1));
-    if (!process.waitForStarted(800) || !process.waitForFinished(1500))
-        return false;
-    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0)
-        return false;
-    if (output)
-        *output = QString::fromUtf8(process.readAllStandardOutput()).trimmed();
-    return true;
+    auto *process = new QProcess(this);
+    auto finished = std::make_shared<bool>(false);
+    auto finish = [process, done, finished](bool ok) {
+        if (*finished)
+            return;
+        *finished = true;
+        done(ok, ok ? QString::fromUtf8(process->readAllStandardOutput()).trimmed() : QString());
+        process->deleteLater();
+    };
+    connect(process, &QProcess::finished, this, [process, finish](int code, QProcess::ExitStatus status) {
+        Q_UNUSED(process);
+        finish(status == QProcess::NormalExit && code == 0);
+    });
+    connect(process, &QProcess::errorOccurred, this, [finish](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart)
+            finish(false);
+    });
+    QTimer::singleShot(3000, process, [process] {
+        if (process->state() != QProcess::NotRunning)
+            process->kill();
+    });
+    process->start(arguments.first(), arguments.mid(1));
 }
 
-void QuickSettings::readVolume()
+void QuickSettings::applyVolume(int percent, bool muted)
 {
-    if (m_volumeTool == VolumeTool::None)
-        return;
-    QString out;
-    if (m_volumeTool == VolumeTool::WpCtl) {
-        if (!runTool({QStringLiteral("wpctl"), QStringLiteral("get-volume"),
-                      QStringLiteral("@DEFAULT_AUDIO_SINK@")},
-                     &out))
-            return;
-        const bool muted = out.contains(QLatin1String("MUTED"), Qt::CaseInsensitive);
-        const int space = out.lastIndexOf(QLatin1Char(' '));
-        const QString number = space >= 0 ? out.mid(space + 1) : out;
-        bool ok = false;
-        const double linear = number.toDouble(&ok);
-        if (!ok)
-            return;
-        const int percent = qRound(linear * 100.0);
-        if (percent != m_volume || muted != m_volumeMuted) {
-            m_volume = qBound(0, percent, 150);
-            m_volumeMuted = muted;
-            emit volumeChanged();
-        }
-        return;
-    }
-    // pactl
-    QString mutedOut;
-    runTool({QStringLiteral("pactl"), QStringLiteral("get-sink-mute"),
-             QStringLiteral("@DEFAULT_SINK@")},
-            &mutedOut);
-    if (!runTool({QStringLiteral("pactl"), QStringLiteral("get-sink-volume"),
-                  QStringLiteral("@DEFAULT_SINK@")},
-                 &out))
-        return;
-    const bool muted = mutedOut.contains(QLatin1String("yes"), Qt::CaseInsensitive);
-    // "Volume: front-left: 43690 /  67% / -11.00 dB, ..."
-    int percent = -1;
-    const QRegularExpression percentRegex(QStringLiteral("(\\d+)%"));
-    const auto match = percentRegex.match(out);
-    if (match.hasMatch())
-        percent = match.captured(1).toInt();
-    if (percent < 0)
-        return;
     if (percent != m_volume || muted != m_volumeMuted) {
         m_volume = qBound(0, percent, 150);
         m_volumeMuted = muted;
         emit volumeChanged();
     }
+}
+
+// Every 8 s and after each change: asynchronous, so a slow or stuck audio
+// server never freezes the panel (it used to wait up to 2.3 s for wpctl).
+void QuickSettings::readVolume()
+{
+    if (m_volumeTool == VolumeTool::None || m_volumeReading)
+        return;
+    m_volumeReading = true;
+    if (m_volumeTool == VolumeTool::WpCtl) {
+        runToolAsync({QStringLiteral("wpctl"), QStringLiteral("get-volume"),
+                      QStringLiteral("@DEFAULT_AUDIO_SINK@")},
+                     [this](bool ok, const QString &out) {
+                         m_volumeReading = false;
+                         if (!ok)
+                             return;
+                         // "Volume: 0.45 [MUTED]"
+                         const bool muted = out.contains(QLatin1String("MUTED"), Qt::CaseInsensitive);
+                         const QStringList words = out.split(QLatin1Char(' '), Qt::SkipEmptyParts);
+                         bool parsed = false;
+                         double linear = 0;
+                         for (const QString &word : words) {
+                             linear = word.toDouble(&parsed);
+                             if (parsed)
+                                 break;
+                         }
+                         if (parsed)
+                             applyVolume(qRound(linear * 100.0), muted);
+                     });
+        return;
+    }
+    // pactl: the mute state, then the volume.
+    runToolAsync({QStringLiteral("pactl"), QStringLiteral("get-sink-mute"),
+                  QStringLiteral("@DEFAULT_SINK@")},
+                 [this](bool, const QString &mutedOut) {
+                     const bool muted = mutedOut.contains(QLatin1String("yes"), Qt::CaseInsensitive);
+                     runToolAsync({QStringLiteral("pactl"), QStringLiteral("get-sink-volume"),
+                                   QStringLiteral("@DEFAULT_SINK@")},
+                                  [this, muted](bool ok, const QString &out) {
+                                      m_volumeReading = false;
+                                      if (!ok)
+                                          return;
+                                      // "Volume: front-left: 43690 /  67% / -11.00 dB, ..."
+                                      static const QRegularExpression percentRegex(
+                                          QStringLiteral("(\\d+)%"));
+                                      const auto match = percentRegex.match(out);
+                                      if (match.hasMatch())
+                                          applyVolume(match.captured(1).toInt(), muted);
+                                  });
+                 });
 }
 
 void QuickSettings::setVolume(int percent)
