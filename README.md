@@ -124,8 +124,10 @@ inside VirtualBox. The implemented pieces are:
   inside the menus (start menu session actions, quick settings, notification
   centre) use an in-window bubble.
 - Desktop: wallpaper, icons from `~/Desktop` (double-click to open), desktop
-  plugins, right-click menu (change wallpaper, paste to a file, open a terminal,
-  settings)
+  plugins, right-click menu (change wallpaper, paste to a file, new folder, open
+  a terminal, settings); right-clicking an icon opens its own menu: Open,
+  Rename (in place), Copy path, Move to Trash (restorable from the file
+  manager)
 - System monitor (`System` object, on a shared ticker) with bundled panel and
   desktop widgets
 - **Surface materials:** configure panel, dock buttons, floating shell windows and notifications independently as theme, opaque, half-transparent, frosted glass or liquid glass. Inside a NewTeller session the compositor blurs what is behind see-through menus, the dock, the overview, Alt+Tab and the on-screen display.
