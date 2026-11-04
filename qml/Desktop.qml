@@ -703,6 +703,16 @@ Window {
             TaskButton {
                 width: parent.width
                 fillWidth: true
+                iconName: "folder"
+                label: qsTr("New folder")
+                onClicked: {
+                    contextMenu.visible = false;
+                    Shell.createFolder(Shell.desktopUrl, qsTr("New folder"));
+                }
+            }
+            TaskButton {
+                width: parent.width
+                fillWidth: true
                 iconName: "terminal"
                 label: qsTr("Open terminal")
                 onClicked: {

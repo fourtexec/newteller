@@ -394,6 +394,26 @@ void ShellController::openPath(const QString &path) const
     openOrSay(QUrl::fromLocalFile(expandHome(path)));
 }
 
+QString ShellController::createFolder(const QString &parent, const QString &name) const
+{
+    const QString base = expandHome(parent.trimmed());
+    const QString wanted = name.trimmed().isEmpty() ? tr("New folder") : name.trimmed();
+    QDir dir(base);
+    if (!base.isEmpty() && dir.exists()) {
+        for (int n = 1; n < 1000; ++n) {
+            const QString candidate = n == 1 ? wanted : QStringLiteral("%1 %2").arg(wanted).arg(n);
+            if (dir.exists(candidate))
+                continue;
+            if (dir.mkdir(candidate))
+                return dir.absoluteFilePath(candidate);
+            break;
+        }
+    }
+    notify(tr("Could not create a folder in %1").arg(base),
+           tr("You may not be allowed to change this folder."));
+    return QString();
+}
+
 bool ShellController::moveToTrash(const QString &path) const
 {
     QString local = path.trimmed();

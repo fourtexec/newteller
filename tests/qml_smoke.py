@@ -483,6 +483,11 @@ class Shell(QObject):
     def clipboardText(self):
         return "pasted text"
 
+    @Slot(str, str, result=str)
+    def createFolder(self, parent, name):
+        self.calls.append(("createFolder", parent, name))
+        return ""
+
     @Slot(str, result=bool)
     def moveToTrash(self, path):
         self.calls.append(("moveToTrash", path))

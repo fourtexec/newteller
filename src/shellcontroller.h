@@ -99,6 +99,9 @@ public:
     // Moves a file or folder (path or file:// URL) to the trash, where it can
     // be restored; says so on screen when that fails.
     Q_INVOKABLE bool moveToTrash(const QString &path) const;
+    // Creates "name" in the folder (path or file:// URL), or "name 2", "name 3"
+    // when that exists; returns the new folder's path, empty on failure.
+    Q_INVOKABLE QString createFolder(const QString &parent, const QString &name) const;
     // Machine and configuration diagnostics, same shape as `newteller-ctl doctor`.
     Q_INVOKABLE QVariantMap diagnostics() const;
 
