@@ -191,7 +191,7 @@ void DriveMonitor::open(const Volume &volume)
         w->deleteLater();
         const QString mounted = firstMountPoint(w->reply());
         if (!mounted.isEmpty()) {
-            QDesktopServices::openUrl(QUrl::fromLocalFile(mounted));
+            openFolder(mounted);
             return;
         }
         QDBusMessage mount = QDBusMessage::createMethodCall(kUDisks, volume.block, kFilesystem,
@@ -207,9 +207,18 @@ void DriveMonitor::open(const Volume &volume)
             if (path.isEmpty())
                 failed(tr("Could not open %1").arg(volume.label), reply);
             else
-                QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+                openFolder(path);
         });
     });
+}
+
+void DriveMonitor::openFolder(const QString &path)
+{
+    if (QDesktopServices::openUrl(QUrl::fromLocalFile(path)))
+        return;
+    m_notifications->send(tr("Drives"), tr("Could not open %1").arg(path),
+                          tr("No application is set up to open it. Install xdg-utils and a file manager."),
+                          QStringLiteral("usb"));
 }
 
 void DriveMonitor::eject(const Volume &volume)
