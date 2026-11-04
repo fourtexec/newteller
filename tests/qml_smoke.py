@@ -493,6 +493,19 @@ class Shell(QObject):
         self.calls.append(("renameFile", path, name))
         return True
 
+    @Slot(str, result=str)
+    def pathKind(self, path):
+        p = path.strip()
+        if p == "~" or p.startswith("~/"):
+            p = self._home + p[1:]
+        if not os.path.isabs(p):
+            return ""
+        if os.path.isdir(p):
+            return "dir"
+        if os.path.isfile(p):
+            return "exec" if os.access(p, os.X_OK) else "file"
+        return ""
+
     @Slot(str, result=bool)
     def addToDesktop(self, path):
         self.calls.append(("addToDesktop", path))
@@ -1675,6 +1688,18 @@ def main():
             check(settings._values["run.history"][0] == "nload",
                   f"the command is remembered ({settings._values['run.history']})")
             check(not dialog.isVisible(), "closing the run dialog")
+            # A web address and a folder open instead of running as commands.
+            for typed, expected in (("https://example.org", ("openUrl", "https://example.org")),
+                                    ("~", ("openPath", "~"))):
+                QMetaObject.invokeMethod(dialog, "show")
+                QTest.qWait(50)
+                rq.setProperty("text", typed)
+                QTest.qWait(20)
+                shell.calls.clear()
+                QMetaObject.invokeMethod(dialog, "runCurrent")
+                QTest.qWait(300)
+                check(expected in shell.calls and not any(c[0] == "runShell" for c in shell.calls),
+                      f"{typed!r} in the run dialog opens it ({shell.calls})")
 
     # Desktop right-click menu.
     if desktops:

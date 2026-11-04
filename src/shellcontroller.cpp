@@ -162,6 +162,22 @@ bool ShellController::isImageFile(const QString &path) const
     return reader.canRead();
 }
 
+QString ShellController::pathKind(const QString &path) const
+{
+    QString local = path.trimmed();
+    if (local == QLatin1String("~"))
+        local = QDir::homePath();
+    local = expandHome(local);
+    if (local.isEmpty() || !QDir::isAbsolutePath(local))
+        return QString();
+    const QFileInfo info(local);
+    if (info.isDir())
+        return QStringLiteral("dir");
+    if (info.isFile())
+        return info.isExecutable() ? QStringLiteral("exec") : QStringLiteral("file");
+    return QString();
+}
+
 bool ShellController::fileExists(const QString &path) const
 {
     const QString p = path.trimmed();

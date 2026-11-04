@@ -127,6 +127,9 @@ public:
     // only ever receives wallpapers that pass this check.
     Q_INVOKABLE bool isImageFile(const QString &path) const;
     Q_INVOKABLE bool fileExists(const QString &path) const;
+    // What a typed path is: "dir", "exec" (an executable file), "file", or
+    // "" when nothing is there. "~/" and file:// URLs are understood.
+    Q_INVOKABLE QString pathKind(const QString &path) const;
 
     Q_INVOKABLE void lock() const;
     Q_INVOKABLE void logout() const;

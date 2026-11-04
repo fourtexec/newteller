@@ -104,9 +104,10 @@ inside VirtualBox. The implemented pieces are:
   see [Settings application](#settings-application). The QML is compiled into the
   `newteller` executable, so it cannot be deleted or damaged without replacing the
   binary itself.
-- Run dialog (`Alt+F2`): run a shell command or search applications; bare
-  commands are remembered (`run.history`, capped by `run.historyLimit`) and
-  Up/Down walks the history
+- Run dialog (`Alt+F2`): run a shell command or search applications; a web
+  address (`https://…`, `mailto:`) or a folder / document path (`~/Документы`,
+  `/etc/fstab`) opens instead; bare commands are remembered (`run.history`,
+  capped by `run.historyLimit`) and Up/Down walks the history
 - **Dropdowns linked to their buttons.** Every floating surface — start menu,
   quick settings, notification centre, clock, dock menu and tray menu — opens
   anchored to the widget that toggled it: centred on the button, clamped into
