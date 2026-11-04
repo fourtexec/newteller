@@ -435,6 +435,13 @@ void ShellController::terminal(const QString &command) const
 
 void ShellController::copyToClipboard(const QString &text) const
 {
+    // On Wayland only a surface with keyboard focus may set the clipboard,
+    // which the desktop and the panel usually do not have; wl-copy goes
+    // through wlr-data-control and works from anywhere.
+    if (!qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")
+        && !QStandardPaths::findExecutable(QStringLiteral("wl-copy")).isEmpty()
+        && QProcess::startDetached(QStringLiteral("wl-copy"), {QStringLiteral("--"), text}))
+        return;
     if (QClipboard *clipboard = QGuiApplication::clipboard())
         clipboard->setText(text);
 }
