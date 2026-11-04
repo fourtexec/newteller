@@ -336,7 +336,7 @@ void ShellController::openUrl(const QString &url) const
                 return;
         }
     }
-    QDesktopServices::openUrl(target);
+    openOrSay(target);
 }
 
 void ShellController::openSettings()
@@ -386,12 +386,23 @@ void ShellController::showRunDialog()
 
 void ShellController::openConfig() const
 {
-    QDesktopServices::openUrl(QUrl::fromLocalFile(Settings::configFile()));
+    openOrSay(QUrl::fromLocalFile(Settings::configFile()));
 }
 
 void ShellController::openPath(const QString &path) const
 {
-    QDesktopServices::openUrl(QUrl::fromLocalFile(expandHome(path)));
+    openOrSay(QUrl::fromLocalFile(expandHome(path)));
+}
+
+void ShellController::openOrSay(const QUrl &url) const
+{
+    // Qt hands the URL to xdg-open (or the OpenURI portal); without them a
+    // click on a folder or file did nothing at all.
+    if (QDesktopServices::openUrl(url))
+        return;
+    const QString name = url.isLocalFile() ? url.toLocalFile() : url.toDisplayString();
+    notify(tr("Could not open %1").arg(name),
+           tr("No application is set up to open it. Install xdg-utils and a file manager."));
 }
 
 void ShellController::runShell(const QString &command) const

@@ -362,6 +362,7 @@
  "Night light": "Ночной свет",
  "No Bluetooth adapter": "Нет адаптера Bluetooth",
  "No Wi-Fi adapter was found: its driver or firmware is missing (see 'dmesg | grep -i firmware').": "Адаптер Wi-Fi не найден: нет драйвера или прошивки (см. 'dmesg | grep -i firmware').",
+ "No application is set up to open it. Install xdg-utils and a file manager.": "Нет приложения, чтобы это открыть. Установите xdg-utils и файловый менеджер.",
  "No applications match": "Нет подходящих приложений",
  "No font matches": "Нет подходящих шрифтов",
  "No glass": "Без стекла",

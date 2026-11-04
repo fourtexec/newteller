@@ -127,6 +127,7 @@ signals:
     void forceQuitRequested();
 
 private:
+    void openOrSay(const QUrl &url) const;
     QString expandHome(const QString &path) const;
     static QUrl themeIconUrl(const QString &name);
 
