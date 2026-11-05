@@ -1,0 +1,31 @@
+name: Probe wlroots headers
+
+on:
+  push:
+    branches: [claude/youthful-dijkstra-y410xp]
+    paths: ['.github/workflows/probe-headers.yml']
+
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: debian:13
+            package: libwlroots-0.18-dev
+          - image: ubuntu:26.04
+            package: libwlroots-0.19-dev
+    container: ${{ matrix.image }}
+    steps:
+      - name: Print headers
+        shell: bash
+        run: |
+          apt-get update >/dev/null
+          apt-get install -y --no-install-recommends ${{ matrix.package }} >/dev/null
+          dir=$(dirname "$(find /usr/include -name wlr_xdg_shell.h | head -1)")
+          echo "===== suspended / version"
+          grep -n "suspended\|WLR_XDG_TOPLEVEL_STATE\|wlr_xdg_shell_create\|xdg_wm_base.*version\|SUSPENDED" "$dir/wlr_xdg_shell.h"
+          xw=$(find /usr/include -name xwayland.h -path '*xwayland*' | head -1)
+          echo "===== xwayland surface ($xw)"
+          grep -n "bool \|wl_signal \|above\|below\|sticky\|demands" "$xw" | head -120
