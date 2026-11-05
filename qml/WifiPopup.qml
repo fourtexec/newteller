@@ -13,6 +13,8 @@ DropdownWindow {
     // The network waiting for a password, if any.
     property string pendingSsid: ""
     property string statusText: ""
+    // The form for a network that does not announce its name.
+    property bool hiddenForm: false
 
     cardWidth: 360
     cardHeight: 440
@@ -23,7 +25,18 @@ DropdownWindow {
     function opened() {
         pendingSsid = "";
         statusText = "";
+        hiddenForm = false;
         Session.scanWifi();
+    }
+
+    function joinHidden() {
+        const name = hiddenSsid.text.trim();
+        if (name.length === 0)
+            return;
+        statusText = "";
+        pendingSsid = "";
+        Session.connectWifi(name, hiddenPassword.text);
+        hiddenPassword.text = "";
     }
 
     function join(network) {
@@ -118,6 +131,61 @@ DropdownWindow {
             TaskButton {
                 label: qsTr("Join")
                 onClicked: Session.connectWifi(popup.pendingSsid, passwordField.text)
+            }
+        }
+
+        // A hidden network: its name, the password (empty for an open one).
+        ColumnLayout {
+            objectName: "hiddenWifiForm"
+            Layout.fillWidth: true
+            visible: popup.hiddenForm
+            spacing: 6
+
+            SettingsTextField {
+                id: hiddenSsid
+                Layout.fillWidth: true
+                placeholder: qsTr("Network name")
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 6
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    height: 32
+                    radius: Theme.radius
+                    color: Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.10)
+                    border.width: hiddenPassword.activeFocus ? 1 : 0
+                    border.color: Theme.accent
+
+                    TextInput {
+                        id: hiddenPassword
+                        anchors.fill: parent
+                        anchors.margins: 8
+                        echoMode: TextInput.Password
+                        verticalAlignment: TextInput.AlignVCenter
+                        color: Theme.foreground
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSize
+                        clip: true
+                        onAccepted: popup.joinHidden()
+
+                        Text {
+                            anchors.fill: parent
+                            verticalAlignment: Text.AlignVCenter
+                            visible: hiddenPassword.text.length === 0
+                            text: qsTr("Password (empty for an open network)")
+                            color: Theme.muted
+                            font: hiddenPassword.font
+                            elide: Text.ElideRight
+                        }
+                    }
+                }
+                TaskButton {
+                    objectName: "hiddenWifiJoin"
+                    label: qsTr("Join")
+                    onClicked: popup.joinHidden()
+                }
             }
         }
 
@@ -230,6 +298,18 @@ DropdownWindow {
                 iconName: "rotate-cw"
                 label: qsTr("Rescan")
                 onClicked: Session.scanWifi()
+            }
+            TaskButton {
+                objectName: "hiddenWifiButton"
+                visible: Session.wifiStatus.length === 0
+                iconName: "plus"
+                label: qsTr("Hidden network")
+                active: popup.hiddenForm
+                onClicked: {
+                    popup.hiddenForm = !popup.hiddenForm;
+                    if (popup.hiddenForm)
+                        hiddenSsid.focusInput();
+                }
             }
             Item { Layout.fillWidth: true }
             TaskButton {

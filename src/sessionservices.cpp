@@ -1272,7 +1272,10 @@ void SessionServices::connectWifi(const QString &ssid, const QString &password)
         return;
     }
     const QString accessPoint = network.value(QStringLiteral("path"), QStringLiteral("/")).toString();
-    const bool secure = network.value(QStringLiteral("secure")).toBool();
+    // A name that is not in range is a hidden network: NetworkManager has to
+    // probe for it, secured when a password was given.
+    const bool hidden = network.isEmpty();
+    const bool secure = hidden ? !password.isEmpty() : network.value(QStringLiteral("secure")).toBool();
 
     // A saved connection for this network?
     QString saved;
@@ -1315,6 +1318,8 @@ void SessionServices::connectWifi(const QString &ssid, const QString &password)
         QVariantMap wireless;
         wireless.insert(QStringLiteral("ssid"), ssid.toUtf8());
         wireless.insert(QStringLiteral("mode"), QStringLiteral("infrastructure"));
+        if (hidden)
+            wireless.insert(QStringLiteral("hidden"), true);
         settings.insert(QStringLiteral("802-11-wireless"), wireless);
         QVariantMap connection;
         connection.insert(QStringLiteral("id"), ssid);

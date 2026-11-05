@@ -2523,6 +2523,32 @@ def main():
         check(apps.launched[before:] == ["firefox"],
               f"a tray icon that cannot be activated starts its application ({apps.launched[before:]})")
 
+        # A hidden Wi-Fi network is joined by its name.
+        wifi_cards = windows_of_kind("WifiPopup")
+        if wifi_cards:
+            toggle = wifi_cards[0].findChild(QObject, "hiddenWifiButton")
+            check(toggle is not None, "the Wi-Fi card offers a hidden network")
+            if toggle is not None:
+                QMetaObject.invokeMethod(toggle, "clicked")
+                QTest.qWait(50)
+                check(bool(wifi_cards[0].property("hiddenForm")), "the hidden network form opens")
+                stack = [wifi_cards[0].contentItem()]
+                name_field = None
+                while stack and name_field is None:
+                    item = stack.pop()
+                    if item.objectName() == "hiddenWifiForm":
+                        fields = [c for c in item.childItems() if c.property("placeholder") is not None]
+                        name_field = fields[0] if fields else None
+                    stack.extend(item.childItems())
+                if name_field is not None:
+                    session.calls.clear()
+                    name_field.setProperty("text", "Office")
+                    QMetaObject.invokeMethod(wifi_cards[0], "joinHidden")
+                    QTest.qWait(50)
+                    check(("connectWifi", "Office") in session.calls,
+                          f"joining a hidden network asks NetworkManager ({session.calls})")
+                QMetaObject.invokeMethod(toggle, "clicked")
+
         # Do not disturb for an hour: switches on with an end time.
         dnd_cards = windows_of_kind("QuickSettingsPopup")
         if dnd_cards:

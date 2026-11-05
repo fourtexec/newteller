@@ -288,7 +288,8 @@ inside VirtualBox. The implemented pieces are:
 - **Application look**: dark/light preference, GTK theme, icon theme,
   application font and text size, cursor theme; lock screen colour.
 - **Wi-Fi networks** from quick settings: scan, join (with the password asked
-  inline for new secured networks; WPA2/WPA3), disconnect; NetworkManager
+  inline for new secured networks; WPA2/WPA3), join a hidden network by its
+  name, disconnect; NetworkManager
   keeps them. The shell talks to NetworkManager over D-Bus and, when Wi-Fi
   cannot work, says why: NetworkManager not running, no adapter (driver or
   firmware missing), adapter unmanaged, switched off or blocked. The
