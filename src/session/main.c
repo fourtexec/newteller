@@ -2654,8 +2654,13 @@ static struct Hit hitTest(struct Server *server, double lx, double ly)
         }
     }
 
-    struct View *view;
-    wl_list_for_each(view, &server->views, link) {
+    // Top-most first, in drawing order: an always-on-top window or the
+    // Alt+Tab preview is above windows used more recently.
+    struct wlr_scene_node *child;
+    wl_list_for_each_reverse(child, &server->toplevelTree->children, link) {
+        struct View *view = child->data;
+        if (!view || !child->enabled)
+            continue;
         if (viewAt(view, lx, ly, &hit))
             return hit;
     }
