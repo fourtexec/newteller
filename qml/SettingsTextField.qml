@@ -9,6 +9,12 @@ Rectangle {
     property string placeholder: ""
     property alias text: input.text
     signal textEdited(string text)
+    // Enter pressed in the field.
+    signal accepted()
+
+    function focusInput() {
+        input.forceActiveFocus();
+    }
 
     width: 220
     height: 30
@@ -40,6 +46,7 @@ Rectangle {
         font.pointSize: Theme.fontSize
         verticalAlignment: TextInput.AlignVCenter
         selectByMouse: true
+        onAccepted: control.accepted()
         onEditingFinished: {
             if (control.settingKey.length > 0)
                 Settings.setValue(control.settingKey, text);

@@ -1181,9 +1181,23 @@ class ClipboardStub(QObject):
     def __init__(self):
         super().__init__()
         self._items = ["first copied text", "second\nline"]
+        self._pinned = ["pinned snippet"]
         self.calls = []
 
     items = Property("QVariantList", lambda self: self._items, notify=itemsChanged)
+    pinnedItems = Property("QVariantList", lambda self: self._pinned, notify=itemsChanged)
+
+    @Slot(str)
+    def copyText(self, text):
+        self.calls.append(("copyText", text))
+
+    @Slot(str)
+    def pin(self, text):
+        self.calls.append(("pin", text))
+
+    @Slot(str)
+    def unpin(self, text):
+        self.calls.append(("unpin", text))
 
     @Slot(int)
     def copy(self, index):
@@ -2423,8 +2437,21 @@ def main():
             check(bool(clips) and clips[0].isVisible(), "Super+V opens the clipboard history")
             if clips:
                 entries = clips[0].findChild(QObject, "clipboardList")
-                check(entries is not None and entries.property("count") == 2,
-                      "the clipboard history lists the copied texts")
+                check(entries is not None and entries.property("count") == 3,
+                      "the clipboard history lists the pinned and the copied texts")
+                clips[0].setProperty("filter", "second")
+                QTest.qWait(50)
+                check(entries is not None and entries.property("count") == 1,
+                      "searching the clipboard history narrows the list")
+                clips[0].setProperty("filter", "")
+                QMetaObject.invokeMethod(clips[0], "pick",
+                                         Q_ARG("QVariant", {"text": "pinned snippet",
+                                                            "pinned": True, "index": -1}))
+                QTest.qWait(300)
+                check(("copyText", "pinned snippet") in clipboard.calls,
+                      f"a pinned entry goes back on the clipboard ({clipboard.calls})")
+                shell.clipboardToggleRequested.emit()
+                QTest.qWait(300)
                 shell.clipboardToggleRequested.emit()
                 QTest.qWait(400)
                 check(not clips[0].isVisible(), "Super+V again closes it")

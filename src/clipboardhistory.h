@@ -19,6 +19,9 @@ class ClipboardHistory : public QObject
     Q_OBJECT
     Q_PROPERTY(bool available READ available CONSTANT)
     Q_PROPERTY(QStringList items READ items NOTIFY itemsChanged)
+    // Pinned texts: kept across restarts (even without persistHistory) and
+    // never pushed out by the size limit.
+    Q_PROPERTY(QStringList pinnedItems READ pinnedItems NOTIFY itemsChanged)
 
 public:
     explicit ClipboardHistory(Settings *settings, QObject *parent = nullptr);
@@ -26,8 +29,13 @@ public:
 
     bool available() const { return m_available; }
     QStringList items() const { return m_items; }
+    QStringList pinnedItems() const { return m_pinned; }
 
     Q_INVOKABLE void copy(int index);
+    // Puts any text on the clipboard (a pinned entry).
+    Q_INVOKABLE void copyText(const QString &text);
+    Q_INVOKABLE void pin(const QString &text);
+    Q_INVOKABLE void unpin(const QString &text);
     Q_INVOKABLE void remove(int index);
     Q_INVOKABLE void clear();
 
@@ -43,6 +51,8 @@ private:
     void load();
     void save() const;
     QString storePath() const;
+    QString pinnedPath() const;
+    void savePinned() const;
     bool enabled() const;
     bool persistent() const;
 
@@ -51,6 +61,7 @@ private:
     QProcess m_watcher;
     QByteArray m_buffer;
     QStringList m_items;
+    QStringList m_pinned;
     // The text we just put back ourselves; its echo is not a new entry.
     QString m_ownCopy;
 };

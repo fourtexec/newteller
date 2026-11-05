@@ -49,8 +49,75 @@ ClipboardHistory::ClipboardHistory(Settings *settings, QObject *parent)
 
     if (persistent())
         load();
+    QFile pinned(pinnedPath());
+    if (pinned.open(QIODevice::ReadOnly)) {
+        const QJsonArray array = QJsonDocument::fromJson(pinned.readAll()).array();
+        for (const QJsonValue &value : array) {
+            if (value.isString() && !m_pinned.contains(value.toString()))
+                m_pinned.append(value.toString());
+        }
+    }
     if (enabled())
         start();
+}
+
+QString ClipboardHistory::pinnedPath() const
+{
+    return QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
+           + QStringLiteral("/newteller/clipboard-pinned.json");
+}
+
+void ClipboardHistory::savePinned() const
+{
+    const QString path = pinnedPath();
+    if (m_pinned.isEmpty()) {
+        QFile::remove(path);
+        return;
+    }
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly))
+        return;
+    file.setPermissions(QFileDevice::ReadOwner | QFileDevice::WriteOwner);
+    file.write(QJsonDocument(QJsonArray::fromStringList(m_pinned)).toJson(QJsonDocument::Compact));
+    file.commit();
+}
+
+void ClipboardHistory::pin(const QString &text)
+{
+    if (text.isEmpty() || m_pinned.contains(text))
+        return;
+    m_pinned.prepend(text);
+    // A pinned text is listed once, with the pinned ones.
+    m_items.removeAll(text);
+    emit itemsChanged();
+    savePinned();
+    if (persistent())
+        save();
+}
+
+void ClipboardHistory::unpin(const QString &text)
+{
+    if (!m_pinned.removeAll(text))
+        return;
+    m_items.prepend(text);
+    trim();
+    emit itemsChanged();
+    savePinned();
+    if (persistent())
+        save();
+}
+
+void ClipboardHistory::copyText(const QString &text)
+{
+    if (text.isEmpty())
+        return;
+    m_ownCopy = text;
+    auto *process = new QProcess(this);
+    connect(process, &QProcess::finished, process, &QObject::deleteLater);
+    process->start(QStringLiteral("wl-copy"), {});
+    process->write(text.toUtf8());
+    process->closeWriteChannel();
 }
 
 ClipboardHistory::~ClipboardHistory()
@@ -119,6 +186,9 @@ void ClipboardHistory::add(const QString &text)
         m_ownCopy.clear();
         return;
     }
+    // Copying a pinned text again does not list it twice.
+    if (m_pinned.contains(text))
+        return;
     m_items.removeAll(text);
     m_items.prepend(text);
     trim();
@@ -164,6 +234,7 @@ void ClipboardHistory::remove(int index)
         save();
 }
 
+// Clear all keeps the pinned texts (unpin them to remove them).
 void ClipboardHistory::clear()
 {
     m_items.clear();

@@ -274,7 +274,9 @@ inside VirtualBox. The implemented pieces are:
   installer adds NetworkManager and, on real hardware, the common Wi-Fi
   firmware packages, and starts NetworkManager.
 - **Clipboard history** on `Super+V` (wl-clipboard): the texts copied in the
-  session, newest first; click one to copy it again. Kept in memory unless
+  session, newest first; click one to copy it again. Pin the snippets you
+  reuse (they stay across restarts and are never pushed out) and type to
+  search; Enter takes the first match. Kept in memory unless
   `clipboard.persistHistory` is on. Passwords that a password manager marks as secret
   (KeePassXC, Bitwarden and others) are never recorded.
 - **Power profiles** (power-profiles-daemon) in quick settings and low-battery
