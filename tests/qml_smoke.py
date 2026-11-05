@@ -176,7 +176,8 @@ class ShellWindowType(QObject):
 APPS = [
     {"id": "firefox", "name": "Firefox", "icon": "firefox",
      "generic": "web browser", "comment": "Browse the web",
-     "categories": ["Network"], "keywords": ["internet", "web"]},
+     "categories": ["Network"], "keywords": ["internet", "web"],
+     "actions": [{"id": "new-private-window", "name": "New Private Window"}]},
     {"id": "org.gnome.Terminal", "name": "Terminal", "icon": "utilities-terminal",
      "generic": "terminal emulator", "comment": "Use the command line",
      "categories": ["System"], "keywords": ["shell", "console"]},
@@ -402,6 +403,11 @@ class Apps(QObject):
     @Slot(str, result=bool)
     def isRunning(self, app_id):
         return app_id in self.running
+
+    @Slot(str, str, result=bool)
+    def launchAction(self, app_id, action_id):
+        self.launched.append((app_id, action_id))
+        return True
 
     @Slot(str, result=bool)
     def launch(self, app_id):
@@ -2373,6 +2379,17 @@ def main():
                       "the dock menu sits just above the bar")
                 check(dock_menus[0].property("nubEdge") == "bottom",
                       "the dock menu points at the icon")
+                app_actions = (entries[0].get("app") or {}).get("actions") or []
+                if app_actions:
+                    rows = []
+                    stack = [dock_menus[0].contentItem()]
+                    while stack:
+                        item = stack.pop()
+                        if item.objectName() == "dockMenuAction":
+                            rows.append(item)
+                        stack.extend(item.childItems())
+                    check(len(rows) == len(app_actions),
+                          f"the dock menu offers the application's actions ({len(rows)})")
                 QMetaObject.invokeMethod(dock_menus[0], "close")
                 QTest.qWait(300)
                 check(not dock_menus[0].isVisible(), "the dock menu closes again")

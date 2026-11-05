@@ -66,7 +66,8 @@ inside VirtualBox. The implemented pieces are:
   minimised and closed from the dock (click, middle click and a right-click
   menu; read-only toplevels fall back to launching the application), and
   windows of one application can be grouped into a single button. The dock
-  menu shows a live preview of every X11/XWayland window (`dock.thumbnails`),
+  menu shows a live preview of every X11/XWayland window (`dock.thumbnails`)
+  and the application's own actions ("New Private Window", ...),
   and pinned buttons can be dragged to reorder them.
 - Start menu: highlighted fuzzy search, category chips, recently used row,
   Lock / Log out / Sleep / Restart / Shut down, Settings; right-click an

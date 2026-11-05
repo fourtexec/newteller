@@ -170,6 +170,7 @@
  "Click a swatch to apply it to the shell popups.": "Нажмите на образец, чтобы применить его ко всплывающим окнам оболочки.",
  "Click to write": "Нажмите, чтобы писать",
  "Clipboard": "Буфер обмена",
+ "Clipboard history": "История буфера обмена",
  "Clipboard history and management.": "История буфера обмена.",
  "Clipboard history is off (Settings -> System).": "История буфера обмена выключена (Настройки -> Система).",
  "Clipboard history needs wl-clipboard (sudo apt install wl-clipboard).": "Для истории буфера обмена нужен wl-clipboard (sudo apt install wl-clipboard).",
