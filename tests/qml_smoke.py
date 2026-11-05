@@ -488,6 +488,11 @@ class Shell(QObject):
     def openPath(self, path):
         self.calls.append(("openPath", path))
 
+    @Slot(int, result="QVariantList")
+    def recentFiles(self, limit):
+        return [{"path": "/home/test/Documents/Report 2026.odt", "name": "Report 2026.odt",
+                 "folder": False, "image": False}][:limit]
+
     @Slot(str, result=int)
     def pasteFiles(self, folder):
         self.calls.append(("pasteFiles", folder))
@@ -1747,6 +1752,14 @@ def main():
                                            Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", text))
             got = got.toVariant() if hasattr(got, "toVariant") else got
             check(got != got, f"{text!r} is not a calculation ({got})")
+
+        # Recently used files whose name matches.
+        recent = QMetaObject.invokeMethod(menu, "recentFileMatches", Qt.DirectConnection,
+                                          Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "report"))
+        recent = recent.toVariant() if hasattr(recent, "toVariant") else recent
+        check(isinstance(recent, list) and len(recent) == 1
+              and recent[0].get("filePath", "").endswith("Report 2026.odt"),
+              f"the start menu finds recently used files ({recent})")
 
         # Searching finds settings pages too ("resolution" -> Displays).
         found = QMetaObject.invokeMethod(menu, "settingsMatches", Qt.DirectConnection,

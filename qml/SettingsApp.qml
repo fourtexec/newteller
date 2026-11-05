@@ -1612,6 +1612,13 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("Search recently used files")
+                                subtitle: qsTr("Documents opened in other applications show up when their name is typed.")
+                                settingKey: "startmenu.recentFiles"
+                                SettingsSwitch { settingKey: "startmenu.recentFiles" }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Recent list length")
                                 settingKey: "apps.recentLimit"
                                 SettingsStepper { from: 0; to: 30 }

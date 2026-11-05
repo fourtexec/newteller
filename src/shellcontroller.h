@@ -136,6 +136,10 @@ public:
     // What a typed path is: "dir", "exec" (an executable file), "file", or
     // "" when nothing is there. "~/" and file:// URLs are understood.
     Q_INVOKABLE QString pathKind(const QString &path) const;
+    // Recently used files (~/.local/share/recently-used.xbel, written by GTK
+    // and Qt applications), newest first, only those that still exist:
+    // [{ path, name, folder, image }]. Re-read only when the file changed.
+    Q_INVOKABLE QVariantList recentFiles(int limit = 200) const;
 
     Q_INVOKABLE void lock() const;
     Q_INVOKABLE void logout() const;
@@ -175,4 +179,7 @@ private:
     mutable QHash<QString, QString> m_tintCache;
     // "Moved to the trash" notifications with Undo: id -> {trashed, original}.
     mutable QHash<uint, QPair<QString, QString>> m_trashUndo;
+    // recentFiles() cache, keyed by the file's modification time.
+    mutable QDateTime m_recentStamp;
+    mutable QVariantList m_recent;
 };

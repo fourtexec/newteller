@@ -107,6 +107,23 @@ DropdownWindow {
         }
     }
 
+    function recentFileMatches(query) {
+        if (Settings.values["startmenu.recentFiles"] === false)
+            return [];
+        const needle = query.toLowerCase();
+        const out = [];
+        const files = Shell.recentFiles(300);
+        for (let i = 0; i < files.length && out.length < 5; ++i) {
+            const f = files[i];
+            if (String(f.name).toLowerCase().indexOf(needle) < 0)
+                continue;
+            out.push({ id: "", filePath: f.path,
+                       icon: f.folder ? "folder" : f.image ? "image" : "file-text",
+                       name: qsTr("%1 (recent file)").arg(f.name) });
+        }
+        return out;
+    }
+
     function settingsMatches(query) {
         const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 0);
         if (words.length === 0)
@@ -177,9 +194,12 @@ DropdownWindow {
                 return (app.categories || []).indexOf(categoryFilter) >= 0;
             });
         }
-        // Settings pages after the applications (never inside a category).
-        if (q.length >= 2 && categoryFilter.length === 0)
+        // Settings pages after the applications (never inside a category),
+        // then recently used files whose name matches.
+        if (q.length >= 2 && categoryFilter.length === 0) {
             hits = hits.concat(settingsMatches(q));
+            hits = hits.concat(recentFileMatches(q));
+        }
         // An arithmetic expression: its result comes first.
         const value = calculate(q);
         if (!isNaN(value)) {
@@ -192,6 +212,11 @@ DropdownWindow {
     }
 
     function launch(app) {
+        if (app.filePath) {
+            Shell.openPath(app.filePath);
+            hide();
+            return;
+        }
         if (app.calculation !== undefined) {
             Shell.copyToClipboard(app.calculation);
             hide();

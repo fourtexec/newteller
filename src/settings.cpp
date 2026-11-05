@@ -239,6 +239,8 @@ Settings::Settings(QObject *parent)
     // Window management
     m_defaults.insert(QStringLiteral("windowRules.alwaysOnTop"), QStringList());
     m_defaults.insert(QStringLiteral("windowRules.maximized"), QStringList());
+    // The start menu search also lists recently used files.
+    m_defaults.insert(QStringLiteral("startmenu.recentFiles"), true);
     // Hot corners: none | overview | desktop | startMenu | notifications | lock.
     m_defaults.insert(QStringLiteral("hotCorners.topLeft"), QStringLiteral("none"));
     m_defaults.insert(QStringLiteral("hotCorners.topRight"), QStringLiteral("none"));

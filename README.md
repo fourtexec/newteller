@@ -112,6 +112,9 @@ inside VirtualBox. The implemented pieces are:
   and loop devices stay quiet. Needs udisks2.
 - **Calculator in the start menu search**: `2+2*3`, `(15,5-3)/4`, `2^10`
   show the result first; Enter copies it.
+- **Recent files in the start menu search**: documents opened in other
+  applications (`recently-used.xbel`) show up when part of their name is
+  typed (`startmenu.recentFiles`).
 - **Settings in the start menu search**: "resolution", "wifi", "раскладка"
   and the like list the matching Settings page ("Settings: Displays"), which
   opens on that page (`Shell.openSettingsPage`).
