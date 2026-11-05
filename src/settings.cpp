@@ -249,6 +249,8 @@ Settings::Settings(QObject *parent)
     // Power management
     m_defaults.insert(QStringLiteral("power.sleepAction"), QStringLiteral("suspend"));
     m_defaults.insert(QStringLiteral("power.lockOnSleep"), true);
+    // Power saver profile from 20% on battery until plugged in.
+    m_defaults.insert(QStringLiteral("power.batterySaver"), true);
     // Minutes of inactivity before the screen locks / turns off (0 = never).
     m_defaults.insert(QStringLiteral("power.lockAfter"), 10);
     m_defaults.insert(QStringLiteral("power.screenOffAfter"), 10);

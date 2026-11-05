@@ -2789,6 +2789,8 @@ def main():
     QTest.qWait(50)
     urgent = [c for c in shell.calls if c[0] == "notifyUrgent"]
     check(len(urgent) == 1, f"a critically low battery warns urgently, once ({shell.calls})")
+    check(("setPowerProfile", "power-saver") in session.calls,
+          f"a low battery switches to the power saver profile ({session.calls})")
     system.battery = (False, 0.0, False)
     system.snapshotUpdated.emit()
     QTest.qWait(50)

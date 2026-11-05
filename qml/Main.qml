@@ -113,6 +113,9 @@ QtObject {
     // Low battery: one notification at 10% and one at 5% while discharging,
     // re-armed once the machine is plugged in.
     property int batteryWarned: 100
+    // The power profile in use before the battery saver switched to
+    // power-saver; restored when the machine is plugged in.
+    property string profileBeforeSaver: ""
     readonly property Connections batteryWatch: Connections {
         target: System
         function onSnapshotUpdated() {
@@ -120,9 +123,24 @@ QtObject {
                 return;
             if (System.batteryCharging) {
                 root.batteryWarned = 100;
+                if (root.profileBeforeSaver.length > 0) {
+                    // Only if the user did not pick another profile since.
+                    if (Session.powerProfile === "power-saver")
+                        Session.setPowerProfile(root.profileBeforeSaver);
+                    root.profileBeforeSaver = "";
+                }
                 return;
             }
             const level = Math.round(System.batteryPercent);
+            if (level <= 20 && Settings.values["power.batterySaver"] !== false
+                && root.profileBeforeSaver.length === 0
+                && Session.powerProfiles.indexOf("power-saver") >= 0
+                && Session.powerProfile !== "power-saver" && Session.powerProfile.length > 0) {
+                root.profileBeforeSaver = Session.powerProfile;
+                Session.setPowerProfile("power-saver");
+                Shell.notify(qsTr("Battery saver on"),
+                             qsTr("%1% left: the power saver profile is on until you plug in.").arg(level));
+            }
             if (level <= 5 && root.batteryWarned > 5) {
                 root.batteryWarned = 5;
                 // Urgent: do-not-disturb must not hide it.

@@ -289,7 +289,8 @@ inside VirtualBox. The implemented pieces are:
   `clipboard.persistHistory` is on. Passwords that a password manager marks as secret
   (KeePassXC, Bitwarden and others) are never recorded.
 - **Power profiles** (power-profiles-daemon) in quick settings and low-battery
-  notifications at 10% and 5%.
+  notifications at 10% and 5%; at 20% on battery the power saver profile
+  switches on until the machine is plugged in (`power.batterySaver`).
 - **Night light** (wlsunset) on a schedule or always, from quick settings or
   Settings → Displays.
 - **Desktop services.** Screen sharing and screenshots through

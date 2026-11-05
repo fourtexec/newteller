@@ -3479,15 +3479,23 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Lock after inactivity")
-                                subtitle: "0 = never."
+                                subtitle: qsTr("0 = never.")
                                 settingKey: "power.lockAfter"
-                                SettingsStepper { settingKey: "power.lockAfter"; from: 0; to: 240; step: 1; suffix: " min" }
+                                SettingsStepper { settingKey: "power.lockAfter"; from: 0; to: 240; step: 1; suffix: qsTr(" min") }
                             }
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Lock before suspend")
                                 settingKey: "power.lockOnSleep"
                                 SettingsSwitch { settingKey: "power.lockOnSleep" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                visible: Session.powerProfiles.length > 0
+                                title: qsTr("Battery saver at 20%")
+                                subtitle: qsTr("Switches to the power saver profile on battery and back when plugged in.")
+                                settingKey: "power.batterySaver"
+                                SettingsSwitch { settingKey: "power.batterySaver" }
                             }
                             SettingsRow {
                                 width: parent.width
@@ -3534,9 +3542,9 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Turn the screen off after")
-                                subtitle: "0 = never. Any key or mouse movement wakes it."
+                                subtitle: qsTr("0 = never. Any key or mouse movement wakes it.")
                                 settingKey: "power.screenOffAfter"
-                                SettingsStepper { settingKey: "power.screenOffAfter"; from: 0; to: 240; step: 1; suffix: " min" }
+                                SettingsStepper { settingKey: "power.screenOffAfter"; from: 0; to: 240; step: 1; suffix: qsTr(" min") }
                             }
                         }
 
