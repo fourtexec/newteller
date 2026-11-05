@@ -130,6 +130,24 @@ QtObject {
         }
     }
 
+    // A new keyboard layout shows on screen for a moment (Super+Space,
+    // Alt+Shift, the panel). Not with a layout per window, where every
+    // window switch would show it.
+    property int shownLayout: -1
+    readonly property Connections layoutHint: Connections {
+        target: Session
+        function onKeyboardChanged() {
+            const index = Session.keyboardLayout;
+            const previous = root.shownLayout;
+            root.shownLayout = index;
+            if (previous < 0 || previous === index || Session.keyboardLayouts.length < 2
+                || Settings.values["keyboard.layoutOsd"] === false
+                || Settings.values["keyboard.layoutPerWindow"] === true)
+                return;
+            root.osd.show("keyboard", -1, Session.keyboardLayoutName);
+        }
+    }
+
     // Low battery: one notification at 10% and one at 5% while discharging,
     // re-armed once the machine is plugged in.
     property int batteryWarned: 100

@@ -2991,6 +2991,12 @@ Window {
                                 settingKey: "keyboard.lockKeysOsd"
                                 SettingsSwitch { settingKey: "keyboard.lockKeysOsd" }
                             }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Show the keyboard layout on screen when it changes")
+                                settingKey: "keyboard.layoutOsd"
+                                SettingsSwitch { settingKey: "keyboard.layoutOsd" }
+                            }
                         }
 
                         SettingsSection {
