@@ -2233,6 +2233,9 @@ def main():
         check([(e.get("app"), bool(e.get("groupStart"))) for e in (grouped or [])]
               == [("Mail", True), ("Mail", False), ("Chat", True)],
               f"the notification centre groups by application ({grouped})")
+        notifications._history.pop()
+        notifications.historyChanged.emit()
+        QTest.qWait(50)
         # Everything on screen counts as seen; closing keeps the mark.
         check(int(center.property("unreadCount")) == 0,
               f"an open centre counts as seen ({center.property('unreadCount')})")

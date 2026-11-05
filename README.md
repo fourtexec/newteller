@@ -81,7 +81,8 @@ inside VirtualBox. The implemented pieces are:
   icon and name and starts it on a double-click; other launchers start only
   when they are marked executable (otherwise they open as text)
 - **Notification centre: the bell at the end of the panel.** The history of the
-  built-in notification daemon, newest first, with per-entry removal, a clear-all
+  built-in notification daemon, grouped by application (with a clear button per
+  application), newest first, with per-entry removal, a clear-all
   button and the do-not-disturb switch; the bell counts what arrived while it
   was closed. Per-row removal is `Notifications.removeHistory()` on the daemon.
 - **Notification sounds** (`notifications.soundEnabled`): a new popup plays
