@@ -1443,8 +1443,11 @@ def main():
     desktop_dir = os.path.join(work, "Desktop")
     os.makedirs(os.path.join(desktop_dir, "Projects"))
     os.makedirs(os.path.join(work, "Pictures"))
-    for name in ("notes.txt", "photo.png"):
-        open(os.path.join(desktop_dir, name), "w").close()
+    open(os.path.join(desktop_dir, "notes.txt"), "w").close()
+    # A real picture: the desktop shows it as its own thumbnail.
+    photo = QImage(16, 16, QImage.Format_RGB32)
+    photo.fill(QColor("#3366aa"))
+    photo.save(os.path.join(desktop_dir, "photo.png"), "PNG")
     # A launcher of an installed application (the desktop shows it as that
     # application and starts it on a double-click).
     with open(os.path.join(desktop_dir, "firefox.desktop"), "w") as f:
@@ -1934,6 +1937,17 @@ def main():
                  and i.objectName() == "desktopIcon" and i.isVisible()]
         icon_menu = desk.findChild(QQuickItem, "iconMenu")
         check(bool(icons) and icon_menu is not None, f"desktop icons and their menu exist ({len(icons)})")
+        # A picture shows itself (loaded asynchronously).
+        thumbs = []
+        for _ in range(20):
+            QTest.qWait(50)
+            desk_items.clear()
+            collect(desk.contentItem())
+            thumbs = [i for i in desk_items if isinstance(i, QQuickItem)
+                      and i.objectName() == "desktopThumbnail" and i.isVisible()]
+            if thumbs:
+                break
+        check(len(thumbs) == 1, f"a picture on the desktop shows as its thumbnail ({len(thumbs)})")
         if icons and icon_menu is not None:
             target = icons[0]
             url = target.property("fileUrl").toString()
