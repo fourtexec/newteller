@@ -283,6 +283,8 @@ struct View {
     bool hiddenByShowDesktop;
     // Stays above ordinary windows (window menu, rules.alwaysOnTop).
     bool alwaysOnTop;
+    // Shown on every desktop (window menu).
+    bool sticky;
     // rules.* were applied at the first map.
     bool rulesApplied;
     // The virtual desktop the window lives on.
@@ -977,7 +979,7 @@ static const char *viewAppId(struct View *view)
 // are never hidden by a workspace switch.
 static bool viewOnWorkspace(struct View *view)
 {
-    return view->overrideRedirect || view->workspace == view->server->workspace;
+    return view->overrideRedirect || view->sticky || view->workspace == view->server->workspace;
 }
 
 static void viewSyncVisible(struct View *view)
@@ -3949,7 +3951,7 @@ static void ipcField(char *out, size_t size, const char *text, bool noSpaces)
 
 // The state letters of a window, shared by `windows` and the window menu:
 // f focused, m minimized, x maximized, F fullscreen, t always on top,
-// h not responding. "-" when none applies, so the field is never empty.
+// s on every desktop, h not responding. "-" when none applies, so the field is never empty.
 static void viewFlags(struct View *view, char *flags, size_t size)
 {
     size_t used = 0;
@@ -3963,6 +3965,7 @@ static void viewFlags(struct View *view, char *flags, size_t size)
         {view->hung, 'h'},
         {view->fullscreen, 'F'},
         {view->alwaysOnTop, 't'},
+        {view->sticky, 's'},
     };
     for (size_t i = 0; i < sizeof(states) / sizeof(states[0]) && used + 1 < size; ++i) {
         if (states[i].on)
@@ -3984,7 +3987,7 @@ static void requestWindowMenu(struct View *view, int x, int y)
         return;
     char title[160];
     ipcField(title, sizeof(title), viewTitle(view), false);
-    char flags[8];
+    char flags[10];
     viewFlags(view, flags, sizeof(flags));
     char line[256];
     snprintf(line, sizeof(line), "event window-menu %u %d %d %d %s %s", view->id, x, y,
@@ -5854,7 +5857,7 @@ static void renderViews(struct Server *server, const struct RenderTarget *t, uin
             continue;
         }
         bool visible = child->enabled;
-        if (server->wsAnimating && !view->overrideRedirect && view->mapped
+        if (server->wsAnimating && !view->overrideRedirect && !view->sticky && view->mapped
             && !view->minimized) {
             double distance = t->logicalWidth * server->wsDirection;
             if (view->workspace == server->wsFrom) {
@@ -7720,7 +7723,7 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
             ipcField(title, sizeof(title), viewTitle(view), false);
             char appId[96];
             ipcField(appId, sizeof(appId), viewAppId(view), true);
-            char flags[8];
+            char flags[10];
             viewFlags(view, flags, sizeof(flags));
             int written = snprintf(reply + used, sizeof(reply) - used,
                                    "%s%u\x1e%d\x1e%s\x1e%s\x1e%s\x1e%d", first ? "" : "\x1f",
@@ -7745,7 +7748,7 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
                 || strcmp(command, "close") == 0 || strcmp(command, "move-window") == 0
                 || strcmp(command, "kill") == 0 || strcmp(command, "minimize") == 0
                 || strcmp(command, "maximize") == 0 || strcmp(command, "fullscreen") == 0
-                || strcmp(command, "always-on-top") == 0
+                || strcmp(command, "always-on-top") == 0 || strcmp(command, "sticky") == 0
                 || strcmp(command, "window-menu") == 0)
                && argument) {
         uint32_t id = (uint32_t)strtoul(argument, NULL, 10);
@@ -7809,6 +7812,15 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
                 viewSetFullscreen(target, fullscreen);
             focusView(target, NULL);
             ipcSend(client, "ok");
+        } else if (strcmp(command, "sticky") == 0) {
+            // sticky ID [on|off|toggle]: shown on every desktop. Taken off,
+            // the window stays on the desktop being shown.
+            target->sticky = ipcToggle(strtok(NULL, " \t\r"), target->sticky);
+            if (!target->sticky)
+                target->workspace = server->workspace;
+            viewSyncVisible(target);
+            broadcastWorkspaces(server);
+            ipcSend(client, target->sticky ? "ok 1" : "ok 0");
         } else if (strcmp(command, "always-on-top") == 0) {
             viewSetAlwaysOnTop(target, ipcToggle(strtok(NULL, " \t\r"), target->alwaysOnTop));
             ipcSend(client, target->alwaysOnTop ? "ok 1" : "ok 0");

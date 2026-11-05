@@ -210,12 +210,17 @@ if [[ $(window_flags) != *F* ]]; then
     exit 1
 fi
 msg fullscreen "$window_id" off >/dev/null
+if [[ $(msg sticky "$window_id" on || true) != 'ok 1' || $(window_flags) != *s* ]]; then
+    echo "sticky does not put the window on every desktop ($(window_flags))" >&2
+    exit 1
+fi
+msg sticky "$window_id" off >/dev/null
 msg always-on-top "$window_id" off >/dev/null
-if [[ $(window_flags) == *[mxtF]* ]]; then
+if [[ $(window_flags) == *[mxtFs]* ]]; then
     echo "the window did not come back to normal ($(window_flags))" >&2
     exit 1
 fi
-echo "session smoke: window menu commands (on top, maximize, minimize, full screen) work"
+echo "session smoke: window menu commands (on top, maximize, minimize, full screen, every desktop) work"
 
 # Settings -> Displays goes through output-set.
 reply=$(msg outputs-detail || true)

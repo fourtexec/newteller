@@ -937,6 +937,10 @@ class Session(QObject):
     @Slot(int, bool)
     def setWindowAlwaysOnTop(self, window_id, on_top):
         self.calls.append(("setWindowAlwaysOnTop", window_id, on_top))
+
+    @Slot(int, bool)
+    def setWindowSticky(self, window_id, sticky):
+        self.calls.append(("setWindowSticky", window_id, sticky))
     hungWindows = Property("QVariantList", lambda self: [], notify=hungWindowsChanged)
 
     @Slot(int, result=str)

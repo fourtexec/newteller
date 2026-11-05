@@ -1423,6 +1423,7 @@ QVariantList SessionServices::windows() const
         window.insert(QStringLiteral("hung"), f.at(4).contains(QLatin1Char('h')));
         window.insert(QStringLiteral("fullscreen"), f.at(4).contains(QLatin1Char('F')));
         window.insert(QStringLiteral("alwaysOnTop"), f.at(4).contains(QLatin1Char('t')));
+        window.insert(QStringLiteral("sticky"), f.at(4).contains(QLatin1Char('s')));
         window.insert(QStringLiteral("pid"), f.value(5).toInt());
         list.append(window);
     }
@@ -1553,6 +1554,13 @@ void SessionServices::toggleMaximizeWindow(int id)
 void SessionServices::toggleFullscreenWindow(int id)
 {
     sendCommand(QStringLiteral("fullscreen %1").arg(id));
+}
+
+void SessionServices::setWindowSticky(int id, bool sticky)
+{
+    sendCommand(QStringLiteral("sticky %1 %2")
+                    .arg(id)
+                    .arg(sticky ? QStringLiteral("on") : QStringLiteral("off")));
 }
 
 void SessionServices::setWindowAlwaysOnTop(int id, bool onTop)

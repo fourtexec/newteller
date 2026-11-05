@@ -16,6 +16,7 @@ DropdownWindow {
     readonly property bool isMaximized: windowFlags.indexOf("x") >= 0
     readonly property bool isFullscreen: windowFlags.indexOf("F") >= 0
     readonly property bool isOnTop: windowFlags.indexOf("t") >= 0
+    readonly property bool isSticky: windowFlags.indexOf("s") >= 0
 
     cardWidth: 260
     cardHeight: menuColumn.implicitHeight + 2 * padding
@@ -65,6 +66,8 @@ DropdownWindow {
             Session.toggleFullscreenWindow(id);
         else if (action === "onTop")
             Session.setWindowAlwaysOnTop(id, !menu.isOnTop);
+        else if (action === "sticky")
+            Session.setWindowSticky(id, !menu.isSticky);
         else if (action === "desktop")
             Session.moveWindow(id, argument);
         else if (action === "close")
@@ -134,11 +137,24 @@ DropdownWindow {
             onClicked: menu.run("onTop")
         }
 
+        TaskButton {
+            objectName: "windowMenuSticky"
+            width: parent.width
+            height: 32
+            fillWidth: true
+            iconSize: 18
+            visible: Session.workspaceCount > 1
+            active: menu.isSticky
+            iconName: "layout-grid"
+            label: qsTr("Show on every desktop")
+            onClicked: menu.run("sticky")
+        }
+
         // Move to another desktop: one small button per desktop.
         Column {
             width: parent.width
             spacing: 2
-            visible: Session.workspaceCount > 1
+            visible: Session.workspaceCount > 1 && !menu.isSticky
 
             Text {
                 leftPadding: 6

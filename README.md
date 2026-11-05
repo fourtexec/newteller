@@ -255,7 +255,8 @@ inside VirtualBox. The implemented pieces are:
   border, font and colours (or the theme's) in Settings → Windows.
 - **Window menu**: right-click a title bar (NewTeller's own or an
   application's header bar) or press `Alt+Space`: minimize, maximize, full
-  screen, **always on top**, move to another desktop, close. Settings →
+  screen, **always on top**, show on every desktop, move to another desktop,
+  close. Settings →
   Windows → Window rules keeps chosen applications on top or opens them
   maximized (`windowRules.alwaysOnTop`, `windowRules.maximized`).
 - **Hot corners** (Settings → Windows): push the pointer into a screen corner
@@ -414,10 +415,11 @@ writes from its settings, and listens on a control socket (`$NEWTELLER_IPC`):
 `newteller-compositor --msg reload|lock|locked|dpms on|dpms off|layout next|workspace N|outputs|windows|kill ID|exit`.
 Window commands take the id from `windows`: `minimize ID [on|off]`,
 `maximize ID [on|off|toggle]`, `fullscreen ID [on|off|toggle]`,
-`always-on-top ID [on|off|toggle]` and `window-menu [ID [X Y]]` (opens the
+`always-on-top ID [on|off|toggle]`, `sticky ID [on|off|toggle]` (every
+desktop) and `window-menu [ID [X Y]]` (opens the
 window menu; watchers get `event window-menu ID X Y DESKTOP FLAGS TITLE`).
 `windows` flags: `f` focused, `m` minimized, `x` maximized, `F` full screen,
-`t` always on top, `h` not responding (`-` for none).
+`t` always on top, `s` on every desktop, `h` not responding (`-` for none).
 `windows` marks frozen windows with the `h` flag and reports each window's
 process id; `kill ID` force-quits one (never the compositor or the shell).
 `idle-inhibit on|off` keeps the screen awake while the connection that sent

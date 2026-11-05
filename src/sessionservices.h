@@ -120,6 +120,8 @@ public:
     Q_INVOKABLE void toggleMaximizeWindow(int id);
     Q_INVOKABLE void toggleFullscreenWindow(int id);
     Q_INVOKABLE void setWindowAlwaysOnTop(int id, bool onTop);
+    // Shown on every desktop.
+    Q_INVOKABLE void setWindowSticky(int id, bool sticky);
     // Force quit: kills the process behind the window. "" on success, else
     // the reason.
     Q_INVOKABLE QString killWindow(int id);
