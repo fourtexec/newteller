@@ -256,6 +256,33 @@ DropdownWindow {
             id: pinColumn
             anchors.centerIn: parent
 
+            // The application's own actions ("New Private Window", ...).
+            Repeater {
+                model: {
+                    if (!menu.pinTarget || !menu.pinTarget.id)
+                        return [];
+                    const app = Apps.byId(menu.pinTarget.id);
+                    return app && app.actions ? app.actions : [];
+                }
+
+                delegate: TaskButton {
+                    required property var modelData
+                    objectName: "startAppAction"
+                    width: 180
+                    height: 32
+                    fillWidth: true
+                    iconName: "chevron-right"
+                    label: modelData.name || modelData.id || ""
+                    onClicked: {
+                        const app = menu.pinTarget;
+                        pinMenu.close();
+                        menu.hide();
+                        if (app && app.id)
+                            Apps.launchAction(app.id, modelData.id);
+                    }
+                }
+            }
+
             TaskButton {
                 width: 180
                 height: 32
