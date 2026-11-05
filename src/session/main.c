@@ -1792,8 +1792,10 @@ static void toggleShowDesktop(struct Server *server)
 // Workspaces (virtual desktops)
 // ---------------------------------------------------------------------------
 
-// The panel and menus hide behind a fullscreen window only while that window
-// is on the desktop being shown.
+// The panel and menus (the top layer) hide behind a fullscreen window only
+// while that window is on the desktop being shown. The overlay layer stays:
+// it holds what must reach the user over a game or a video (the
+// administrator prompt, Ctrl+Shift+Esc, Alt+Tab, the volume display).
 static void updateFullscreenLayers(struct Server *server)
 {
     if (server->locked)
@@ -1801,7 +1803,7 @@ static void updateFullscreenLayers(struct Server *server)
     bool covered = server->fullscreenView && server->fullscreenView->mapped
                    && viewOnWorkspace(server->fullscreenView);
     wlr_scene_node_set_enabled(&server->topTree->node, !covered);
-    wlr_scene_node_set_enabled(&server->overlayTree->node, !covered);
+    wlr_scene_node_set_enabled(&server->overlayTree->node, true);
 }
 
 static void broadcastWorkspaces(struct Server *server)
@@ -1947,10 +1949,10 @@ static void viewSetFullscreen(struct View *view, bool fullscreen)
         }
         view->server->fullscreenView = view;
         // The panel and menus are layer-shell surfaces above normal windows.
-        // Hide those layers while a client is fullscreen, as a desktop session
-        // normally does; Super+F (or F11) brings them back.
+        // Hide the top layer while a client is fullscreen, as a desktop
+        // session normally does; Super+F (or F11) brings it back. Overlay
+        // surfaces (prompts, Alt+Tab, Ctrl+Shift+Esc) still show.
         wlr_scene_node_set_enabled(&view->server->topTree->node, false);
-        wlr_scene_node_set_enabled(&view->server->overlayTree->node, false);
     } else if (view->server->fullscreenView == view) {
         view->server->fullscreenView = NULL;
         wlr_scene_node_set_enabled(&view->server->topTree->node, true);
@@ -2555,7 +2557,8 @@ static bool viewFrameAt(struct View *view, double lx, double ly, struct Hit *hit
 
 static bool layerAt(struct Layer *layer, double lx, double ly, struct Hit *hit)
 {
-    if (!layer->scene || !layer->layer || !layer->layer->surface->mapped)
+    if (!layer->scene || !layer->layer || !layer->layer->surface->mapped
+        || !layer->scene->tree->node.enabled)
         return false;
     int nodeX = layer->scene->tree->node.x;
     int nodeY = layer->scene->tree->node.y;
@@ -2635,7 +2638,13 @@ static struct Hit hitTest(struct Server *server, double lx, double ly)
         ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY,
         ZWLR_LAYER_SHELL_V1_LAYER_TOP,
     };
+    // Only what is drawn takes the pointer: behind a fullscreen window the
+    // panel (top layer) is hidden and must not catch clicks meant for the
+    // game or the video.
+    const struct wlr_scene_tree *topTrees[] = {server->overlayTree, server->topTree};
     for (size_t i = 0; i < sizeof(topLayers) / sizeof(topLayers[0]); ++i) {
+        if (!topTrees[i]->node.enabled)
+            continue;
         struct Layer *layer;
         wl_list_for_each(layer, &server->layers, link) {
             if ((int)layer->layer->current.layer != topLayers[i])
@@ -2655,7 +2664,10 @@ static struct Hit hitTest(struct Server *server, double lx, double ly)
         ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM,
         ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND,
     };
+    const struct wlr_scene_tree *bottomTrees[] = {server->bottomTree, server->backgroundTree};
     for (size_t i = 0; i < sizeof(bottomLayers) / sizeof(bottomLayers[0]); ++i) {
+        if (!bottomTrees[i]->node.enabled)
+            continue;
         struct Layer *layer;
         wl_list_for_each(layer, &server->layers, link) {
             if ((int)layer->layer->current.layer != bottomLayers[i])
@@ -6793,9 +6805,8 @@ static void setDesktopVisible(struct Server *server, bool visible)
     wlr_scene_node_set_enabled(&server->backgroundTree->node, visible);
     wlr_scene_node_set_enabled(&server->bottomTree->node, visible);
     wlr_scene_node_set_enabled(&server->toplevelTree->node, visible);
-    bool overlays = visible && !server->fullscreenView;
-    wlr_scene_node_set_enabled(&server->topTree->node, overlays);
-    wlr_scene_node_set_enabled(&server->overlayTree->node, overlays);
+    wlr_scene_node_set_enabled(&server->topTree->node, visible && !server->fullscreenView);
+    wlr_scene_node_set_enabled(&server->overlayTree->node, visible);
 }
 
 static void detachLock(struct Server *server)

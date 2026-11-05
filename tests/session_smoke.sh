@@ -204,12 +204,18 @@ if [[ $(window_flags) != *m* ]]; then
     exit 1
 fi
 msg minimize "$window_id" off >/dev/null
+msg fullscreen "$window_id" on >/dev/null
+if [[ $(window_flags) != *F* ]]; then
+    echo "fullscreen did not make the window full screen ($(window_flags))" >&2
+    exit 1
+fi
+msg fullscreen "$window_id" off >/dev/null
 msg always-on-top "$window_id" off >/dev/null
-if [[ $(window_flags) == *[mxt]* ]]; then
+if [[ $(window_flags) == *[mxtF]* ]]; then
     echo "the window did not come back to normal ($(window_flags))" >&2
     exit 1
 fi
-echo "session smoke: window menu commands (on top, maximize, minimize) work"
+echo "session smoke: window menu commands (on top, maximize, minimize, full screen) work"
 
 # Settings -> Displays goes through output-set.
 reply=$(msg outputs-detail || true)
