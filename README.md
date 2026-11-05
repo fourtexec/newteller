@@ -301,7 +301,7 @@ inside VirtualBox. The implemented pieces are:
   xdg-desktop-portal-wlr, a polkit agent for administrator prompts, and
   `Ctrl+Alt+F1…F12` to switch virtual terminals.
 - Screenshots: `Print` captures the whole screen, `Shift+Print` or `Super+Shift+S` an
-  area picked with the mouse (slurp); the PNG lands in `Screenshots` inside the pictures folder (`~/Pictures`, or its
+  area picked with the mouse (slurp), `Alt+Print` the focused window with its frame; the PNG lands in `Screenshots` inside the pictures folder (`~/Pictures`, or its
   localized name from `user-dirs.dirs`), is
   copied to the clipboard (wl-copy) and announced through the notification daemon
 - **Screen recording** (wf-recorder): quick settings records the whole screen

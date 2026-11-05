@@ -218,6 +218,7 @@ static void raisePinnedViews(struct Server *server);
 static void toggleShowDesktop(struct Server *server);
 static void shellAction(const char *method);
 static void checkHotCorner(struct Server *server);
+static struct wlr_box viewOuterBox(struct View *view);
 static uint32_t dragSnapEdges(struct Server *server, struct View *view);
 static void updateSnapPreview(struct Server *server, bool dragging);
 static void viewSetMaximized(struct View *view, bool maximized);
@@ -4347,6 +4348,18 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
     // Print: the whole screen. Shift+Print or Super+Shift+S (the Windows
     // snipping shortcut): pick an area first.
     bool shiftHeld = (modifiers & WLR_MODIFIER_SHIFT) != 0;
+    // Alt+Print (often reported as SysRq): the focused window with its frame.
+    if (alt && !logo && (sym == XKB_KEY_Print || sym == XKB_KEY_Sys_Req)
+        && server->focusedView) {
+        struct wlr_box box = viewOuterBox(server->focusedView);
+        char geometry[64];
+        snprintf(geometry, sizeof(geometry), "%d,%d %dx%d", box.x, box.y, box.width,
+                 box.height);
+        const char *argv[] = {"newteller-screenshot", "--geometry", geometry, NULL};
+        setChildEnvironment(server);
+        spawnDetached(argv[0], argv);
+        return true;
+    }
     if ((sym == XKB_KEY_Print && shiftHeld)
         || (logo && shiftHeld && (sym == XKB_KEY_s || sym == XKB_KEY_S))) {
         const char *argv[] = {"newteller-screenshot", "--area", NULL};

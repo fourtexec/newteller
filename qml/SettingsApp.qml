@@ -2367,7 +2367,7 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Screenshot")
-                                subtitle: qsTr("Print; Shift+Print or Super+Shift+S for an area")
+                                subtitle: qsTr("Print; Shift+Print or Super+Shift+S for an area; Alt+Print for the window")
                             }
                             SettingsRow {
                                 width: parent.width
