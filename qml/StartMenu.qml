@@ -25,7 +25,7 @@ DropdownWindow {
         { page: "desktop", title: qsTr("Desktop"),
           keywords: "desktop wallpaper icons widgets background " + qsTr("desktop wallpaper icons widgets background") },
         { page: "apps", title: qsTr("Applications"),
-          keywords: "applications startup autostart default terminal " + qsTr("applications startup autostart default terminal") },
+          keywords: "applications startup autostart default " + qsTr("applications startup autostart default") },
         { page: "system", title: qsTr("System"),
           keywords: "system clipboard history network wifi bluetooth " + qsTr("system clipboard history network wifi bluetooth") },
         { page: "notifications", title: qsTr("Notifications"),
