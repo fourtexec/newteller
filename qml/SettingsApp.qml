@@ -465,7 +465,7 @@ Window {
                                 title: qsTr("Application font")
                                 subtitle: qsTr("Name and size, e.g. \"Noto Sans 11\". Empty: unchanged.")
                                 settingKey: "apps.font"
-                                SettingsTextField { settingKey: "apps.font"; placeholder: "(unchanged)" }
+                                SettingsTextField { settingKey: "apps.font"; placeholder: qsTr("(unchanged)") }
                             }
                             SettingsRow {
                                 width: parent.width
@@ -922,21 +922,21 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Corner radius")
-                                subtitle: "-1 follows the theme radius."
+                                subtitle: qsTr("-1 follows the theme radius.")
                                 settingKey: "windows.radius"
                                 SettingsStepper { from: -1; to: 32; suffix: " px" }
                             }
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Background opacity")
-                                subtitle: "0 uses the selected material's preset opacity."
+                                subtitle: qsTr("0 uses the selected material's preset opacity.")
                                 settingKey: "windows.opacityPercent"
                                 SettingsSlider { from: 0; to: 100; step: 5; suffix: " %" }
                             }
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Border width")
-                                subtitle: "-1 follows the theme."
+                                subtitle: qsTr("-1 follows the theme.")
                                 settingKey: "windows.borderWidth"
                                 SettingsStepper { from: -1; to: 6; suffix: " px" }
                             }
@@ -1932,7 +1932,7 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Duration")
-                                subtitle: "0 keeps a popup until it is clicked."
+                                subtitle: qsTr("0 keeps a popup until it is clicked.")
                                 settingKey: "notifications.duration"
                                 SettingsStepper { from: 0; to: 120; suffix: qsTr(" s") }
                             }
@@ -1989,7 +1989,7 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Surface opacity")
-                                subtitle: "0 uses the selected material's preset opacity."
+                                subtitle: qsTr("0 uses the selected material's preset opacity.")
                                 settingKey: "notifications.opacityPercent"
                                 SettingsSlider { from: 0; to: 100; step: 5; suffix: " %" }
                             }
@@ -2326,6 +2326,31 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("Windows of the same application")
+                                subtitle: "Alt+`"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Window menu (always on top, move to a desktop)")
+                                subtitle: qsTr("Alt+Space, or right-click the title bar")
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Snap to a quarter")
+                                subtitle: qsTr("Super+Left/Right, then Super+Up/Down")
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Applications on the dock")
+                                subtitle: "Super+1 … Super+9"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Record the screen")
+                                subtitle: "Super+Alt+R"
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Switch desktops")
                                 subtitle: "Ctrl+Super+Left/Right, Super+Page Up/Down"
                             }
@@ -2342,7 +2367,7 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Screenshot")
-                                subtitle: "Print; Shift+Print or Super+Shift+S for an area"
+                                subtitle: qsTr("Print; Shift+Print or Super+Shift+S for an area")
                             }
                             SettingsRow {
                                 width: parent.width
