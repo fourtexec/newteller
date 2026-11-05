@@ -285,6 +285,8 @@ struct View {
     bool alwaysOnTop;
     // Shown on every desktop (window menu).
     bool sticky;
+    // Told it is suspended (xdg-shell v6) while hidden.
+    bool suspended;
     // rules.* were applied at the first map.
     bool rulesApplied;
     // The virtual desktop the window lives on.
@@ -988,6 +990,16 @@ static void viewSyncVisible(struct View *view)
         wlr_scene_node_set_enabled(&view->tree->node,
                                    view->mapped && !view->minimized
                                        && viewOnWorkspace(view));
+    }
+    // xdg-shell v6: a minimized window or one on another desktop is told it
+    // is suspended, so browsers and GTK 4 applications stop drawing frames
+    // nobody sees (battery, CPU). Its last frame stays for previews.
+    if (view->xdg && view->xdg->base->initialized && view->mapped) {
+        bool hidden = view->minimized || !viewOnWorkspace(view);
+        if (hidden != view->suspended) {
+            view->suspended = hidden;
+            wlr_xdg_toplevel_set_suspended(view->xdg, hidden);
+        }
     }
     // A video in a minimized window or on another desktop no longer keeps
     // the screen awake.
@@ -8331,7 +8343,8 @@ static void setupProtocols(struct Server *server)
         wlr_scene_node_set_position(&backdrop->node, -32768, -32768);
     wlr_scene_node_set_enabled(&server->lockTree->node, false);
 
-    server->xdgShell = wlr_xdg_shell_create(server->display, 5);
+    // Version 6 adds the suspended state (see viewSyncVisible).
+    server->xdgShell = wlr_xdg_shell_create(server->display, 6);
     server->layerShell = wlr_layer_shell_v1_create(server->display, 4);
     server->foreignToplevels = wlr_foreign_toplevel_manager_v1_create(
         server->display);
