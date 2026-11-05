@@ -777,6 +777,10 @@ class Notifications(QObject):
     def invokeAction(self, notification_id, action_key):
         self.calls.append(("invokeAction", notification_id, action_key))
 
+    @Slot("QVariant", str)
+    def reply(self, notification_id, text):
+        self.calls.append(("reply", notification_id, text))
+
     @Slot()
     def clearHistory(self):
         self._history.clear()
@@ -2747,6 +2751,29 @@ def main():
                     QMetaObject.invokeMethod(card_item, "activate")
             check(("invokeAction", 3, "default") in notifications.calls,
                   f"clicking a notification runs its default action ({notifications.calls})")
+
+            # Inline reply: a text field instead of an "inline-reply" button.
+            notifications._active = [{"id": 9, "app": "Telegram", "summary": "Anna",
+                                      "body": "Lunch?", "icon": "", "image": "",
+                                      "actions": ["default", "", "inline-reply", "Reply"],
+                                      "timeout": 0, "replyable": True,
+                                      "replyPlaceholder": "Message Anna"}]
+            notifications.activeChanged.emit()
+            QTest.qWait(400)
+            fields = items_named(stack.property("contentItem"), "notificationReply")
+            check(len(fields) == 1 and fields[0].isVisible(),
+                  f"a notification with inline-reply shows a reply field ({len(fields)})")
+            reply_buttons = [b for b in items_named(stack.property("contentItem"),
+                                                    "notificationAction")
+                             if b.property("label") == "Reply"]
+            check(not reply_buttons, "inline-reply is not shown as a button")
+            if fields:
+                fields[0].setProperty("text", "Yes!")
+                card_item, _ = card_of(fields[0])
+                if card_item is not None:
+                    QMetaObject.invokeMethod(card_item, "sendReply")
+                check(("reply", 9, "Yes!") in notifications.calls,
+                      f"sending a reply reaches the daemon ({notifications.calls})")
 
         notifications._active = []
         notifications.activeChanged.emit()

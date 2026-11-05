@@ -245,7 +245,7 @@ QStringList NotificationDaemon::GetCapabilities() const
     // sound to us), the history (persistence) and pictures.
     return {QStringLiteral("actions"), QStringLiteral("body"), QStringLiteral("body-markup"),
             QStringLiteral("sound"), QStringLiteral("persistence"),
-            QStringLiteral("icon-static")};
+            QStringLiteral("icon-static"), QStringLiteral("inline-reply")};
 }
 
 QString NotificationDaemon::GetServerInformation(QString &vendor, QString &version,
@@ -445,6 +445,15 @@ uint NotificationDaemon::publish(uint replacesId, const QString &appName, const 
     entry.insert(QStringLiteral("icon"), icon);
     entry.insert(QStringLiteral("image"), image);
     entry.insert(QStringLiteral("actions"), actions);
+    // An "inline-reply" action asks for a text field instead of a button.
+    bool replyable = false;
+    for (int i = 0; i + 1 < actions.size(); i += 2) {
+        if (actions.at(i) == QLatin1String("inline-reply"))
+            replyable = true;
+    }
+    entry.insert(QStringLiteral("replyable"), replyable);
+    entry.insert(QStringLiteral("replyPlaceholder"),
+                 hints.value(QStringLiteral("x-kde-reply-placeholder-text")).toString());
     entry.insert(QStringLiteral("urgent"), critical);
     entry.insert(QStringLiteral("time"), QDateTime::currentDateTime().toMSecsSinceEpoch());
 
@@ -580,6 +589,14 @@ void NotificationDaemon::invokeAction(uint id, const QString &actionKey)
         if (map.value(QStringLiteral("id")).toUInt() == id && map.value(QStringLiteral("resident")).toBool())
             return;
     }
+    dismiss(id, kReasonDismissed);
+}
+
+void NotificationDaemon::reply(uint id, const QString &text)
+{
+    if (text.trimmed().isEmpty())
+        return;
+    emit NotificationReplied(id, text);
     dismiss(id, kReasonDismissed);
 }
 

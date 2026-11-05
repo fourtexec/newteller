@@ -90,7 +90,11 @@ inside VirtualBox. The implemented pieces are:
   notification's text are shown (body-markup); links, pictures and any
   other HTML are reduced to their text, so no notification can load remote
   content. The daemon advertises what it does (`body-markup`, `sound`,
-  `persistence`, `icon-static`), so applications leave sounds to it.
+  `persistence`, `icon-static`, `inline-reply`), so applications leave
+  sounds to it.
+- **Reply from the notification**: messengers that offer an inline reply
+  (Telegram Desktop, KDE Connect) get a text field in the popup; Enter or
+  Send answers without opening the application.
 - **Notification popups** follow the spec's hints: pictures (`image-data`,
   `image-path`), a click runs the `default` action, `transient` ones stay out
   of the history, `resident` ones stay after an action, and a popup tagged

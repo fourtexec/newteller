@@ -62,6 +62,10 @@ public:
     Q_INVOKABLE void dismiss(uint id, uint reason = 2);
     // The user clicked one of the `actions` buttons of a popup.
     Q_INVOKABLE void invokeAction(uint id, const QString &actionKey);
+    // The user answered a notification that offered an "inline-reply"
+    // action (Telegram, KDE Connect, ...): NotificationReplied goes out and
+    // the popup closes.
+    Q_INVOKABLE void reply(uint id, const QString &text);
     Q_INVOKABLE void clearHistory();
     // Removes one entry from the history (the X button in the notification
     // centre). Notifications still on screen are dismissed first.
@@ -74,6 +78,8 @@ signals:
     // org.freedesktop.Notifications signals (the only ones on D-Bus).
     Q_SCRIPTABLE void NotificationClosed(uint id, uint reason);
     Q_SCRIPTABLE void ActionInvoked(uint id, const QString &actionKey);
+    // The KDE inline-reply extension (capability "inline-reply").
+    Q_SCRIPTABLE void NotificationReplied(uint id, const QString &text);
 
     void activeChanged();
     void historyChanged();
