@@ -1110,14 +1110,6 @@ QList<QDBusObjectPath> objectPaths(const QDBusMessage &reply)
     return qdbus_cast<QList<QDBusObjectPath>>(reply.arguments().constFirst());
 }
 
-QVariantMap nmAll(const QString &path, const QString &interface)
-{
-    const QDBusMessage reply = nmCall(path, kDBusProperties, QStringLiteral("GetAll"), {interface}, 1500);
-    if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
-        return {};
-    return qdbus_cast<QVariantMap>(reply.arguments().constFirst());
-}
-
 // a{sa{sv}} from Connection.GetSettings.
 NMSettingsMap connectionSettings(const QString &path)
 {
@@ -1201,46 +1193,108 @@ void SessionServices::readAccessPoints()
 
 void SessionServices::readAccessPointsOf(const QString &device)
 {
-    m_wifiNetworks.clear();
-    if (!device.isEmpty() && m_wifiStatus.isEmpty()) {
-        const QString active = nmProperty(device, kNmWireless, QStringLiteral("ActiveAccessPoint"))
-                                   .value<QDBusObjectPath>().path();
-        QHash<QString, QVariantMap> best;
-        const QList<QDBusObjectPath> points =
-            objectPaths(nmCall(device, kNmWireless, QStringLiteral("GetAllAccessPoints")));
-        for (const QDBusObjectPath &point : points) {
-            const QVariantMap p = nmAll(point.path(), kNmAccessPoint);
-            const QString ssid = QString::fromUtf8(p.value(QStringLiteral("Ssid")).toByteArray());
-            if (ssid.isEmpty())
-                continue;
-            const uint flags = p.value(QStringLiteral("Flags")).toUInt();
-            const uint wpa = p.value(QStringLiteral("WpaFlags")).toUInt();
-            const uint rsn = p.value(QStringLiteral("RsnFlags")).toUInt();
-            QVariantMap network;
-            network.insert(QStringLiteral("ssid"), ssid);
-            network.insert(QStringLiteral("path"), point.path());
-            network.insert(QStringLiteral("signal"), p.value(QStringLiteral("Strength")).toInt());
-            network.insert(QStringLiteral("secure"), (flags & 0x1) || wpa || rsn);
-            network.insert(QStringLiteral("sae"), (rsn & 0x400) != 0);
-            network.insert(QStringLiteral("enterprise"), ((wpa | rsn) & 0x200) != 0);
-            network.insert(QStringLiteral("active"), point.path() == active);
-            const QVariantMap seen = best.value(ssid);
-            if (seen.isEmpty() || network.value(QStringLiteral("active")).toBool()
-                || (!seen.value(QStringLiteral("active")).toBool()
-                    && network.value(QStringLiteral("signal")).toInt()
-                           > seen.value(QStringLiteral("signal")).toInt()))
-                best.insert(ssid, network);
-        }
-        QList<QVariantMap> sorted = best.values();
-        std::sort(sorted.begin(), sorted.end(), [](const QVariantMap &a, const QVariantMap &b) {
-            if (a.value(QStringLiteral("active")).toBool() != b.value(QStringLiteral("active")).toBool())
-                return a.value(QStringLiteral("active")).toBool();
-            return a.value(QStringLiteral("signal")).toInt() > b.value(QStringLiteral("signal")).toInt();
-        });
-        for (const QVariantMap &network : sorted)
-            m_wifiNetworks.append(network);
+    // Asynchronous: the active access point, the list of access points, then
+    // every access point's properties at once. A read started later wins.
+    // The old list stays until the new one is complete.
+    const quint64 generation = ++m_accessPointRead;
+    if (device.isEmpty() || !m_wifiStatus.isEmpty()) {
+        m_wifiNetworks.clear();
+        emit wifiChanged();
+        return;
     }
-    emit wifiChanged();
+    QDBusMessage getActive = QDBusMessage::createMethodCall(kNm, device, kDBusProperties,
+                                                            QStringLiteral("Get"));
+    getActive << kNmWireless << QStringLiteral("ActiveAccessPoint");
+    auto *activeCall = new QDBusPendingCallWatcher(
+        QDBusConnection::systemBus().asyncCall(getActive, 1500), this);
+    connect(activeCall, &QDBusPendingCallWatcher::finished, this,
+            [this, device, generation](QDBusPendingCallWatcher *call) {
+        call->deleteLater();
+        if (generation != m_accessPointRead)
+            return;
+        QString active;
+        const QDBusMessage activeReply = call->reply();
+        if (activeReply.type() == QDBusMessage::ReplyMessage && !activeReply.arguments().isEmpty())
+            active = activeReply.arguments().constFirst().value<QDBusVariant>().variant()
+                         .value<QDBusObjectPath>().path();
+        QDBusMessage list = QDBusMessage::createMethodCall(kNm, device, kNmWireless,
+                                                           QStringLiteral("GetAllAccessPoints"));
+        auto *listCall = new QDBusPendingCallWatcher(
+            QDBusConnection::systemBus().asyncCall(list, 2000), this);
+        connect(listCall, &QDBusPendingCallWatcher::finished, this,
+                [this, active, generation](QDBusPendingCallWatcher *call) {
+            call->deleteLater();
+            if (generation != m_accessPointRead)
+                return;
+            const QList<QDBusObjectPath> points = objectPaths(call->reply());
+            struct Read {
+                int pending = 0;
+                QList<QPair<QString, QVariantMap>> points;
+            };
+            auto read = std::make_shared<Read>();
+            read->pending = points.size();
+            const auto finish = [this, active, generation, read] {
+                if (generation != m_accessPointRead)
+                    return;
+                QHash<QString, QVariantMap> best;
+                for (const auto &[path, p] : std::as_const(read->points)) {
+                    const QString ssid = QString::fromUtf8(p.value(QStringLiteral("Ssid")).toByteArray());
+                    if (ssid.isEmpty())
+                        continue;
+                    const uint flags = p.value(QStringLiteral("Flags")).toUInt();
+                    const uint wpa = p.value(QStringLiteral("WpaFlags")).toUInt();
+                    const uint rsn = p.value(QStringLiteral("RsnFlags")).toUInt();
+                    QVariantMap network;
+                    network.insert(QStringLiteral("ssid"), ssid);
+                    network.insert(QStringLiteral("path"), path);
+                    network.insert(QStringLiteral("signal"), p.value(QStringLiteral("Strength")).toInt());
+                    network.insert(QStringLiteral("secure"), (flags & 0x1) || wpa || rsn);
+                    network.insert(QStringLiteral("sae"), (rsn & 0x400) != 0);
+                    network.insert(QStringLiteral("enterprise"), ((wpa | rsn) & 0x200) != 0);
+                    network.insert(QStringLiteral("active"), path == active);
+                    const QVariantMap seen = best.value(ssid);
+                    if (seen.isEmpty() || network.value(QStringLiteral("active")).toBool()
+                        || (!seen.value(QStringLiteral("active")).toBool()
+                            && network.value(QStringLiteral("signal")).toInt()
+                                   > seen.value(QStringLiteral("signal")).toInt()))
+                        best.insert(ssid, network);
+                }
+                QList<QVariantMap> sorted = best.values();
+                std::sort(sorted.begin(), sorted.end(), [](const QVariantMap &a, const QVariantMap &b) {
+                    if (a.value(QStringLiteral("active")).toBool()
+                        != b.value(QStringLiteral("active")).toBool())
+                        return a.value(QStringLiteral("active")).toBool();
+                    return a.value(QStringLiteral("signal")).toInt()
+                           > b.value(QStringLiteral("signal")).toInt();
+                });
+                m_wifiNetworks.clear();
+                for (const QVariantMap &network : sorted)
+                    m_wifiNetworks.append(network);
+                emit wifiChanged();
+            };
+            if (points.isEmpty()) {
+                finish();
+                return;
+            }
+            for (const QDBusObjectPath &point : points) {
+                QDBusMessage getAll = QDBusMessage::createMethodCall(kNm, point.path(), kDBusProperties,
+                                                                     QStringLiteral("GetAll"));
+                getAll << kNmAccessPoint;
+                auto *pointCall = new QDBusPendingCallWatcher(
+                    QDBusConnection::systemBus().asyncCall(getAll, 1500), this);
+                const QString path = point.path();
+                connect(pointCall, &QDBusPendingCallWatcher::finished, this,
+                        [read, path, finish](QDBusPendingCallWatcher *call) {
+                    call->deleteLater();
+                    const QDBusMessage reply = call->reply();
+                    if (reply.type() == QDBusMessage::ReplyMessage && !reply.arguments().isEmpty())
+                        read->points.append({path, qdbus_cast<QVariantMap>(reply.arguments().constFirst())});
+                    if (--read->pending == 0)
+                        finish();
+                });
+            }
+        });
+    });
 }
 
 void SessionServices::scanWifi()

@@ -243,6 +243,8 @@ private:
     int m_workspace = 0;
     QString m_activeOutput;
     bool m_fullscreen = false;
+    // Bumped by every read of the Wi-Fi networks; older answers are dropped.
+    quint64 m_accessPointRead = 0;
     int m_workspaceCount = 1;
     int m_workspaceOccupied = 0;
     QVariantList m_switcherEntries;
