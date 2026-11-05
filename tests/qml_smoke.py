@@ -2421,8 +2421,14 @@ def main():
                 QMetaObject.invokeMethod(button, "clicked")
                 QTest.qWait(300)
                 check(sound_cards[0].isVisible(), "the volume row opens the sound card")
-                outputs = [o for o in sound_cards[0].contentItem().findChildren(QObject)
-                           if o.objectName() == "soundOutput"]
+                # Repeater delegates are visual children only: walk childItems().
+                outputs = []
+                stack = [sound_cards[0].contentItem()]
+                while stack:
+                    item = stack.pop()
+                    if item.objectName() == "soundOutput":
+                        outputs.append(item)
+                    stack.extend(item.childItems())
                 check(len(outputs) == 2, f"the sound card lists the outputs ({len(outputs)})")
                 headset = next((o for o in outputs if o.property("label") == "Headset"), None)
                 if headset is not None:
