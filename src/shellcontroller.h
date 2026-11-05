@@ -66,6 +66,8 @@ public:
     // Opens the built-in settings application. The QML lives in the executable's
     // resources, so it is always available and cannot be deleted like a plugin.
     Q_INVOKABLE void openSettings();
+    // Opens Settings on a page ("display", "keyboard", ... as in SettingsApp).
+    Q_INVOKABLE void openSettingsPage(const QString &page);
     // Session-level entry points used by newteller-compositor keybindings and
     // by `gdbus call` from scripts. The QML root listens to the signals.
     Q_INVOKABLE void showStartMenu();
@@ -145,6 +147,7 @@ signals:
     void nowChanged();
     // Emitted by openSettings(); Main.qml shows the embedded settings window.
     void settingsRequested();
+    void settingsPageRequested(const QString &page);
     void startMenuRequested();
     void startMenuToggleRequested();
     void runDialogRequested();

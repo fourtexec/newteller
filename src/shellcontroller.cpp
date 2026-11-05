@@ -459,6 +459,11 @@ void ShellController::toggleScreenRecording()
     emit screenRecordingToggleRequested();
 }
 
+void ShellController::openSettingsPage(const QString &page)
+{
+    emit settingsPageRequested(page);
+}
+
 void ShellController::activateDockItem(int index)
 {
     if (index >= 0)

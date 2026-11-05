@@ -109,6 +109,9 @@ inside VirtualBox. The implemented pieces are:
   plugged in is announced with Open (mounts it through UDisks2 and opens the
   folder) and Eject (unmounts it and powers the drive off); internal disks
   and loop devices stay quiet. Needs udisks2.
+- **Settings in the start menu search**: "resolution", "wifi", "раскладка"
+  and the like list the matching Settings page ("Settings: Displays"), which
+  opens on that page (`Shell.openSettingsPage`).
 - **Search in the wrong layout**: the start menu and the run dialog retry a
   query that finds nothing in the other keyboard layout, so "ашкуащч" finds
   Firefox and "nthv" finds Терминал (ЙЦУКЕН <-> QWERTY).

@@ -13,6 +13,50 @@ DropdownWindow {
     id: menu
 
     property var results: []
+
+    // Settings pages the search finds ("wifi", "resolution", "раскладка"):
+    // the title and the keywords, which translations extend with their own
+    // words. A hit opens Settings on that page.
+    readonly property var settingsPages: [
+        { page: "appearance", title: qsTr("Appearance"),
+          keywords: "theme dark light wallpaper font colour color language icons cursor " + qsTr("theme dark light wallpaper font colour language icons cursor") },
+        { page: "panel", title: qsTr("Panel & dock"),
+          keywords: "panel dock taskbar tray clock pinned " + qsTr("panel dock taskbar tray clock pinned") },
+        { page: "desktop", title: qsTr("Desktop"),
+          keywords: "desktop wallpaper icons widgets background " + qsTr("desktop wallpaper icons widgets background") },
+        { page: "apps", title: qsTr("Applications"),
+          keywords: "applications startup autostart default terminal " + qsTr("applications startup autostart default terminal") },
+        { page: "system", title: qsTr("System"),
+          keywords: "system clipboard history network wifi bluetooth " + qsTr("system clipboard history network wifi bluetooth") },
+        { page: "notifications", title: qsTr("Notifications"),
+          keywords: "notifications sounds do not disturb popups bell " + qsTr("notifications sounds do not disturb popups bell") },
+        { page: "windows", title: qsTr("Windows"),
+          keywords: "windows title bar snapping hot corners rules shortcuts focus " + qsTr("windows title bar snapping hot corners rules shortcuts focus") },
+        { page: "keyboard", title: qsTr("Keyboard"),
+          keywords: "keyboard layout language input repeat num lock caps " + qsTr("keyboard layout language input repeat num lock caps") },
+        { page: "mouse", title: qsTr("Mouse & touchpad"),
+          keywords: "mouse touchpad pointer cursor scroll tap speed " + qsTr("mouse touchpad pointer cursor scroll tap speed") },
+        { page: "display", title: qsTr("Displays"),
+          keywords: "display screen monitor resolution refresh scale rotation night light " + qsTr("display screen monitor resolution refresh scale rotation night light") },
+        { page: "power", title: qsTr("Power & lock"),
+          keywords: "power battery sleep suspend lock idle screen off saver " + qsTr("power battery sleep suspend lock idle screen off saver") },
+        { page: "about", title: qsTr("About"),
+          keywords: "about version system information diagnostics " + qsTr("about version system information diagnostics") }
+    ]
+
+    function settingsMatches(query) {
+        const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+        if (words.length === 0)
+            return [];
+        const out = [];
+        for (const page of settingsPages) {
+            const haystack = (page.title + " " + page.keywords).toLowerCase();
+            if (words.every(w => haystack.indexOf(w) >= 0))
+                out.push({ id: "", settingsPage: page.page, icon: "settings",
+                           name: qsTr("Settings: %1").arg(page.title) });
+        }
+        return out;
+    }
     property string categoryFilter: ""
     // Index of the highlighted row: the keyboard walks the list, Enter runs
     // the highlighted application.
@@ -70,11 +114,19 @@ DropdownWindow {
                 return (app.categories || []).indexOf(categoryFilter) >= 0;
             });
         }
+        // Settings pages after the applications (never inside a category).
+        if (q.length >= 2 && categoryFilter.length === 0)
+            hits = hits.concat(settingsMatches(q));
         results = hits;
         selectedIndex = hits.length > 0 ? 0 : -1;
     }
 
     function launch(app) {
+        if (app.settingsPage) {
+            Shell.openSettingsPage(app.settingsPage);
+            hide();
+            return;
+        }
         Apps.launch(app.id);
         hide();
     }
@@ -140,6 +192,9 @@ DropdownWindow {
     }
 
     function openPinMenu(button, app) {
+        // Settings rows cannot be pinned.
+        if (!app || !app.id)
+            return;
         pinTarget = app;
         const pos = button.mapToItem(menu.bodyItem, button.width, 0);
         pinMenu.x = Math.max(8, Math.min(pos.x - pinMenu.width,

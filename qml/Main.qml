@@ -318,6 +318,12 @@ QtObject {
             root.startMenu.hide();
             root.settingsApp.showFromShell();
         }
+        function onSettingsPageRequested(page) {
+            root.startMenu.hide();
+            if (root.settingsApp.pages.some(p => p.id === page))
+                root.settingsApp.currentPage = page;
+            root.settingsApp.showFromShell();
+        }
         function onStartMenuRequested() {
             if (!root.startMenu.visible)
                 root.toggleOnActiveScreen(root.startMenu, "start");

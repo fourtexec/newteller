@@ -418,6 +418,7 @@ class Apps(QObject):
 class Shell(QObject):
     nowChanged = Signal()
     settingsRequested = Signal()
+    settingsPageRequested = Signal(str)
     startMenuRequested = Signal()
     startMenuToggleRequested = Signal()
     notificationsToggleRequested = Signal()
@@ -586,6 +587,10 @@ class Shell(QObject):
     def openSettings(self):
         self.calls.append(("openSettings",))
         self.settingsRequested.emit()
+
+    @Slot(str)
+    def openSettingsPage(self, page):
+        self.calls.append(("openSettingsPage", page))
 
     @Slot()
     def lock(self):
@@ -1716,6 +1721,21 @@ def main():
         check(apps.launched == ["org.gnome.Terminal"], f"launching from the menu ({apps.launched})")
         check(not menu.isVisible(), "launching an application closes the menu")
         check(apps.isRunning("org.gnome.Terminal"), "the launched application is marked running")
+
+        # Searching finds settings pages too ("resolution" -> Displays).
+        found = QMetaObject.invokeMethod(menu, "settingsMatches", Qt.DirectConnection,
+                                         Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "resolution"))
+        found = found.toVariant() if hasattr(found, "toVariant") else found
+        check(isinstance(found, list) and len(found) == 1
+              and found[0].get("settingsPage") == "display",
+              f"the start menu finds the Displays settings page ({found})")
+        if isinstance(found, list) and found:
+            shell.calls.clear()
+            QMetaObject.invokeMethod(menu, "show")
+            QMetaObject.invokeMethod(menu, "launch", Q_ARG("QVariant", found[0]))
+            QTest.qWait(300)
+            check(("openSettingsPage", "display") in shell.calls,
+                  f"a settings result opens that page ({shell.calls})")
 
         # Right-clicking an application row offers pin/unpin; the function
         # writes the same panel.pinned list the dock reads.
