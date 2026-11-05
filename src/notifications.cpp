@@ -15,6 +15,8 @@
 #include <QJsonObject>
 #include <QLocalSocket>
 #include <QProcess>
+#include <QRegularExpression>
+#include <QHash>
 #include <QStandardPaths>
 #include <QUrl>
 #include <QtDebug>
@@ -222,7 +224,8 @@ uint NotificationDaemon::Notify(const QString &appName, uint replacesId, const Q
                                 const QString &summary, const QString &body, const QStringList &actions,
                                 const QVariantMap &hints, int expireTimeout)
 {
-    return publish(replacesId, appName, appIcon, summary, body, actions, hints, expireTimeout);
+    // Over D-Bus the body may carry the spec's markup (body-markup).
+    return publish(replacesId, appName, appIcon, summary, body, actions, hints, expireTimeout, true);
 }
 
 void NotificationDaemon::CloseNotification(uint id)
@@ -237,8 +240,12 @@ void NotificationDaemon::CloseNotification(uint id)
 
 QStringList NotificationDaemon::GetCapabilities() const
 {
-    // Body text is rendered plain; actions are supported through the popups.
-    return {QStringLiteral("actions"), QStringLiteral("body")};
+    // What the popups really do: actions, bold/italic/underline in the body
+    // (sanitised, see bodyText()), sounds (applications then leave the
+    // sound to us), the history (persistence) and pictures.
+    return {QStringLiteral("actions"), QStringLiteral("body"), QStringLiteral("body-markup"),
+            QStringLiteral("sound"), QStringLiteral("persistence"),
+            QStringLiteral("icon-static")};
 }
 
 QString NotificationDaemon::GetServerInformation(QString &vendor, QString &version,
@@ -267,9 +274,92 @@ uint NotificationDaemon::send(const QString &appName, const QString &summary, co
     return publish(0, appName, icon, summary, body, {}, {}, expireTimeoutMs);
 }
 
+// The body markup the notification spec allows, reduced to what is safe
+// to show: <b>, <i>, <u> and line breaks survive (as Qt StyledText when
+// `styled`), every other tag disappears with its text kept (links and
+// <img>, which could load remote pictures), entities are decoded and stray
+// < > & are escaped. Without `styled` the result is plain text.
+static QString bodyText(const QString &body, bool styled)
+{
+    static const QRegularExpression tag(QStringLiteral("<(/?)([a-zA-Z]+)\\b[^<>]*>"));
+    static const QRegularExpression entity(
+        QStringLiteral("&(#[0-9]{1,7}|#[xX][0-9a-fA-F]{1,6}|[a-zA-Z]{2,6});"));
+    const auto escaped = [styled](QChar c) -> QString {
+        if (!styled)
+            return QString(c);
+        if (c == QLatin1Char('<'))
+            return QStringLiteral("&lt;");
+        if (c == QLatin1Char('>'))
+            return QStringLiteral("&gt;");
+        if (c == QLatin1Char('&'))
+            return QStringLiteral("&amp;");
+        if (c == QLatin1Char('\n'))
+            return QStringLiteral("<br>");
+        return QString(c);
+    };
+    QString out;
+    out.reserve(body.size());
+    for (int i = 0; i < body.size();) {
+        const QChar c = body.at(i);
+        if (c == QLatin1Char('<')) {
+            const QRegularExpressionMatch m =
+                tag.match(body, i, QRegularExpression::NormalMatch,
+                          QRegularExpression::AnchorAtOffsetMatchOption);
+            if (m.hasMatch()) {
+                const QString name = m.captured(2).toLower();
+                const bool closing = !m.captured(1).isEmpty();
+                if (name == QLatin1String("br")) {
+                    out += styled ? QStringLiteral("<br>") : QStringLiteral("\n");
+                } else if (styled && (name == QLatin1String("b") || name == QLatin1String("i")
+                                      || name == QLatin1String("u"))) {
+                    out += (closing ? QStringLiteral("</") : QStringLiteral("<")) + name
+                           + QLatin1Char('>');
+                }
+                i += int(m.capturedLength());
+                continue;
+            }
+        } else if (c == QLatin1Char('&')) {
+            const QRegularExpressionMatch m =
+                entity.match(body, i, QRegularExpression::NormalMatch,
+                             QRegularExpression::AnchorAtOffsetMatchOption);
+            if (m.hasMatch()) {
+                const QString name = m.captured(1);
+                QString decoded;
+                if (name.startsWith(QLatin1Char('#'))) {
+                    bool ok = false;
+                    const uint code = name.startsWith(QLatin1String("#x"), Qt::CaseInsensitive)
+                                          ? name.mid(2).toUInt(&ok, 16)
+                                          : name.mid(1).toUInt(&ok, 10);
+                    if (ok && code > 0 && code <= 0x10FFFF && (code < 0xD800 || code > 0xDFFF))
+                        decoded = QString::fromUcs4(reinterpret_cast<const char32_t *>(&code), 1);
+                } else {
+                    static const QHash<QString, QString> named{
+                        {QStringLiteral("amp"), QStringLiteral("&")},
+                        {QStringLiteral("lt"), QStringLiteral("<")},
+                        {QStringLiteral("gt"), QStringLiteral(">")},
+                        {QStringLiteral("quot"), QStringLiteral("\"")},
+                        {QStringLiteral("apos"), QStringLiteral("'")},
+                        {QStringLiteral("nbsp"), QString(QChar(0x00A0))},
+                    };
+                    decoded = named.value(name);
+                }
+                if (!decoded.isEmpty()) {
+                    for (const QChar d : decoded)
+                        out += escaped(d);
+                    i += int(m.capturedLength());
+                    continue;
+                }
+            }
+        }
+        out += escaped(c);
+        ++i;
+    }
+    return out;
+}
+
 uint NotificationDaemon::publish(uint replacesId, const QString &appName, const QString &appIcon,
                                  const QString &summary, const QString &body, const QStringList &actions,
-                                 const QVariantMap &hints, int expireTimeout)
+                                 const QVariantMap &hints, int expireTimeout, bool markup)
 {
     // Scripts tag their volume or brightness popups instead of keeping an
     // id (notify-send -h string:x-canonical-private-synchronous:volume, or
@@ -320,7 +410,20 @@ uint NotificationDaemon::publish(uint replacesId, const QString &appName, const 
     entry.insert(QStringLiteral("id"), id);
     entry.insert(QStringLiteral("app"), appName.isEmpty() ? QStringLiteral("NewTeller") : appName);
     entry.insert(QStringLiteral("summary"), summary);
-    entry.insert(QStringLiteral("body"), body);
+    // `body` stays plain text (history, search); `bodyMarkup` is what the
+    // popups draw as StyledText.
+    if (markup) {
+        entry.insert(QStringLiteral("body"), bodyText(body, false));
+        entry.insert(QStringLiteral("bodyMarkup"), bodyText(body, true));
+    } else {
+        entry.insert(QStringLiteral("body"), body);
+        QString safe = body;
+        safe.replace(QLatin1Char('&'), QStringLiteral("&amp;"))
+            .replace(QLatin1Char('<'), QStringLiteral("&lt;"))
+            .replace(QLatin1Char('>'), QStringLiteral("&gt;"))
+            .replace(QLatin1Char('\n'), QStringLiteral("<br>"));
+        entry.insert(QStringLiteral("bodyMarkup"), safe);
+    }
     // app_icon may be a file:// URI; the icon lookup takes plain paths.
     QString icon = appIcon.startsWith(QLatin1String("file://")) ? QUrl(appIcon).toLocalFile() : appIcon;
     QString image;

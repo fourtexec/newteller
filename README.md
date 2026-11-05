@@ -82,6 +82,11 @@ inside VirtualBox. The implemented pieces are:
   the application's `sound-file`, the chosen `notifications.soundFile` or
   the theme's message sound (canberra-gtk-play, pw-play or paplay); never
   under do-not-disturb or for `suppress-sound`.
+- **Notification markup**: bold, italic, underline and line breaks in a
+  notification's text are shown (body-markup); links, pictures and any
+  other HTML are reduced to their text, so no notification can load remote
+  content. The daemon advertises what it does (`body-markup`, `sound`,
+  `persistence`, `icon-static`), so applications leave sounds to it.
 - **Notification popups** follow the spec's hints: pictures (`image-data`,
   `image-path`), a click runs the `default` action, `transient` ones stay out
   of the history, `resident` ones stay after an action, and a popup tagged

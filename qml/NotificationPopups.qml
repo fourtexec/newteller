@@ -103,6 +103,7 @@ Window {
                 app: e.app || "",
                 summary: e.summary || "",
                 body: e.body || "",
+                bodyMarkup: e.bodyMarkup || "",
                 icon: e.icon || "",
                 image: e.image || "",
                 value: e.value === undefined ? -1 : e.value,
@@ -236,6 +237,7 @@ Window {
                 app: model.app,
                 summary: model.summary,
                 body: model.body,
+                bodyMarkup: model.bodyMarkup,
                 icon: model.icon,
                 image: model.image,
                 value: model.value,
@@ -397,7 +399,10 @@ Window {
                     Text {
                         Layout.fillWidth: true
                         visible: (card.entry.body || "").length > 0
-                        text: card.entry.body || ""
+                        // The daemon's sanitised markup (bold, italic,
+                        // underline, line breaks); never raw HTML.
+                        textFormat: card.entry.bodyMarkup ? Text.StyledText : Text.PlainText
+                        text: card.entry.bodyMarkup || card.entry.body || ""
                         color: Qt.rgba(notif.appearance.foreground.r, notif.appearance.foreground.g,
                                        notif.appearance.foreground.b, 0.88)
                         font.family: Theme.fontFamily

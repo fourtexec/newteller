@@ -351,6 +351,18 @@ if has_shell_name; then
         exit 1
     fi
     echo "session smoke: notifications arrive over D-Bus and update in place (id $first_id)"
+    # Applications read the capabilities to decide whether to send markup
+    # and whether to play their own sound.
+    caps=$(gdbus call --session --dest org.freedesktop.Notifications \
+        --object-path /org/freedesktop/Notifications \
+        --method org.freedesktop.Notifications.GetCapabilities 2>&1)
+    for cap in actions body-markup sound persistence; do
+        if [[ $caps != *"'$cap'"* ]]; then
+            echo "the notification daemon does not advertise $cap: $caps" >&2
+            exit 1
+        fi
+    done
+    echo "session smoke: notification capabilities $caps"
 
     # A tray application registers its StatusNotifierItem with the shell's
     # watcher through the org.kde.StatusNotifierWatcher interface.

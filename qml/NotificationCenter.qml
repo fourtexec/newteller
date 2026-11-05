@@ -235,7 +235,8 @@ DropdownWindow {
                     Text {
                         Layout.fillWidth: true
                         visible: (row.modelData.body || "").length > 0
-                        text: row.modelData.body || ""
+                        textFormat: row.modelData.bodyMarkup ? Text.StyledText : Text.PlainText
+                        text: row.modelData.bodyMarkup || row.modelData.body || ""
                         color: center.appearance.muted
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSize

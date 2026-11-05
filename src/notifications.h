@@ -96,7 +96,8 @@ public slots:
 private:
     uint publish(uint replacesId, const QString &appName, const QString &appIcon,
                  const QString &summary, const QString &body, const QStringList &actions,
-                 const QVariantMap &hints, int expireTimeout);
+                 const QVariantMap &hints, int expireTimeout,
+                 bool markup = false);
     void setupDBus();
     void teardownDBus();
     void setupSocket();
