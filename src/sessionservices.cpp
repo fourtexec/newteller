@@ -8,6 +8,8 @@
 #include <QDBusArgument>
 #include <QDBusConnectionInterface>
 #include <QDBusConnection>
+#include <QDBusPendingCall>
+#include <QDBusPendingCallWatcher>
 
 #include <QColor>
 #include <QCoreApplication>
@@ -19,6 +21,7 @@
 #include <QRegularExpression>
 
 #include <algorithm>
+#include <memory>
 #include <QSet>
 #include <QSaveFile>
 #include <QStandardPaths>
@@ -1293,22 +1296,24 @@ void SessionServices::connectWifi(const QString &ssid, const QString &password)
         }
     }
 
-    QDBusMessage reply;
+    // The activation (and a password update before it) is asynchronous:
+    // NetworkManager may wait for polkit or the driver, and the shell must
+    // not freeze meanwhile.
+    QDBusMessage activate;
+    QDBusMessage update;
     if (!saved.isEmpty()) {
         if (!password.isEmpty()) {
             // A new password for a saved network.
             QVariantMap security = savedSettings.value(QStringLiteral("802-11-wireless-security"));
             security.insert(QStringLiteral("psk"), password);
             savedSettings.insert(QStringLiteral("802-11-wireless-security"), security);
-            QDBusMessage update = QDBusMessage::createMethodCall(kNm, saved, kNmConnection,
-                                                                 QStringLiteral("Update"));
+            update = QDBusMessage::createMethodCall(kNm, saved, kNmConnection, QStringLiteral("Update"));
             update << QVariant::fromValue(savedSettings);
-            QDBusConnection::systemBus().call(update, QDBus::Block, 3000);
         }
-        reply = nmCall(kNmPath, kNm, QStringLiteral("ActivateConnection"),
-                       {QVariant::fromValue(QDBusObjectPath(saved)),
-                        QVariant::fromValue(QDBusObjectPath(device)),
-                        QVariant::fromValue(QDBusObjectPath(accessPoint))}, 5000);
+        activate = QDBusMessage::createMethodCall(kNm, kNmPath, kNm, QStringLiteral("ActivateConnection"));
+        activate.setArguments({QVariant::fromValue(QDBusObjectPath(saved)),
+                               QVariant::fromValue(QDBusObjectPath(device)),
+                               QVariant::fromValue(QDBusObjectPath(accessPoint))});
     } else {
         if (secure && password.isEmpty()) {
             emit wifiConnectFinished(false, ssid, tr("Enter the password for %1").arg(ssid));
@@ -1333,45 +1338,96 @@ void SessionServices::connectWifi(const QString &ssid, const QString &password)
             security.insert(QStringLiteral("psk"), password);
             settings.insert(QStringLiteral("802-11-wireless-security"), security);
         }
-        reply = nmCall(kNmPath, kNm, QStringLiteral("AddAndActivateConnection"),
-                       {QVariant::fromValue(settings), QVariant::fromValue(QDBusObjectPath(device)),
-                        QVariant::fromValue(QDBusObjectPath(accessPoint))}, 5000);
-    }
-    if (reply.type() != QDBusMessage::ReplyMessage) {
-        emit wifiConnectFinished(false, ssid, reply.errorMessage());
-        return;
+        activate = QDBusMessage::createMethodCall(kNm, kNmPath, kNm,
+                                                  QStringLiteral("AddAndActivateConnection"));
+        activate.setArguments({QVariant::fromValue(settings),
+                               QVariant::fromValue(QDBusObjectPath(device)),
+                               QVariant::fromValue(QDBusObjectPath(accessPoint))});
     }
 
-    // Follow the device until it is connected or gives up.
     m_wifiBusy = true;
     emit wifiChanged();
+    const auto sendActivation = [this, activate, device, ssid] {
+        auto *watcher = new QDBusPendingCallWatcher(
+            QDBusConnection::systemBus().asyncCall(activate, 15000), this);
+        connect(watcher, &QDBusPendingCallWatcher::finished, this,
+                [this, device, ssid](QDBusPendingCallWatcher *call) {
+                    call->deleteLater();
+                    const QDBusMessage reply = call->reply();
+                    if (reply.type() != QDBusMessage::ReplyMessage) {
+                        m_wifiBusy = false;
+                        emit wifiChanged();
+                        emit wifiConnectFinished(false, ssid, reply.errorMessage());
+                        return;
+                    }
+                    followWifiActivation(device, ssid);
+                });
+    };
+    if (update.type() == QDBusMessage::MethodCallMessage) {
+        // The new password is stored first; activation follows whatever
+        // the answer (a refused update shows as a failed connection).
+        auto *watcher = new QDBusPendingCallWatcher(
+            QDBusConnection::systemBus().asyncCall(update, 10000), this);
+        connect(watcher, &QDBusPendingCallWatcher::finished, this,
+                [sendActivation](QDBusPendingCallWatcher *call) {
+                    call->deleteLater();
+                    sendActivation();
+                });
+    } else {
+        sendActivation();
+    }
+}
+
+// Follows the device until it is connected or gives up (about 30 s), reading
+// its state asynchronously twice a second.
+void SessionServices::followWifiActivation(const QString &device, const QString &ssid)
+{
     auto *poll = new QTimer(this);
     poll->setInterval(500);
-    auto *ticks = new int(0);
-    auto *started = new bool(false);
-    connect(poll, &QTimer::timeout, this, [this, poll, ticks, started, device, ssid] {
-        const uint state = nmProperty(device, kNmDevice, QStringLiteral("State")).toUInt();
-        if (state >= 40 && state < 100)
-            *started = true;
-        bool done = false;
-        bool ok = false;
-        if (state == 100) {
-            done = ok = true;
-        } else if ((state == 120 || (*started && state <= 30)) || ++*ticks > 60) {
-            done = true;
-        }
-        if (!done)
-            return;
+    auto ticks = std::make_shared<int>(0);
+    auto started = std::make_shared<bool>(false);
+    auto waiting = std::make_shared<bool>(false);
+    const auto finish = [this, poll, ssid](bool ok) {
         poll->stop();
         poll->deleteLater();
-        delete ticks;
-        delete started;
         m_wifiBusy = false;
         readAccessPoints();
         emit wifiConnectFinished(ok, ssid, ok ? QString()
                                               : tr("Could not connect to %1 - "
                                                    "wrong password or the network "
                                                    "refused it.").arg(ssid));
+    };
+    connect(poll, &QTimer::timeout, this, [this, poll, ticks, started, waiting, device, finish] {
+        if (++*ticks > 60) {
+            finish(false);
+            return;
+        }
+        if (*waiting)
+            return;
+        *waiting = true;
+        QDBusMessage get = QDBusMessage::createMethodCall(kNm, device, kDBusProperties,
+                                                          QStringLiteral("Get"));
+        get << kNmDevice << QStringLiteral("State");
+        auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(get, 1500),
+                                                    poll);
+        connect(watcher, &QDBusPendingCallWatcher::finished, this,
+                [poll, started, waiting, finish](QDBusPendingCallWatcher *call) {
+                    call->deleteLater();
+                    *waiting = false;
+                    if (!poll->isActive())
+                        return;
+                    const QDBusMessage reply = call->reply();
+                    if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
+                        return;
+                    const uint state =
+                        reply.arguments().constFirst().value<QDBusVariant>().variant().toUInt();
+                    if (state >= 40 && state < 100)
+                        *started = true;
+                    if (state == 100)
+                        finish(true);
+                    else if (state == 120 || (*started && state <= 30))
+                        finish(false);
+                });
     });
     poll->start();
 }
@@ -1379,8 +1435,11 @@ void SessionServices::connectWifi(const QString &ssid, const QString &password)
 void SessionServices::disconnectWifi()
 {
     const QString device = wifiDevice();
-    if (!device.isEmpty())
-        nmCall(device, kNmDevice, QStringLiteral("Disconnect"));
+    if (!device.isEmpty()) {
+        // Not waited for: the list is read again a moment later.
+        QDBusConnection::systemBus().asyncCall(
+            QDBusMessage::createMethodCall(kNm, device, kNmDevice, QStringLiteral("Disconnect")));
+    }
     QTimer::singleShot(800, this, &SessionServices::readAccessPoints);
 }
 
