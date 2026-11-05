@@ -20,6 +20,8 @@ DropdownWindow {
     property var wifiPopup: null
     // The Bluetooth device list.
     property var bluetoothPopup: null
+    // Outputs and per-application volume.
+    property var soundPopup: null
     // Rows that are on right now, for the height computation.
     readonly property int visibleRows: {
         var rows = 0;
@@ -181,13 +183,18 @@ DropdownWindow {
                 }
             }
             TaskButton {
-                visible: Session.soundSettingsTool.length > 0
+                objectName: "soundDevicesButton"
+                visible: (popup.soundPopup !== null && Audio.available)
+                         || Session.soundSettingsTool.length > 0
                 width: 30
                 iconName: "chevron-right"
                 tooltipText: qsTr("Sound devices")
                 onClicked: {
                     popup.hide();
-                    Session.openSoundSettings();
+                    if (popup.soundPopup !== null && Audio.available)
+                        popup.soundPopup.show();
+                    else
+                        Session.openSoundSettings();
                 }
             }
         }

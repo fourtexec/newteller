@@ -1212,6 +1212,42 @@ class ClipboardStub(QObject):
         self.calls.append(("clear",))
 
 
+class AudioStub(QObject):
+    """Stand-in for the Audio context property (src/audiodevices.h)."""
+
+    changed = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self.calls = []
+
+    available = Property(bool, lambda self: True, notify=changed)
+    outputs = Property("QVariantList", lambda self: [
+        {"name": "alsa_output.speakers", "description": "Speakers", "isDefault": True,
+         "volume": 40, "muted": False, "bluetooth": False},
+        {"name": "bluez_output.headset", "description": "Headset", "isDefault": False,
+         "volume": 60, "muted": False, "bluetooth": True}], notify=changed)
+    streams = Property("QVariantList", lambda self: [
+        {"index": 12, "app": "Firefox", "title": "Video", "icon": "firefox", "volume": 80,
+         "muted": False}], notify=changed)
+
+    @Slot()
+    def refresh(self):
+        self.calls.append(("refresh",))
+
+    @Slot(str)
+    def setDefaultOutput(self, name):
+        self.calls.append(("setDefaultOutput", name))
+
+    @Slot(int, int)
+    def setStreamVolume(self, index, percent):
+        self.calls.append(("setStreamVolume", index, percent))
+
+    @Slot(int)
+    def toggleStreamMuted(self, index):
+        self.calls.append(("toggleStreamMuted", index))
+
+
 class RecorderStub(QObject):
     """Stand-in for the Recorder context property (src/screenrecorder.h)."""
 
@@ -1406,6 +1442,7 @@ def main():
     tray, quick, session = Tray(), Quick(), Session()
     clipboard = ClipboardStub()
     recorder = RecorderStub()
+    audio = AudioStub()
     bluetooth = BluetoothStub()
     polkit = PolkitStub()
     engine = QQmlApplicationEngine()
@@ -1414,7 +1451,7 @@ def main():
                       ("Notifications", notifications), ("FilePortal", file_portal),
                       ("Tray", tray), ("Quick", quick), ("Session", session),
                       ("Clipboard", clipboard), ("Bluetooth", bluetooth), ("Polkit", polkit),
-                      ("Recorder", recorder)):
+                      ("Recorder", recorder), ("Audio", audio)):
         engine.rootContext().setContextProperty(name, obj)
 
     failures = []
@@ -2372,6 +2409,29 @@ def main():
         QTest.qWait(100)
         check(apps.launched[before:] == ["firefox"],
               f"a tray icon that cannot be activated starts its application ({apps.launched[before:]})")
+
+        # The sound card: outputs to pick from, one row per playing application.
+        sound_cards = windows_of_kind("SoundPopup")
+        quick_cards = windows_of_kind("QuickSettingsPopup")
+        check(len(sound_cards) == 1, f"one sound card ({len(sound_cards)})")
+        if sound_cards and quick_cards:
+            button = quick_cards[0].findChild(QObject, "soundDevicesButton")
+            check(button is not None, "quick settings links to the sound card")
+            if button is not None:
+                QMetaObject.invokeMethod(button, "clicked")
+                QTest.qWait(300)
+                check(sound_cards[0].isVisible(), "the volume row opens the sound card")
+                outputs = [o for o in sound_cards[0].contentItem().findChildren(QObject)
+                           if o.objectName() == "soundOutput"]
+                check(len(outputs) == 2, f"the sound card lists the outputs ({len(outputs)})")
+                headset = next((o for o in outputs if o.property("label") == "Headset"), None)
+                if headset is not None:
+                    QMetaObject.invokeMethod(headset, "clicked")
+                    QTest.qWait(50)
+                check(("setDefaultOutput", "bluez_output.headset") in audio.calls,
+                      f"picking an output makes it the default ({audio.calls})")
+                QMetaObject.invokeMethod(sound_cards[0], "hide")
+                QTest.qWait(300)
 
         # Screen recording: quick settings starts it, the panel shows a pill
         # with the time, Super+Alt+R (through Shell) stops it.

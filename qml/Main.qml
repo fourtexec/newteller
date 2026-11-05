@@ -153,6 +153,11 @@ QtObject {
         notificationCenter: root.notificationCenter
         wifiPopup: root.wifiPopup
         bluetoothPopup: root.bluetoothPopup
+        soundPopup: root.soundPopup
+    }
+
+    readonly property SoundPopup soundPopup: SoundPopup {
+        screen: Qt.application.screens[0]
     }
 
     readonly property BluetoothPopup bluetoothPopup: BluetoothPopup {

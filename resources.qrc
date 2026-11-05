@@ -9,6 +9,7 @@
     <file>qml/Panel.qml</file>
     <file>qml/DockMenu.qml</file>
     <file>qml/WindowMenu.qml</file>
+    <file>qml/SoundPopup.qml</file>
     <file>qml/TrayMenu.qml</file>
     <file>qml/StartMenu.qml</file>
     <file>qml/Desktop.qml</file>

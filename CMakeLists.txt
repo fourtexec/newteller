@@ -101,6 +101,7 @@ qt_add_executable(newteller
     src/sessionservices.cpp
     src/clipboardhistory.cpp
     src/screenrecorder.cpp
+    src/audiodevices.cpp
     src/bluetooth.cpp
     src/polkitagent.cpp
     src/screensaver.cpp
