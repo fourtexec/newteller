@@ -302,6 +302,26 @@ Window {
         }
     }
 
+    // The buttons of the bar that is shown (horizontal or vertical), for
+    // cards opened from the keyboard.
+    property Item startButtonRef: null
+    property Item bellButtonRef: null
+    property Item indicatorsButtonRef: null
+
+    // A card asked for from the keyboard (Super, Super+A, Super+N, Super+V)
+    // opens on this panel's screen, from its own button when it has one.
+    function openFromKeyboard(dropdown, kind) {
+        const button = kind === "start" ? panel.startButtonRef
+                     : kind === "bell" ? panel.bellButtonRef
+                     : kind === "indicators" ? panel.indicatorsButtonRef : null;
+        const usable = button && button.visible ? button : null;
+        if (!usable)
+            dropdown.anchor = Qt.rect(0, 0, 0, 0);
+        if (kind === "start")
+            panel.menuWanted = true;
+        panel.toggleDropdown(dropdown, usable);
+    }
+
     // Open the dropdown next to `item`, or close it when it is already open.
     function toggleDropdown(dropdown, item) {
         if (!dropdown)
@@ -683,6 +703,7 @@ Window {
     component StartButton: TaskButton {
         id: startButton
         objectName: "startButton"
+        Component.onCompleted: panel.startButtonRef = startButton
         Layout.alignment: Qt.AlignVCenter | Qt.AlignHCenter
         iconName: "layout-grid"
         label: panel.vertical ? "" : qsTr("Start")
@@ -1149,6 +1170,7 @@ Window {
     component BellButton: Rectangle {
         id: bellButton
         objectName: "bellButton"
+        Component.onCompleted: panel.bellButtonRef = bellButton
         readonly property bool dnd: Settings.values["notifications.doNotDisturb"] === true
         readonly property int unread: panel.notificationCenter
                                       ? panel.notificationCenter.unreadCount : 0
@@ -1239,6 +1261,7 @@ Window {
     component IndicatorsButton: Rectangle {
         id: indicatorsButton
         objectName: "indicatorsButton"
+        Component.onCompleted: panel.indicatorsButtonRef = indicatorsButton
         readonly property bool playing: Quick.mediaAvailable && Quick.mediaPlaying
         readonly property string glyph: Quick.volumeMuted ? "volume-x"
                                         : System.batteryCharging ? "battery-charging"

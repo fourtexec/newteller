@@ -301,7 +301,9 @@ inside VirtualBox. The implemented pieces are:
   panel shows the time and stops the recording; the MP4 lands in
   `Screencasts` inside the videos folder and a notification offers Play and
   Show in folder.
-- Multi-monitor: one desktop and one panel per screen
+- Multi-monitor: one desktop and one panel per screen; cards opened from the
+  keyboard (`Super`, `Super+A`, `Super+N`, `Super+V`) open on the screen the
+  pointer is on (`event output NAME` on the control socket)
 - Rust core (application search index, metrics sampler, config, watcher) with a
   C++/Qt fallback, plus the `newteller-ctl` command line tool
 

@@ -270,6 +270,28 @@ QtObject {
         }
     }
 
+    // The panel of the screen under the pointer (multi-monitor), or null
+    // outside a NewTeller session.
+    function activePanel() {
+        if (!Session.activeOutput)
+            return null;
+        for (let i = 0; i < root.panels.count; ++i) {
+            const panel = root.panels.objectAt(i);
+            if (panel && panel.screen && panel.screen.name === Session.activeOutput)
+                return panel;
+        }
+        return null;
+    }
+
+    // A card asked for from the keyboard opens on the screen in use.
+    function toggleOnActiveScreen(dropdown, kind) {
+        const panel = root.activePanel();
+        if (panel)
+            panel.openFromKeyboard(dropdown, kind);
+        else
+            dropdown.toggle();
+    }
+
     // The start menu, the desktop menu and `newteller --settings` all open the
     // same embedded settings window.
     readonly property Connections shellConnections: Connections {
@@ -279,11 +301,12 @@ QtObject {
             root.settingsApp.showFromShell();
         }
         function onStartMenuRequested() {
-            root.startMenu.show();
+            if (!root.startMenu.visible)
+                root.toggleOnActiveScreen(root.startMenu, "start");
         }
         function onNotificationsToggleRequested() {
             root.startMenu.hide();
-            root.notificationCenter.toggle();
+            root.toggleOnActiveScreen(root.notificationCenter, "bell");
         }
         function onTaskViewToggleRequested() {
             root.startMenu.hide();
@@ -295,15 +318,15 @@ QtObject {
         }
         function onClipboardToggleRequested() {
             root.startMenu.hide();
-            root.clipboard.toggle();
+            root.toggleOnActiveScreen(root.clipboard, "");
         }
         function onQuickSettingsToggleRequested() {
             root.startMenu.hide();
-            root.quickSettings.toggle();
+            root.toggleOnActiveScreen(root.quickSettings, "indicators");
         }
         function onStartMenuToggleRequested() {
             root.runDialog.hide();
-            root.startMenu.toggle();
+            root.toggleOnActiveScreen(root.startMenu, "start");
         }
         function onRunDialogRequested() {
             root.startMenu.hide();

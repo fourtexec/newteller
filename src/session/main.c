@@ -589,6 +589,9 @@ struct Server {
     // The hot corner the pointer last fired (-1: none); it fires again only
     // after the pointer has left that corner.
     int hotCornerFired;
+    // The output under the pointer, as last reported ("event output NAME"):
+    // the shell opens keyboard-invoked cards on that screen.
+    struct wlr_output *pointerOutput;
     enum CursorMode cursorMode;
     double grabX;
     double grabY;
@@ -2936,10 +2939,23 @@ static void updateSnapPreview(struct Server *server, bool dragging)
 // Hot corners (Settings -> Windows): pushing the pointer into a screen corner
 // opens the overview, shows the desktop, ... Never while dragging, locked,
 // in a full-screen window or a game that holds the pointer.
+static void broadcastPointerOutput(struct Server *server)
+{
+    if (!server->pointerOutput || !ipcHasWatchers(server))
+        return;
+    char line[128];
+    snprintf(line, sizeof(line), "event output %s", server->pointerOutput->name);
+    ipcBroadcast(server, line);
+}
+
 static void checkHotCorner(struct Server *server)
 {
     struct wlr_output *output = wlr_output_layout_output_at(server->outputLayout,
                                                             server->cursor->x, server->cursor->y);
+    if (output && output != server->pointerOutput) {
+        server->pointerOutput = output;
+        broadcastPointerOutput(server);
+    }
     if (!output) {
         server->hotCornerFired = -1;
         return;
@@ -6249,6 +6265,8 @@ static void outputDestroy(struct wl_listener *listener, void *data)
     (void)data;
     struct Output *output = wl_container_of(listener, output, destroy);
     struct Server *server = output->server;
+    if (server->pointerOutput == output->output)
+        server->pointerOutput = NULL;
     struct Layer *layer;
     wl_list_for_each(layer, &server->layers, link) {
         if (layer->output == output)
@@ -7618,6 +7636,7 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
         ipcSend(client, "ok");
         broadcastLayout(server);
         broadcastWorkspaces(server);
+        broadcastPointerOutput(server);
         ipcSend(client, server->locked ? "event locked 1" : "event locked 0");
     } else if (strcmp(command, "layout") == 0) {
         if (!argument) {

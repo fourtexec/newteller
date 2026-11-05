@@ -910,6 +910,8 @@ class Session(QObject):
     hungWindowsChanged = Signal()
     windowHung = Signal(int)
     windowMenuRequested = Signal(int, int, int, int, str, str)
+    activeOutputChanged = Signal()
+    activeOutput = Property(str, lambda self: "", notify=activeOutputChanged)
 
     @Slot(int)
     def minimizeWindow(self, window_id):

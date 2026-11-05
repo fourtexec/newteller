@@ -64,6 +64,9 @@ class SessionServices : public QObject
     Q_PROPERTY(bool wifiBusy READ wifiBusy NOTIFY wifiChanged)
     // Ids of the windows that stopped answering the compositor's pings.
     Q_PROPERTY(QVariantList hungWindows READ hungWindows NOTIFY hungWindowsChanged)
+    // The output (QScreen name) under the pointer, from the compositor;
+    // empty outside a NewTeller session.
+    Q_PROPERTY(QString activeOutput READ activeOutput NOTIFY activeOutputChanged)
 
 public:
     explicit SessionServices(Settings *settings, QObject *parent = nullptr);
@@ -121,6 +124,7 @@ public:
     // the reason.
     Q_INVOKABLE QString killWindow(int id);
     QVariantList hungWindows() const;
+    QString activeOutput() const { return m_activeOutput; }
 
     // --- displays ---
     // name, description, enabled, width, height, refresh (mHz), x, y,
@@ -188,6 +192,7 @@ signals:
     void hungWindowsChanged();
     // A window stopped responding (the force-quit dialog offers to end it).
     void windowHung(int id);
+    void activeOutputChanged();
     // Open the window menu at x/y (layout coordinates). `flags` holds the
     // state letters of the window (m minimized, x maximized, F fullscreen,
     // t always on top), `desktop` the desktop it is on.
@@ -227,6 +232,7 @@ private:
     int m_layout = 0;
     bool m_locked = false;
     int m_workspace = 0;
+    QString m_activeOutput;
     int m_workspaceCount = 1;
     int m_workspaceOccupied = 0;
     QVariantList m_switcherEntries;

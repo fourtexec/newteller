@@ -418,6 +418,12 @@ void SessionServices::handleEvent(const QString &line)
                                      parts.at(3).toInt(), flags,
                                      parts.mid(5).join(QLatin1Char(' ')));
         }
+    } else if (line.startsWith(QLatin1String("output "))) {
+        const QString name = line.mid(7).trimmed();
+        if (name != m_activeOutput) {
+            m_activeOutput = name;
+            emit activeOutputChanged();
+        }
     } else if (line == QLatin1String("bell")) {
         playBell();
     } else if (line.startsWith(QLatin1String("key "))) {
