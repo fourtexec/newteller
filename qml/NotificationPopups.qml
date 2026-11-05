@@ -56,7 +56,18 @@ Window {
             a |= rightEdge ? LayerShell.Window.AnchorRight : LayerShell.Window.AnchorLeft;
         return a;
     }
-    LayerShell.Window.layer: LayerShell.Window.LayerTop
+    // Urgent notifications (critical battery, pairing codes) show above a
+    // fullscreen game or video too: the top layer is hidden then.
+    readonly property bool anyUrgent: {
+        const list = notif.shown || [];
+        for (let i = 0; i < list.length; ++i) {
+            if (list[i] && list[i].urgent === true)
+                return true;
+        }
+        return false;
+    }
+    LayerShell.Window.layer: anyUrgent ? LayerShell.Window.LayerOverlay
+                                       : LayerShell.Window.LayerTop
     LayerShell.Window.exclusionZone: 0
     // The keyboard only when a card has a reply field (a click in it then
     // focuses the popup); otherwise popups never take the keyboard.

@@ -2335,10 +2335,35 @@ static void scheduleArrange(struct Server *server)
     }
 }
 
+static struct wlr_scene_tree *treeForLayer(struct Server *server,
+                                           enum zwlr_layer_shell_v1_layer which)
+{
+    switch (which) {
+    case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
+        return server->backgroundTree;
+    case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM:
+        return server->bottomTree;
+    case ZWLR_LAYER_SHELL_V1_LAYER_TOP:
+        return server->topTree;
+    case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY:
+        return server->overlayTree;
+    }
+    return NULL;
+}
+
 static void layerHandleCommit(struct wl_listener *listener, void *data)
 {
     (void)data;
     struct Layer *layer = wl_container_of(listener, layer, commit);
+    // set_layer moves a surface to another layer (an urgent notification
+    // goes above a fullscreen window): its scene node follows, or it would
+    // be drawn in the old layer while the pointer finds it in the new one.
+    struct wlr_scene_tree *wanted = treeForLayer(layer->server, layer->layer->current.layer);
+    if (layer->scene && wanted && layer->scene->tree->node.parent != wanted) {
+        wlr_scene_node_reparent(&layer->scene->tree->node, wanted);
+        layer->arrangePending = true;
+        scheduleArrange(layer->server);
+    }
     if (!layer->hasLastState
         || layerStateChanged(&layer->lastState, &layer->layer->current)) {
         layer->arrangePending = true;
@@ -2432,21 +2457,7 @@ static void handleNewLayerSurface(struct wl_listener *listener, void *data)
     layer->layer = layerSurface;
     layer->output = output;
 
-    struct wlr_scene_tree *parent = NULL;
-    switch (layerSurface->current.layer) {
-    case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
-        parent = server->backgroundTree;
-        break;
-    case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM:
-        parent = server->bottomTree;
-        break;
-    case ZWLR_LAYER_SHELL_V1_LAYER_TOP:
-        parent = server->topTree;
-        break;
-    case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY:
-        parent = server->overlayTree;
-        break;
-    }
+    struct wlr_scene_tree *parent = treeForLayer(server, layerSurface->current.layer);
     layer->scene = wlr_scene_layer_surface_v1_create(parent, layerSurface);
     if (!layer->scene) {
         free(layer);

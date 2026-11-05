@@ -2775,6 +2775,19 @@ def main():
                 check(("reply", 9, "Yes!") in notifications.calls,
                       f"sending a reply reaches the daemon ({notifications.calls})")
 
+        # An urgent notification lifts the popups above fullscreen windows.
+        nls = attached("layershell", notif_win)
+        if nls is not None:
+            check(nls.layer == LayerShellWindow.Layer.LayerTop,
+                  f"ordinary notifications sit in the top layer ({nls.layer})")
+            notifications._active = [{"id": 11, "app": "NewTeller", "summary": "Battery critically low",
+                                      "body": "4% left", "icon": "battery", "image": "",
+                                      "actions": [], "timeout": 0, "urgent": True}]
+            notifications.activeChanged.emit()
+            QTest.qWait(100)
+            check(nls.layer == LayerShellWindow.Layer.LayerOverlay,
+                  f"an urgent notification shows above fullscreen windows ({nls.layer})")
+
         notifications._active = []
         notifications.activeChanged.emit()
         QTest.qWait(400)  # the exit animation plays before the window hides
