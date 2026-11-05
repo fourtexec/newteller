@@ -1736,6 +1736,18 @@ def main():
         check(not menu.isVisible(), "launching an application closes the menu")
         check(apps.isRunning("org.gnome.Terminal"), "the launched application is marked running")
 
+        # The search is also a calculator.
+        for expression, expected in (("2+2*3", 8), ("(15,5-3)/4", 3.125), ("2^10", 1024)):
+            got = QMetaObject.invokeMethod(menu, "calculate", Qt.DirectConnection,
+                                           Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", expression))
+            got = got.toVariant() if hasattr(got, "toVariant") else got
+            check(got == expected, f"the start menu calculates {expression} = {expected} ({got})")
+        for text in ("firefox", "12", "2+", "alert(1)"):
+            got = QMetaObject.invokeMethod(menu, "calculate", Qt.DirectConnection,
+                                           Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", text))
+            got = got.toVariant() if hasattr(got, "toVariant") else got
+            check(got != got, f"{text!r} is not a calculation ({got})")
+
         # Searching finds settings pages too ("resolution" -> Displays).
         found = QMetaObject.invokeMethod(menu, "settingsMatches", Qt.DirectConnection,
                                          Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "resolution"))

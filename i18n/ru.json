@@ -34,6 +34,7 @@
  "0 keeps a popup until it is clicked.": "0 — уведомление остаётся до щелчка.",
  "0 keeps every installed application.": "0 — показывать все установленные приложения.",
  "0 uses the selected material's preset opacity.": "0 — прозрачность выбранного материала.",
+ "= %1 (Enter copies it)": "= %1 (Enter копирует)",
  "A USB stick or memory card that is plugged in gets Open and Eject buttons.": "Для подключённой флешки или карты памяти появятся кнопки «Открыть» и «Извлечь».",
  "A copy of the settings was saved to %1": "Копия настроек сохранена в %1",
  "A name cannot contain \"/\".": "Имя не может содержать «/».",

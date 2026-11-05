@@ -44,6 +44,69 @@ DropdownWindow {
           keywords: "about version system information diagnostics " + qsTr("about version system information diagnostics") }
     ]
 
+    // A small calculator: "2+2*3", "(15,5-3)/4", "2^10", "-3 % 2". Numbers,
+    // + - * / % ^ and parentheses only (no eval); NaN for anything else.
+    function calculate(text) {
+        const src = String(text).replace(/,/g, ".").replace(/\s+/g, "");
+        if (!/^[0-9.+\-*\/%^()]+$/.test(src) || !/[0-9]/.test(src)
+            || !/[+\-*\/%^]/.test(src.replace(/^-/, "")))
+            return NaN;
+        let pos = 0;
+        function peek() { return src[pos]; }
+        function number() {
+            const start = pos;
+            while (pos < src.length && /[0-9.]/.test(src[pos]))
+                ++pos;
+            const piece = src.slice(start, pos);
+            if (piece.length === 0 || piece.split(".").length > 2)
+                throw "number";
+            return parseFloat(piece);
+        }
+        function factor() {
+            if (peek() === "-") { ++pos; return -factor(); }
+            if (peek() === "+") { ++pos; return factor(); }
+            let value;
+            if (peek() === "(") {
+                ++pos;
+                value = sum();
+                if (peek() !== ")")
+                    throw "paren";
+                ++pos;
+            } else {
+                value = number();
+            }
+            if (peek() === "^") {
+                ++pos;
+                value = Math.pow(value, factor());
+            }
+            return value;
+        }
+        function product() {
+            let value = factor();
+            while (peek() === "*" || peek() === "/" || peek() === "%") {
+                const op = src[pos++];
+                const rhs = factor();
+                value = op === "*" ? value * rhs : op === "/" ? value / rhs : value % rhs;
+            }
+            return value;
+        }
+        function sum() {
+            let value = product();
+            while (peek() === "+" || peek() === "-") {
+                const op = src[pos++];
+                const rhs = product();
+                value = op === "+" ? value + rhs : value - rhs;
+            }
+            return value;
+        }
+        try {
+            const value = sum();
+            return pos === src.length && isFinite(value) ? value : NaN;
+        } catch (err) {
+            return NaN;
+        }
+    }
+
     function settingsMatches(query) {
         const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 0);
         if (words.length === 0)
@@ -117,11 +180,23 @@ DropdownWindow {
         // Settings pages after the applications (never inside a category).
         if (q.length >= 2 && categoryFilter.length === 0)
             hits = hits.concat(settingsMatches(q));
+        // An arithmetic expression: its result comes first.
+        const value = calculate(q);
+        if (!isNaN(value)) {
+            const shown = String(Math.round(value * 1e10) / 1e10);
+            hits = [{ id: "", calculation: shown, icon: "type",
+                      name: qsTr("= %1 (Enter copies it)").arg(shown) }].concat(hits);
+        }
         results = hits;
         selectedIndex = hits.length > 0 ? 0 : -1;
     }
 
     function launch(app) {
+        if (app.calculation !== undefined) {
+            Shell.copyToClipboard(app.calculation);
+            hide();
+            return;
+        }
         if (app.settingsPage) {
             Shell.openSettingsPage(app.settingsPage);
             hide();

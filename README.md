@@ -110,6 +110,8 @@ inside VirtualBox. The implemented pieces are:
   plugged in is announced with Open (mounts it through UDisks2 and opens the
   folder) and Eject (unmounts it and powers the drive off); internal disks
   and loop devices stay quiet. Needs udisks2.
+- **Calculator in the start menu search**: `2+2*3`, `(15,5-3)/4`, `2^10`
+  show the result first; Enter copies it.
 - **Settings in the start menu search**: "resolution", "wifi", "раскладка"
   and the like list the matching Settings page ("Settings: Displays"), which
   opens on that page (`Shell.openSettingsPage`).
