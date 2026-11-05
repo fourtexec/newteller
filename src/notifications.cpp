@@ -401,7 +401,10 @@ uint NotificationDaemon::publish(uint replacesId, const QString &appName, const 
 
     const bool critical = hints.value(QStringLiteral("urgency")).toInt() >= kUrgencyCritical;
     const bool dnd = (m_settings->value(QStringLiteral("notifications.doNotDisturb"), false).toBool()
-                      || scheduledQuiet())
+                      || scheduledQuiet()
+                      || (m_fullscreenQuiet
+                          && m_settings->value(QStringLiteral("notifications.quietInFullscreen"), true)
+                                 .toBool()))
                      && !critical;
 
     QVariantMap entry;

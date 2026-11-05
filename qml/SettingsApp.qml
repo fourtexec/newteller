@@ -2054,6 +2054,13 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("Quiet while a window is full screen")
+                                subtitle: qsTr("Games, videos and presentations are not interrupted; notifications wait in the history. Urgent ones still show.")
+                                settingKey: "notifications.quietInFullscreen"
+                                SettingsSwitch { settingKey: "notifications.quietInFullscreen" }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Play the bell when an application rings it")
                                 subtitle: qsTr("Terminals and other applications (not under do-not-disturb).")
                                 settingKey: "sounds.bell"

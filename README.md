@@ -95,6 +95,9 @@ inside VirtualBox. The implemented pieces are:
   content. The daemon advertises what it does (`body-markup`, `sound`,
   `persistence`, `icon-static`, `inline-reply`), so applications leave
   sounds to it.
+- **Quiet in full screen** (`notifications.quietInFullscreen`): while a
+  fullscreen window is shown, popups and their sounds wait in the history
+  (urgent ones still show); the compositor reports it as `event fullscreen 1|0`.
 - **Reply from the notification**: messengers that offer an inline reply
   (Telegram Desktop, KDE Connect) get a text field in the popup; Enter or
   Send answers without opening the application.

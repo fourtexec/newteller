@@ -427,6 +427,12 @@ void SessionServices::handleEvent(const QString &line)
             m_activeOutput = name;
             emit activeOutputChanged();
         }
+    } else if (line.startsWith(QLatin1String("fullscreen "))) {
+        const bool fullscreen = line.mid(11).trimmed() == QLatin1String("1");
+        if (fullscreen != m_fullscreen) {
+            m_fullscreen = fullscreen;
+            emit fullscreenChanged();
+        }
     } else if (line == QLatin1String("bell")) {
         playBell();
     } else if (line.startsWith(QLatin1String("key "))) {

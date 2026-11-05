@@ -66,6 +66,10 @@ public:
     // action (Telegram, KDE Connect, ...): NotificationReplied goes out and
     // the popup closes.
     Q_INVOKABLE void reply(uint id, const QString &text);
+    // A fullscreen window is shown: popups and sounds wait (the history and
+    // the bell still get them; urgent ones show anyway), see
+    // notifications.quietInFullscreen.
+    void setFullscreenQuiet(bool quiet) { m_fullscreenQuiet = quiet; }
     Q_INVOKABLE void clearHistory();
     // Removes one entry from the history (the X button in the notification
     // centre). Notifications still on screen are dismissed first.
@@ -111,6 +115,7 @@ private:
     void trimHistory();
     void playSound(const QVariantMap &hints);
     bool scheduledQuiet() const;
+    bool m_fullscreenQuiet = false;
 
     Settings *m_settings;
     QVariantList m_active;

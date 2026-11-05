@@ -258,6 +258,11 @@ int main(int argc, char *argv[])
     QObject::connect(&screenSaver, &ScreenSaverService::inhibitedChanged, &session,
                      &SessionServices::setIdleInhibited);
     QObject::connect(&screenSaver, &ScreenSaverService::lockRequested, &session, &SessionServices::lock);
+    // Over a game or a video notifications wait in the history.
+    QObject::connect(&session, &SessionServices::fullscreenChanged, &notifications,
+                     [&session, &notifications] {
+                         notifications.setFullscreenQuiet(session.fullscreenActive());
+                     });
     ClipboardHistory clipboard(&settings);
     ScreenRecorder recorder(&settings, &notifications);
     AudioDevices audio;

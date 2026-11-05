@@ -218,6 +218,7 @@ static void raisePinnedViews(struct Server *server);
 static void toggleShowDesktop(struct Server *server);
 static void shellAction(const char *method);
 static void checkHotCorner(struct Server *server);
+static void broadcastFullscreen(struct Server *server, bool force);
 static struct wlr_box viewOuterBox(struct View *view);
 static uint32_t dragSnapEdges(struct Server *server, struct View *view);
 static void updateSnapPreview(struct Server *server, bool dragging);
@@ -597,6 +598,8 @@ struct Server {
     // The output under the pointer, as last reported ("event output NAME"):
     // the shell opens keyboard-invoked cards on that screen.
     struct wlr_output *pointerOutput;
+    // A fullscreen window is shown (as last reported, "event fullscreen").
+    bool fullscreenShown;
     enum CursorMode cursorMode;
     double grabX;
     double grabY;
@@ -1821,6 +1824,20 @@ static void updateFullscreenLayers(struct Server *server)
                    && viewOnWorkspace(server->fullscreenView);
     wlr_scene_node_set_enabled(&server->topTree->node, !covered);
     wlr_scene_node_set_enabled(&server->overlayTree->node, true);
+    broadcastFullscreen(server, false);
+}
+
+// "event fullscreen 1|0": a fullscreen window is (no longer) shown. The
+// shell holds back notification popups and sounds meanwhile.
+static void broadcastFullscreen(struct Server *server, bool force)
+{
+    bool shown = server->fullscreenView && server->fullscreenView->mapped
+                 && viewOnWorkspace(server->fullscreenView);
+    if (shown == server->fullscreenShown && !force)
+        return;
+    server->fullscreenShown = shown;
+    if (ipcHasWatchers(server))
+        ipcBroadcast(server, shown ? "event fullscreen 1" : "event fullscreen 0");
 }
 
 static void broadcastWorkspaces(struct Server *server)
@@ -1978,6 +1995,7 @@ static void viewSetFullscreen(struct View *view, bool fullscreen)
     if (view->xdg)
         wlr_xdg_toplevel_set_fullscreen(view->xdg, fullscreen);
     updateForeignToplevel(view);
+    broadcastFullscreen(view->server, false);
 }
 
 static void viewClose(struct View *view)
@@ -2225,6 +2243,7 @@ static void destroyView(struct View *view)
         server->fullscreenView = NULL;
         wlr_scene_node_set_enabled(&server->topTree->node, true);
         wlr_scene_node_set_enabled(&server->overlayTree->node, true);
+        broadcastFullscreen(server, false);
     }
     if (server->grabbedView == view) {
         server->grabbedView = NULL;
@@ -4895,6 +4914,7 @@ static void handleXdgUnmap(struct wl_listener *listener, void *data)
     }
     broadcastWorkspaces(view->server);
     destroyForeignToplevel(view);
+    broadcastFullscreen(view->server, false);
 }
 
 static void handleXdgDestroy(struct wl_listener *listener, void *data)
@@ -6524,6 +6544,7 @@ static void handleX11Unmap(struct wl_listener *listener, void *data)
     }
     broadcastWorkspaces(view->server);
     destroyForeignToplevel(view);
+    broadcastFullscreen(view->server, false);
 }
 
 static void handleX11Destroy(struct wl_listener *listener, void *data)
@@ -7727,6 +7748,7 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
         broadcastLayout(server);
         broadcastWorkspaces(server);
         broadcastPointerOutput(server);
+        broadcastFullscreen(server, true);
         ipcSend(client, server->locked ? "event locked 1" : "event locked 0");
     } else if (strcmp(command, "layout") == 0) {
         if (!argument) {

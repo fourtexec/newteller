@@ -67,6 +67,8 @@ class SessionServices : public QObject
     // The output (QScreen name) under the pointer, from the compositor;
     // empty outside a NewTeller session.
     Q_PROPERTY(QString activeOutput READ activeOutput NOTIFY activeOutputChanged)
+    // A fullscreen window is shown (a game, a video, a presentation).
+    Q_PROPERTY(bool fullscreenActive READ fullscreenActive NOTIFY fullscreenChanged)
 
 public:
     explicit SessionServices(Settings *settings, QObject *parent = nullptr);
@@ -129,6 +131,7 @@ public:
     Q_INVOKABLE QString killWindow(int id);
     QVariantList hungWindows() const;
     QString activeOutput() const { return m_activeOutput; }
+    bool fullscreenActive() const { return m_fullscreen; }
 
     // --- displays ---
     // name, description, enabled, width, height, refresh (mHz), x, y,
@@ -197,6 +200,7 @@ signals:
     // A window stopped responding (the force-quit dialog offers to end it).
     void windowHung(int id);
     void activeOutputChanged();
+    void fullscreenChanged();
     // Open the window menu at x/y (layout coordinates). `flags` holds the
     // state letters of the window (m minimized, x maximized, F fullscreen,
     // t always on top), `desktop` the desktop it is on.
@@ -238,6 +242,7 @@ private:
     bool m_locked = false;
     int m_workspace = 0;
     QString m_activeOutput;
+    bool m_fullscreen = false;
     int m_workspaceCount = 1;
     int m_workspaceOccupied = 0;
     QVariantList m_switcherEntries;
