@@ -272,11 +272,26 @@ DropdownWindow {
                     }
                 }
 
+                // A notification that is still active opens what it is about
+                // (its "default" action: the chat, the mail), as a click on
+                // the popup does; otherwise the click only dismisses it.
                 TapHandler {
                     acceptedButtons: Qt.LeftButton
                     onTapped: {
-                        if (row.isActive)
+                        if (!row.isActive)
+                            return;
+                        const actions = row.modelData.actions || [];
+                        let hasDefault = false;
+                        for (let i = 0; i < actions.length; i += 2) {
+                            if (actions[i] === "default")
+                                hasDefault = true;
+                        }
+                        if (hasDefault) {
+                            Notifications.invokeAction(row.modelData.id, "default");
+                            center.hide();
+                        } else {
                             Notifications.dismiss(row.modelData.id);
+                        }
                     }
                 }
             }
