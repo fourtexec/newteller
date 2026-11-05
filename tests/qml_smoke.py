@@ -30,6 +30,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import xml.etree.ElementTree as ElementTree
 from enum import IntEnum
 
@@ -2485,6 +2486,22 @@ def main():
         QTest.qWait(100)
         check(apps.launched[before:] == ["firefox"],
               f"a tray icon that cannot be activated starts its application ({apps.launched[before:]})")
+
+        # Do not disturb for an hour: switches on with an end time.
+        dnd_cards = windows_of_kind("QuickSettingsPopup")
+        if dnd_cards:
+            hour = dnd_cards[0].findChild(QObject, "dndHourButton")
+            check(hour is not None, "quick settings offers do not disturb for an hour")
+            if hour is not None:
+                was = settings._values.get("notifications.doNotDisturb")
+                QMetaObject.invokeMethod(hour, "clicked")
+                QTest.qWait(50)
+                until = float(settings._values.get("notifications.dndUntil") or 0)
+                check(settings._values.get("notifications.doNotDisturb") is True
+                      and until > time.time() * 1000 + 3500 * 1000,
+                      f"one hour of do not disturb ({until})")
+                settings.setValue("notifications.doNotDisturb", bool(was))
+                settings.setValue("notifications.dndUntil", 0)
 
         # The sound card: outputs to pick from, one row per playing application.
         sound_cards = windows_of_kind("SoundPopup")

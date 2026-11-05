@@ -110,6 +110,26 @@ QtObject {
         }
     }
 
+    // "Do not disturb for an hour" ends by itself; switching it off by hand
+    // forgets the end time.
+    readonly property Timer dndTimer: Timer {
+        interval: 20000
+        repeat: true
+        running: true
+        triggeredOnStart: true
+        onTriggered: {
+            const until = Number(Settings.values["notifications.dndUntil"]) || 0;
+            if (until <= 0)
+                return;
+            if (Settings.values["notifications.doNotDisturb"] !== true) {
+                Settings.setValue("notifications.dndUntil", 0);
+            } else if (Date.now() >= until) {
+                Settings.setValue("notifications.doNotDisturb", false);
+                Settings.setValue("notifications.dndUntil", 0);
+            }
+        }
+    }
+
     // Low battery: one notification at 10% and one at 5% while discharging,
     // re-armed once the machine is plugged in.
     property int batteryWarned: 100

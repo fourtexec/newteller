@@ -80,6 +80,9 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("windows.shadow"), 1);
     m_defaults.insert(QStringLiteral("notifications.enabled"), true);
     m_defaults.insert(QStringLiteral("notifications.doNotDisturb"), false);
+    // Do not disturb ends at this time (ms since the epoch; 0 = until
+    // switched off). Set by "1 h" in quick settings.
+    m_defaults.insert(QStringLiteral("notifications.dndUntil"), 0);
     m_defaults.insert(QStringLiteral("notifications.position"), QStringLiteral("top-right"));
     m_defaults.insert(QStringLiteral("notifications.duration"), 6);
     m_defaults.insert(QStringLiteral("notifications.historyLimit"), 20);

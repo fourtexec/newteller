@@ -385,10 +385,26 @@ DropdownWindow {
             }
             Text {
                 Layout.fillWidth: true
-                text: qsTr("Do not disturb")
+                readonly property real until: Number(Settings.values["notifications.dndUntil"]) || 0
+                text: Settings.values["notifications.doNotDisturb"] === true && until > 0
+                      ? qsTr("Do not disturb until %1")
+                            .arg(Qt.formatTime(new Date(until), Qt.locale().timeFormat(Locale.ShortFormat)))
+                      : qsTr("Do not disturb")
                 color: Theme.foreground
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSize
+                elide: Text.ElideRight
+            }
+            // Quiet for an hour, then notifications come back by themselves.
+            TaskButton {
+                objectName: "dndHourButton"
+                visible: Settings.values["notifications.doNotDisturb"] !== true
+                label: qsTr("1 h")
+                tooltipText: qsTr("Do not disturb for an hour")
+                onClicked: {
+                    Settings.setValue("notifications.dndUntil", Date.now() + 3600 * 1000);
+                    Settings.setValue("notifications.doNotDisturb", true);
+                }
             }
             SettingsSwitch {
                 settingKey: "notifications.doNotDisturb"
