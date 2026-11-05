@@ -7761,6 +7761,7 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
                 || strcmp(command, "kill") == 0 || strcmp(command, "minimize") == 0
                 || strcmp(command, "maximize") == 0 || strcmp(command, "fullscreen") == 0
                 || strcmp(command, "always-on-top") == 0 || strcmp(command, "sticky") == 0
+                || strcmp(command, "move-to-output") == 0
                 || strcmp(command, "window-menu") == 0)
                && argument) {
         uint32_t id = (uint32_t)strtoul(argument, NULL, 10);
@@ -7822,6 +7823,16 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
                 viewSetMinimized(target, false);
             if (fullscreen != target->fullscreen)
                 viewSetFullscreen(target, fullscreen);
+            focusView(target, NULL);
+            ipcSend(client, "ok");
+        } else if (strcmp(command, "move-to-output") == 0) {
+            // move-to-output ID [next|prev]: as Super+Shift+Right/Left.
+            char *which = strtok(NULL, " \t\r");
+            if (target->minimized)
+                viewSetMinimized(target, false);
+            if (target->maximized)
+                viewSetMaximized(target, false);
+            moveViewToOutput(target, which && strcmp(which, "prev") == 0 ? -1 : 1);
             focusView(target, NULL);
             ipcSend(client, "ok");
         } else if (strcmp(command, "sticky") == 0) {

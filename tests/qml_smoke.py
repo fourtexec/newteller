@@ -941,6 +941,10 @@ class Session(QObject):
     @Slot(int, bool)
     def setWindowSticky(self, window_id, sticky):
         self.calls.append(("setWindowSticky", window_id, sticky))
+
+    @Slot(int)
+    def moveWindowToNextScreen(self, window_id):
+        self.calls.append(("moveWindowToNextScreen", window_id))
     hungWindows = Property("QVariantList", lambda self: [], notify=hungWindowsChanged)
 
     @Slot(int, result=str)

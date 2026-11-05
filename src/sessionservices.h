@@ -122,6 +122,8 @@ public:
     Q_INVOKABLE void setWindowAlwaysOnTop(int id, bool onTop);
     // Shown on every desktop.
     Q_INVOKABLE void setWindowSticky(int id, bool sticky);
+    // To the next screen (multi-monitor).
+    Q_INVOKABLE void moveWindowToNextScreen(int id);
     // Force quit: kills the process behind the window. "" on success, else
     // the reason.
     Q_INVOKABLE QString killWindow(int id);

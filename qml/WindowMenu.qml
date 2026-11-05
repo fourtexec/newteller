@@ -68,6 +68,8 @@ DropdownWindow {
             Session.setWindowAlwaysOnTop(id, !menu.isOnTop);
         else if (action === "sticky")
             Session.setWindowSticky(id, !menu.isSticky);
+        else if (action === "screen")
+            Session.moveWindowToNextScreen(id);
         else if (action === "desktop")
             Session.moveWindow(id, argument);
         else if (action === "close")
@@ -135,6 +137,18 @@ DropdownWindow {
             iconName: menu.isOnTop ? "pin-off" : "pin"
             label: qsTr("Always on top")
             onClicked: menu.run("onTop")
+        }
+
+        TaskButton {
+            objectName: "windowMenuScreen"
+            width: parent.width
+            height: 32
+            fillWidth: true
+            iconSize: 18
+            visible: Qt.application.screens.length > 1
+            iconName: "monitor"
+            label: qsTr("Move to the next screen")
+            onClicked: menu.run("screen")
         }
 
         TaskButton {

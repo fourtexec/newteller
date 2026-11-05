@@ -1556,6 +1556,11 @@ void SessionServices::toggleFullscreenWindow(int id)
     sendCommand(QStringLiteral("fullscreen %1").arg(id));
 }
 
+void SessionServices::moveWindowToNextScreen(int id)
+{
+    sendCommand(QStringLiteral("move-to-output %1 next").arg(id));
+}
+
 void SessionServices::setWindowSticky(int id, bool sticky)
 {
     sendCommand(QStringLiteral("sticky %1 %2")
