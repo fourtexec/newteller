@@ -4317,6 +4317,32 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
         spawnDetached(argv[0], argv);
         return true;
     }
+    // Alt+` (the key above Tab; Ё on a Russian layout): the next window of
+    // the same application, as on GNOME and macOS. Without another window
+    // of that application the key goes to the application.
+    if (alt && !logo && !ctrl && !server->switching && server->focusedView
+        && (sym == XKB_KEY_grave || sym == XKB_KEY_dead_grave
+            || sym == XKB_KEY_Cyrillic_io || sym == XKB_KEY_Cyrillic_IO)) {
+        struct View *current = server->focusedView;
+        const char *app = viewAppId(current);
+        struct View *target = NULL;
+        struct View *view;
+        // Least recently used first, so repeated presses visit them all.
+        wl_list_for_each_reverse(view, &server->views, link) {
+            if (view != current && view->mapped && !view->overrideRedirect
+                && viewOnWorkspace(view) && viewSurface(view) && app[0] != '\0'
+                && strcmp(viewAppId(view), app) == 0) {
+                target = view;
+                break;
+            }
+        }
+        if (target) {
+            if (target->minimized)
+                viewSetMinimized(target, false);
+            focusView(target, NULL);
+            return true;
+        }
+    }
     if (alt && (sym == XKB_KEY_Tab || sym == XKB_KEY_ISO_Left_Tab)) {
         bool backwards = sym == XKB_KEY_ISO_Left_Tab
             || (modifiers & WLR_MODIFIER_SHIFT) != 0;
