@@ -218,6 +218,8 @@ static void raisePinnedViews(struct Server *server);
 static void toggleShowDesktop(struct Server *server);
 static void shellAction(const char *method);
 static void checkHotCorner(struct Server *server);
+static uint32_t dragSnapEdges(struct Server *server, struct View *view);
+static void updateSnapPreview(struct Server *server, bool dragging);
 static void viewSetMaximized(struct View *view, bool maximized);
 static void requestWindowMenu(struct View *view, int x, int y);
 struct Keyboard;
@@ -508,6 +510,10 @@ struct Server {
     struct wlr_scene_tree *backgroundTree;
     struct wlr_scene_tree *bottomTree;
     struct wlr_scene_tree *toplevelTree;
+    // Where a dragged window will snap: a translucent rectangle above the
+    // windows, shown while the pointer is at a screen edge.
+    struct wlr_scene_tree *snapTree;
+    struct wlr_scene_rect *snapRect;
     struct wlr_scene_tree *topTree;
     struct wlr_scene_tree *overlayTree;
     // Input method candidate windows, above everything but the lock screen.
@@ -2198,8 +2204,10 @@ static void destroyView(struct View *view)
         wlr_scene_node_set_enabled(&server->topTree->node, true);
         wlr_scene_node_set_enabled(&server->overlayTree->node, true);
     }
-    if (server->grabbedView == view)
+    if (server->grabbedView == view) {
         server->grabbedView = NULL;
+        updateSnapPreview(server, false);
+    }
     if (server->switchTarget == view)
         server->switchTarget = NULL;
     if (server->hoverView == view)
@@ -2774,6 +2782,7 @@ static void processCursorMotion(struct Server *server, uint32_t time)
         viewSetPosition(view,
                         (int)(server->cursor->x - server->grabX),
                         (int)(server->cursor->y - server->grabY));
+        updateSnapPreview(server, true);
         return;
     }
     if (server->cursorMode == CURSOR_RESIZE && server->grabbedView) {
@@ -2865,6 +2874,63 @@ static void processCursorMotion(struct Server *server, uint32_t time)
         focusView(hit.view, NULL);
         server->suppressRaise = false;
     }
+}
+
+// Where a window dropped at the pointer would snap: a side (half), a side
+// and a row (quarter, near a corner) or the top (maximise); 0 for none.
+static uint32_t dragSnapEdges(struct Server *server, struct View *view)
+{
+    const struct wlr_box area = usableBoxForView(view);
+    // Corners (the outer 10% of a side) give quarters.
+    const int cornerReach = area.height / 10 > 24 ? area.height / 10 : 24;
+    uint32_t row = 0;
+    if (server->cursor->y <= area.y + cornerReach)
+        row = WLR_EDGE_TOP;
+    else if (server->cursor->y >= area.y + area.height - cornerReach)
+        row = WLR_EDGE_BOTTOM;
+    if (server->cursor->x <= area.x + 12)
+        return WLR_EDGE_LEFT | row;
+    if (server->cursor->x >= area.x + area.width - 12)
+        return WLR_EDGE_RIGHT | row;
+    if (server->cursor->y <= area.y + 10)
+        return WLR_EDGE_TOP;
+    return 0;
+}
+
+// Shows where the dragged window will snap (while `dragging`), or hides it.
+static void updateSnapPreview(struct Server *server, bool dragging)
+{
+    struct View *view = server->grabbedView;
+    uint32_t edges = dragging && view && server->config.snapping && !server->locked
+                         ? dragSnapEdges(server, view) : 0;
+    if (!edges) {
+        if (server->snapTree->node.enabled) {
+            wlr_scene_node_set_enabled(&server->snapTree->node, false);
+            scheduleAllFrames(server);
+        }
+        return;
+    }
+    const struct wlr_box area = usableBoxForView(view);
+    struct wlr_box box = area;
+    const uint32_t side = edges & (WLR_EDGE_LEFT | WLR_EDGE_RIGHT);
+    const uint32_t row = edges & (WLR_EDGE_TOP | WLR_EDGE_BOTTOM);
+    if (side) {
+        box.width = area.width / 2;
+        if (side == WLR_EDGE_RIGHT)
+            box.x = area.x + area.width - box.width;
+        if (row) {
+            box.height = area.height / 2;
+            if (row == WLR_EDGE_BOTTOM)
+                box.y = area.y + area.height - box.height;
+        }
+    }
+    // A small inset, so the preview reads as a target, not a window.
+    const int inset = 6;
+    wlr_scene_node_set_position(&server->snapTree->node, box.x + inset, box.y + inset);
+    wlr_scene_rect_set_size(server->snapRect, box.width - 2 * inset > 1 ? box.width - 2 * inset : 1,
+                            box.height - 2 * inset > 1 ? box.height - 2 * inset : 1);
+    wlr_scene_node_set_enabled(&server->snapTree->node, true);
+    scheduleAllFrames(server);
 }
 
 // Hot corners (Settings -> Windows): pushing the pointer into a screen corner
@@ -3010,22 +3076,11 @@ static void cursorButton(struct wl_listener *listener, void *data)
     if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
         if (server->cursorMode == CURSOR_MOVE && server->grabbedView
             && server->config.snapping) {
-            struct View *view = server->grabbedView;
-            const struct wlr_box area = usableBoxForView(view);
-            // Corners (the outer 10% of a side) give quarters.
-            const int cornerReach = area.height / 10 > 24 ? area.height / 10 : 24;
-            uint32_t row = 0;
-            if (server->cursor->y <= area.y + cornerReach)
-                row = WLR_EDGE_TOP;
-            else if (server->cursor->y >= area.y + area.height - cornerReach)
-                row = WLR_EDGE_BOTTOM;
-            if (server->cursor->x <= area.x + 12)
-                viewSnap(view, WLR_EDGE_LEFT | row);
-            else if (server->cursor->x >= area.x + area.width - 12)
-                viewSnap(view, WLR_EDGE_RIGHT | row);
-            else if (server->cursor->y <= area.y + 10)
-                viewSnap(view, WLR_EDGE_TOP);
+            uint32_t edges = dragSnapEdges(server, server->grabbedView);
+            if (edges)
+                viewSnap(server->grabbedView, edges);
         }
+        updateSnapPreview(server, false);
         if (!server->superGrab) {
             wlr_seat_pointer_notify_button(server->seat, event->time_msec,
                                            event->button, event->state);
@@ -5894,6 +5949,8 @@ static void renderBelowTop(struct Server *server, const struct RenderTarget *t, 
     renderNode(server, t, &state, &server->bottomTree->node, 0, 0, false, temp);
     if (server->toplevelTree->node.enabled)
         renderViews(server, t, now, temp);
+    if (server->snapTree->node.enabled)
+        renderNode(server, t, &state, &server->snapTree->node, 0, 0, false, temp);
 }
 
 static bool anyBlurOn(struct Server *server, struct Output *output)
@@ -6067,6 +6124,10 @@ static bool renderEffectsFrame(struct Output *output)
     if (server->overlayTree->node.enabled)
         renderLayerTree(server, &target, server->overlayTree, blurred, &temp);
     struct RenderState plain = {.alpha = 1, .scale = 1};
+    // The input method's candidate list and the icon of a drag in progress
+    // sit above everything but the lock screen, as in the scene graph.
+    renderNode(server, &target, &plain, &server->inputPopupTree->node, 0, 0, false, &temp);
+    renderNode(server, &target, &plain, &server->dragIconTree->node, 0, 0, false, &temp);
     renderNode(server, &target, &plain, &server->lockTree->node, 0, 0, false, &temp);
     wlr_output_add_software_cursors_to_render_pass(o, pass, NULL);
     bool submitted = wlr_render_pass_submit(pass);
@@ -8166,6 +8227,11 @@ static void setupProtocols(struct Server *server)
     server->backgroundTree = wlr_scene_tree_create(&server->scene->tree);
     server->bottomTree = wlr_scene_tree_create(&server->scene->tree);
     server->toplevelTree = wlr_scene_tree_create(&server->scene->tree);
+    server->snapTree = wlr_scene_tree_create(&server->scene->tree);
+    // Premultiplied: a soft blue at 25%.
+    static const float snapColor[4] = {0.24f * 0.25f, 0.52f * 0.25f, 0.98f * 0.25f, 0.25f};
+    server->snapRect = wlr_scene_rect_create(server->snapTree, 0, 0, snapColor);
+    wlr_scene_node_set_enabled(&server->snapTree->node, false);
     server->topTree = wlr_scene_tree_create(&server->scene->tree);
     server->overlayTree = wlr_scene_tree_create(&server->scene->tree);
     server->inputPopupTree = wlr_scene_tree_create(&server->scene->tree);

@@ -150,7 +150,8 @@ inside VirtualBox. The implemented pieces are:
   with live reload
 - Plugin system (manifest + QML) with enable/disable and auto-rescan
 - Window management: snap a window to the left/right half with `Super+Left`/`Super+Right`
-  (then `Super+Up`/`Super+Down` for a quarter, or drag it into a screen corner),
+  (then `Super+Up`/`Super+Down` for a quarter, or drag it into a screen corner;
+  while dragging, a translucent preview shows where it will snap),
   maximise with `Super+Up`, restore with `Super+Down`, drag a window to an edge to snap it,
   move it between outputs with `Super+Shift+Left`/`Super+Shift+Right`, and show/hide the
   desktop with `Super+D`, and move or resize a window from anywhere inside it with
