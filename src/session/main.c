@@ -1452,7 +1452,9 @@ static void applyWindowRules(struct View *view)
 
 static void focusView(struct View *view, struct wlr_surface *surface)
 {
-    if (!view || !viewSurface(view) || view->minimized)
+    // A hidden (unmapped) window, e.g. an application closed to the tray,
+    // cannot take the focus; the dock starts the application instead.
+    if (!view || !view->mapped || !viewSurface(view) || view->minimized)
         return;
 
     struct Server *server = view->server;
@@ -2079,6 +2081,8 @@ static void handleViewForeignActivate(struct wl_listener *listener, void *data)
 {
     (void)data;
     struct View *view = wl_container_of(listener, view, foreignActivate);
+    if (!view->mapped)
+        return;
     if (view->minimized)
         viewSetMinimized(view, false);
     focusView(view, NULL);

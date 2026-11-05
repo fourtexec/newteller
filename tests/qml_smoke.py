@@ -793,6 +793,7 @@ class Tray(QObject):
     itemsChanged = Signal()
     menuReady = Signal(str, "QVariantList")
     menuChanged = Signal(str)
+    activateFailed = Signal(str, "QStringList")
 
     def __init__(self):
         super().__init__()
@@ -2350,6 +2351,13 @@ def main():
             QTest.qWait(300)
             check(("moveWindow", 7, 2) in session.calls,
                   f"the window menu moves the window to another desktop ({session.calls})")
+
+        # A tray icon that refuses Activate starts the application behind it.
+        before = len(apps.launched)
+        tray.activateFailed.emit("item-1", ["no-such-thing", "firefox"])
+        QTest.qWait(100)
+        check(apps.launched[before:] == ["firefox"],
+              f"a tray icon that cannot be activated starts its application ({apps.launched[before:]})")
 
         # Screen recording: quick settings starts it, the panel shows a pill
         # with the time, Super+Alt+R (through Shell) stops it.

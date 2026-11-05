@@ -73,6 +73,35 @@ QtObject {
         }
     }
 
+    // A tray icon that cannot be activated (Electron and AppIndicator apps:
+    // Discord, Slack, Steam...): start the application behind it, which
+    // brings its window back, instead of doing nothing.
+    readonly property Connections trayFallback: Connections {
+        target: Tray
+        function onActivateFailed(id, candidates) {
+            for (const candidate of candidates) {
+                const app = Apps.matchWindowApp(candidate, "");
+                if (app && app.id) {
+                    Apps.launch(app.id);
+                    return;
+                }
+            }
+            // The application's name as the start menu knows it.
+            for (const candidate of candidates) {
+                const found = Apps.search(candidate, 1);
+                if (found.length > 0 && found[0].id
+                    && String(found[0].name).toLowerCase() === candidate.toLowerCase()) {
+                    Apps.launch(found[0].id);
+                    return;
+                }
+            }
+            Shell.notify(qsTr("%1 cannot be opened from its icon")
+                             .arg(candidates.length > 0 ? candidates[candidates.length - 1]
+                                                        : qsTr("This application")),
+                         qsTr("Right-click the icon for its menu."));
+        }
+    }
+
     // Low battery: one notification at 10% and one at 5% while discharging,
     // re-armed once the machine is plugged in.
     property int batteryWarned: 100

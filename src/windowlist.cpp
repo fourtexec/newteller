@@ -1054,8 +1054,14 @@ QVariantList WindowList::waylandSnapshot() const
     out.reserve(m_waylandPending.size() + m_extPending.size());
     for (const QVariantMap &entry : m_waylandPending)
         out.append(entry);
-    for (const QVariantMap &entry : m_extPending)
-        out.append(entry);
+    // A compositor with the wlr protocol lists every window there (NewTeller
+    // also offers the ext list): its read-only copies would double each
+    // window on the dock, and a click on a copy would start the application
+    // again instead of showing the window.
+    if (!m_wlManager) {
+        for (const QVariantMap &entry : m_extPending)
+            out.append(entry);
+    }
     return out;
 }
 
@@ -1103,10 +1109,13 @@ QVariantList WindowList::mergedWindowList()
             }
         }
         // 3. Read-only ext toplevels (GNOME's native Wayland windows) that
-        //    nothing else shows.
-        for (const QVariantMap &entry : m_extPending) {
-            if (!windowListContains(out, entry))
-                out.append(entry);
+        //    nothing else shows; only without the wlr protocol, which
+        //    already lists every window (see waylandSnapshot()).
+        if (!m_wlManager) {
+            for (const QVariantMap &entry : m_extPending) {
+                if (!windowListContains(out, entry))
+                    out.append(entry);
+            }
         }
         return out;
     }
