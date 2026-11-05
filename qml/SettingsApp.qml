@@ -2366,7 +2366,7 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Switch desktops")
-                                subtitle: "Ctrl+Super+Left/Right, Ctrl+Super+1…9, Super+Page Up/Down"
+                                subtitle: "Ctrl+Super+Left/Right, Ctrl+Super+1…9, Super+Page Up/Down; Super+Shift+1…9"
                             }
                             SettingsRow {
                                 width: parent.width

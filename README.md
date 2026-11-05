@@ -251,7 +251,8 @@ inside VirtualBox. The implemented pieces are:
   libinput; cursor theme and size.
 - **Workspaces.** Four virtual desktops by default (`workspaces.count`):
   `Ctrl+Super+Left/Right` or `Super+Page Up/Down` switch (`Ctrl+Super+1…9`
-  goes straight to one), add `Shift` to take the focused window along; dots on the panel show and switch them.
+  goes straight to one, `Super+Shift+1…9` takes the focused window there),
+  add `Shift` to take the focused window along; dots on the panel show and switch them.
 - **Alt+Tab** walks through every window of the current desktop in
   most-recently-used order with a window list overlay and a live preview;
   `Shift+Tab` goes back, `Escape` cancels. A tap of `Super` opens the start menu.

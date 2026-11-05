@@ -4129,8 +4129,10 @@ static void handleNewShortcutsInhibitor(struct wl_listener *listener, void *data
         wlr_keyboard_shortcuts_inhibitor_v1_activate(inhibitor);
 }
 
+// `baseSym` is the key's symbol without Shift and other levels (1 for the
+// key that gives "!" with Shift), for shortcuts that use Shift on digits.
 static bool keyHandled(struct Server *server, xkb_keysym_t sym,
-                       uint32_t modifiers)
+                       uint32_t modifiers, xkb_keysym_t baseSym)
 {
     bool logo = (modifiers & WLR_MODIFIER_LOGO) != 0;
     bool alt = (modifiers & WLR_MODIFIER_ALT) != 0;
@@ -4251,6 +4253,13 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
     // Super+Alt+R: start or stop a screen recording (as Windows' Game Bar).
     if (logo && alt && !ctrl && (sym == XKB_KEY_r || sym == XKB_KEY_R)) {
         shellAction("toggleScreenRecording");
+        return true;
+    }
+    // Super+Shift+1..9: the focused window to that desktop, followed.
+    if (logo && shift && !ctrl && !alt && baseSym >= XKB_KEY_1 && baseSym <= XKB_KEY_9) {
+        int index = (int)(baseSym - XKB_KEY_1);
+        if (server->focusedView && index < server->config.workspaceCount)
+            moveViewToWorkspace(server->focusedView, index, true);
         return true;
     }
     // Ctrl+Super+1..9: straight to that desktop.
@@ -4528,7 +4537,18 @@ static void keyboardKey(struct wl_listener *listener, void *data)
         server->logoTap = isLogo && !shortcutsInhibited(server)
             && !(modifiers & (WLR_MODIFIER_SHIFT | WLR_MODIFIER_CTRL
                               | WLR_MODIFIER_ALT));
-        if (keyHandled(server, sym, modifiers))
+        // The key's first-level symbol in the active layout.
+        xkb_keysym_t baseSym = XKB_KEY_NoSymbol;
+        struct xkb_state *xkb = keyboard->keyboard->xkb_state;
+        if (xkb) {
+            const xkb_keysym_t *syms = NULL;
+            xkb_layout_index_t layout = xkb_state_key_get_layout(xkb, event->keycode + 8);
+            if (layout != XKB_LAYOUT_INVALID
+                && xkb_keymap_key_get_syms_by_level(keyboard->keyboard->keymap, event->keycode + 8,
+                                                    layout, 0, &syms) > 0)
+                baseSym = syms[0];
+        }
+        if (keyHandled(server, sym, modifiers, baseSym))
             return;
     } else if (isLogo && server->logoTap) {
         server->logoTap = false;
