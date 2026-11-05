@@ -11,10 +11,41 @@ DropdownWindow {
 
     readonly property NotificationAppearance appearance: NotificationAppearance {}
 
+    // Newest first, grouped by application: the application with the newest
+    // notification comes first, each group carries groupStart/groupCount
+    // for its header.
     readonly property var entries: {
-        var list = (Notifications.history || []).slice();
+        const list = (Notifications.history || []).slice();
         list.reverse(); // newest first
-        return list;
+        const order = [];
+        const byApp = {};
+        for (const entry of list) {
+            const app = entry.app || "";
+            if (!byApp[app]) {
+                byApp[app] = [];
+                order.push(app);
+            }
+            byApp[app].push(entry);
+        }
+        const out = [];
+        for (const app of order) {
+            const group = byApp[app];
+            for (let i = 0; i < group.length; ++i)
+                out.push(Object.assign({}, group[i], { groupStart: i === 0,
+                                                       groupCount: group.length }));
+        }
+        return out;
+    }
+
+    // Removes every notification of one application from the history.
+    function clearApp(app) {
+        const ids = [];
+        for (const entry of (Notifications.history || [])) {
+            if ((entry.app || "") === app)
+                ids.push(entry.id);
+        }
+        for (const id of ids)
+            Notifications.removeHistory(id);
     }
     // Notifications that arrived while the centre was closed: the badge on
     // the bell. Opening the centre marks everything seen.
@@ -115,182 +146,222 @@ DropdownWindow {
             model: center.entries
             boundsBehavior: Flickable.StopAtBounds
 
-            delegate: Rectangle {
-                id: row
+            delegate: Column {
+                id: group
                 required property var modelData
                 width: list.width
-                height: Math.max(rowBody.implicitHeight, rowIcon.visible ? 32 : 0) + 18
-                radius: center.appearance.cornerRadius >= 0
-                        ? center.appearance.cornerRadius : Theme.radius
-                color: rowHover.hovered
-                       ? Qt.rgba(center.appearance.foreground.r, center.appearance.foreground.g,
-                                 center.appearance.foreground.b, 0.07)
-                       : Qt.rgba(center.appearance.background.r, center.appearance.background.g,
-                                 center.appearance.background.b, 0.46)
-                border.width: 1
-                border.color: Qt.rgba(center.appearance.muted.r, center.appearance.muted.g,
-                                      center.appearance.muted.b, 0.48)
+                spacing: 4
 
-                readonly property bool isActive: {
-                    const id = modelData.id;
-                    for (const a of Notifications.active) {
-                        if (a.id === id)
-                            return true;
-                    }
-                    return false;
-                }
-
-                HoverHandler { id: rowHover }
-
-                Rectangle {
-                    // Accent bar: still-on-screen entries read as "new".
-                    visible: row.isActive
-                    anchors.left: parent.left
-                    anchors.top: parent.top
-                    anchors.bottom: parent.bottom
-                    anchors.margins: 4
-                    width: 3
-                    radius: 1.5
-                    color: center.appearance.accent
-                }
-
-                // The notification's picture (an avatar, a cover) or its
-                // app icon, like the popup showed it.
-                Item {
-                    id: rowIcon
-                    readonly property bool hasImage: (row.modelData.image || "").length > 0
-                    readonly property bool hasIcon: (row.modelData.icon || "").length > 0
-                    visible: hasImage || (hasIcon && Settings.values["notifications.showAppIcon"] !== false)
-                    anchors.left: parent.left
-                    anchors.leftMargin: 12
-                    anchors.top: parent.top
-                    anchors.topMargin: 10
-                    width: visible ? 30 : 0
-                    height: 30
-                    Image {
-                        objectName: "historyImage"
-                        anchors.fill: parent
-                        visible: rowIcon.hasImage
-                        sourceSize.width: 60
-                        sourceSize.height: 60
-                        fillMode: Image.PreserveAspectCrop
-                        asynchronous: true
-                        smooth: true
-                        source: row.modelData.image || ""
-                    }
-                    Image {
-                        anchors.centerIn: parent
-                        visible: !rowIcon.hasImage
-                        width: 20
-                        height: 20
-                        sourceSize.width: 40
-                        sourceSize.height: 40
-                        fillMode: Image.PreserveAspectFit
-                        smooth: true
-                        source: !rowIcon.hasImage && rowIcon.hasIcon
-                                ? Shell.tintedIcon(row.modelData.icon, center.appearance.foreground) : ""
-                    }
-                }
-
-                ColumnLayout {
-                    id: rowBody
-                    anchors.left: rowIcon.visible ? rowIcon.right : parent.left
-                    anchors.right: rowControls.left
-                    anchors.top: parent.top
-                    anchors.margins: 9
-                    spacing: 2
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: 6
-
-                        Text {
-                            text: row.modelData.app || ""
-                            color: center.appearance.accent
-                            font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSize - 1
-                            elide: Text.ElideRight
-                            Layout.maximumWidth: rowBody.width * 0.55
-                        }
-                        Item { Layout.fillWidth: true }
-                        Text {
-                            text: row.modelData.time > 0
-                                  ? Qt.formatDateTime(new Date(row.modelData.time), "HH:mm")
-                                  : ""
-                            color: center.appearance.muted
-                            font.family: Theme.fontFamily
-                            font.pointSize: Theme.fontSize - 1
-                        }
-                    }
+                // The application's name above its first notification, with
+                // a button that clears all of them.
+                RowLayout {
+                    objectName: "notificationGroupHeader"
+                    width: parent.width
+                    visible: group.modelData.groupStart === true
+                    spacing: 6
 
                     Text {
                         Layout.fillWidth: true
-                        text: row.modelData.summary || ""
-                        color: center.appearance.foreground
-                        font.family: Theme.fontFamily
-                        font.pointSize: Theme.fontSize + 1
-                        elide: Text.ElideRight
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        visible: (row.modelData.body || "").length > 0
-                        textFormat: row.modelData.bodyMarkup ? Text.StyledText : Text.PlainText
-                        text: row.modelData.bodyMarkup || row.modelData.body || ""
+                        leftPadding: 4
+                        topPadding: 2
+                        text: group.modelData.groupCount > 1
+                              ? qsTr("%1 (%2)").arg(group.modelData.app || qsTr("Application"))
+                                               .arg(group.modelData.groupCount)
+                              : (group.modelData.app || qsTr("Application"))
                         color: center.appearance.muted
                         font.family: Theme.fontFamily
-                        font.pointSize: Theme.fontSize
-                        wrapMode: Text.Wrap
-                        maximumLineCount: 3
+                        font.pointSize: Theme.fontSize - 1
+                        font.bold: true
                         elide: Text.ElideRight
                     }
-                }
-
-                // Per-row controls: tap to dismiss a popup that is still
-                // on screen, X to forget the entry.
-                Row {
-                    id: rowControls
-                    anchors.right: parent.right
-                    anchors.rightMargin: 8
-                    anchors.verticalCenter: parent.verticalCenter
-                    spacing: 2
-
                     TaskButton {
+                        visible: group.modelData.groupCount > 1
                         width: 26
                         height: 26
-                        visible: row.isActive
-                        iconName: "check"
-                        tooltipText: qsTr("Dismiss")
-                        onClicked: Notifications.dismiss(row.modelData.id)
-                    }
-                    TaskButton {
-                        width: 26
-                        height: 26
-                        iconName: "x"
-                        tooltipText: qsTr("Remove")
-                        onClicked: Notifications.removeHistory(row.modelData.id)
+                        iconSize: 16
+                        iconName: "trash"
+                        tooltipText: qsTr("Clear these")
+                        onClicked: center.clearApp(group.modelData.app || "")
                     }
                 }
 
-                // A notification that is still active opens what it is about
-                // (its "default" action: the chat, the mail), as a click on
-                // the popup does; otherwise the click only dismisses it.
-                TapHandler {
-                    acceptedButtons: Qt.LeftButton
-                    onTapped: {
-                        if (!row.isActive)
-                            return;
-                        const actions = row.modelData.actions || [];
-                        let hasDefault = false;
-                        for (let i = 0; i < actions.length; i += 2) {
-                            if (actions[i] === "default")
-                                hasDefault = true;
+                Rectangle {
+                    id: row
+                    readonly property var modelData: group.modelData
+                    width: list.width
+                    height: Math.max(rowBody.implicitHeight, rowIcon.visible ? 32 : 0) + 18
+                    radius: center.appearance.cornerRadius >= 0
+                            ? center.appearance.cornerRadius : Theme.radius
+                    color: rowHover.hovered
+                           ? Qt.rgba(center.appearance.foreground.r, center.appearance.foreground.g,
+                                     center.appearance.foreground.b, 0.07)
+                           : Qt.rgba(center.appearance.background.r, center.appearance.background.g,
+                                     center.appearance.background.b, 0.46)
+                    border.width: 1
+                    border.color: Qt.rgba(center.appearance.muted.r, center.appearance.muted.g,
+                                          center.appearance.muted.b, 0.48)
+
+                    readonly property bool isActive: {
+                        const id = modelData.id;
+                        for (const a of Notifications.active) {
+                            if (a.id === id)
+                                return true;
                         }
-                        if (hasDefault) {
-                            Notifications.invokeAction(row.modelData.id, "default");
-                            center.hide();
-                        } else {
-                            Notifications.dismiss(row.modelData.id);
+                        return false;
+                    }
+
+                    HoverHandler { id: rowHover }
+
+                    Rectangle {
+                        // Accent bar: still-on-screen entries read as "new".
+                        visible: row.isActive
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        anchors.margins: 4
+                        width: 3
+                        radius: 1.5
+                        color: center.appearance.accent
+                    }
+
+                    // The notification's picture (an avatar, a cover) or its
+                    // app icon, like the popup showed it.
+                    Item {
+                        id: rowIcon
+                        readonly property bool hasImage: (row.modelData.image || "").length > 0
+                        readonly property bool hasIcon: (row.modelData.icon || "").length > 0
+                        visible: hasImage || (hasIcon && Settings.values["notifications.showAppIcon"] !== false)
+                        anchors.left: parent.left
+                        anchors.leftMargin: 12
+                        anchors.top: parent.top
+                        anchors.topMargin: 10
+                        width: visible ? 30 : 0
+                        height: 30
+                        Image {
+                            objectName: "historyImage"
+                            anchors.fill: parent
+                            visible: rowIcon.hasImage
+                            sourceSize.width: 60
+                            sourceSize.height: 60
+                            fillMode: Image.PreserveAspectCrop
+                            asynchronous: true
+                            smooth: true
+                            source: row.modelData.image || ""
+                        }
+                        Image {
+                            anchors.centerIn: parent
+                            visible: !rowIcon.hasImage
+                            width: 20
+                            height: 20
+                            sourceSize.width: 40
+                            sourceSize.height: 40
+                            fillMode: Image.PreserveAspectFit
+                            smooth: true
+                            source: !rowIcon.hasImage && rowIcon.hasIcon
+                                    ? Shell.tintedIcon(row.modelData.icon, center.appearance.foreground) : ""
+                        }
+                    }
+
+                    ColumnLayout {
+                        id: rowBody
+                        anchors.left: rowIcon.visible ? rowIcon.right : parent.left
+                        anchors.right: rowControls.left
+                        anchors.top: parent.top
+                        anchors.margins: 9
+                        spacing: 2
+
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: 6
+
+                            Text {
+                                text: row.modelData.app || ""
+                                color: center.appearance.accent
+                                font.family: Theme.fontFamily
+                                font.pointSize: Theme.fontSize - 1
+                                elide: Text.ElideRight
+                                Layout.maximumWidth: rowBody.width * 0.55
+                            }
+                            Item { Layout.fillWidth: true }
+                            Text {
+                                text: row.modelData.time > 0
+                                      ? Qt.formatDateTime(new Date(row.modelData.time), "HH:mm")
+                                      : ""
+                                color: center.appearance.muted
+                                font.family: Theme.fontFamily
+                                font.pointSize: Theme.fontSize - 1
+                            }
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: row.modelData.summary || ""
+                            color: center.appearance.foreground
+                            font.family: Theme.fontFamily
+                            font.pointSize: Theme.fontSize + 1
+                            elide: Text.ElideRight
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            visible: (row.modelData.body || "").length > 0
+                            textFormat: row.modelData.bodyMarkup ? Text.StyledText : Text.PlainText
+                            text: row.modelData.bodyMarkup || row.modelData.body || ""
+                            color: center.appearance.muted
+                            font.family: Theme.fontFamily
+                            font.pointSize: Theme.fontSize
+                            wrapMode: Text.Wrap
+                            maximumLineCount: 3
+                            elide: Text.ElideRight
+                        }
+                    }
+
+                    // Per-row controls: tap to dismiss a popup that is still
+                    // on screen, X to forget the entry.
+                    Row {
+                        id: rowControls
+                        anchors.right: parent.right
+                        anchors.rightMargin: 8
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: 2
+
+                        TaskButton {
+                            width: 26
+                            height: 26
+                            visible: row.isActive
+                            iconName: "check"
+                            tooltipText: qsTr("Dismiss")
+                            onClicked: Notifications.dismiss(row.modelData.id)
+                        }
+                        TaskButton {
+                            width: 26
+                            height: 26
+                            iconName: "x"
+                            tooltipText: qsTr("Remove")
+                            onClicked: Notifications.removeHistory(row.modelData.id)
+                        }
+                    }
+
+                    // A notification that is still active opens what it is about
+                    // (its "default" action: the chat, the mail), as a click on
+                    // the popup does; otherwise the click only dismisses it.
+                    TapHandler {
+                        acceptedButtons: Qt.LeftButton
+                        onTapped: {
+                            if (!row.isActive)
+                                return;
+                            const actions = row.modelData.actions || [];
+                            let hasDefault = false;
+                            for (let i = 0; i < actions.length; i += 2) {
+                                if (actions[i] === "default")
+                                    hasDefault = true;
+                            }
+                            if (hasDefault) {
+                                Notifications.invokeAction(row.modelData.id, "default");
+                                center.hide();
+                            } else {
+                                Notifications.dismiss(row.modelData.id);
+                            }
                         }
                     }
                 }

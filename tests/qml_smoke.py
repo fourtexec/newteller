@@ -2223,6 +2223,16 @@ def main():
                     and i.objectName() == "historyImage" and i.isVisible()]
         check(len(pictures) == 1 and pictures[0].property("implicitWidth") > 0,
               f"the history shows a notification's picture ({len(pictures)})")
+        # Grouped by application, the one with the newest notification first.
+        notifications._history.append({"id": 3, "app": "Mail", "summary": "Again", "body": "Third",
+                                       "time": 3000, "icon": "bell", "image": ""})
+        notifications.historyChanged.emit()
+        QTest.qWait(100)
+        grouped = center.property("entries")
+        grouped = grouped.toVariant() if hasattr(grouped, "toVariant") else grouped
+        check([(e.get("app"), bool(e.get("groupStart"))) for e in (grouped or [])]
+              == [("Mail", True), ("Mail", False), ("Chat", True)],
+              f"the notification centre groups by application ({grouped})")
         # Everything on screen counts as seen; closing keeps the mark.
         check(int(center.property("unreadCount")) == 0,
               f"an open centre counts as seen ({center.property('unreadCount')})")
