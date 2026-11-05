@@ -75,13 +75,14 @@
 #include <wlr/types/wlr_xdg_foreign_v2.h>
 #include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
-#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR >= 19
-#include <wlr/types/wlr_xdg_system_bell_v1.h>
-#endif
 #include <wlr/util/log.h>
 #include <wlr/util/region.h>
 #include <wlr/util/transform.h>
 #include <wlr/version.h>
+// Version-dependent headers go after wlr/version.h, which defines the macros.
+#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR >= 19
+#include <wlr/types/wlr_xdg_system_bell_v1.h>
+#endif
 #include <wlr/xwayland/xwayland.h>
 
 #include <xkbcommon/xkbcommon.h>
