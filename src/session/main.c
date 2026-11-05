@@ -4234,6 +4234,13 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
         shellAction("toggleScreenRecording");
         return true;
     }
+    // Ctrl+Super+1..9: straight to that desktop.
+    if (logo && ctrl && !alt && !shift && sym >= XKB_KEY_1 && sym <= XKB_KEY_9) {
+        int index = (int)(sym - XKB_KEY_1);
+        if (index < server->config.workspaceCount)
+            switchWorkspace(server, index);
+        return true;
+    }
     // Super+1..9: start or bring up the Nth application on the dock (as on
     // Windows). The shell owns the dock, so it gets the index.
     if (logo && !alt && !ctrl && !shift && sym >= XKB_KEY_1 && sym <= XKB_KEY_9) {
