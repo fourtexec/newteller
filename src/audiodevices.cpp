@@ -69,18 +69,32 @@ void AudioDevices::refresh()
                 const bool wasAvailable = m_available;
                 const QVariantList oldOutputs = m_outputs;
                 const QVariantList oldStreams = m_streams;
+                const QVariantList oldInputs = m_inputs;
                 readOutputs(sinks, defaultName);
                 run({QStringLiteral("-f"), QStringLiteral("json"), QStringLiteral("list"),
                      QStringLiteral("sink-inputs")},
-                    [this, wasAvailable, oldOutputs, oldStreams](bool ok, const QByteArray &inputs) {
-                        m_reading = false;
+                    [this, wasAvailable, oldOutputs, oldStreams, oldInputs](bool ok,
+                                                                           const QByteArray &inputs) {
                         if (ok)
                             readStreams(inputs);
-                        // Unchanged data keeps the rows (and a slider being
-                        // dragged) as they are.
-                        if (m_available != wasAvailable || m_outputs != oldOutputs
-                            || m_streams != oldStreams)
-                            emit changed();
+                        run({QStringLiteral("get-default-source")},
+                            [this, wasAvailable, oldOutputs, oldStreams, oldInputs](
+                                bool, const QByteArray &out) {
+                                const QString defaultSource = QString::fromUtf8(out).trimmed();
+                                run({QStringLiteral("-f"), QStringLiteral("json"),
+                                     QStringLiteral("list"), QStringLiteral("sources")},
+                                    [this, wasAvailable, oldOutputs, oldStreams, oldInputs,
+                                     defaultSource](bool ok, const QByteArray &sources) {
+                                        m_reading = false;
+                                        if (ok)
+                                            readInputs(sources, defaultSource);
+                                        // Unchanged data keeps the rows (and a
+                                        // slider being dragged) as they are.
+                                        if (m_available != wasAvailable || m_outputs != oldOutputs
+                                            || m_streams != oldStreams || m_inputs != oldInputs)
+                                            emit changed();
+                                    });
+                            });
                     });
             });
     });
@@ -156,6 +170,42 @@ void AudioDevices::readStreams(const QByteArray &json)
         streams.append(stream);
     }
     m_streams = streams;
+}
+
+void AudioDevices::readInputs(const QByteArray &json, const QString &defaultName)
+{
+    const QJsonDocument doc = QJsonDocument::fromJson(json);
+    QVariantList inputs;
+    for (const QJsonValue &value : doc.array()) {
+        const QVariantMap source = value.toObject().toVariantMap();
+        const QString name = source.value(QStringLiteral("name")).toString();
+        // "<output>.monitor" records what an output plays: not a microphone.
+        const QString monitorOf = source.value(QStringLiteral("monitor_of_sink")).toString();
+        if (name.isEmpty() || name.endsWith(QLatin1String(".monitor"))
+            || (!monitorOf.isEmpty() && monitorOf != QLatin1String("n/a")))
+            continue;
+        QString description = source.value(QStringLiteral("description")).toString();
+        if (description.isEmpty())
+            description = name;
+        QVariantMap in;
+        in.insert(QStringLiteral("name"), name);
+        in.insert(QStringLiteral("description"), description);
+        in.insert(QStringLiteral("isDefault"), name == defaultName);
+        in.insert(QStringLiteral("volume"), volumePercent(source.value(QStringLiteral("volume"))));
+        in.insert(QStringLiteral("muted"), source.value(QStringLiteral("mute")).toBool());
+        in.insert(QStringLiteral("bluetooth"), name.startsWith(QLatin1String("bluez")));
+        inputs.append(in);
+    }
+    m_inputs = inputs;
+}
+
+void AudioDevices::setDefaultInput(const QString &name)
+{
+    if (name.isEmpty())
+        return;
+    run({QStringLiteral("set-default-source"), name}, [this](bool, const QByteArray &) {
+        QTimer::singleShot(300, this, &AudioDevices::refresh);
+    });
 }
 
 void AudioDevices::setDefaultOutput(const QString &name)

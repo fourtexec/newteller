@@ -76,6 +76,37 @@ DropdownWindow {
         }
 
         Text {
+            visible: Audio.available && Audio.inputs.length > 1
+            topPadding: 6
+            text: qsTr("Input")
+            color: Theme.muted
+            font.family: Theme.fontFamily
+            font.pointSize: Theme.fontSize - 1
+        }
+
+        // Microphones, when there is a choice (a headset next to the
+        // built-in one).
+        Repeater {
+            model: Audio.available && Audio.inputs.length > 1 ? Audio.inputs : []
+
+            delegate: TaskButton {
+                required property var modelData
+                objectName: "soundInput"
+                Layout.fillWidth: true
+                height: 34
+                fillWidth: true
+                active: modelData.isDefault
+                iconName: modelData.bluetooth ? "bluetooth" : "mic"
+                iconSize: 18
+                label: modelData.description
+                onClicked: {
+                    if (!modelData.isDefault)
+                        Audio.setDefaultInput(modelData.name);
+                }
+            }
+        }
+
+        Text {
             visible: Audio.available
             topPadding: 6
             text: Audio.streams.length > 0 ? qsTr("Applications") : qsTr("Nothing is playing")

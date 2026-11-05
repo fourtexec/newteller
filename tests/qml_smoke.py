@@ -1261,6 +1261,15 @@ class AudioStub(QObject):
     streams = Property("QVariantList", lambda self: [
         {"index": 12, "app": "Firefox", "title": "Video", "icon": "firefox", "volume": 80,
          "muted": False}], notify=changed)
+    inputs = Property("QVariantList", lambda self: [
+        {"name": "alsa_input.internal", "description": "Internal microphone", "isDefault": True,
+         "volume": 70, "muted": False, "bluetooth": False},
+        {"name": "bluez_input.headset", "description": "Headset microphone", "isDefault": False,
+         "volume": 70, "muted": False, "bluetooth": True}], notify=changed)
+
+    @Slot(str)
+    def setDefaultInput(self, name):
+        self.calls.append(("setDefaultInput", name))
 
     @Slot()
     def refresh(self):
@@ -2516,13 +2525,18 @@ def main():
                 check(sound_cards[0].isVisible(), "the volume row opens the sound card")
                 # Repeater delegates are visual children only: walk childItems().
                 outputs = []
+                microphones = []
                 stack = [sound_cards[0].contentItem()]
                 while stack:
                     item = stack.pop()
                     if item.objectName() == "soundOutput":
                         outputs.append(item)
+                    elif item.objectName() == "soundInput":
+                        microphones.append(item)
                     stack.extend(item.childItems())
                 check(len(outputs) == 2, f"the sound card lists the outputs ({len(outputs)})")
+                check(len(microphones) == 2,
+                      f"the sound card lists the microphones ({len(microphones)})")
                 headset = next((o for o in outputs if o.property("label") == "Headset"), None)
                 if headset is not None:
                     QMetaObject.invokeMethod(headset, "clicked")

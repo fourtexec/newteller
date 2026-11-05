@@ -47,7 +47,8 @@ inside VirtualBox. The implemented pieces are:
   `tray.menus`).
 - **Sound card** (the arrow next to the volume slider): pick the output
   (speakers, headphones, HDMI, a Bluetooth headset; what is playing moves
-  along) and set or mute the volume of each application that plays. Uses
+  along), the microphone when there are several, and set or mute the volume
+  of each application that plays. Uses
   `pactl` (PipeWire or PulseAudio); without it the arrow opens pavucontrol.
 - **Quick settings: the indicators button at the end of the panel.** One card
   with the media player that is playing (MPRIS over D-Bus: title, artist,
