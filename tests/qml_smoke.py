@@ -2411,6 +2411,10 @@ def main():
                   f"the volume-up key raises the volume by 5% ({quick.calls})")
             osds = windows_of_kind("OsdPopup")
             check(bool(osds) and osds[0].isVisible(), "the volume key shows the on-screen level")
+            session.mediaKey.emit("caps-on")
+            QTest.qWait(50)
+            check(bool(osds) and osds[0].property("text") == "Caps Lock on",
+                  f"Caps Lock shows on screen ({osds[0].property('text') if osds else None})")
 
             # Super+V reaches the shell over D-Bus and opens the history.
             shell.clipboardToggleRequested.emit()

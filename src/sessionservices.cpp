@@ -586,6 +586,7 @@ void SessionServices::settingChanged(const QString &key)
         || key == QLatin1String("windows.focusFollowsMouse")
         || key == QLatin1String("windows.placement") || key == QLatin1String("windows.snapping")
         || key.startsWith(QLatin1String("windowRules."))
+        || key.startsWith(QLatin1String("hotCorners."))
         || key.startsWith(QLatin1String("mouse.")) || key.startsWith(QLatin1String("cursor."))
         || key == QLatin1String("desktop.wallpaper")
         || key == QLatin1String("desktop.defaultWallpaper")
@@ -718,6 +719,15 @@ QString SessionServices::compositorConfigText() const
     };
     text += confLine(QStringLiteral("rules.alwaysOnTop"), appIds("windowRules.alwaysOnTop"));
     text += confLine(QStringLiteral("rules.maximized"), appIds("windowRules.maximized"));
+    static const QStringList cornerActions{
+        QStringLiteral("none"), QStringLiteral("overview"), QStringLiteral("desktop"),
+        QStringLiteral("startMenu"), QStringLiteral("notifications"), QStringLiteral("lock")};
+    for (const char *corner : {"hotCorners.topLeft", "hotCorners.topRight",
+                               "hotCorners.bottomLeft", "hotCorners.bottomRight"}) {
+        const QString action = value(corner).toString();
+        text += confLine(QString::fromLatin1(corner),
+                         cornerActions.contains(action) ? action : QStringLiteral("none"));
+    }
 
     // Desktop effects.
     text += confLine(QStringLiteral("effects.enabled"), boolText(value("effects.enabled")));

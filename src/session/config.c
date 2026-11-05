@@ -116,6 +116,8 @@ void ntConfigDefaults(struct CompositorConfig *config)
     snprintf(config->placement, sizeof(config->placement), "%s", "center");
     config->rulesAlwaysOnTop[0] = '\0';
     config->rulesMaximized[0] = '\0';
+    for (int i = 0; i < 4; ++i)
+        snprintf(config->hotCorners[i], sizeof(config->hotCorners[i]), "%s", "none");
     config->bindingCount = 0;
 
     config->effects = true;
@@ -285,6 +287,14 @@ bool ntConfigLoadFile(struct CompositorConfig *config, const char *path)
             copyText(config->rulesAlwaysOnTop, sizeof(config->rulesAlwaysOnTop), value);
         else if (strcmp(key, "rules.maximized") == 0)
             copyText(config->rulesMaximized, sizeof(config->rulesMaximized), value);
+        else if (strcmp(key, "hotCorners.topLeft") == 0)
+            copyText(config->hotCorners[0], sizeof(config->hotCorners[0]), value);
+        else if (strcmp(key, "hotCorners.topRight") == 0)
+            copyText(config->hotCorners[1], sizeof(config->hotCorners[1]), value);
+        else if (strcmp(key, "hotCorners.bottomLeft") == 0)
+            copyText(config->hotCorners[2], sizeof(config->hotCorners[2]), value);
+        else if (strcmp(key, "hotCorners.bottomRight") == 0)
+            copyText(config->hotCorners[3], sizeof(config->hotCorners[3]), value);
         else if (strncmp(key, "bind.", 5) == 0 && config->bindingCount < NT_MAX_BINDINGS) {
             // bind.N = Super+Shift+T|command
             char *bar = strchr(value, '|');

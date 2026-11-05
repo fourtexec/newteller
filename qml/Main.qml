@@ -69,6 +69,14 @@ QtObject {
             } else if (name === "previous") {
                 Quick.mediaPrevious();
                 root.osd.show("skip-back", -1, qsTr("Previous track"));
+            } else if (name.startsWith("caps-") || name.startsWith("num-")) {
+                if (Settings.values["keyboard.lockKeysOsd"] === false)
+                    return;
+                const on = name.endsWith("-on");
+                if (name.startsWith("caps-"))
+                    root.osd.show("keyboard", -1, on ? qsTr("Caps Lock on") : qsTr("Caps Lock off"));
+                else
+                    root.osd.show("keyboard", -1, on ? qsTr("Num Lock on") : qsTr("Num Lock off"));
             }
         }
     }

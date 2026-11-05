@@ -239,6 +239,11 @@ Settings::Settings(QObject *parent)
     // Window management
     m_defaults.insert(QStringLiteral("windowRules.alwaysOnTop"), QStringList());
     m_defaults.insert(QStringLiteral("windowRules.maximized"), QStringList());
+    // Hot corners: none | overview | desktop | startMenu | notifications | lock.
+    m_defaults.insert(QStringLiteral("hotCorners.topLeft"), QStringLiteral("none"));
+    m_defaults.insert(QStringLiteral("hotCorners.topRight"), QStringLiteral("none"));
+    m_defaults.insert(QStringLiteral("hotCorners.bottomLeft"), QStringLiteral("none"));
+    m_defaults.insert(QStringLiteral("hotCorners.bottomRight"), QStringLiteral("none"));
     // Screen recordings (wf-recorder) also record the default microphone.
     m_defaults.insert(QStringLiteral("recorder.audio"), false);
     // Power management
@@ -264,6 +269,8 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("keyboard.numlock"), false);
     // Every window remembers its keyboard layout (as on Windows).
     m_defaults.insert(QStringLiteral("keyboard.layoutPerWindow"), false);
+    // Show Caps Lock / Num Lock changes on screen.
+    m_defaults.insert(QStringLiteral("keyboard.lockKeysOsd"), true);
     m_defaults.insert(QStringLiteral("keyboard.showIndicator"), true);
     // Pointer devices (libinput, applied by the compositor).
     m_defaults.insert(QStringLiteral("touchpad.tapToClick"), true);

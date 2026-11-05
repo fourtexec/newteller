@@ -69,6 +69,9 @@ struct CompositorConfig {
     // Window rules: comma separated app ids (or X11 classes), any case.
     char rulesAlwaysOnTop[NT_CONFIG_TEXT];
     char rulesMaximized[NT_CONFIG_TEXT];
+    // Hot corners (top left, top right, bottom left, bottom right): none |
+    // overview | desktop | startMenu | notifications | lock.
+    char hotCorners[4][16];
 
     struct NtBinding bindings[NT_MAX_BINDINGS];
     int bindingCount;

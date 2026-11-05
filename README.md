@@ -241,6 +241,12 @@ inside VirtualBox. The implemented pieces are:
   screen, **always on top**, move to another desktop, close. Settings →
   Windows → Window rules keeps chosen applications on top or opens them
   maximized (`windowRules.alwaysOnTop`, `windowRules.maximized`).
+- **Hot corners** (Settings → Windows): push the pointer into a screen corner
+  to open the overview, show the desktop, open the start menu or the
+  notifications, or lock (`hotCorners.topLeft` … `bottomRight`; off by
+  default, never during a drag, a full-screen window or a game).
+- **Caps Lock / Num Lock on screen** for keyboards without indicator lights
+  (`keyboard.lockKeysOsd`).
 - **Overview** (`Super+Tab`): every window of a desktop as a live thumbnail,
   desktops along the top; click to switch, close, or move a window to
   another desktop. Alt+Tab shows thumbnails too.

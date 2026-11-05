@@ -2663,6 +2663,37 @@ Window {
                         }
 
                         SettingsSection {
+                            title: qsTr("Hot corners")
+                            subtitle: qsTr("Push the pointer into a corner of the screen to run an action.")
+
+                            Repeater {
+                                model: [
+                                    { key: "hotCorners.topLeft", label: qsTr("Top left") },
+                                    { key: "hotCorners.topRight", label: qsTr("Top right") },
+                                    { key: "hotCorners.bottomLeft", label: qsTr("Bottom left") },
+                                    { key: "hotCorners.bottomRight", label: qsTr("Bottom right") }
+                                ]
+                                delegate: SettingsRow {
+                                    required property var modelData
+                                    width: parent ? parent.width : 320
+                                    title: modelData.label
+                                    settingKey: modelData.key
+                                    SettingsChoice {
+                                        settingKey: modelData.key
+                                        model: [
+                                            { value: "none", label: qsTr("Nothing") },
+                                            { value: "overview", label: qsTr("Overview") },
+                                            { value: "desktop", label: qsTr("Show desktop") },
+                                            { value: "startMenu", label: qsTr("Start menu") },
+                                            { value: "notifications", label: qsTr("Notifications") },
+                                            { value: "lock", label: qsTr("Lock") }
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+
+                        SettingsSection {
                             title: qsTr("Window rules")
                             subtitle: qsTr("Application ids, separated by commas (the overview and Ctrl+Shift+Esc show them). Any window can also be put on top from its window menu: right-click the title bar or press Alt+Space.")
 
@@ -2906,6 +2937,13 @@ Window {
                                 title: qsTr("Num Lock on at login")
                                 settingKey: "keyboard.numlock"
                                 SettingsSwitch { settingKey: "keyboard.numlock" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Show Caps Lock and Num Lock on screen")
+                                subtitle: qsTr("For keyboards without indicator lights.")
+                                settingKey: "keyboard.lockKeysOsd"
+                                SettingsSwitch { settingKey: "keyboard.lockKeysOsd" }
                             }
                         }
 

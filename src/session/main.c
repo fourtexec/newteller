@@ -211,6 +211,9 @@ static void updateIdleInhibited(struct Server *server);
 static bool surfaceLayoutPosition(struct Server *server, struct wlr_surface *surface, int *x, int *y);
 static bool shortcutsInhibited(struct Server *server);
 static void raisePinnedViews(struct Server *server);
+static void toggleShowDesktop(struct Server *server);
+static void shellAction(const char *method);
+static void checkHotCorner(struct Server *server);
 static void viewSetMaximized(struct View *view, bool maximized);
 static void requestWindowMenu(struct View *view, int x, int y);
 struct Keyboard;
@@ -360,6 +363,9 @@ struct Keyboard {
     struct wlr_keyboard *keyboard;
     // Virtual keyboards that bring their own keymap keep it on reload.
     bool ownKeymap;
+    // Caps Lock (1) and Num Lock (2) as last seen; the shell shows changes.
+    int lockKeys;
+    bool lockKeysKnown;
     struct wl_listener modifiers;
     struct wl_listener key;
     struct wl_listener destroy;
@@ -570,6 +576,9 @@ struct Server {
     // only a plain tap of Super toggles the start menu.
     bool logoTap;
     bool showDesktop;
+    // The hot corner the pointer last fired (-1: none); it fires again only
+    // after the pointer has left that corner.
+    int hotCornerFired;
     enum CursorMode cursorMode;
     double grabX;
     double grabY;
@@ -2840,6 +2849,8 @@ static void processCursorMotion(struct Server *server, uint32_t time)
         server->hoverView = hoverView;
     }
 
+    checkHotCorner(server);
+
     // Focus follows the mouse (without raising), when chosen.
     if (server->config.focusFollowsMouse && hit.view && !hit.view->overrideRedirect
         && hit.view != server->focusedView && !server->focusedLayer && !server->locked) {
@@ -2847,6 +2858,64 @@ static void processCursorMotion(struct Server *server, uint32_t time)
         focusView(hit.view, NULL);
         server->suppressRaise = false;
     }
+}
+
+// Hot corners (Settings -> Windows): pushing the pointer into a screen corner
+// opens the overview, shows the desktop, ... Never while dragging, locked,
+// in a full-screen window or a game that holds the pointer.
+static void checkHotCorner(struct Server *server)
+{
+    struct wlr_output *output = wlr_output_layout_output_at(server->outputLayout,
+                                                            server->cursor->x, server->cursor->y);
+    if (!output) {
+        server->hotCornerFired = -1;
+        return;
+    }
+    struct wlr_box box;
+    wlr_output_layout_get_box(server->outputLayout, output, &box);
+    const double x = server->cursor->x - box.x;
+    const double y = server->cursor->y - box.y;
+    const bool left = x < 1;
+    const bool right = x > box.width - 2;
+    const bool top = y < 1;
+    const bool bottom = y > box.height - 2;
+    int corner = -1;
+    if (top && left)
+        corner = 0;
+    else if (top && right)
+        corner = 1;
+    else if (bottom && left)
+        corner = 2;
+    else if (bottom && right)
+        corner = 3;
+    if (corner < 0) {
+        // Re-armed once the pointer is clearly away from the corner.
+        const double cx = (server->hotCornerFired == 1 || server->hotCornerFired == 3)
+                              ? box.width - x : x;
+        const double cy = (server->hotCornerFired == 2 || server->hotCornerFired == 3)
+                              ? box.height - y : y;
+        if (cx > 12 || cy > 12)
+            server->hotCornerFired = -1;
+        return;
+    }
+    if (server->hotCornerFired == corner)
+        return;
+    server->hotCornerFired = corner;
+    const char *action = server->config.hotCorners[corner];
+    if (strcmp(action, "none") == 0 || action[0] == '\0' || server->locked
+        || server->seat->drag || server->cursorMode != CURSOR_PASSTHROUGH
+        || server->fullscreenView || server->activeConstraint || shortcutsInhibited(server))
+        return;
+    if (strcmp(action, "overview") == 0)
+        shellAction("toggleTaskView");
+    else if (strcmp(action, "desktop") == 0)
+        toggleShowDesktop(server);
+    else if (strcmp(action, "startMenu") == 0)
+        shellAction("toggleStartMenu");
+    else if (strcmp(action, "notifications") == 0)
+        shellAction("toggleNotifications");
+    else if (strcmp(action, "lock") == 0)
+        spawnLocker(server);
 }
 
 // Every input event counts as activity for ext-idle-notify clients
@@ -4202,6 +4271,26 @@ static void keyboardModifiers(struct wl_listener *listener, void *data)
                 server->focusedView->layoutIndex = group;
             broadcastLayout(server);
         }
+    }
+    // Caps Lock / Num Lock went on or off: "event key caps-on" and so on,
+    // for the on-screen indicator (many laptops have no LED for them). The
+    // first state seen (Num Lock switched on at start) is not announced.
+    if (!keyboard->ownKeymap && keyboard->keyboard->xkb_state) {
+        struct xkb_state *state = keyboard->keyboard->xkb_state;
+        int locks = (xkb_state_mod_name_is_active(state, XKB_MOD_NAME_CAPS,
+                                                  XKB_STATE_MODS_LOCKED) > 0 ? 1 : 0)
+                    | (xkb_state_mod_name_is_active(state, XKB_MOD_NAME_NUM,
+                                                    XKB_STATE_MODS_LOCKED) > 0 ? 2 : 0);
+        if (keyboard->lockKeysKnown && locks != keyboard->lockKeys && !server->locked
+            && ipcHasWatchers(server)) {
+            int changed = locks ^ keyboard->lockKeys;
+            if (changed & 1)
+                ipcBroadcast(server, (locks & 1) ? "event key caps-on" : "event key caps-off");
+            if (changed & 2)
+                ipcBroadcast(server, (locks & 2) ? "event key num-on" : "event key num-off");
+        }
+        keyboard->lockKeys = locks;
+        keyboard->lockKeysKnown = true;
     }
     struct wlr_input_method_keyboard_grab_v2 *grab = keyboardImGrab(keyboard);
     if (grab) {
@@ -8358,6 +8447,7 @@ static int run(struct Server *server)
 
     wl_list_init(&server->outputs);
     wl_list_init(&server->views);
+    server->hotCornerFired = -1;
     wl_list_init(&server->layers);
     wl_list_init(&server->keyboards);
     wl_list_init(&server->pointers);
