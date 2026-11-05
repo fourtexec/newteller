@@ -995,7 +995,9 @@ static void viewSyncVisible(struct View *view)
     // xdg-shell v6: a minimized window or one on another desktop is told it
     // is suspended, so browsers and GTK 4 applications stop drawing frames
     // nobody sees (battery, CPU). Its last frame stays for previews.
-    if (view->xdg && view->xdg->base->initialized && view->mapped) {
+    // (Only clients that bound xdg_wm_base version 6 know the state.)
+    if (view->xdg && view->xdg->base->initialized && view->mapped
+        && wl_resource_get_version(view->xdg->resource) >= 6) {
         bool hidden = view->minimized || !viewOnWorkspace(view);
         if (hidden != view->suspended) {
             view->suspended = hidden;
