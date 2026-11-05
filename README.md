@@ -245,6 +245,9 @@ inside VirtualBox. The implemented pieces are:
   to open the overview, show the desktop, open the start menu or the
   notifications, or lock (`hotCorners.topLeft` … `bottomRight`; off by
   default, never during a drag, a full-screen window or a game).
+- **Application bells** (xdg-system-bell, wlroots 0.19+): a terminal's or an
+  application's bell plays the sound theme's bell (`sounds.bell`), not under
+  do-not-disturb.
 - **Caps Lock / Num Lock on screen** for keyboards without indicator lights
   (`keyboard.lockKeysOsd`).
 - **Overview** (`Super+Tab`): every window of a desktop as a live thumbnail,

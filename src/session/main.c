@@ -75,6 +75,9 @@
 #include <wlr/types/wlr_xdg_foreign_v2.h>
 #include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
+#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR >= 19
+#include <wlr/types/wlr_xdg_system_bell_v1.h>
+#endif
 #include <wlr/util/log.h>
 #include <wlr/util/region.h>
 #include <wlr/util/transform.h>
@@ -661,6 +664,9 @@ struct Server {
     // wlr-output-power-management: wlopm and idle tools turn screens off.
     struct wlr_output_power_manager_v1 *outputPowerManager;
     struct wl_listener outputPowerSetMode;
+    // xdg-system-bell (wlroots 0.19+): a terminal's or an application's bell.
+    struct wl_listener systemBellRing;
+    uint64_t lastBell;
 
     int ipcFd;
     struct wl_event_source *ipcSource;
@@ -8123,6 +8129,23 @@ static void handleSecurityContextsDestroy(struct wl_listener *listener, void *da
     server->securityContexts = NULL;
 }
 
+#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR >= 19
+// The shell plays the bell sound ("event bell"); a burst of rings (a
+// terminal printing many BEL characters) makes one sound.
+static void handleSystemBell(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct Server *server = wl_container_of(listener, server, systemBellRing);
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    uint64_t ms = (uint64_t)now.tv_sec * 1000 + (uint64_t)now.tv_nsec / 1000000;
+    if (server->locked || ms - server->lastBell < 250)
+        return;
+    server->lastBell = ms;
+    ipcBroadcast(server, "event bell");
+}
+#endif
+
 static void setupProtocols(struct Server *server)
 {
     server->compositor = wlr_compositor_create(server->display, 6,
@@ -8221,6 +8244,16 @@ static void setupProtocols(struct Server *server)
     server->gammaManager = wlr_gamma_control_manager_v1_create(server->display);
     server->gammaSetGamma.notify = handleGammaSet;
     wl_signal_add(&server->gammaManager->events.set_gamma, &server->gammaSetGamma);
+#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR >= 19
+    struct wlr_xdg_system_bell_v1 *bell = wlr_xdg_system_bell_v1_create(server->display, 1);
+    wl_list_init(&server->systemBellRing.link);
+    if (bell) {
+        server->systemBellRing.notify = handleSystemBell;
+        wl_signal_add(&bell->events.ring, &server->systemBellRing);
+    }
+#else
+    wl_list_init(&server->systemBellRing.link);
+#endif
     server->outputPowerManager = wlr_output_power_manager_v1_create(server->display);
     server->outputPowerSetMode.notify = handleOutputPowerSetMode;
     wl_signal_add(&server->outputPowerManager->events.set_mode, &server->outputPowerSetMode);
@@ -8642,6 +8675,7 @@ static int run(struct Server *server)
     wl_list_remove(&server->outputPowerSetMode.link);
     wl_list_remove(&server->newXdgDecoration.link);
     wl_list_remove(&server->newKdeDecoration.link);
+    wl_list_remove(&server->systemBellRing.link);
     wlr_log(WLR_DEBUG, "destroying cursor");
     if (server->cursorManager)
         wlr_xcursor_manager_destroy(server->cursorManager);

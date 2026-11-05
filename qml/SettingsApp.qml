@@ -2047,6 +2047,13 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("Play the bell when an application rings it")
+                                subtitle: qsTr("Terminals and other applications (not under do-not-disturb).")
+                                settingKey: "sounds.bell"
+                                SettingsSwitch { settingKey: "sounds.bell" }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Sound file")
                                 visible: Settings.values["notifications.soundEnabled"] === true
                                 settingKey: "notifications.soundFile"

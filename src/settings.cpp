@@ -269,6 +269,8 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("keyboard.numlock"), false);
     // Every window remembers its keyboard layout (as on Windows).
     m_defaults.insert(QStringLiteral("keyboard.layoutPerWindow"), false);
+    // Applications' bells (xdg-system-bell) play the sound theme's bell.
+    m_defaults.insert(QStringLiteral("sounds.bell"), true);
     // Show Caps Lock / Num Lock changes on screen.
     m_defaults.insert(QStringLiteral("keyboard.lockKeysOsd"), true);
     m_defaults.insert(QStringLiteral("keyboard.showIndicator"), true);

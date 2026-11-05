@@ -68,10 +68,12 @@ and the checks that will fail if one is broken.
   lines. CLI: `newteller-compositor --msg <command>`. Commands include
   `ping reload lock locked dpms on|off layout [next|prev|N] workspace N
   move-to-workspace N windows thumbnail activate close move-window kill outputs
-  outputs-detail output-set blur blur-clear effects exit`. Events: `layout`,
-  `workspace`, `switcher`, `locked`, `key` (media keys), `click X Y` (every
-  button press while unlocked), `hung ID` / `responsive ID` / `closed ID`
-  (ping timeouts). Never block the shell's UI thread on D-Bus or the socket
+  outputs-detail output-set blur blur-clear effects minimize maximize
+  fullscreen always-on-top window-menu exit`. Events: `layout`,
+  `workspace`, `switcher`, `locked`, `key` (media keys, `caps-on|off`,
+  `num-on|off`), `click X Y` (every button press while unlocked), `hung ID` /
+  `responsive ID` / `closed ID` (ping timeouts), `window-menu ID X Y DESKTOP
+  FLAGS TITLE`. Window state letters come from `viewFlags()`. Never block the shell's UI thread on D-Bus or the socket
   for long: the tray once froze the desktop for minutes with synchronous
   scans; use async calls (`asyncCall` + `QDBusPendingCallWatcher`).
   Fields inside one reply are separated by `\x1e`, records by `\x1f`;
@@ -189,6 +191,11 @@ line").
   surfaces get input and focus; `focusView`/`focusLayer` refuse; an opaque
   backdrop in `lockTree` covers everything. A dead locker never unlocks.
   Any new input or focus path must respect `server->locked`.
+- Always-on-top windows stay in `toplevelTree`; anything that raises a view
+  must end with `raisePinnedViews()` (`viewRaise` does). Dialogs follow their
+  parent (`viewParent`, `raiseWithChildren`).
+- Sandboxed clients (security-context) are filtered in `globalFilter()`:
+  add any new privileged global's interface name there.
 - Pointers stored on `Server` that refer to a `View` (`focusedView`,
   `previousView`, `grabbedView`, `switchTarget`, `hoverView`,
   `lastTitleView`) must be cleared in `destroyView()`.

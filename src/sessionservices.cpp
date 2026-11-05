@@ -418,6 +418,8 @@ void SessionServices::handleEvent(const QString &line)
                                      parts.at(3).toInt(), flags,
                                      parts.mid(5).join(QLatin1Char(' ')));
         }
+    } else if (line == QLatin1String("bell")) {
+        playBell();
     } else if (line.startsWith(QLatin1String("key "))) {
         emit mediaKey(line.mid(4).trimmed());
     } else if (line.startsWith(QLatin1String("locked "))) {
@@ -1502,6 +1504,32 @@ void SessionServices::closeWindow(int id)
 void SessionServices::moveWindow(int id, int workspace)
 {
     query(QStringLiteral("move-window %1 %2").arg(id).arg(workspace));
+}
+
+// xdg-system-bell: the sound theme's bell (sounds.bell), never under
+// do-not-disturb. Started detached, so the UI never waits for a player.
+void SessionServices::playBell() const
+{
+    if (!m_settings->value(QStringLiteral("sounds.bell"), true).toBool()
+        || m_settings->value(QStringLiteral("notifications.doNotDisturb"), false).toBool())
+        return;
+    const QString canberra = QStandardPaths::findExecutable(QStringLiteral("canberra-gtk-play"));
+    if (!canberra.isEmpty()) {
+        QProcess::startDetached(canberra, {QStringLiteral("-i"), QStringLiteral("bell")});
+        return;
+    }
+    const QStringList dirs = QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation);
+    for (const QString &dir : dirs) {
+        const QString file = dir + QStringLiteral("/sounds/freedesktop/stereo/bell.oga");
+        if (!QFileInfo::exists(file))
+            continue;
+        for (const QString &player : {QStringLiteral("pw-play"), QStringLiteral("paplay")}) {
+            const QString path = QStandardPaths::findExecutable(player);
+            if (!path.isEmpty() && QProcess::startDetached(path, {file}))
+                return;
+        }
+        return;
+    }
 }
 
 // The window menu's commands go over the watch connection: the reply is

@@ -199,6 +199,7 @@ private:
     void sendCommand(const QString &command);
     void readCompositor();
     void handleEvent(const QString &line);
+    void playBell() const;
     void settingChanged(const QString &key);
     void writeCompositorConfig();
     void writeLockConfig();
