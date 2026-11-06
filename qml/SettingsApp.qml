@@ -2194,6 +2194,17 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("Opens")
+                                settingKey: "startmenu.position"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "button", label: qsTr("At the start button") },
+                                        { value: "center", label: qsTr("In the middle of the screen") }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Search field")
                                 settingKey: "startmenu.searchPosition"
                                 SettingsChoice {

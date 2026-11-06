@@ -179,6 +179,7 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("startmenu.layout"), QStringLiteral("list"));
     m_defaults.insert(QStringLiteral("startmenu.gridIconSize"), 40);
     m_defaults.insert(QStringLiteral("startmenu.searchPosition"), QStringLiteral("top"));
+    m_defaults.insert(QStringLiteral("startmenu.position"), QStringLiteral("button"));
     m_defaults.insert(QStringLiteral("startmenu.showPowerButtons"), true);
     m_defaults.insert(QStringLiteral("startmenu.foregroundColor"), QString());
     m_defaults.insert(QStringLiteral("startmenu.accentColor"), QString());

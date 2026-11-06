@@ -126,6 +126,7 @@ Window {
     onWidthChanged: root.reposition()
     onHeightChanged: root.reposition()
     onPanelPositionChanged: root.reposition()
+    onFallbackCornerChanged: root.reposition()
     onScreenRectChanged: root.reposition()
     Component.onCompleted: root.reposition()
 

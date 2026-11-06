@@ -187,7 +187,9 @@ DropdownWindow {
     exclusiveKeyboard: true
     // Opened from a keyboard shortcut or D-Bus there is no button to hang off;
     // the menu then sits at the start of the bar, as it always has.
-    fallbackCorner: "bottomLeft"
+    // startmenu.position "center": in the middle of the screen, without the
+    // pointer to the start button.
+    fallbackCorner: Settings.values["startmenu.position"] === "center" ? "center" : "bottomLeft"
 
     // Every open starts from a fresh search and the newest application list.
     function opened() {

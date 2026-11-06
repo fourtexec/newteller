@@ -2025,6 +2025,18 @@ def main():
         settings.setValue("startmenu.layout", "list")
         QTest.qWait(20)
 
+        # startmenu.position "center": the menu sits in the middle of the
+        # screen, whatever button opened it.
+        settings.setValue("startmenu.position", "center")
+        QMetaObject.invokeMethod(menu, "reposition")
+        QTest.qWait(30)
+        geometry = menu.screen().geometry()
+        want_x = geometry.x() + round((geometry.width() - menu.width()) / 2)
+        check(abs(menu.x() - want_x) <= 1, f"a centred start menu is centred ({menu.x()} vs {want_x})")
+        settings.reset("startmenu.position")
+        QMetaObject.invokeMethod(menu, "reposition")
+        QTest.qWait(20)
+
         # startmenu.showPinned: the dock's pinned applications as favourites
         # (the uninstalled one is left out).
         settings.setValue("startmenu.showPinned", True)

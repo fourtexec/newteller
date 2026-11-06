@@ -74,6 +74,15 @@ function place(anchor, size, screen, edge, gap, margin, corner) {
     const screenWidth = screen ? screen.width : 1280;
     const screenHeight = screen ? screen.height : 800;
 
+    // "center": in the middle of the screen whatever opened it (the start
+    // menu's startmenu.position).
+    if (corner === "center") {
+        return { x: Math.round(screenX + (screenWidth - size.width) / 2),
+                 y: Math.round(screenY + (screenHeight - size.height) / 2),
+                 nubEdge: "",
+                 nubOffset: Math.round(size.width / 2),
+                 flipped: false };
+    }
     if (!anchor || anchor.width <= 0 || anchor.height <= 0
         || size.width <= 0 || size.height <= 0) {
         // No anchor (a keyboard invocation, or a popup opened by a shortcut):
