@@ -372,7 +372,8 @@ inside VirtualBox. The implemented pieces are:
 - **Clipboard history** on `Super+V` (wl-clipboard): the texts copied in the
   session, newest first; click one to copy it again. Pin the snippets you
   reuse (they stay across restarts and are never pushed out) and type to
-  search; Enter takes the first match. Kept in memory unless
+  search; Up/Down choose, Enter takes the chosen one and Delete forgets it.
+  Kept in memory unless
   `clipboard.persistHistory` is on. Passwords that a password manager marks as secret
   (KeePassXC, Bitwarden and others) are never recorded.
 - **Power profiles** (power-profiles-daemon) in quick settings and low-battery

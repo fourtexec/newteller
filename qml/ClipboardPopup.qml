@@ -4,11 +4,16 @@ import QtQuick.Layouts
 
 // Clipboard history (Super+V): the texts copied in this session, newest
 // first, with the pinned ones on top. Click one to put it back on the
-// clipboard, then paste as usual; type to search.
+// clipboard, then paste as usual; type to search. From the keyboard:
+// Up/Down choose, Enter takes the chosen one, Delete forgets it (with an
+// empty search field) and Escape closes.
 DropdownWindow {
     id: popup
 
     property string filter: ""
+    // The entry Enter takes; follows the pointer and the arrow keys.
+    property int selected: 0
+    onEntriesChanged: selected = Math.max(0, Math.min(selected, entries.length - 1))
     // Pinned entries first, then the history; both filtered by the search.
     readonly property var entries: {
         const needle = popup.filter.trim().toLowerCase();
@@ -29,7 +34,31 @@ DropdownWindow {
     function opened() {
         popup.filter = "";
         searchField.text = "";
-        searchField.focusInput();
+        popup.selected = 0;
+        // A short history hides the search field; the keys still work.
+        if (searchField.visible)
+            searchField.focusInput();
+        else
+            keys.forceActiveFocus();
+    }
+
+    function moveSelection(step) {
+        if (entries.length === 0)
+            return;
+        selected = Math.max(0, Math.min(entries.length - 1, selected + step));
+        list.positionViewAtIndex(selected, ListView.Contain);
+    }
+
+    function pickSelected() {
+        if (selected >= 0 && selected < entries.length)
+            pick(entries[selected]);
+    }
+
+    function forget(entry) {
+        if (entry.pinned)
+            Clipboard.unpin(entry.text);
+        else
+            Clipboard.remove(entry.index);
     }
 
     function pick(entry) {
@@ -46,8 +75,22 @@ DropdownWindow {
     scopeName: "newteller-clipboard"
 
     ColumnLayout {
+        id: keys
         anchors.fill: parent
         spacing: 6
+        // The search field lets Up, Down and Delete through to here.
+        Keys.onUpPressed: popup.moveSelection(-1)
+        Keys.onDownPressed: popup.moveSelection(1)
+        Keys.onReturnPressed: popup.pickSelected()
+        Keys.onEnterPressed: popup.pickSelected()
+        Keys.onDeletePressed: (event) => {
+            if (searchField.text.length > 0 && searchField.visible) {
+                event.accepted = false;
+                return;
+            }
+            if (popup.selected >= 0 && popup.selected < popup.entries.length)
+                popup.forget(popup.entries[popup.selected]);
+        }
 
         ShellTitleBar {
             Layout.fillWidth: true
@@ -77,12 +120,12 @@ DropdownWindow {
             Layout.fillWidth: true
             visible: Clipboard.items.length + Clipboard.pinnedItems.length > 3
             placeholder: qsTr("Search the clipboard")
-            onTextChanged: popup.filter = searchField.text
-            // Enter takes the first match.
-            onAccepted: {
-                if (popup.entries.length > 0)
-                    popup.pick(popup.entries[0]);
+            onTextChanged: {
+                popup.filter = searchField.text;
+                popup.selected = 0;
             }
+            // Enter takes the chosen match (the first one after typing).
+            onAccepted: popup.pickSelected()
         }
 
         ListView {
@@ -101,12 +144,18 @@ DropdownWindow {
                 width: list.width
                 height: Math.min(76, entryText.implicitHeight + 16)
                 radius: Theme.radius
-                color: entryHover.hovered
+                color: index === popup.selected
                        ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.18)
                        : Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.06)
+                border.width: index === popup.selected ? 1 : 0
+                border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.6)
 
                 HoverHandler {
                     id: entryHover
+                    onHoveredChanged: {
+                        if (hovered)
+                            popup.selected = index;
+                    }
                 }
                 MouseArea {
                     anchors.fill: parent
@@ -153,12 +202,7 @@ DropdownWindow {
                     height: 26
                     iconSize: 16
                     iconName: "x"
-                    onClicked: {
-                        if (modelData.pinned)
-                            Clipboard.unpin(modelData.text);
-                        else
-                            Clipboard.remove(modelData.index);
-                    }
+                    onClicked: popup.forget(modelData)
                 }
             }
         }

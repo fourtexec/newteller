@@ -3179,6 +3179,20 @@ def main():
                 QTest.qWait(300)
                 check(("copyText", "pinned snippet") in clipboard.calls,
                       f"a pinned entry goes back on the clipboard ({clipboard.calls})")
+                # From the keyboard, with only three entries (no search
+                # field): Down, Enter takes the second; Delete forgets one.
+                shell.clipboardToggleRequested.emit()
+                QTest.qWait(300)
+                clipboard.calls.clear()
+                QTest.keyClick(clips[0], Qt.Key_Down)
+                QTest.keyClick(clips[0], Qt.Key_Delete)
+                QTest.qWait(50)
+                check(("remove", 0) in clipboard.calls,
+                      f"Delete forgets the chosen clipboard entry ({clipboard.calls})")
+                QTest.keyClick(clips[0], Qt.Key_Return)
+                QTest.qWait(300)
+                check(("copy", 0) in clipboard.calls and not clips[0].isVisible(),
+                      f"Down and Enter take an entry from the clipboard history ({clipboard.calls})")
                 shell.clipboardToggleRequested.emit()
                 QTest.qWait(300)
                 shell.clipboardToggleRequested.emit()
