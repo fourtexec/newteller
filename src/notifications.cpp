@@ -411,6 +411,10 @@ uint NotificationDaemon::publish(uint replacesId, const QString &appName, const 
                           && m_settings->value(QStringLiteral("notifications.quietInFullscreen"), true)
                                  .toBool()))
                      && urgency < breakThrough;
+    // notifications.mutedApps: these applications' notifications go to the
+    // history without a popup or a sound (urgent ones still show).
+    const QStringList muted = m_settings->value(QStringLiteral("notifications.mutedApps")).toStringList();
+    const bool appMuted = !critical && !appName.isEmpty() && muted.contains(appName, Qt::CaseInsensitive);
 
     QVariantMap entry;
     const uint id = known ? replacesId : m_nextId++;
@@ -493,7 +497,7 @@ uint NotificationDaemon::publish(uint replacesId, const QString &appName, const 
         // Shown already: update the popup where it is, even under DND.
         m_active[replaceAt] = entry;
         emit activeChanged();
-    } else if (!dnd && m_settings->value(QStringLiteral("notifications.enabled"), true).toBool()) {
+    } else if (!dnd && !appMuted && m_settings->value(QStringLiteral("notifications.enabled"), true).toBool()) {
         if (m_active.size() >= kMaxActive)
             dismiss(m_active.first().toMap().value(QStringLiteral("id")).toUInt(), kReasonExpired);
         m_active.append(entry);

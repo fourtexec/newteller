@@ -250,6 +250,8 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("notifications.customBackground"), QString());
     m_defaults.insert(QStringLiteral("notifications.customForeground"), QString());
     m_defaults.insert(QStringLiteral("notifications.groupByApp"), true);
+    // Applications whose notifications only go to the history.
+    m_defaults.insert(QStringLiteral("notifications.mutedApps"), QStringList());
     m_defaults.insert(QStringLiteral("notifications.showAppIcon"), true);
     m_defaults.insert(QStringLiteral("drives.notify"), true);
     // The weather widget: nothing is fetched until a city is set.

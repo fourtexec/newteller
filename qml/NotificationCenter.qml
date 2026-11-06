@@ -40,6 +40,28 @@ DropdownWindow {
         return out;
     }
 
+    function isMuted(app) {
+        const muted = Settings.values["notifications.mutedApps"] || [];
+        for (let i = 0; i < muted.length; ++i) {
+            if (String(muted[i]).toLowerCase() === String(app).toLowerCase())
+                return true;
+        }
+        return false;
+    }
+    function toggleMuted(app) {
+        if (!app)
+            return;
+        const muted = [];
+        const current = Settings.values["notifications.mutedApps"] || [];
+        for (let i = 0; i < current.length; ++i) {
+            if (String(current[i]).toLowerCase() !== String(app).toLowerCase())
+                muted.push(String(current[i]));
+        }
+        if (!isMuted(app))
+            muted.push(app);
+        Settings.setValue("notifications.mutedApps", muted);
+    }
+
     // Removes every notification of one application from the history.
     function clearApp(app) {
         const ids = [];
@@ -176,6 +198,21 @@ DropdownWindow {
                         font.pointSize: Theme.fontSize - 1
                         font.bold: true
                         elide: Text.ElideRight
+                    }
+                    // notifications.mutedApps: this application only fills
+                    // the history (no popups, no sound).
+                    TaskButton {
+                        objectName: "muteAppButton"
+                        readonly property bool appMuted: center.isMuted(group.modelData.app || "")
+                        visible: (group.modelData.app || "").length > 0
+                        width: 26
+                        height: 26
+                        iconSize: 16
+                        iconName: appMuted ? "bell-off" : "bell"
+                        active: appMuted
+                        tooltipText: appMuted ? qsTr("Show popups from %1 again").arg(group.modelData.app)
+                                              : qsTr("No popups from %1").arg(group.modelData.app)
+                        onClicked: center.toggleMuted(group.modelData.app || "")
                     }
                     TaskButton {
                         visible: group.modelData.groupCount > 1

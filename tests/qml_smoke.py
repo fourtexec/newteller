@@ -2543,6 +2543,16 @@ def main():
         ]
         notifications.historyChanged.emit()
         QTest.qWait(300)
+        # The bell next to an application's name mutes its popups
+        # (notifications.mutedApps) and unmutes them again.
+        QMetaObject.invokeMethod(center, "toggleMuted", Q_ARG("QVariant", "Mail"))
+        QTest.qWait(20)
+        check(list(settings._values.get("notifications.mutedApps") or []) == ["Mail"],
+              f"an application can be muted ({settings._values.get('notifications.mutedApps')})")
+        QMetaObject.invokeMethod(center, "toggleMuted", Q_ARG("QVariant", "mail"))
+        QTest.qWait(20)
+        check(not list(settings._values.get("notifications.mutedApps") or []),
+              "and unmuted (whatever the case)")
         # A row shows the notification's picture, as its popup did.
         center_items = []
         walk_items(center.contentItem(), center_items)

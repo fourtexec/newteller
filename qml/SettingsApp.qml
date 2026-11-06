@@ -2802,6 +2802,31 @@ Window {
                                     onPaletteRequested: settingsWindow.openPalette(notifFgColorField)
                                 }
                             }
+                            // notifications.mutedApps, muted from the notification
+                            // centre (the bell next to an application's name).
+                            Repeater {
+                                model: Settings.values["notifications.mutedApps"] || []
+                                delegate: SettingsRow {
+                                    id: mutedRow
+                                    required property string modelData
+                                    width: parent ? parent.width : 320
+                                    title: qsTr("No popups from %1").arg(modelData)
+                                    subtitle: qsTr("Its notifications only go to the history.")
+                                    TaskButton {
+                                        iconName: "bell"
+                                        label: qsTr("Show again")
+                                        onClicked: {
+                                            const muted = [];
+                                            const current = Settings.values["notifications.mutedApps"] || [];
+                                            for (let i = 0; i < current.length; ++i) {
+                                                if (current[i] !== mutedRow.modelData)
+                                                    muted.push(current[i]);
+                                            }
+                                            Settings.setValue("notifications.mutedApps", muted);
+                                        }
+                                    }
+                                }
+                            }
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Group by application")

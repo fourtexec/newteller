@@ -329,6 +329,9 @@ inside VirtualBox. The implemented pieces are:
   screen, calendar week start and week numbers, the panel clock's size and
   weight, the volume and brightness key steps, how the layout indicator reads,
   and a darker lock screen wallpaper with its own clock format.
+- **Mute an application's notifications**: the bell next to its name in the
+  notification centre sends its notifications straight to the history, no
+  popup or sound (`notifications.mutedApps`; urgent ones still show).
 - **Named desktops**: give desktops names (`workspaces.names`), show them on
   the panel as dots, numbers or names, and on screen when switching.
 - **Settings search**: type in the field above the settings pages to find any
