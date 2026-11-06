@@ -134,6 +134,7 @@ struct CompositorConfig {
     int blurStrength;                      // 1 .. 4
     bool animations;
     double animationSpeed;                 // 0.25 .. 4, 1 = normal
+    char animationStyle[16];               // zoom | fade | slide (open and close)
 };
 
 void ntConfigDefaults(struct CompositorConfig *config);

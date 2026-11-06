@@ -333,6 +333,7 @@ struct View {
     int animDuration;
     float animFromScale;
     float animFromAlpha;
+    bool animSlide;  // effects.animationStyle slide: rises into place
     int snapEdges;
     int snapSavedX;
     int snapSavedY;
@@ -5806,6 +5807,11 @@ static void viewAnimate(struct View *view, float fromScale, float fromAlpha, int
         view->animating = false;
         return;
     }
+    // effects.animationStyle: "fade" and "slide" keep the size.
+    const char *style = view->server->config.animationStyle;
+    view->animSlide = strcmp(style, "slide") == 0;
+    if (view->animSlide || strcmp(style, "fade") == 0)
+        fromScale = 1.0f;
     view->animating = true;
     view->animStart = nowMs();
     view->animDuration = duration;
@@ -5814,10 +5820,12 @@ static void viewAnimate(struct View *view, float fromScale, float fromAlpha, int
     scheduleAllFrames(view->server);
 }
 
-static void viewAnimationState(struct View *view, uint64_t now, double *scale, double *alpha)
+static void viewAnimationState(struct View *view, uint64_t now, double *scale, double *alpha,
+                               double *shiftY)
 {
     *scale = 1.0;
     *alpha = 1.0;
+    *shiftY = 0.0;
     if (!view->animating)
         return;
     double t = (double)(now - view->animStart) / view->animDuration;
@@ -5827,6 +5835,8 @@ static void viewAnimationState(struct View *view, uint64_t now, double *scale, d
     }
     double e = easeOutCubic(t);
     *scale = view->animFromScale + (1.0 - view->animFromScale) * e;
+    if (view->animSlide)
+        *shiftY = 36.0 * (1.0 - e);
     *alpha = view->animFromAlpha + (1.0 - view->animFromAlpha) * e;
 }
 
@@ -6117,11 +6127,12 @@ static void renderViews(struct Server *server, const struct RenderTarget *t, uin
         }
         if (!visible)
             continue;
-        double scale, alpha;
-        viewAnimationState(view, now, &scale, &alpha);
+        double scale, alpha, rise;
+        viewAnimationState(view, now, &scale, &alpha, &rise);
         struct wlr_box outer = viewOuterBox(view);
         state.alpha = alpha;
         state.scale = scale;
+        state.shiftY += rise;
         state.cx = outer.x + outer.width / 2.0;
         state.cy = outer.y + outer.height / 2.0;
         state.view = view;
@@ -6152,13 +6163,15 @@ static void renderViews(struct Server *server, const struct RenderTarget *t, uin
         if (ghost->workspace != server->workspace)
             continue;
         double e = easeOutCubic(progress);
-        struct RenderState state = {.alpha = 1.0 - e};
+        struct RenderState state = {.alpha = 1.0 - e, .scale = 1.0};
         state.cx = ghost->frame.x + ghost->frame.width / 2.0;
         state.cy = ghost->frame.y + ghost->frame.height / 2.0;
         if (ghost->kind == GHOST_MINIMIZE) {
             state.scale = 1.0 - 0.5 * e;
             state.shiftY = (t->oy + t->height / t->scale - state.cy) * 0.7 * e;
-        } else {
+        } else if (strcmp(server->config.animationStyle, "slide") == 0) {
+            state.shiftY = 36.0 * e;
+        } else if (strcmp(server->config.animationStyle, "fade") != 0) {
             state.scale = 1.0 - 0.08 * e;
         }
         pixman_region32_t region;

@@ -139,6 +139,7 @@ void ntConfigDefaults(struct CompositorConfig *config)
     config->blurStrength = 2;
     config->animations = true;
     config->animationSpeed = 1.0;
+    snprintf(config->animationStyle, sizeof(config->animationStyle), "%s", "zoom");
 }
 
 bool ntConfigParseColor(const char *text, float out[4])
@@ -292,6 +293,8 @@ bool ntConfigLoadFile(struct CompositorConfig *config, const char *path)
             config->blurStrength = parseInt(value, config->blurStrength, 1, 4);
         else if (strcmp(key, "effects.animations") == 0)
             config->animations = parseBool(value, config->animations);
+        else if (strcmp(key, "effects.animationStyle") == 0)
+            copyText(config->animationStyle, sizeof(config->animationStyle), value);
         else if (strcmp(key, "effects.animationSpeed") == 0)
             config->animationSpeed = parseDouble(value, config->animationSpeed, 0.25, 4.0);
         else if (strcmp(key, "windows.placement") == 0)

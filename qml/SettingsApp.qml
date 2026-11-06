@@ -2989,6 +2989,20 @@ Window {
                                 settingKey: "effects.animationSpeed"
                                 SettingsSlider { settingKey: "effects.animationSpeed"; from: 0.5; to: 3.0; step: 0.1 }
                             }
+                            SettingsRow {
+                                width: parent.width
+                                visible: Settings.values["effects.enabled"] !== false
+                                         && Settings.values["effects.animations"] !== false
+                                title: qsTr("Windows open and close")
+                                settingKey: "effects.animationStyle"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "zoom", label: qsTr("Zoom") },
+                                        { value: "fade", label: qsTr("Fade") },
+                                        { value: "slide", label: qsTr("Slide") }
+                                    ]
+                                }
+                            }
                         }
 
                         SettingsSection {

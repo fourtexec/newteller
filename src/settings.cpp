@@ -400,6 +400,7 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("effects.blurStrength"), 2);
     m_defaults.insert(QStringLiteral("effects.animations"), true);
     m_defaults.insert(QStringLiteral("effects.animationSpeed"), 1.0);
+    m_defaults.insert(QStringLiteral("effects.animationStyle"), QStringLiteral("zoom"));
     // Lock screen.
     m_defaults.insert(QStringLiteral("lock.color"), QStringLiteral("#1e1e2e"));
     m_defaults.insert(QStringLiteral("lock.useWallpaper"), true);

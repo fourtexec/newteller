@@ -791,6 +791,12 @@ QString SessionServices::compositorConfigText() const
     text += confLine(QStringLiteral("effects.blurStrength"),
                      QString::number(qBound(1, value("effects.blurStrength").toInt(), 4)));
     text += confLine(QStringLiteral("effects.animations"), boolText(value("effects.animations")));
+    {
+        const QString style = value("effects.animationStyle").toString();
+        text += confLine(QStringLiteral("effects.animationStyle"),
+                         style == QLatin1String("fade") || style == QLatin1String("slide") ? style
+                                                                                           : QStringLiteral("zoom"));
+    }
     text += confLine(QStringLiteral("effects.animationSpeed"),
                      QString::number(qBound(0.25, value("effects.animationSpeed").toDouble(), 4.0), 'f', 2));
 
