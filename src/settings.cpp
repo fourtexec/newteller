@@ -808,8 +808,9 @@ bool Settings::applyProfile(const QString &name)
         if (personalKey(it.key()) || !m_defaults.contains(it.key()))
             next.insert(it.key(), it.value());
     }
+    // Only keys the shell knows: an imported file may carry anything.
     for (auto it = look.constBegin(); it != look.constEnd(); ++it) {
-        if (!personalKey(it.key()) && !it.value().isNull())
+        if (!personalKey(it.key()) && !it.value().isNull() && m_defaults.contains(it.key()))
             next.insert(it.key(), it.value());
     }
     if (next == m_values)
