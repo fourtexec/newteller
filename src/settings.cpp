@@ -78,6 +78,9 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("dock.separateBackground"), true);
     m_defaults.insert(QStringLiteral("dock.shrinkIcons"), true);
     m_defaults.insert(QStringLiteral("panel.indicators"), true);
+    // Rows taken out of quick settings: media, volume, brightness, network,
+    // bluetooth, dnd, nightLight, recorder, powerProfile, battery.
+    m_defaults.insert(QStringLiteral("quick.hidden"), QStringList());
     m_defaults.insert(QStringLiteral("tray.enabled"), true);
     m_defaults.insert(QStringLiteral("tray.menus"), true);
     m_defaults.insert(QStringLiteral("windows.style"), QStringLiteral("card"));

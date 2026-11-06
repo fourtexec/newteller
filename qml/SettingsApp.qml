@@ -2247,6 +2247,57 @@ Window {
                         width: systemScroll.width - 32
                         spacing: 16
 
+                        // quick.hidden: the rows taken out of quick settings.
+                        SettingsSection {
+                            title: qsTr("Quick settings")
+                            subtitle: qsTr("The rows of the card behind the indicators button. Rows whose service is missing never show.")
+
+                            Flow {
+                                width: parent.width
+                                spacing: 6
+                                Repeater {
+                                    model: [
+                                        { id: "media", label: qsTr("Media") },
+                                        { id: "volume", label: qsTr("Volume") },
+                                        { id: "brightness", label: qsTr("Brightness") },
+                                        { id: "network", label: qsTr("Network") },
+                                        { id: "bluetooth", label: qsTr("Bluetooth") },
+                                        { id: "dnd", label: qsTr("Do not disturb") },
+                                        { id: "nightLight", label: qsTr("Night light") },
+                                        { id: "recorder", label: qsTr("Screen recording") },
+                                        { id: "powerProfile", label: qsTr("Power profile") },
+                                        { id: "battery", label: qsTr("Battery") }
+                                    ]
+                                    delegate: TaskButton {
+                                        required property var modelData
+                                        objectName: "quickRowToggle"
+                                        readonly property bool shown: {
+                                            const hidden = Settings.values["quick.hidden"] || [];
+                                            for (let i = 0; i < hidden.length; ++i) {
+                                                if (hidden[i] === modelData.id)
+                                                    return false;
+                                            }
+                                            return true;
+                                        }
+                                        iconName: shown ? "check" : "x"
+                                        label: modelData.label
+                                        active: shown
+                                        onClicked: {
+                                            const hidden = [];
+                                            const current = Settings.values["quick.hidden"] || [];
+                                            for (let i = 0; i < current.length; ++i) {
+                                                if (current[i] !== modelData.id)
+                                                    hidden.push(current[i]);
+                                            }
+                                            if (shown)
+                                                hidden.push(modelData.id);
+                                            Settings.setValue("quick.hidden", hidden);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         SettingsSection {
                             title: qsTr("Metrics")
                             subtitle: qsTr("The shared ticker behind the system monitor widgets.")

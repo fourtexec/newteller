@@ -22,32 +22,39 @@ DropdownWindow {
     property var bluetoothPopup: null
     // Outputs and per-application volume.
     property var soundPopup: null
+    // quick.hidden: rows the user took out (Settings -> System); a row also
+    // hides itself when its backend is missing.
+    function shows(row) {
+        const hidden = Settings.values["quick.hidden"] || [];
+        for (let i = 0; i < hidden.length; ++i) {
+            if (hidden[i] === row)
+                return false;
+        }
+        return true;
+    }
+    readonly property bool showMedia: Quick.mediaAvailable && shows("media")
+    readonly property bool showVolume: Quick.volumeAvailable && shows("volume")
+    readonly property bool showBrightness: Quick.brightnessAvailable && shows("brightness")
+    readonly property bool showNetwork: Quick.networkAvailable && shows("network")
+    readonly property bool showBluetooth: Bluetooth.available && shows("bluetooth")
+    readonly property bool showDnd: shows("dnd")
+    readonly property bool showNightLight: Session.nightLightAvailable && shows("nightLight")
+    readonly property bool showRecorder: Recorder.available && shows("recorder")
+    readonly property bool showPowerProfile: Session.powerProfiles.length > 0 && shows("powerProfile")
+    readonly property bool showBattery: System.batteryPresent && shows("battery")
     // Rows that are on right now, for the height computation.
     readonly property int visibleRows: {
         var rows = 0;
-        if (Quick.mediaAvailable)
-            rows++;
-        if (Quick.volumeAvailable)
-            rows++;
-        if (Quick.brightnessAvailable)
-            rows++;
-        if (Quick.networkAvailable)
-            rows++;
-        if (System.batteryPresent)
-            rows++;
-        if (Session.nightLightAvailable)
-            rows++;
-        if (Bluetooth.available)
-            rows++;
-        if (Session.powerProfiles.length > 0)
-            rows++;
-        if (Recorder.available)
-            rows++;
-        return rows + 1 /* dnd */ + 1 /* footer separator */;
+        for (const on of [showMedia, showVolume, showBrightness, showNetwork, showBattery,
+                          showNightLight, showBluetooth, showPowerProfile, showRecorder, showDnd]) {
+            if (on)
+                rows++;
+        }
+        return rows + 1 /* footer separator */;
     }
 
     cardWidth: 360
-    cardHeight: Math.max(240, Math.min(560, 24 + 46 * visibleRows + (Quick.mediaAvailable ? (Quick.mediaArtUrl.length > 0 ? 84 : 74) : 0)))
+    cardHeight: Math.max(200, Math.min(560, 24 + 46 * visibleRows + (showMedia ? (Quick.mediaArtUrl.length > 0 ? 84 : 74) : 0)))
     padding: 12
     scopeName: "newteller-quick-settings"
 
@@ -76,7 +83,7 @@ DropdownWindow {
         // --- media ------------------------------------------------------
         ColumnLayout {
             Layout.fillWidth: true
-            visible: Quick.mediaAvailable
+            visible: popup.showMedia
             spacing: 2
 
             RowLayout {
@@ -152,14 +159,14 @@ DropdownWindow {
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 1
-            visible: Quick.mediaAvailable
+            visible: popup.showMedia
             color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.6)
         }
 
         // --- volume -----------------------------------------------------
         RowLayout {
             Layout.fillWidth: true
-            visible: Quick.volumeAvailable
+            visible: popup.showVolume
             spacing: 8
 
             TaskButton {
@@ -202,7 +209,7 @@ DropdownWindow {
         // --- brightness -------------------------------------------------
         RowLayout {
             Layout.fillWidth: true
-            visible: Quick.brightnessAvailable
+            visible: popup.showBrightness
             spacing: 8
 
             Item {
@@ -236,7 +243,7 @@ DropdownWindow {
         // --- network ----------------------------------------------------
         RowLayout {
             Layout.fillWidth: true
-            visible: Quick.networkAvailable
+            visible: popup.showNetwork
             spacing: 8
 
             Item {
@@ -299,7 +306,7 @@ DropdownWindow {
         RowLayout {
             objectName: "bluetoothRow"
             Layout.fillWidth: true
-            visible: Bluetooth.available
+            visible: popup.showBluetooth
             spacing: 8
 
             Item {
@@ -364,6 +371,7 @@ DropdownWindow {
 
         // --- do not disturb ---------------------------------------------
         RowLayout {
+            visible: popup.showDnd
             Layout.fillWidth: true
             spacing: 8
 
@@ -415,7 +423,7 @@ DropdownWindow {
         RowLayout {
             objectName: "nightLightRow"
             Layout.fillWidth: true
-            visible: Session.nightLightAvailable
+            visible: popup.showNightLight
             spacing: 8
 
             Item {
@@ -449,7 +457,7 @@ DropdownWindow {
         RowLayout {
             objectName: "recorderRow"
             Layout.fillWidth: true
-            visible: Recorder.available
+            visible: popup.showRecorder
             spacing: 4
 
             Item {
@@ -517,7 +525,7 @@ DropdownWindow {
         RowLayout {
             objectName: "powerProfileRow"
             Layout.fillWidth: true
-            visible: Session.powerProfiles.length > 0
+            visible: popup.showPowerProfile
             spacing: 4
 
             Item {
@@ -552,7 +560,7 @@ DropdownWindow {
         // --- battery ----------------------------------------------------
         RowLayout {
             Layout.fillWidth: true
-            visible: System.batteryPresent
+            visible: popup.showBattery
             spacing: 8
 
             Item {

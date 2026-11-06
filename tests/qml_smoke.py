@@ -2388,6 +2388,15 @@ def main():
         art = quick_popup.findChild(QQuickItem, "mediaArt")
         check(art is not None and art.isVisible() and art.property("implicitWidth") > 0,
               "the media card shows the track's cover")
+        # quick.hidden takes rows out and the card shrinks with them.
+        rows_before = quick_popup.property("visibleRows")
+        settings.setValue("quick.hidden", ["media", "volume"])
+        QTest.qWait(30)
+        check(quick_popup.property("showMedia") is False and quick_popup.property("showVolume") is False
+              and quick_popup.property("visibleRows") < rows_before,
+              f"quick.hidden takes rows out ({rows_before} -> {quick_popup.property('visibleRows')})")
+        settings.setValue("quick.hidden", [])
+        QTest.qWait(30)
         QMetaObject.invokeMethod(quick_popup, "hide")
         QTest.qWait(300)
         check(not quick_popup.isVisible(), "closing the quick settings popup")

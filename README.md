@@ -303,6 +303,9 @@ inside VirtualBox. The implemented pieces are:
   on another edge or go without one (Settings → Displays).
 - **Gaps between snapped windows** (`windows.gaps`, Settings → Windows):
   halves and quarters keep a margin around them, as tiling desktops do.
+- **Quick settings rows**: take any row (media, volume, brightness, network,
+  Bluetooth, do not disturb, night light, recording, power profile,
+  battery) out of the quick settings card (`quick.hidden`, Settings → System).
 - **Named desktops**: give desktops names (`workspaces.names`), show them on
   the panel as dots, numbers or names, and on screen when switching.
 - **Profiles**: save every setting under a name (Settings → Appearance →
