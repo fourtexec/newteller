@@ -276,8 +276,14 @@ python3 -m venv /tmp/venv && /tmp/venv/bin/pip install PySide6
 QT_QPA_PLATFORM=offscreen /tmp/venv/bin/python tests/qml_smoke.py
 ```
 
-`cargo test --workspace` in `rust/` works locally too. The C and C++ parts
-still need CI. Items created by a `Repeater` have no QObject parent, so
+`cargo test --workspace` in `rust/` works locally too.
+
+C++ without a display has unit tests in `tests/unit/unit_tests.cpp`
+(target `newteller-unit-tests`, run by `scripts/build-release.sh`). Locally,
+`apt-get install qt6-base-dev qt6-declarative-dev` gives Qt 6.4 headers:
+enough to syntax-check `src/*.cpp` (`g++ -std=c++17 -fsyntax-only` with the
+Qt include dirs and `-DNEWTELLER_VERSION='"0"'`) and to build the unit tests
+by hand (run `moc` on the headers). The compositor still needs CI. Items created by a `Repeater` have no QObject parent, so
 `findChild` cannot see them: walk `contentItem().childItems()` instead.
 
 ## Built-in shortcuts (Settings -> Hotkeys)

@@ -56,6 +56,9 @@ HELP
     exit 1
 fi
 cmake --build "$root/build" --parallel "$(nproc)"
+# The shell's services without a display (tests/unit); a failure stops the
+# release before anything is packaged.
+QT_QPA_PLATFORM=offscreen "$root/build/newteller-unit-tests"
 # Do not let a rerun leave stale files in the archive.
 rm -rf -- "$stage"
 mkdir -p "$stage" "$root/dist"

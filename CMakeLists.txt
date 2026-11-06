@@ -143,6 +143,29 @@ if(NEWTELLER_RUST_ENABLED)
 endif()
 
 # ---------------------------------------------------------------------------
+# newteller-unit-tests: the shell's services without a display (desktop
+# files, default applications, profiles, theme schedule, notifications,
+# compositor.conf). Not installed; scripts/build-release.sh runs it.
+# ---------------------------------------------------------------------------
+qt_add_executable(newteller-unit-tests
+    tests/unit/unit_tests.cpp
+    src/settings.cpp
+    src/theme.cpp
+    src/appmodel.cpp
+    src/notifications.cpp
+    src/sessionservices.cpp
+    src/rustbridge.cpp
+)
+target_include_directories(newteller-unit-tests PRIVATE ${CMAKE_SOURCE_DIR}/src)
+target_compile_definitions(newteller-unit-tests PRIVATE NEWTELLER_VERSION="${PROJECT_VERSION}")
+target_link_libraries(newteller-unit-tests PRIVATE Qt6::Core Qt6::Gui Qt6::Qml Qt6::DBus)
+if(NEWTELLER_RUST_ENABLED)
+    target_include_directories(newteller-unit-tests PRIVATE ${CMAKE_SOURCE_DIR}/rust/crates/newteller-core/include)
+    target_compile_definitions(newteller-unit-tests PRIVATE NEWTELLER_HAVE_RUST=1)
+    target_link_libraries(newteller-unit-tests PRIVATE newteller_core pthread dl m)
+endif()
+
+# ---------------------------------------------------------------------------
 # newteller-compositor: the small wlroots compositor that owns the DRM/KMS (or
 # nested/headless) outputs and runs the shell as its first client.
 # ---------------------------------------------------------------------------
