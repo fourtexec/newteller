@@ -312,6 +312,9 @@ inside VirtualBox. The implemented pieces are:
   (`desktop.perMonitorWallpaper`).
 - **Named desktops**: give desktops names (`workspaces.names`), show them on
   the panel as dots, numbers or names, and on screen when switching.
+- **Settings search**: type in the field above the settings pages to find any
+  setting by its name or description; a result opens its page, scrolls to it
+  and highlights it.
 - **Profiles**: save every setting under a name (Settings → Appearance →
   Profiles), switch between looks in one click, update or delete them, and
   import an exported settings file or someone else's profile. Recent

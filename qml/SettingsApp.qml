@@ -66,6 +66,59 @@ Window {
         function onValuesChanged() { settingsWindow.refreshWindowBorderField() }
     }
 
+    // --- search over every settings row ---------------------------------
+    // The rows' own (translated) titles and descriptions are searched, so
+    // it works in every language and never goes stale.
+    property string searchText: ""
+    readonly property var searchResults: {
+        const words = searchText.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+        if (words.length === 0)
+            return [];
+        const out = [];
+        for (let i = 0; i < pages.length && i < pageStack.children.length; ++i) {
+            const rows = [];
+            collectRows(pageStack.children[i], rows);
+            for (const row of rows) {
+                const haystack = (row.title + " " + row.subtitle + " " + row.settingKey).toLowerCase();
+                if (words.every(w => haystack.indexOf(w) >= 0))
+                    out.push({ page: pages[i].id, pageLabel: pages[i].label, title: row.title, row: row });
+                if (out.length >= 60)
+                    return out;
+            }
+        }
+        return out;
+    }
+    function collectRows(item, out) {
+        if (!item)
+            return;
+        if (item.settingKey !== undefined && item.title !== undefined && typeof item.flash === "function"
+            && String(item.title).length > 0)
+            out.push(item);
+        const kids = item.children || [];
+        for (let i = 0; i < kids.length; ++i)
+            collectRows(kids[i], out);
+    }
+    // Opens the row's page, scrolls it into view and lets it glow.
+    function openSearchResult(result) {
+        if (!result)
+            return;
+        currentPage = result.page;
+        searchText = "";
+        settingsSearch.text = "";
+        Qt.callLater(function() {
+            const row = result.row;
+            let view = row ? row.parent : null;
+            while (view && view.contentY === undefined)
+                view = view.parent;
+            if (view && view.contentItem) {
+                const y = row.mapToItem(view.contentItem, 0, 0).y;
+                view.contentY = Math.max(0, Math.min(Math.max(0, view.contentHeight - view.height), y - 24));
+            }
+            if (row)
+                row.flash();
+        });
+    }
+
     function pageIndexOf(id) {
         for (var i = 0; i < pages.length; ++i) {
             if (pages[i].id === id)
@@ -247,28 +300,81 @@ Window {
                 }
             }
 
-            Repeater {
-                model: settingsWindow.pages
+            // Search every setting by its name or description.
+            Rectangle {
+                width: parent.width
+                height: 32
+                radius: Theme.radius
+                color: Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.08)
+                border.width: settingsSearch.activeFocus ? 1 : 0
+                border.color: Theme.accent
 
-                delegate: TaskButton {
-                    required property var modelData
-                    width: sidebar.width - 20
-                    height: 36
-                    fillWidth: true
-                    iconName: modelData.icon
-                    label: modelData.label
-                    active: settingsWindow.currentPage === modelData.id
-                    onClicked: settingsWindow.currentPage = modelData.id
+                TextInput {
+                    id: settingsSearch
+                    objectName: "settingsSearch"
+                    anchors.fill: parent
+                    anchors.leftMargin: 10
+                    anchors.rightMargin: 10
+                    verticalAlignment: TextInput.AlignVCenter
+                    clip: true
+                    color: Theme.foreground
+                    font.family: Theme.fontFamily
+                    font.pointSize: Theme.fontSize
+                    onTextChanged: settingsWindow.searchText = text
+                    Keys.onReturnPressed: {
+                        if (settingsWindow.searchResults.length > 0)
+                            settingsWindow.openSearchResult(settingsWindow.searchResults[0]);
+                    }
+                    Keys.onEscapePressed: text = ""
+
+                    Text {
+                        anchors.fill: parent
+                        verticalAlignment: Text.AlignVCenter
+                        visible: settingsSearch.text.length === 0
+                        text: qsTr("Search settings")
+                        color: Theme.muted
+                        font: settingsSearch.font
+                    }
                 }
             }
 
-            Item { height: 4; width: 1 }
-            Text {
-                leftPadding: 10
-                text: qsTr("The settings are built into the\nnewteller binary and always\navailable.")
-                color: Theme.muted
-                font.family: Theme.fontFamily
-                font.pointSize: Theme.fontSize - 2
+            // The pages scroll when the window is too short for all of them.
+            Flickable {
+                width: parent.width
+                height: sidebar.height - 20 - 46 - 32 - 8
+                contentHeight: pageList.implicitHeight
+                clip: true
+                boundsBehavior: Flickable.StopAtBounds
+
+                Column {
+                    id: pageList
+                    width: parent.width
+                    spacing: 4
+
+                    Repeater {
+                        model: settingsWindow.pages
+
+                        delegate: TaskButton {
+                            required property var modelData
+                            width: sidebar.width - 20
+                            height: 34
+                            fillWidth: true
+                            iconName: modelData.icon
+                            label: modelData.label
+                            active: settingsWindow.currentPage === modelData.id
+                            onClicked: settingsWindow.currentPage = modelData.id
+                        }
+                    }
+
+                    Item { height: 4; width: 1 }
+                    Text {
+                        leftPadding: 10
+                        text: qsTr("The settings are built into the\nnewteller binary and always\navailable.")
+                        color: Theme.muted
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSize - 2
+                    }
+                }
             }
         }
     }
@@ -4486,6 +4592,50 @@ Window {
                     }
                 }
             }
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Search results, over the pages while something is typed
+    // ------------------------------------------------------------------
+    Rectangle {
+        id: searchResultsView
+        objectName: "settingsSearchResults"
+        anchors.left: sidebar.right
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.bottom: footer.top
+        visible: settingsWindow.searchText.trim().length > 0
+        color: Theme.background
+        z: 5
+
+        ListView {
+            id: searchList
+            anchors.fill: parent
+            anchors.margins: 16
+            clip: true
+            spacing: 2
+            model: settingsWindow.searchResults
+
+            delegate: TaskButton {
+                required property var modelData
+                objectName: "settingsSearchResult"
+                width: ListView.view.width
+                height: 40
+                fillWidth: true
+                iconName: "settings"
+                label: modelData.title + "  ·  " + modelData.pageLabel
+                onClicked: settingsWindow.openSearchResult(modelData)
+            }
+        }
+
+        Text {
+            anchors.centerIn: parent
+            visible: settingsWindow.searchResults.length === 0
+            text: qsTr("No setting matches")
+            color: Theme.muted
+            font.family: Theme.fontFamily
+            font.pointSize: Theme.fontSize
         }
     }
 

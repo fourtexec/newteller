@@ -85,6 +85,25 @@ Item {
         }
     }
 
+    // A short glow when the settings search jumps to this row.
+    function flash() {
+        flashAnimation.restart();
+    }
+    Rectangle {
+        id: flashGlow
+        anchors.fill: parent
+        z: -1
+        radius: Theme.radius
+        color: Theme.accent
+        opacity: 0
+    }
+    SequentialAnimation {
+        id: flashAnimation
+        NumberAnimation { target: flashGlow; property: "opacity"; to: 0.25; duration: 150 }
+        PauseAnimation { duration: 700 }
+        NumberAnimation { target: flashGlow; property: "opacity"; to: 0; duration: 500 }
+    }
+
     TaskButton {
         id: resetButton
         anchors.right: parent.right

@@ -3229,6 +3229,27 @@ def main():
             settings.reset("hotkeys.lockScreen")
             QTest.qWait(20)
 
+        # Search over every settings row: typing finds the row on its page, a
+        # click opens that page.
+        search_field = find_item(settings_app.contentItem(), "settingsSearch")
+        check(search_field is not None, "the settings window has a search field")
+        if search_field is not None:
+            search_field.setProperty("text", "gaps")
+            QTest.qWait(30)
+            results = settings_app.property("searchResults")
+            results = results.toVariant() if hasattr(results, "toVariant") else results
+            check(bool(results) and results[0]["page"] == "windows",
+                  f"searching finds the gaps setting on the Windows page ({results and results[0]['page']})")
+            hit = find_item(settings_app.contentItem(), "settingsSearchResult")
+            if hit is not None:
+                QMetaObject.invokeMethod(hit, "clicked")
+                QTest.qWait(40)
+                check(settings_app.property("currentPage") == "windows"
+                      and search_field.property("text") == "",
+                      f"a search result opens its page ({settings_app.property('currentPage')})")
+            search_field.setProperty("text", "")
+            QTest.qWait(20)
+
         # Profiles (Appearance): save the current settings under a name, change
         # something, apply the profile and get it back.
         settings_app.setProperty("currentPage", "appearance")
