@@ -10,7 +10,6 @@
 #include <QLocale>
 #include <QProcess>
 #include <QSet>
-#include <QSettings>
 #include <QStandardPaths>
 #include <algorithm>
 
@@ -23,20 +22,102 @@ const QStringList kFieldCodes{
     QStringLiteral("%i"), QStringLiteral("%c"), QStringLiteral("%k"), QStringLiteral("%v"),
     QStringLiteral("%m")};
 
-// QSettings may split comma-containing values into a list; joining restores them.
-QString textValue(QSettings &s, const QString &key)
+// A .desktop file read by the freedesktop rules: QSettings is no INI
+// parser for them - it takes ';' for the start of a comment, so
+// "Categories=Network;WebBrowser;" lost everything after "Network" (and
+// MimeType, Keywords, OnlyShowIn the same way), and it reads quotes and
+// backslashes its own way.
+using DesktopGroup = QHash<QString, QString>;
+
+QHash<QString, DesktopGroup> readDesktopFile(const QString &path)
 {
-    return s.value(key).toStringList().join(QLatin1Char(','));
+    QHash<QString, DesktopGroup> groups;
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return groups;
+    QString current;
+    while (!file.atEnd()) {
+        const QString line = QString::fromUtf8(file.readLine()).trimmed();
+        if (line.isEmpty() || line.startsWith(QLatin1Char('#')))
+            continue;
+        if (line.startsWith(QLatin1Char('[')) && line.endsWith(QLatin1Char(']'))) {
+            current = line.mid(1, line.size() - 2);
+            continue;
+        }
+        const int equals = line.indexOf(QLatin1Char('='));
+        if (equals <= 0 || current.isEmpty())
+            continue;
+        DesktopGroup &group = groups[current];
+        const QString key = line.left(equals).trimmed();
+        if (!group.contains(key)) // the first one counts
+            group.insert(key, line.mid(equals + 1).trimmed());
+    }
+    return groups;
 }
 
-QStringList listValue(QSettings &s, const QString &key)
+// \s \n \t \r \\ (and, inside lists, \;) as the spec escapes them.
+QString unescapeDesktop(const QString &raw)
 {
-    return textValue(s, key).split(QLatin1Char(';'), Qt::SkipEmptyParts);
+    QString out;
+    out.reserve(raw.size());
+    for (int i = 0; i < raw.size(); ++i) {
+        const QChar c = raw.at(i);
+        if (c != QLatin1Char('\\') || i + 1 >= raw.size()) {
+            out += c;
+            continue;
+        }
+        const QChar next = raw.at(++i);
+        if (next == QLatin1Char('s'))
+            out += QLatin1Char(' ');
+        else if (next == QLatin1Char('n'))
+            out += QLatin1Char('\n');
+        else if (next == QLatin1Char('t'))
+            out += QLatin1Char('\t');
+        else if (next == QLatin1Char('r'))
+            out += QLatin1Char('\r');
+        else
+            out += next; // \\ and \;
+    }
+    return out;
+}
+
+QString textValue(const DesktopGroup &g, const QString &key)
+{
+    return unescapeDesktop(g.value(key));
+}
+
+QStringList listValue(const DesktopGroup &g, const QString &key)
+{
+    // Split on the ';' that are not escaped, then unescape each item.
+    const QString raw = g.value(key);
+    QStringList out;
+    QString item;
+    for (int i = 0; i < raw.size(); ++i) {
+        const QChar c = raw.at(i);
+        if (c == QLatin1Char('\\') && i + 1 < raw.size()) {
+            item += c;
+            item += raw.at(++i);
+        } else if (c == QLatin1Char(';')) {
+            if (!item.trimmed().isEmpty())
+                out << unescapeDesktop(item.trimmed());
+            item.clear();
+        } else {
+            item += c;
+        }
+    }
+    if (!item.trimmed().isEmpty())
+        out << unescapeDesktop(item.trimmed());
+    return out;
+}
+
+bool boolValue(const DesktopGroup &g, const QString &key)
+{
+    return g.value(key).trimmed().compare(QLatin1String("true"), Qt::CaseInsensitive) == 0;
 }
 
 // Localised keys: key[lang_COUNTRY], then key[lang], then key - for every
 // localisable field, not only Name (GenericName[ru], Comment[ru], ...).
-QString localizedText(QSettings &s, const QString &key, const QString &lang)
+QString localizedText(const DesktopGroup &s, const QString &key, const QString &lang)
 {
     QString value = textValue(s, QStringLiteral("%1[%2]").arg(key, lang));
     if (value.isEmpty() && lang.contains(QLatin1Char('_')))
@@ -46,7 +127,7 @@ QString localizedText(QSettings &s, const QString &key, const QString &lang)
     return value;
 }
 
-QStringList localizedList(QSettings &s, const QString &key, const QString &lang)
+QStringList localizedList(const DesktopGroup &s, const QString &key, const QString &lang)
 {
     QStringList value = listValue(s, QStringLiteral("%1[%2]").arg(key, lang));
     if (value.isEmpty() && lang.contains(QLatin1Char('_')))
@@ -320,13 +401,13 @@ void AppModel::scanWithQt(const QString &locale)
 
 bool AppModel::parseDesktop(const QString &path, AppEntry &out, const QString &lang)
 {
-    QSettings s(path, QSettings::IniFormat);
-    s.beginGroup(QStringLiteral("Desktop Entry"));
+    const QHash<QString, DesktopGroup> groups = readDesktopFile(path);
+    const DesktopGroup s = groups.value(QStringLiteral("Desktop Entry"));
 
     if (textValue(s, QStringLiteral("Type")) != QLatin1String("Application"))
         return false;
-    out.noDisplay = s.value(QStringLiteral("NoDisplay"), false).toBool();
-    out.hidden = s.value(QStringLiteral("Hidden"), false).toBool();
+    out.noDisplay = boolValue(s, QStringLiteral("NoDisplay"));
+    out.hidden = boolValue(s, QStringLiteral("Hidden"));
     if (out.noDisplay || out.hidden)
         return false;
 
@@ -341,9 +422,9 @@ bool AppModel::parseDesktop(const QString &path, AppEntry &out, const QString &l
     out.exec = textValue(s, QStringLiteral("Exec"));
     out.tryExec = textValue(s, QStringLiteral("TryExec"));
     out.icon = textValue(s, QStringLiteral("Icon"));
-    out.terminal = s.value(QStringLiteral("Terminal"), false).toBool();
-    out.startupNotify = s.value(QStringLiteral("StartupNotify"), false).toBool();
-    out.dbusActivatable = s.value(QStringLiteral("DBusActivatable"), false).toBool();
+    out.terminal = boolValue(s, QStringLiteral("Terminal"));
+    out.startupNotify = boolValue(s, QStringLiteral("StartupNotify"));
+    out.dbusActivatable = boolValue(s, QStringLiteral("DBusActivatable"));
     out.startupWmClass = textValue(s, QStringLiteral("StartupWMClass"));
     out.categories = listValue(s, QStringLiteral("Categories"));
     out.keywords = localizedList(s, QStringLiteral("Keywords"), lang);
@@ -351,25 +432,29 @@ bool AppModel::parseDesktop(const QString &path, AppEntry &out, const QString &l
     out.onlyShowIn = listValue(s, QStringLiteral("OnlyShowIn"));
     out.notShowIn = listValue(s, QStringLiteral("NotShowIn"));
     out.sortKey = foldName(out.name);
-    s.endGroup();
 
-    // [Desktop Action name] groups, used for jump lists in the start menu.
-    const QStringList groups = s.childGroups();
-    for (const QString &group : groups) {
-        if (!group.startsWith(QLatin1String("Desktop Action ")))
+    // [Desktop Action name] groups, used for jump lists in the start menu,
+    // in the order the Actions key lists them.
+    QStringList order = listValue(s, QStringLiteral("Actions"));
+    for (auto it = groups.constBegin(); it != groups.constEnd(); ++it) {
+        const QString id = it.key().startsWith(QLatin1String("Desktop Action "))
+                               ? it.key().mid(15) : QString();
+        if (!id.isEmpty() && !order.contains(id))
+            order << id;
+    }
+    for (const QString &id : order) {
+        const auto group = groups.constFind(QStringLiteral("Desktop Action ") + id);
+        if (group == groups.constEnd())
             continue;
-        s.beginGroup(group);
-        const QString actionName = localizedText(s, QStringLiteral("Name"), lang);
-        const QString actionExec = textValue(s, QStringLiteral("Exec"));
-        if (!actionExec.isEmpty()) {
-            QVariantMap action;
-            action.insert(QStringLiteral("id"), group.section(QLatin1Char(' '), 2));
-            action.insert(QStringLiteral("name"), actionName);
-            action.insert(QStringLiteral("exec"), actionExec);
-            action.insert(QStringLiteral("icon"), textValue(s, QStringLiteral("Icon")));
-            out.actions.append(action);
-        }
-        s.endGroup();
+        const QString actionExec = textValue(*group, QStringLiteral("Exec"));
+        if (actionExec.isEmpty())
+            continue;
+        QVariantMap action;
+        action.insert(QStringLiteral("id"), id);
+        action.insert(QStringLiteral("name"), localizedText(*group, QStringLiteral("Name"), lang));
+        action.insert(QStringLiteral("exec"), actionExec);
+        action.insert(QStringLiteral("icon"), textValue(*group, QStringLiteral("Icon")));
+        out.actions.append(action);
     }
 
     return !out.exec.isEmpty();
