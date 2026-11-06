@@ -784,7 +784,11 @@ QString SessionServices::compositorConfigText() const
     text += confLine(QStringLiteral("rules.opacity"), appNumbers("windowRules.opacity", 10, 100));
     static const QStringList cornerActions{
         QStringLiteral("none"), QStringLiteral("overview"), QStringLiteral("desktop"),
-        QStringLiteral("startMenu"), QStringLiteral("notifications"), QStringLiteral("lock")};
+        QStringLiteral("startMenu"), QStringLiteral("notifications"), QStringLiteral("lock"),
+        // Built-in shortcut actions (ntHotkeyNames) the compositor also runs.
+        QStringLiteral("terminal"), QStringLiteral("fileManager"), QStringLiteral("runDialog"),
+        QStringLiteral("quickSettings"), QStringLiteral("clipboard"), QStringLiteral("settings"),
+        QStringLiteral("screenshot"), QStringLiteral("screenshotArea"), QStringLiteral("screenRecording")};
     for (const char *corner : {"hotCorners.topLeft", "hotCorners.topRight",
                                "hotCorners.bottomLeft", "hotCorners.bottomRight"}) {
         const QString action = value(corner).toString();

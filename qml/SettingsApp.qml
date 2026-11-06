@@ -3599,6 +3599,13 @@ Window {
                                             { value: "desktop", label: qsTr("Show desktop") },
                                             { value: "startMenu", label: qsTr("Start menu") },
                                             { value: "notifications", label: qsTr("Notifications") },
+                                            { value: "quickSettings", label: qsTr("Quick settings") },
+                                            { value: "clipboard", label: qsTr("Clipboard history") },
+                                            { value: "terminal", label: qsTr("Terminal") },
+                                            { value: "fileManager", label: qsTr("Home folder") },
+                                            { value: "runDialog", label: qsTr("Run a command") },
+                                            { value: "screenshot", label: qsTr("Screenshot") },
+                                            { value: "settings", label: qsTr("Settings") },
                                             { value: "lock", label: qsTr("Lock") }
                                         ]
                                     }

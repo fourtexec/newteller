@@ -218,6 +218,7 @@ static void raisePinnedViews(struct Server *server);
 static void toggleShowDesktop(struct Server *server);
 static void shellAction(const char *method);
 static void checkHotCorner(struct Server *server);
+static bool runHotkey(struct Server *server, enum NtHotkey hotkey);
 static void broadcastFullscreen(struct Server *server, bool force);
 static struct wlr_box viewOuterBox(struct View *view);
 static uint32_t dragSnapEdges(struct Server *server, struct View *view);
@@ -3131,6 +3132,16 @@ static void runHotCorner(struct Server *server, int corner)
         shellAction("toggleNotifications");
     else if (strcmp(action, "lock") == 0)
         spawnLocker(server);
+    else {
+        // Any built-in shortcut's action by its name (terminal,
+        // screenshot, settings, clipboard, ...).
+        for (int i = 0; i < NT_HOTKEY_COUNT; ++i) {
+            if (strcmp(action, ntHotkeyNames[i]) == 0) {
+                runHotkey(server, (enum NtHotkey)i);
+                break;
+            }
+        }
+    }
 }
 
 // hotCorners.delay: the pointer rested in the corner long enough.

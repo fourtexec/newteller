@@ -275,8 +275,11 @@ inside VirtualBox. The implemented pieces are:
   `workspaces` as `firefox=2, thunderbird=3`).
 - **Hot corners** (Settings → Windows): push the pointer into a screen corner
   to open the overview, show the desktop, open the start menu or the
-  notifications, or lock (`hotCorners.topLeft` … `bottomRight`; off by
-  default, never during a drag, a full-screen window or a game).
+  notifications, quick settings or the clipboard history, start a terminal,
+  the home folder or the run dialog, take a screenshot, open the settings, or
+  lock (`hotCorners.topLeft` … `bottomRight`; off by default, never during a
+  drag, a full-screen window or a game). `hotCorners.delay` makes the pointer
+  rest in the corner first, against accidental triggers.
 - **Application bells** (xdg-system-bell, wlroots 0.19+): a terminal's or an
   application's bell plays the sound theme's bell (`sounds.bell`), not under
   do-not-disturb.
