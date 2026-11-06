@@ -31,7 +31,9 @@ ThemeManager::ThemeManager(Settings *settings, QObject *parent)
     connect(settings, &Settings::changed, this, [this](const QString &key) {
         if (key.isEmpty() || key == QLatin1String("theme.name") || key.startsWith(QLatin1String("theme.schedule"))
             || key == QLatin1String("theme.dayTheme") || key == QLatin1String("theme.nightTheme")
-            || key == QLatin1String("theme.dayStart") || key == QLatin1String("theme.nightStart"))
+            || key == QLatin1String("theme.dayStart") || key == QLatin1String("theme.nightStart")
+            || key == QLatin1String("theme.accent") || key == QLatin1String("theme.font")
+            || key == QLatin1String("theme.fontSize") || key == QLatin1String("theme.radius"))
             reload();
     });
     // The day/night switch is checked every half minute; cheap, and it also
@@ -121,6 +123,20 @@ void ThemeManager::reload()
         for (auto it = overrides.cbegin(); it != overrides.cend(); ++it)
             theme.insert(it.key(), it.value());
     }
+
+    // theme.accent / font / fontSize / radius: kept over every theme.
+    const QString accent = m_settings->value(QStringLiteral("theme.accent")).toString().trimmed();
+    if (QColor::isValidColorName(accent))
+        theme.insert(QStringLiteral("accent"), accent);
+    const QString font = m_settings->value(QStringLiteral("theme.font")).toString().trimmed();
+    if (!font.isEmpty())
+        theme.insert(QStringLiteral("fontFamily"), font);
+    const int fontSize = m_settings->value(QStringLiteral("theme.fontSize")).toInt();
+    if (fontSize >= 6 && fontSize <= 24)
+        theme.insert(QStringLiteral("fontSize"), fontSize);
+    const int radius = m_settings->value(QStringLiteral("theme.radius"), -1).toInt();
+    if (radius >= 0 && radius <= 32)
+        theme.insert(QStringLiteral("radius"), radius);
 
     m_t = theme;
     m_name = name;

@@ -541,9 +541,61 @@ Window {
                         }
 
                         SettingsSection {
-                            title: qsTr("Theme variants")
-                            subtitle: qsTr("Automatically switch themes based on system preferences.")
+                            title: qsTr("On top of any theme")
+                            subtitle: qsTr("Kept when you switch themes; empty or -1 uses the theme's own value.")
 
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Accent colour")
+                                settingKey: "theme.accent"
+                                Row {
+                                    spacing: 6
+                                    Repeater {
+                                        model: ["#4c8bf5", "#8b5cf6", "#ec4899", "#ef4444", "#f97316",
+                                                "#eab308", "#22c55e", "#14b8a6", "#64748b"]
+                                        delegate: Rectangle {
+                                            required property string modelData
+                                            objectName: "accentSwatch"
+                                            width: 24
+                                            height: 24
+                                            radius: 12
+                                            color: modelData
+                                            border.width: String(Settings.values["theme.accent"] || "").toLowerCase() === modelData ? 3 : 1
+                                            border.color: String(Settings.values["theme.accent"] || "").toLowerCase() === modelData
+                                                          ? Theme.foreground : Qt.rgba(0, 0, 0, 0.3)
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: Qt.PointingHandCursor
+                                                onClicked: Settings.setValue("theme.accent", parent.modelData)
+                                            }
+                                        }
+                                    }
+                                    SettingsColorField {
+                                        id: accentOverrideField
+                                        settingKey: "theme.accent"
+                                        onEdited: (hex) => Settings.setValue("theme.accent", hex)
+                                        onPaletteRequested: settingsWindow.openPalette(accentOverrideField)
+                                    }
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Interface font")
+                                settingKey: "theme.font"
+                                SettingsTextField { width: 200; placeholder: Theme.fontFamily }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Interface font size")
+                                settingKey: "theme.fontSize"
+                                SettingsStepper { from: 0; to: 20; suffix: " pt" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Corner rounding")
+                                settingKey: "theme.radius"
+                                SettingsStepper { from: -1; to: 24; suffix: " px" }
+                            }
                         }
 
                         SettingsSection {

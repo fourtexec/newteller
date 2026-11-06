@@ -175,6 +175,11 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("theme.dayStart"), QStringLiteral("07:00"));
     m_defaults.insert(QStringLiteral("theme.nightStart"), QStringLiteral("20:00"));
     m_defaults.insert(QStringLiteral("theme.scheduleApps"), true);
+    // Kept over every theme: empty / 0 / -1 use the theme's own value.
+    m_defaults.insert(QStringLiteral("theme.accent"), QString());
+    m_defaults.insert(QStringLiteral("theme.font"), QString());
+    m_defaults.insert(QStringLiteral("theme.fontSize"), 0);
+    m_defaults.insert(QStringLiteral("theme.radius"), -1);
 
     // ===== Panel & Dock Improvements =====
     m_defaults.insert(QStringLiteral("panel.spacing"), 8);

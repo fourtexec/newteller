@@ -303,6 +303,10 @@ inside VirtualBox. The implemented pieces are:
   on another edge or go without one (Settings → Displays).
 - **Named desktops**: give desktops names (`workspaces.names`), show them on
   the panel as dots, numbers or names, and on screen when switching.
+- **Accent, font and rounding over any theme**: an accent colour (nine
+  presets or any colour), the interface font, its size and the corner
+  rounding stay when you switch themes (`theme.accent`, `theme.font`,
+  `theme.fontSize`, `theme.radius`).
 - **Day and night themes**: two themes switched at set times or together
   with the night light, with applications following (light by day, dark at
   night).
