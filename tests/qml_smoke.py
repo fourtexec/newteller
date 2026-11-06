@@ -2282,6 +2282,22 @@ def main():
         expected = {1: 6, 0: 0}.get(first)
         check(expected is not None and cells and cells.index(1) == expected and len(cells) % 7 == 0,
               f"the calendar starts on the locale's first weekday ({first}: {cells[:8] if cells else cells})")
+        # clock.firstWeekday and week numbers: Sunday first puts the 1st in
+        # the first cell; with week numbers each row starts with its ISO week
+        # (1 November 2026 is in week 44).
+        settings.setValue("clock.firstWeekday", 0)
+        settings.setValue("clock.weekNumbers", True)
+        QTest.qWait(20)
+        cells = QMetaObject.invokeMethod(clock_popups[0], "buildCalendar", Qt.DirectConnection,
+                                         Q_RETURN_ARG("QVariant"),
+                                         Q_ARG("QVariant", 2026), Q_ARG("QVariant", 10))
+        cells = cells.toVariant() if hasattr(cells, "toVariant") else cells
+        check(bool(cells) and len(cells) % 8 == 0 and cells[1] == 1
+              and isinstance(cells[0], dict) and cells[0].get("week") == 44,
+              f"week numbers lead each row and the week starts on Sunday ({cells[:9] if cells else cells})")
+        settings.reset("clock.firstWeekday")
+        settings.reset("clock.weekNumbers")
+        QTest.qWait(20)
 
     # One tooltip window per panel, hidden until a button is hovered.
     tooltips = windows_of_kind("PanelToolTip")

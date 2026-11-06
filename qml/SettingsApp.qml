@@ -1363,6 +1363,25 @@ Window {
                                 settingKey: "panel.dateFormat"
                                 SettingsTextField {}
                             }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Calendar week starts on")
+                                settingKey: "clock.firstWeekday"
+                                SettingsChoice {
+                                    model: [
+                                        { value: -1, label: qsTr("As the language does") },
+                                        { value: 1, label: Qt.locale().standaloneDayName(1, Locale.LongFormat) },
+                                        { value: 6, label: Qt.locale().standaloneDayName(6, Locale.LongFormat) },
+                                        { value: 0, label: Qt.locale().standaloneDayName(0, Locale.LongFormat) }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Week numbers in the calendar")
+                                settingKey: "clock.weekNumbers"
+                                SettingsSwitch {}
+                            }
                         }
 
                         SettingsSection {

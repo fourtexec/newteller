@@ -29,21 +29,31 @@ DropdownWindow {
         target: Shell
         function onNowChanged() {
             dial.requestPaint();
-            if (!clock.visible)
-                return;
-            // Keep the calendar honest when the popup spans midnight on the
-            // first of a month and no month button was used yet.
-            if (clock.viewYear === Shell.now.getFullYear()
-                && clock.viewMonth === Shell.now.getMonth())
-                calGrid.cells = clock.buildCalendar(clock.viewYear, clock.viewMonth);
         }
     }
 
     // The locale's first weekday (Monday in Russia, Sunday in the US), in
     // the 0 = Sunday numbering of Date.getDay().
+    // clock.firstWeekday overrides it (-1 follows the locale).
     readonly property int firstWeekday: {
+        const chosen = Number(Settings.values["clock.firstWeekday"] ?? -1);
+        if (chosen >= 0 && chosen <= 6)
+            return chosen;
         const first = Qt.locale().firstDayOfWeek;
         return first >= 0 && first <= 6 ? first : 1;
+    }
+    // Changes once a day, so the calendar's "today" moves at midnight.
+    readonly property string todayKey: Shell.now.toDateString()
+    // clock.weekNumbers: an ISO week number in front of every row.
+    readonly property bool weekNumbers: Settings.values["clock.weekNumbers"] === true
+
+    // ISO 8601 week of a date (Qt's date formats have no week number).
+    function isoWeek(date) {
+        const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+        const day = d.getUTCDay() || 7;
+        d.setUTCDate(d.getUTCDate() + 4 - day);
+        const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+        return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
     }
 
     // Builds a 6x7 grid of the given month starting on the locale's first
@@ -58,6 +68,23 @@ DropdownWindow {
             cells.push(d);
         while (cells.length % 7 !== 0)
             cells.push(null);
+        if (clock.weekNumbers) {
+            // A { week } marker before every row: the week of its first day.
+            const rows = [];
+            for (var r = 0; r < cells.length; r += 7) {
+                var day = 1;
+                for (var c = r; c < r + 7; ++c) {
+                    if (cells[c] !== null) {
+                        day = cells[c];
+                        break;
+                    }
+                }
+                rows.push({ week: clock.isoWeek(new Date(year, month, day)) });
+                for (c = r; c < r + 7; ++c)
+                    rows.push(cells[c]);
+            }
+            return rows;
+        }
         return cells;
     }
 
@@ -175,7 +202,6 @@ DropdownWindow {
                     } else {
                         --clock.viewMonth;
                     }
-                    calGrid.model = clock.buildCalendar(clock.viewYear, clock.viewMonth);
                 }
             }
             TaskButton {
@@ -188,7 +214,6 @@ DropdownWindow {
                     } else {
                         ++clock.viewMonth;
                     }
-                    calGrid.model = clock.buildCalendar(clock.viewYear, clock.viewMonth);
                 }
             }
         }
@@ -196,18 +221,26 @@ DropdownWindow {
         Grid {
             id: calGrid
             Layout.fillWidth: true
-            columns: 7
+            columns: clock.weekNumbers ? 8 : 7
             columnSpacing: 0
             rowSpacing: 2
-            property var cells: clock.buildCalendar(clock.viewYear, clock.viewMonth)
+            // Rebuilt when the month, the week settings or the day change
+            // (todayKey), never by assignment: an assignment broke this
+            // binding and the month buttons stopped working.
+            property var cells: {
+                clock.todayKey; // a new day rebuilds it too
+                return clock.buildCalendar(clock.viewYear, clock.viewMonth);
+            }
 
-            // Weekday header from the locale's first weekday, in its short names.
+            // Weekday header from the first weekday, in the locale's short
+            // names (an empty corner above the week numbers).
             Repeater {
-                model: [0, 1, 2, 3, 4, 5, 6].map(i => Qt.locale().standaloneDayName((clock.firstWeekday + i) % 7,
-                                                                                    Locale.ShortFormat))
+                model: (clock.weekNumbers ? [""] : []).concat(
+                           [0, 1, 2, 3, 4, 5, 6].map(i => Qt.locale().standaloneDayName((clock.firstWeekday + i) % 7,
+                                                                                        Locale.ShortFormat)))
                 delegate: Text {
                     required property var modelData
-                    width: 40
+                    width: clock.weekNumbers && modelData === "" ? 30 : 40
                     horizontalAlignment: Text.AlignHCenter
                     text: modelData
                     color: Theme.muted
@@ -219,13 +252,16 @@ DropdownWindow {
             Repeater {
                 model: calGrid.cells
 
+                // Empty cells stay in the grid (an invisible item would not
+                // take its place, and the month would start in the first
+                // column whatever its weekday).
                 delegate: Item {
                     required property var modelData
-                    width: 40
+                    readonly property bool weekCell: modelData !== null && typeof modelData === "object"
+                    width: weekCell ? 30 : 40
                     height: 26
-                    visible: modelData !== null
 
-                    readonly property bool today: modelData !== null
+                    readonly property bool today: modelData !== null && !weekCell
                         && clock.viewYear === Shell.now.getFullYear()
                         && clock.viewMonth === Shell.now.getMonth()
                         && modelData === Shell.now.getDate()
@@ -240,8 +276,9 @@ DropdownWindow {
                     }
                     Text {
                         anchors.centerIn: parent
-                        text: parent.modelData === null ? "" : parent.modelData
-                        color: parent.today ? "#ffffff" : Theme.foreground
+                        text: parent.modelData === null ? ""
+                              : parent.weekCell ? String(parent.modelData.week) : parent.modelData
+                        color: parent.today ? "#ffffff" : parent.weekCell ? Theme.muted : Theme.foreground
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSize - 1
                         font.bold: parent.today
@@ -252,7 +289,7 @@ DropdownWindow {
 
         Text {
             Layout.alignment: Qt.AlignHCenter
-            text: qsTr("Week %1").arg(Qt.formatDateTime(Shell.now, "ww"))
+            text: qsTr("Week %1").arg(clock.isoWeek(Shell.now))
             color: Theme.muted
             font.family: Theme.fontFamily
             font.pointSize: Theme.fontSize - 2

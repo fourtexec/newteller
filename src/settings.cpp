@@ -63,6 +63,9 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("panel.clockFormat"), QStringLiteral("HH:mm"));
     m_defaults.insert(QStringLiteral("panel.dateFormat"), QStringLiteral("ddd d MMM"));
     m_defaults.insert(QStringLiteral("panel.showDate"), false);
+    // The calendar: -1 starts the week as the locale does, 0 Sunday ... 6.
+    m_defaults.insert(QStringLiteral("clock.firstWeekday"), -1);
+    m_defaults.insert(QStringLiteral("clock.weekNumbers"), false);
     m_defaults.insert(QStringLiteral("panel.showRunning"), true);
     m_defaults.insert(QStringLiteral("panel.pinned"),
                       QStringList{QStringLiteral("org.gnome.Terminal.desktop"),
