@@ -74,7 +74,8 @@ and the checks that will fail if one is broken.
   `caps-on|off`, `num-on|off`), `click X Y` (every button press while
   unlocked), `hung ID` / `responsive ID` / `closed ID` (ping timeouts),
   `window-menu ID X Y DESKTOP FLAGS TITLE`, `output NAME` (output under the
-  pointer), `fullscreen 1|0`, `bell`. Window state letters come from
+  pointer), `fullscreen 1|0`, `maximized 1|0` (a maximized window shown on
+  the current desktop), `bell`. Window state letters come from
   `viewFlags()`. Watchers get the current `output`/`fullscreen` state when
   they subscribe. Never block the shell's UI thread on D-Bus or the socket
   for long: the tray once froze the desktop for minutes with synchronous

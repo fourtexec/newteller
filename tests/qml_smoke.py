@@ -944,6 +944,12 @@ class Session(QObject):
     idleAvailable = Property(bool, lambda self: True, constant=True)
     nightLightAvailable = Property(bool, lambda self: True, constant=True)
     nightLightRunning = Property(bool, lambda self: False, notify=nightLightChanged)
+    # A maximized window on the current desktop (event maximized 1|0).
+    maximizedChanged = Signal()
+    _maximized = False
+    maximizedActive = Property(bool, lambda self: self._maximized, notify=maximizedChanged)
+    fullscreenChanged = Signal()
+    fullscreenActive = Property(bool, lambda self: False, notify=fullscreenChanged)
     polkitAgent = Property(str, lambda self: "/usr/bin/lxpolkit", constant=True)
     displaySettingsTool = Property(str, lambda self: "wdisplays", constant=True)
     soundSettingsTool = Property(str, lambda self: "pavucontrol", constant=True)
@@ -1779,6 +1785,22 @@ def main():
         settings.setValue("panel.style", "pill")
         QTest.qWait(40)
         check(panel.width() == g.width(), "back to a full-width panel")
+
+        # Auto-hide over maximized windows only: the bar stays while nothing
+        # is maximized and goes when the compositor reports one.
+        settings.setValue("panel.autoHide", True)
+        settings.setValue("panel.autoHideMode", "maximized")
+        QTest.qWait(30)
+        check(panel.property("revealed") is True, "with no maximized window the bar stays")
+        session._maximized = True
+        session.maximizedChanged.emit()
+        QTest.qWait(30)
+        check(panel.property("revealed") is False, "a maximized window hides the bar")
+        session._maximized = False
+        session.maximizedChanged.emit()
+        settings.setValue("panel.autoHide", False)
+        settings.reset("panel.autoHideMode")
+        QTest.qWait(30)
 
         # A screen of its own: another edge, or no panel at all.
         name = panel.screen().name()

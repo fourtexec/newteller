@@ -42,6 +42,11 @@ Window {
                                              ? screenOverride : (Settings.values["panel.position"] || "bottom")
     readonly property bool vertical: panelPosition === "left" || panelPosition === "right"
     readonly property bool autoHide: Settings.values["panel.autoHide"] === true
+    // panel.autoHideMode: "always", or "maximized" - the bar stays until a
+    // maximized or full-screen window is shown on the current desktop.
+    readonly property bool hideOverWindows: Settings.values["panel.autoHideMode"] === "maximized"
+    readonly property bool hiding: autoHide && (!hideOverWindows || Session.maximizedActive
+                                                || Session.fullscreenActive)
     // The bar is never thinner than its dock needs: a bigger icon size or
     // more rows make it grow instead of clipping the icons.
     readonly property int barThickness: Math.max(Settings.values["panel.height"] || 48,
@@ -56,7 +61,7 @@ Window {
     readonly property bool dropdownOpen: panel.hasAnyOpen([panel.startMenu, panel.notificationCenter,
                                                            panel.quickSettings, clockPopup,
                                                            dockMenu, trayMenu])
-    readonly property bool revealed: !autoHide || hoverArea.containsMouse
+    readonly property bool revealed: !hiding || hoverArea.containsMouse
                                      || autoHideHold || dropdownOpen
     // Set while the start menu is opening, before its window is visible yet.
     property bool menuWanted: false
@@ -273,7 +278,10 @@ Window {
         return LayerShell.Window.AnchorBottom | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight;
     }
     LayerShell.Window.layer: LayerShell.Window.LayerTop
-    LayerShell.Window.exclusionZone: revealed ? barThickness : stripSize
+    // Hidden over maximized windows, the bar overlays them when the pointer
+    // brings it back instead of pushing them aside.
+    LayerShell.Window.exclusionZone: hideOverWindows && hiding ? stripSize
+                                     : revealed ? barThickness : stripSize
     LayerShell.Window.scope: "newteller-panel"
     LayerShell.Window.margins {
         left: panel.panelPosition === "left" && panel.revealed ? panel.edgeMargin : 0
@@ -1760,7 +1768,7 @@ Window {
             if (containsMouse) {
                 autoHideTimer.stop();
                 panel.autoHideHold = false;
-            } else if (panel.autoHide) {
+            } else if (panel.hiding) {
                 panel.autoHideHold = true;
                 autoHideTimer.restart();
             }

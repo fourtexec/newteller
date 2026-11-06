@@ -1441,6 +1441,18 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                visible: Settings.values["panel.autoHide"] === true
+                                title: qsTr("Hide")
+                                settingKey: "panel.autoHideMode"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "always", label: qsTr("Always") },
+                                        { value: "maximized", label: qsTr("Over maximised windows") }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Auto-hide delay")
                                 settingKey: "panel.autoHideDelay"
                                 SettingsStepper { from: 0; to: 5000; step: 100; suffix: qsTr(" ms") }

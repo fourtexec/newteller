@@ -310,6 +310,9 @@ inside VirtualBox. The implemented pieces are:
   of pictures at a set interval (`desktop.wallpaperSlideshow`,
   `desktop.slideshowFolder`), and give each screen its own picture
   (`desktop.perMonitorWallpaper`).
+- **Hide the panel over maximised windows**: with auto-hide on, the bar can
+  stay until a maximised or full-screen window is shown on the desktop
+  (`panel.autoHideMode`; the compositor reports `event maximized 1|0`).
 - **Named desktops**: give desktops names (`workspaces.names`), show them on
   the panel as dots, numbers or names, and on screen when switching.
 - **Settings search**: type in the field above the settings pages to find any

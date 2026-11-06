@@ -433,6 +433,12 @@ void SessionServices::handleEvent(const QString &line)
             m_fullscreen = fullscreen;
             emit fullscreenChanged();
         }
+    } else if (line.startsWith(QLatin1String("maximized "))) {
+        const bool maximized = line.mid(10).trimmed() == QLatin1String("1");
+        if (maximized != m_maximized) {
+            m_maximized = maximized;
+            emit maximizedChanged();
+        }
     } else if (line == QLatin1String("bell")) {
         playBell();
     } else if (line.startsWith(QLatin1String("key "))) {

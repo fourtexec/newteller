@@ -60,6 +60,7 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("panel.cornerRadius"), -1);
     m_defaults.insert(QStringLiteral("panel.autoHide"), false);
     m_defaults.insert(QStringLiteral("panel.autoHideDelay"), 400);
+    m_defaults.insert(QStringLiteral("panel.autoHideMode"), QStringLiteral("always"));
     m_defaults.insert(QStringLiteral("panel.clockFormat"), QStringLiteral("HH:mm"));
     m_defaults.insert(QStringLiteral("panel.dateFormat"), QStringLiteral("ddd d MMM"));
     m_defaults.insert(QStringLiteral("panel.showDate"), false);

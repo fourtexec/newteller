@@ -69,6 +69,8 @@ class SessionServices : public QObject
     Q_PROPERTY(QString activeOutput READ activeOutput NOTIFY activeOutputChanged)
     // A fullscreen window is shown (a game, a video, a presentation).
     Q_PROPERTY(bool fullscreenActive READ fullscreenActive NOTIFY fullscreenChanged)
+    // A maximized window is shown on the current desktop.
+    Q_PROPERTY(bool maximizedActive READ maximizedActive NOTIFY maximizedChanged)
 
 public:
     explicit SessionServices(Settings *settings, QObject *parent = nullptr);
@@ -132,6 +134,7 @@ public:
     QVariantList hungWindows() const;
     QString activeOutput() const { return m_activeOutput; }
     bool fullscreenActive() const { return m_fullscreen; }
+    bool maximizedActive() const { return m_maximized; }
 
     // --- displays ---
     // name, description, enabled, width, height, refresh (mHz), x, y,
@@ -201,6 +204,7 @@ signals:
     void windowHung(int id);
     void activeOutputChanged();
     void fullscreenChanged();
+    void maximizedChanged();
     // Open the window menu at x/y (layout coordinates). `flags` holds the
     // state letters of the window (m minimized, x maximized, F fullscreen,
     // t always on top), `desktop` the desktop it is on.
@@ -243,6 +247,7 @@ private:
     int m_workspace = 0;
     QString m_activeOutput;
     bool m_fullscreen = false;
+    bool m_maximized = false;
     // Bumped by every read of the Wi-Fi networks; older answers are dropped.
     quint64 m_accessPointRead = 0;
     int m_workspaceCount = 1;

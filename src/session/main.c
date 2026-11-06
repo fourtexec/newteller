@@ -604,6 +604,7 @@ struct Server {
     struct wlr_output *pointerOutput;
     // A fullscreen window is shown (as last reported, "event fullscreen").
     bool fullscreenShown;
+    bool maximizedShown;
     enum CursorMode cursorMode;
     double grabX;
     double grabY;
@@ -1019,6 +1020,8 @@ static void viewSyncVisible(struct View *view)
     // A video in a minimized window or on another desktop no longer keeps
     // the screen awake.
     updateIdleInhibited(view->server);
+    // The panel's "hide over maximized windows" follows what is shown.
+    broadcastFullscreen(view->server, false);
 }
 
 // ---------------------------------------------------------------------------
@@ -1895,11 +1898,27 @@ static void broadcastFullscreen(struct Server *server, bool force)
 {
     bool shown = server->fullscreenView && server->fullscreenView->mapped
                  && viewOnWorkspace(server->fullscreenView);
-    if (shown == server->fullscreenShown && !force)
-        return;
-    server->fullscreenShown = shown;
-    if (ipcHasWatchers(server))
-        ipcBroadcast(server, shown ? "event fullscreen 1" : "event fullscreen 0");
+    if (shown != server->fullscreenShown || force) {
+        server->fullscreenShown = shown;
+        if (ipcHasWatchers(server))
+            ipcBroadcast(server, shown ? "event fullscreen 1" : "event fullscreen 0");
+    }
+    // "event maximized 1|0": a maximized window is (no longer) shown on the
+    // current desktop (the panel can hide over it, panel.autoHideMode).
+    bool maximized = false;
+    struct View *view;
+    wl_list_for_each(view, &server->views, link) {
+        if (view->mapped && view->maximized && !view->minimized && !view->overrideRedirect
+            && viewOnWorkspace(view)) {
+            maximized = true;
+            break;
+        }
+    }
+    if (maximized != server->maximizedShown || force) {
+        server->maximizedShown = maximized;
+        if (ipcHasWatchers(server))
+            ipcBroadcast(server, maximized ? "event maximized 1" : "event maximized 0");
+    }
 }
 
 static void broadcastWorkspaces(struct Server *server)
@@ -1999,6 +2018,7 @@ static void viewSetMaximized(struct View *view, bool maximized)
     if (view->xdg)
         wlr_xdg_toplevel_set_maximized(view->xdg, maximized);
     updateForeignToplevel(view);
+    broadcastFullscreen(view->server, false);
 }
 
 static void viewSetFullscreen(struct View *view, bool fullscreen)

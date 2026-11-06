@@ -250,6 +250,46 @@ if [[ $(window_flags) != *x* ]]; then
     exit 1
 fi
 msg maximize "$window_id" off >/dev/null
+# Watchers hear "event maximized 1|0" (the panel's hide-over-maximized
+# mode follows it).
+if ! "$python" - "$runtime/newteller-$socket.sock" "$compositor" "$window_id" "$runtime" "$socket" <<'PY'
+import os, socket, subprocess, sys, time
+path, compositor, window, runtime, display = sys.argv[1:6]
+env = dict(os.environ, XDG_RUNTIME_DIR=runtime, WAYLAND_DISPLAY=display)
+watch = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+watch.connect(path)
+watch.sendall(b"watch\n")
+watch.settimeout(0.2)
+buffer = b""
+
+def wait_for(line):
+    global buffer
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        if ("\n" + line + "\n").encode() in b"\n" + buffer:
+            buffer = b""
+            return True
+        try:
+            chunk = watch.recv(4096)
+        except socket.timeout:
+            continue
+        if not chunk:
+            return False
+        buffer += chunk
+    return False
+
+ok = wait_for("event maximized 0")
+subprocess.run([compositor, "--msg", "maximize", window, "on"], env=env, capture_output=True)
+ok = ok and wait_for("event maximized 1")
+subprocess.run([compositor, "--msg", "maximize", window, "off"], env=env, capture_output=True)
+ok = ok and wait_for("event maximized 0")
+sys.exit(0 if ok else 1)
+PY
+then
+    echo "watchers were not told about the maximized window" >&2
+    exit 1
+fi
+echo "session smoke: watchers hear event maximized 1/0"
 msg minimize "$window_id" >/dev/null
 if [[ $(window_flags) != *m* ]]; then
     echo "minimize did not minimize the window ($(window_flags))" >&2
