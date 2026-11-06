@@ -923,7 +923,10 @@ Window {
               + Qt.formatDateTime(Shell.now, Settings.values["panel.clockFormat"] || "HH:mm")
         color: panel.panelTextColor
         font.family: Theme.fontFamily
-        font.pointSize: Theme.fontSize
+        // panel.clockSize (0 follows the theme) and panel.clockBold.
+        font.pointSize: Number(Settings.values["panel.clockSize"] ?? 0) > 0
+                        ? Number(Settings.values["panel.clockSize"]) : Theme.fontSize
+        font.bold: Settings.values["panel.clockBold"] === true
     }
 
     // The clock is a button: tapping it opens the clock popup with the

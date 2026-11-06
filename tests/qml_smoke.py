@@ -2202,11 +2202,16 @@ def main():
         settings.setValue("desktop.autoArrangeIcons", False)
         settings.setValue("desktop.iconPositions",
                           {"Projects": {"x": left + 3 * cw, "y": top + 2 * ch}})
-        QTest.qWait(120)
-        cells = desk.property("gridCells")
-        if hasattr(cells, "toVariant"):
-            cells = cells.toVariant()
-        cell = (cells or {}).get("icon:Projects", {})
+        # The layout runs on a short timer; give a busy machine time.
+        cell = {}
+        for _ in range(30):
+            QTest.qWait(50)
+            cells = desk.property("gridCells")
+            if hasattr(cells, "toVariant"):
+                cells = cells.toVariant()
+            cell = (cells or {}).get("icon:Projects", {})
+            if cell.get("col") == 3 and cell.get("row") == 2:
+                break
         check(cell.get("col") == 3 and cell.get("row") == 2,
               f"an icon position from before the grid becomes its grid cell ({cell})")
         settings.setValue("desktop.iconPositions", {})

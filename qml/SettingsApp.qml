@@ -1497,6 +1497,19 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("Clock size")
+                                subtitle: qsTr("0 uses the theme font size.")
+                                settingKey: "panel.clockSize"
+                                SettingsStepper { from: 0; to: 24; suffix: " pt" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Bold clock")
+                                settingKey: "panel.clockBold"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Calendar week starts on")
                                 settingKey: "clock.firstWeekday"
                                 SettingsChoice {
