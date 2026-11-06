@@ -1610,6 +1610,17 @@ def main():
     dead = [k for k in bound_keys
             if not any(k in text for text in readers) and '"%s"' % k not in page_reads]
     check(not dead, f"every settings control changes something (never read: {dead})")
+    # A key read into a property that nothing uses looks read to the check
+    # above but does nothing (dock.labelPosition, the wallpaper slideshow).
+    unused_props = []
+    for path in sorted(glob.glob(os.path.join(ROOT, "qml", "*.qml"))
+                       + glob.glob(os.path.join(ROOT, "plugins", "*", "*.qml"))):
+        with open(path, encoding="utf-8") as handle:
+            text = handle.read()
+        for match in re.finditer(r'property \w+ (\w+):[^\n]*Settings\.values\["([^"]+)"\]', text):
+            if len(re.findall(r'\b%s\b' % match.group(1), text)) < 2:
+                unused_props.append(f"{os.path.basename(path)}:{match.group(1)} ({match.group(2)})")
+    check(not unused_props, f"settings read into a property are used ({unused_props})")
     # English interface text in QML goes through qsTr(), or the Russian
     # interface shows it untranslated: labels, returned strings and the
     # branches of a ?: that pick a label.
