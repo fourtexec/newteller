@@ -1869,6 +1869,25 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("Arrange by")
+                                settingKey: "desktop.sortBy"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "name", label: qsTr("Name") },
+                                        { value: "type", label: qsTr("Type") },
+                                        { value: "time", label: qsTr("Newest first") },
+                                        { value: "size", label: qsTr("Size") }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Folders first")
+                                settingKey: "desktop.foldersFirst"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Icon layout")
                                 subtitle: qsTr("Forget every dragged position and return to the grid.")
                                 TaskButton {

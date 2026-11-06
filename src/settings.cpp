@@ -216,6 +216,8 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("desktop.wallpaperSlideshow"), false);
     m_defaults.insert(QStringLiteral("desktop.wallpaperSlideshowInterval"), 60);
     m_defaults.insert(QStringLiteral("desktop.autoArrangeIcons"), true);
+    m_defaults.insert(QStringLiteral("desktop.sortBy"), QStringLiteral("name"));
+    m_defaults.insert(QStringLiteral("desktop.foldersFirst"), true);
     m_defaults.insert(QStringLiteral("desktop.iconTextColor"), QStringLiteral("#ffffff"));
     m_defaults.insert(QStringLiteral("desktop.iconTextShadow"), true);
     m_defaults.insert(QStringLiteral("desktop.iconTextSize"), 0);

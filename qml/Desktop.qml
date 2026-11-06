@@ -137,7 +137,16 @@ Window {
         showDirs: true
         showDotAndDotDot: false
         showHidden: desk.showHiddenFiles
-        sortField: FolderListModel.Name
+        // desktop.sortBy / desktop.foldersFirst: the order icons fill the
+        // grid in (auto-arranged icons; dragged ones keep their place).
+        sortField: {
+            const by = Settings.values["desktop.sortBy"] || "name";
+            return by === "type" ? FolderListModel.Type
+                 : by === "time" ? FolderListModel.Time
+                 : by === "size" ? FolderListModel.Size : FolderListModel.Name;
+        }
+        sortReversed: Settings.values["desktop.sortBy"] === "time"
+        showDirsFirst: Settings.values["desktop.foldersFirst"] !== false
     }
 
     // Images in ~/Pictures, used by "Change wallpaper".
