@@ -97,6 +97,22 @@ Window {
         return useCustomPanelColors && panelBackgroundColor.length > 0
                ? Math.max(0, Math.min(1, panel.panelBackgroundOpacity)) : Theme.opacity;
     }
+    // panel.style: "pill" (only the dock pill is drawn, the default) or
+    // "bar" (a bar along the whole panel, in panel.material and the custom
+    // panel colours, with panel.cornerRadius; -1 rounds a floating bar).
+    readonly property bool barStyle: Settings.values["panel.style"] === "bar"
+    readonly property int barRadius: {
+        const r = Number(Settings.values["panel.cornerRadius"] ?? -1);
+        if (r >= 0)
+            return Math.min(r, Math.floor(barThickness / 2));
+        return edgeMargin > 0 || panelLength < screenSpan ? Theme.radius + 2 : 0;
+    }
+    // panel.length: the share of the screen edge the panel takes (percent),
+    // centred; shorter than 100 makes a floating bar.
+    readonly property int screenSpan: vertical ? Screen.height : Screen.width
+    readonly property int panelLength: Math.round(screenSpan * Math.max(30, Math.min(100, Number(Settings.values["panel.length"] ?? 100))) / 100)
+    readonly property int alongOffset: Math.max(0, Math.round((screenSpan - panelLength) / 2))
+    readonly property bool panelBlurs: ["frosted", "liquid", "translucent"].indexOf(panelMaterial) >= 0
     readonly property color panelTextColor: useCustomPanelColors && panelForegroundColor.length > 0
                                            ? Qt.color(panelForegroundColor) : Theme.foreground
     readonly property string dockMaterial: Settings.values["dock.material"] || "none"
@@ -106,15 +122,23 @@ Window {
     readonly property bool dockBlurs: ["frosted", "liquid", "translucent"].indexOf(dockMaterial) >= 0
     function updateBlur() {
         const screenName = panel.screen ? panel.screen.name : "";
-        if (!panel.visible || !panel.dockPill || !panel.dockBlurs || !panel.revealed) {
+        // The bar style blurs behind the whole bar, the pill style behind
+        // the pill only.
+        const target = panel.barStyle ? barBackground : panel.dockPill;
+        const blurs = panel.barStyle ? panel.panelBlurs : panel.dockBlurs;
+        if (!panel.visible || !target || !blurs || !panel.revealed) {
             Session.clearBlur(String(panel), "newteller-panel", screenName);
             return;
         }
-        const p = panel.dockPill.mapToItem(null, 0, 0);
+        const p = target.mapToItem(null, 0, 0);
         Session.setBlur(String(panel), "newteller-panel", screenName, Math.round(p.x), Math.round(p.y),
-                        Math.round(panel.dockPill.width), Math.round(panel.dockPill.height),
-                        Math.round(Math.min(panel.dockPill.width, panel.dockPill.height) / 2));
+                        Math.round(target.width), Math.round(target.height),
+                        panel.barStyle ? panel.barRadius
+                                       : Math.round(Math.min(target.width, target.height) / 2));
     }
+    onBarStyleChanged: Qt.callLater(panel.updateBlur)
+    onPanelBlursChanged: Qt.callLater(panel.updateBlur)
+    onBarRadiusChanged: Qt.callLater(panel.updateBlur)
     onDockBlursChanged: Qt.callLater(panel.updateBlur)
     onRevealedChanged: Qt.callLater(panel.updateBlur)
     onWidthChanged: Qt.callLater(panel.updateBlur)
@@ -196,25 +220,35 @@ Window {
     readonly property int stripSize: 4
     readonly property int span: revealed ? barThickness : stripSize
 
-    width: vertical ? span + (revealed ? edgeMargin : 0) : Screen.width
-    height: vertical ? Screen.height : span + (revealed ? edgeMargin : 0)
+    width: vertical ? span + (revealed ? edgeMargin : 0) : panelLength
+    height: vertical ? panelLength : span + (revealed ? edgeMargin : 0)
     x: {
         if (panelPosition === "left")
             return Screen.virtualX + (revealed ? edgeMargin : 0);
         if (panelPosition === "right")
             return Screen.virtualX + Screen.width - width;
-        return Screen.virtualX;
+        return Screen.virtualX + alongOffset;
     }
     y: {
         if (panelPosition === "top")
             return Screen.virtualY + (revealed ? edgeMargin : 0);
         if (panelPosition === "bottom")
             return Screen.virtualY + Screen.height - height;
-        return Screen.virtualY;
+        return Screen.virtualY + alongOffset;
     }
 
     // Wayland: a layer surface along the chosen edge that reserves its space.
+    // A shorter panel is anchored to its edge only, which centres it.
     LayerShell.Window.anchors: {
+        if (panelLength < screenSpan) {
+            if (panelPosition === "top")
+                return LayerShell.Window.AnchorTop;
+            if (panelPosition === "left")
+                return LayerShell.Window.AnchorLeft;
+            if (panelPosition === "right")
+                return LayerShell.Window.AnchorRight;
+            return LayerShell.Window.AnchorBottom;
+        }
         if (panelPosition === "top")
             return LayerShell.Window.AnchorTop | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight;
         if (panelPosition === "left")
@@ -255,7 +289,8 @@ Window {
         if (!text || text.length === 0)
             return;
         const centre = item.mapToItem(null, item.width / 2, item.height / 2);
-        panelToolTip.showAt(text, centre.x, centre.y);
+        panelToolTip.showAt(text, centre.x + (vertical ? 0 : alongOffset),
+                            centre.y + (vertical ? alongOffset : 0));
     }
 
     function hideToolTip() {
@@ -276,7 +311,10 @@ Window {
         if (!item)
             return Qt.rect(0, 0, 0, 0);
         const local = item.mapToItem(null, 0, 0);
-        return Anchoring.panelButtonRect(Qt.rect(local.x, local.y, item.width, item.height),
+        // Window coordinates -> screen coordinates (a shorter panel is centred).
+        return Anchoring.panelButtonRect(Qt.rect(local.x + (vertical ? 0 : alongOffset),
+                                                 local.y + (vertical ? alongOffset : 0),
+                                                 item.width, item.height),
                                          panelPosition, barThickness, edgeMargin,
                                          panel.screenRect);
     }
@@ -513,7 +551,7 @@ Window {
     // smallest icons do not fit.
     function updateAdaptiveDock(count) {
         const base = dockIconSize;
-        const span = vertical ? Screen.height : Screen.width;
+        const span = panelLength;
         const reserved = 64 /* start */ + 14 /* separators */
                        + (vertical ? 26 : 88) /* clock */
                        + panelPlugins.length * 30 + 24;
@@ -1350,6 +1388,26 @@ Window {
                 font.pointSize: Theme.fontSize - 1
             }
         }
+    }
+
+    // The bar itself in the bar style, centred on the strip like the pill.
+    SurfaceStyle {
+        id: barBackground
+        visible: panel.barStyle && panel.revealed
+        opacity: barLoader.opacity
+        x: panel.vertical ? Math.round((panel.width - panel.barThickness) / 2) : 0
+        y: panel.vertical ? 0 : Math.round((panel.height - panel.barThickness) / 2)
+        width: panel.vertical ? panel.barThickness : panel.width
+        height: panel.vertical ? panel.height : panel.barThickness
+        material: panel.panelMaterial
+        materialOpacity: panel.panelSurfaceOpacity
+        baseColor: panel.panelSurfaceColor
+        cornerRadius: panel.barRadius
+        borderColor: Theme.border
+        borderOpacity: 0.6
+        borderWidth: panel.barRadius > 0 ? 1 : 0
+        onXChanged: Qt.callLater(panel.updateBlur)
+        onYChanged: Qt.callLater(panel.updateBlur)
     }
 
     Loader {

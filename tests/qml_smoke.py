@@ -1701,6 +1701,34 @@ def main():
                   and ls.scope == "newteller-panel", "panel layer-shell settings")
             check(sw is not None and sw.role == 2, "panel has ShellWindow.Dock")
 
+    # A shorter, floating panel (panel.length): centred on its edge, anchored
+    # to the edge only, and the cards it opens still hang off its buttons.
+    if panels:
+        panel = panels[0]
+        g = panel.screen().geometry()
+        settings.setValue("panel.length", 50)
+        settings.setValue("panel.style", "bar")
+        QTest.qWait(40)
+        want_width = round(g.width() * 0.5)
+        want_x = g.x() + round((g.width() - want_width) / 2)
+        check((panel.x(), panel.width()) == (want_x, want_width),
+              f"a 50% panel is centred ({(panel.x(), panel.width())} vs {(want_x, want_width)})")
+        ls = attached("layershell", panel)
+        check(ls is not None and ls.anchors == 2, f"a short panel is anchored to its edge only ({ls and ls.anchors})")
+        start_item = panel.findChild(QQuickItem, "startButton")
+        if start_item is not None:
+            QTest.qWait(20)
+            got = QMetaObject.invokeMethod(panel, "anchorRect", Q_RETURN_ARG("QVariant"),
+                                           Q_ARG("QVariant", start_item))
+            got = got.toVariant() if hasattr(got, "toVariant") else got
+            local = start_item.mapToScene(QPointF(0, 0))
+            check(got is not None and abs(got.x() - (panel.x() + local.x())) < 1,
+                  f"a short panel's buttons map to screen coordinates ({got} vs {panel.x() + local.x()})")
+        settings.setValue("panel.length", 100)
+        settings.setValue("panel.style", "pill")
+        QTest.qWait(40)
+        check(panel.width() == g.width(), "back to a full-width panel")
+
     # Clicking Start below also proves each panel's startMenu points at this window.
     menu = menus[0] if menus else None
     if menu is not None and panels:

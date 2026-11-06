@@ -660,7 +660,7 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Panel surface")
-                                subtitle: qsTr("Theme, opaque, half-transparent, frosted or liquid glass.")
+                                subtitle: qsTr("Theme, opaque, half-transparent, frosted or liquid glass. Shown with the Bar panel style.")
                                 settingKey: "panel.material"
                                 SettingsChoice {
                                     model: [
@@ -1097,6 +1097,33 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("Style")
+                                subtitle: qsTr("Pill: only the dock is drawn. Bar: a bar along the edge in the panel surface and colours (Appearance).")
+                                settingKey: "panel.style"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "pill", label: qsTr("Pill") },
+                                        { value: "bar", label: qsTr("Bar") }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Length")
+                                subtitle: qsTr("Share of the screen edge; less than 100% makes a floating, centred panel.")
+                                settingKey: "panel.length"
+                                SettingsSlider { from: 30; to: 100; step: 5; suffix: " %" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                visible: Settings.values["panel.style"] === "bar"
+                                title: qsTr("Bar corner radius")
+                                subtitle: qsTr("-1 rounds a floating bar and keeps a full-width one square.")
+                                settingKey: "panel.cornerRadius"
+                                SettingsStepper { from: -1; to: 32; suffix: " px" }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Screen edge gap")
                                 settingKey: "panel.margin"
                                 SettingsSlider { from: 0; to: 24; step: 1; suffix: " px" }
@@ -1269,12 +1296,6 @@ Window {
                                 title: qsTr("Icon spacing")
                                 settingKey: "dock.iconSpacing"
                                 SettingsSlider { from: 0; to: 24; step: 2; suffix: " px" }
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Shrink icons on overflow")
-                                settingKey: "dock.shrinkIcons"
-                                SettingsSwitch {}
                             }
                         }
 

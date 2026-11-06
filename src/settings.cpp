@@ -50,8 +50,9 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("panel.height"), 48);
     m_defaults.insert(QStringLiteral("panel.position"), QStringLiteral("bottom"));
     m_defaults.insert(QStringLiteral("panel.margin"), 0);
-    m_defaults.insert(QStringLiteral("panel.centered"), false);
-    m_defaults.insert(QStringLiteral("panel.width"), 0);
+    m_defaults.insert(QStringLiteral("panel.style"), QStringLiteral("pill"));
+    m_defaults.insert(QStringLiteral("panel.length"), 100);
+    m_defaults.insert(QStringLiteral("panel.cornerRadius"), -1);
     m_defaults.insert(QStringLiteral("panel.autoHide"), false);
     m_defaults.insert(QStringLiteral("panel.autoHideDelay"), 400);
     m_defaults.insert(QStringLiteral("panel.clockFormat"), QStringLiteral("HH:mm"));

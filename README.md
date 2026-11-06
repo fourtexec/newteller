@@ -294,6 +294,9 @@ inside VirtualBox. The implemented pieces are:
   field at the top or bottom, its own background, text, accent and search
   match colours, surface material, opacity and corner radius, and the power
   buttons shown or hidden.
+- **Panel style and length**: the dock pill alone (default) or a bar along
+  the edge in the panel surface and colours, with its own corner radius; a
+  length below 100% makes a floating, centred panel.
 - **Day and night themes**: two themes switched at set times or together
   with the night light, with applications following (light by day, dark at
   night).
