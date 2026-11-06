@@ -1982,6 +1982,21 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("Double-click on the empty desktop")
+                                settingKey: "desktop.doubleClick"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "none", label: qsTr("Nothing") },
+                                        { value: "startMenu", label: qsTr("Start menu") },
+                                        { value: "overview", label: qsTr("Overview") },
+                                        { value: "terminal", label: qsTr("Terminal") },
+                                        { value: "files", label: qsTr("Home folder") },
+                                        { value: "settings", label: qsTr("Settings") }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Icon color")
                                 settingKey: "desktop.iconColor"
                                 SettingsColorField {

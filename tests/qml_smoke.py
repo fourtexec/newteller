@@ -641,6 +641,14 @@ class Shell(QObject):
         self.calls.append(("openSettings",))
         self.settingsRequested.emit()
 
+    @Slot()
+    def toggleTaskView(self):
+        self.calls.append(("toggleTaskView",))
+
+    @Slot()
+    def toggleStartMenu(self):
+        self.calls.append(("toggleStartMenu",))
+
     @Slot(str)
     def openSettingsPage(self, page):
         self.calls.append(("openSettingsPage", page))
@@ -2032,6 +2040,17 @@ def main():
         check(len(pinned_items) == 2, f"the start menu shows the pinned applications ({len(pinned_items)})")
         settings.reset("startmenu.showPinned")
         QTest.qWait(20)
+
+    # desktop.doubleClick on the empty desktop.
+    if desktops:
+        desk = desktops[0]
+        shell.calls.clear()
+        QMetaObject.invokeMethod(desk, "emptyDoubleClick")
+        check(not shell.calls, f"a double click on the desktop does nothing by default ({shell.calls})")
+        settings.setValue("desktop.doubleClick", "overview")
+        QMetaObject.invokeMethod(desk, "emptyDoubleClick")
+        check(("toggleTaskView",) in shell.calls, f"it can open the overview ({shell.calls})")
+        settings.reset("desktop.doubleClick")
 
     # Wallpaper slideshow: the next picture of the folder, in name order; with
     # per-monitor wallpapers the screen keeps its own.

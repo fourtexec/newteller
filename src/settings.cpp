@@ -127,6 +127,7 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("desktop.cellWidth"), 96);
     m_defaults.insert(QStringLiteral("desktop.cellHeight"), 110);
     m_defaults.insert(QStringLiteral("desktop.contextMenu"), true);
+    m_defaults.insert(QStringLiteral("desktop.doubleClick"), QStringLiteral("none"));
     // Empty: use the icons bundled with the shell (IconKit compiled into the
     // binary and, for everything else, the kit installed with the release).
     // A non-empty path (say ~/iconkit/icons) overrides the bundled sets.

@@ -766,6 +766,31 @@ Window {
         }
     }
 
+    // desktop.doubleClick: a double click on the empty desktop opens the
+    // start menu, the overview, a terminal, the home folder or the settings
+    // ("none" by default). Below the icons and widgets, so they keep theirs.
+    function emptyDoubleClick() {
+        const action = Settings.values["desktop.doubleClick"] || "none";
+        if (action === "startMenu")
+            Shell.toggleStartMenu();
+        else if (action === "overview")
+            Shell.toggleTaskView();
+        else if (action === "terminal")
+            Shell.terminal("");
+        else if (action === "files")
+            Shell.openPath(Shell.home);
+        else if (action === "settings")
+            Shell.openSettings();
+    }
+    Item {
+        anchors.fill: parent
+        z: -2
+        TapHandler {
+            acceptedButtons: Qt.LeftButton
+            onDoubleTapped: desk.emptyDoubleClick()
+        }
+    }
+
     // Right-click menu: wallpaper, paste, terminal, settings. Right button
     // only, and below the icons and widgets (z -1): taking left clicks on
     // top of everything swallowed every click meant for a desktop widget
