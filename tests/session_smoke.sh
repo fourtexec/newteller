@@ -50,7 +50,7 @@ chmod 700 "$runtime"
 export XDG_CONFIG_HOME="$runtime/config"
 mkdir -p "$XDG_CONFIG_HOME/newteller"
 # A moved built-in shortcut checks the hotkey lines of compositor.conf.
-printf '{\n    "desktop.defaultWallpaper": false,\n    "hotkeys.lockScreen": "Super+Shift+K",\n    "windowRules.workspaces": "org.example.Nothing = 2, broken"\n}\n' \
+printf '{\n    "desktop.defaultWallpaper": false,\n    "hotkeys.lockScreen": "Super+Shift+K",\n    "windowRules.workspaces": "org.example.Nothing = 2, broken",\n    "windows.gaps": 16\n}\n' \
     > "$XDG_CONFIG_HOME/newteller/shell.json"
 socket=newteller-smoke
 log="$runtime/compositor.log"
@@ -188,6 +188,32 @@ if [[ -n $agent_windows ]]; then
     exit 1
 fi
 echo "session smoke: no polkit agent window at login"
+# Snapping from the control socket, with windows.gaps = 16 around the
+# halves: the left half starts at least 16 px in, the right one ends at
+# least 16 px before the edge.
+reply=$(msg snap "$window_id" left || true)
+read -r status left_x _ left_w _ <<<"$reply"
+if [[ $status != ok || -z $left_x || $left_x -lt 16 || $left_w -gt 640 ]]; then
+    echo "snap left did not leave the gap ($reply)" >&2
+    exit 1
+fi
+reply=$(msg snap "$window_id" right || true)
+read -r status right_x _ right_w _ <<<"$reply"
+if [[ $status != ok || -z $right_x || $right_x -lt 640 || $((right_x + right_w)) -gt $((1280 - 16)) ]]; then
+    echo "snap right did not leave the gap ($reply)" >&2
+    exit 1
+fi
+reply=$(msg snap "$window_id" restore || true)
+if [[ $reply != ok* ]]; then
+    echo "snap restore failed ($reply)" >&2
+    exit 1
+fi
+reply=$(msg snap "$window_id" sideways || true)
+if [[ $reply != error* ]]; then
+    echo "snap accepted a bad place ($reply)" >&2
+    exit 1
+fi
+echo "session smoke: snapping keeps windows.gaps ($left_x/$left_w, $right_x/$right_w)"
 reply=$(msg thumbnail "$window_id" 200 || true)
 thumb=${reply#ok }
 if [[ $reply != ok* || ! -s $thumb ]]; then

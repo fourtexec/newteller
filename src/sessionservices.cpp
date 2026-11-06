@@ -602,6 +602,7 @@ void SessionServices::settingChanged(const QString &key)
         || key.startsWith(QLatin1String("lock.")) || key.startsWith(QLatin1String("effects."))
         || key == QLatin1String("windows.focusFollowsMouse")
         || key == QLatin1String("windows.placement") || key == QLatin1String("windows.snapping")
+        || key == QLatin1String("windows.gaps")
         || key.startsWith(QLatin1String("windowRules."))
         || key.startsWith(QLatin1String("hotCorners.")) || key.startsWith(QLatin1String("hotkeys."))
         || key.startsWith(QLatin1String("mouse.")) || key.startsWith(QLatin1String("cursor."))
@@ -713,6 +714,7 @@ QString SessionServices::compositorConfigText() const
                      boolText(value("windows.focusFollowsMouse")));
     text += confLine(QStringLiteral("windows.placement"), value("windows.placement").toString());
     text += confLine(QStringLiteral("windows.snapping"), boolText(value("windows.snapping")));
+    text += confLine(QStringLiteral("windows.gaps"), QString::number(qBound(0, value("windows.gaps").toInt(), 64)));
     text += confLine(QStringLiteral("switcher.allWorkspaces"), boolText(value("switcher.allWorkspaces")));
 
     // Window rules: a list in shell.json, or the comma separated text the

@@ -301,6 +301,8 @@ inside VirtualBox. The implemented pieces are:
   length below 100% makes a floating, centred panel.
 - **A panel per screen**: with several monitors each screen can put its panel
   on another edge or go without one (Settings → Displays).
+- **Gaps between snapped windows** (`windows.gaps`, Settings → Windows):
+  halves and quarters keep a margin around them, as tiling desktops do.
 - **Named desktops**: give desktops names (`workspaces.names`), show them on
   the panel as dots, numbers or names, and on screen when switching.
 - **Profiles**: save every setting under a name (Settings → Appearance →
@@ -456,7 +458,9 @@ writes from its settings, and listens on a control socket (`$NEWTELLER_IPC`):
 Window commands take the id from `windows`: `minimize ID [on|off]`,
 `maximize ID [on|off|toggle]`, `fullscreen ID [on|off|toggle]`,
 `always-on-top ID [on|off|toggle]`, `sticky ID [on|off|toggle]` (every
-desktop), `move-to-output ID [next|prev]` and `window-menu [ID [X Y]]` (opens the
+desktop), `move-to-output ID [next|prev]`, `snap ID left|right|top-left|top-right|bottom-left|bottom-right|restore`
+(as Super+arrows, with `windows.gaps` around snapped windows; replies
+`ok X Y W H`) and `window-menu [ID [X Y]]` (opens the
 window menu; watchers get `event window-menu ID X Y DESKTOP FLAGS TITLE`).
 `windows` flags: `f` focused, `m` minimized, `x` maximized, `F` full screen,
 `t` always on top, `s` on every desktop, `h` not responding (`-` for none).

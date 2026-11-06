@@ -1694,6 +1694,43 @@ static void viewRestoreSnap(struct View *view)
 // direction is a wlr edge: WLR_EDGE_LEFT/RIGHT for the two halves, one of
 // them with TOP or BOTTOM for a quarter, WLR_EDGE_TOP alone for maximise.
 // WLR_EDGE_BOTTOM alone restores the saved geometry.
+// The outer box of a half (a side) or a quarter (a side plus top or
+// bottom) of the view's work area, with windows.gaps around and between
+// snapped windows; the top edge alone is the whole area.
+static struct wlr_box snapCell(struct View *view, uint32_t edges)
+{
+    struct wlr_box area = usableBoxForView(view);
+    const uint32_t side = edges & (WLR_EDGE_LEFT | WLR_EDGE_RIGHT);
+    const uint32_t row = edges & (WLR_EDGE_TOP | WLR_EDGE_BOTTOM);
+    if (!side)
+        return area;
+    // Half of the gap around the area and half around each cell: the gap
+    // between two windows and the one to the screen edge come out equal.
+    const int gap = view->server->config.gaps;
+    const int outerInset = gap / 2;
+    const int cellInset = gap - outerInset;
+    area.x += outerInset;
+    area.y += outerInset;
+    area.width -= 2 * outerInset;
+    area.height -= 2 * outerInset;
+    struct wlr_box box = area;
+    box.width = area.width / 2;
+    if (side == WLR_EDGE_RIGHT)
+        box.x = area.x + area.width - box.width;
+    if (row && row != (WLR_EDGE_TOP | WLR_EDGE_BOTTOM)) {
+        box.height = area.height / 2;
+        if (row == WLR_EDGE_BOTTOM)
+            box.y = area.y + area.height - box.height;
+    }
+    if (box.width > 2 * cellInset + 64 && box.height > 2 * cellInset + 64) {
+        box.x += cellInset;
+        box.y += cellInset;
+        box.width -= 2 * cellInset;
+        box.height -= 2 * cellInset;
+    }
+    return box;
+}
+
 static void viewSnap(struct View *view, uint32_t edge)
 {
     if (!view || view->overrideRedirect)
@@ -1733,11 +1770,7 @@ static void viewSnap(struct View *view, uint32_t edge)
     }
 
     const struct wlr_box area = usableBoxForView(view);
-    const int half = area.width / 2;
-    const int height = vertical ? area.height / 2 : area.height;
-    struct wlr_box outer = {side == WLR_EDGE_LEFT ? area.x : area.x + area.width - half,
-                            vertical == WLR_EDGE_BOTTOM ? area.y + area.height - height : area.y,
-                            half, height};
+    struct wlr_box outer = snapCell(view, edge);
     struct wlr_box content = frameContentBox(view, outer);
     viewSetPosition(view, content.x, content.y);
     viewSetSize(view, content.width, content.height);
@@ -2994,20 +3027,7 @@ static void updateSnapPreview(struct Server *server, bool dragging)
         }
         return;
     }
-    const struct wlr_box area = usableBoxForView(view);
-    struct wlr_box box = area;
-    const uint32_t side = edges & (WLR_EDGE_LEFT | WLR_EDGE_RIGHT);
-    const uint32_t row = edges & (WLR_EDGE_TOP | WLR_EDGE_BOTTOM);
-    if (side) {
-        box.width = area.width / 2;
-        if (side == WLR_EDGE_RIGHT)
-            box.x = area.x + area.width - box.width;
-        if (row) {
-            box.height = area.height / 2;
-            if (row == WLR_EDGE_BOTTOM)
-                box.y = area.y + area.height - box.height;
-        }
-    }
+    const struct wlr_box box = snapCell(view, edges);
     // A small inset, so the preview reads as a target, not a window.
     const int inset = 6;
     wlr_scene_node_set_position(&server->snapTree->node, box.x + inset, box.y + inset);
@@ -7968,7 +7988,7 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
                 || strcmp(command, "maximize") == 0 || strcmp(command, "fullscreen") == 0
                 || strcmp(command, "always-on-top") == 0 || strcmp(command, "sticky") == 0
                 || strcmp(command, "move-to-output") == 0
-                || strcmp(command, "window-menu") == 0)
+                || strcmp(command, "window-menu") == 0 || strcmp(command, "snap") == 0)
                && argument) {
         uint32_t id = (uint32_t)strtoul(argument, NULL, 10);
         struct View *target = NULL;
@@ -8050,6 +8070,39 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
             viewSyncVisible(target);
             broadcastWorkspaces(server);
             ipcSend(client, target->sticky ? "ok 1" : "ok 0");
+        } else if (strcmp(command, "snap") == 0) {
+            // snap ID left|right|top-left|top-right|bottom-left|bottom-right
+            // |restore: as Super+arrows; replies with the window's new
+            // content box "ok X Y W H".
+            static const struct {
+                const char *name;
+                uint32_t edges;
+            } places[] = {
+                {"left", WLR_EDGE_LEFT}, {"right", WLR_EDGE_RIGHT},
+                {"top-left", WLR_EDGE_TOP | WLR_EDGE_LEFT}, {"top-right", WLR_EDGE_TOP | WLR_EDGE_RIGHT},
+                {"bottom-left", WLR_EDGE_BOTTOM | WLR_EDGE_LEFT},
+                {"bottom-right", WLR_EDGE_BOTTOM | WLR_EDGE_RIGHT}, {"restore", WLR_EDGE_BOTTOM},
+            };
+            char *where = strtok(NULL, " \t\r");
+            uint32_t edges = 0;
+            for (size_t i = 0; where && i < sizeof(places) / sizeof(places[0]); ++i) {
+                if (strcmp(where, places[i].name) == 0)
+                    edges = places[i].edges;
+            }
+            if (edges == 0) {
+                ipcSend(client, "error usage: snap ID left|right|top-left|top-right|bottom-left|bottom-right|restore");
+                return;
+            }
+            if (target->minimized)
+                viewSetMinimized(target, false);
+            if (target->fullscreen)
+                viewSetFullscreen(target, false);
+            viewSnap(target, edges);
+            focusView(target, NULL);
+            char reply[96];
+            snprintf(reply, sizeof(reply), "ok %d %d %d %d", target->x, target->y, target->width,
+                     target->height);
+            ipcSend(client, reply);
         } else if (strcmp(command, "always-on-top") == 0) {
             viewSetAlwaysOnTop(target, ipcToggle(strtok(NULL, " \t\r"), target->alwaysOnTop));
             ipcSend(client, target->alwaysOnTop ? "ok 1" : "ok 0");
@@ -8806,6 +8859,7 @@ static void printUsage(void)
         "                             (reload, lock, dpms on|off, layout next,\n"
         "                             idle-inhibit on|off, outputs, windows,\n"
         "                             minimize|maximize|fullscreen|always-on-top ID,\n"
+        "                             snap ID left|right|top-left|...|restore,\n"
         "                             window-menu, exit) and print the reply\n"
         "  --debug                    Verbose wlroots logging\n");
 }

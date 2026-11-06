@@ -120,6 +120,7 @@ void ntConfigDefaults(struct CompositorConfig *config)
 
     config->focusFollowsMouse = false;
     config->snapping = true;
+    config->gaps = 0;
     config->switcherAllWorkspaces = false;
     snprintf(config->placement, sizeof(config->placement), "%s", "center");
     config->rulesAlwaysOnTop[0] = '\0';
@@ -296,6 +297,8 @@ bool ntConfigLoadFile(struct CompositorConfig *config, const char *path)
             copyText(config->rulesAlwaysOnTop, sizeof(config->rulesAlwaysOnTop), value);
         else if (strcmp(key, "rules.maximized") == 0)
             copyText(config->rulesMaximized, sizeof(config->rulesMaximized), value);
+        else if (strcmp(key, "windows.gaps") == 0)
+            config->gaps = parseInt(value, config->gaps, 0, 64);
         else if (strcmp(key, "rules.fullscreen") == 0)
             copyText(config->rulesFullscreen, sizeof(config->rulesFullscreen), value);
         else if (strcmp(key, "rules.minimized") == 0)

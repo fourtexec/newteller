@@ -377,6 +377,7 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("windows.focusFollowsMouse"), false);
     m_defaults.insert(QStringLiteral("windows.placement"), QStringLiteral("cascade"));
     m_defaults.insert(QStringLiteral("windows.snapping"), true);
+    m_defaults.insert(QStringLiteral("windows.gaps"), 0);
     // The user's own shortcuts: [{ "keys": "Super+T", "command": "..." }].
     m_defaults.insert(QStringLiteral("shortcuts.custom"), QVariantList());
     // Applications' look (GTK/GNOME settings).

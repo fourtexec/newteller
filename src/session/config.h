@@ -99,6 +99,7 @@ struct CompositorConfig {
     // Window behaviour.
     bool focusFollowsMouse;
     bool snapping;                         // edge snapping while dragging
+    int gaps;                              // px around and between snapped windows
     bool switcherAllWorkspaces;            // Alt+Tab over every desktop
     char placement[16];                    // center | cascade | mouse
     // Window rules: comma separated app ids (or X11 classes), any case.

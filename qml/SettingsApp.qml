@@ -3144,6 +3144,13 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("Gaps between snapped windows")
+                                subtitle: qsTr("Space around halves and quarters (Super+arrows or dragging to an edge).")
+                                settingKey: "windows.gaps"
+                                SettingsSlider { from: 0; to: 32; step: 2; suffix: " px" }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Alt+Tab shows windows of every desktop")
                                 settingKey: "switcher.allWorkspaces"
                                 SettingsSwitch { settingKey: "switcher.allWorkspaces" }
