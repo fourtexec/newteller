@@ -683,6 +683,16 @@ QString SessionServices::compositorConfigText() const
                      boolText(value("decorations.titleCentered")));
     text += confLine(QStringLiteral("decorations.showMinimize"), boolText(value("decorations.showMinimize")));
     text += confLine(QStringLiteral("decorations.showMaximize"), boolText(value("decorations.showMaximize")));
+    // Title bar clicks: maximize | minimize | alwaysOnTop | none.
+    static const QStringList titleActions{QStringLiteral("maximize"), QStringLiteral("minimize"),
+                                          QStringLiteral("alwaysOnTop"), QStringLiteral("none")};
+    for (const char *key : {"decorations.doubleClick", "decorations.middleClick"}) {
+        const QString action = value(key).toString();
+        if (titleActions.contains(action))
+            text += confLine(QString::fromLatin1(key), action);
+    }
+    text += confLine(QStringLiteral("mouse.doubleClickInterval"),
+                     QString::number(qBound(100, value("mouse.doubleClickInterval").toInt(), 2000)));
     QString font = value("decorations.font").toString().trimmed();
     QString activeBackground = value("decorations.activeBackground").toString();
     QString activeForeground = value("decorations.activeForeground").toString();
@@ -1049,6 +1059,21 @@ void SessionServices::applyAppearance()
         return;
     QProcess::startDetached(gsettings, {QStringLiteral("set"), QStringLiteral("org.gnome.desktop.wm.preferences"),
                                         QStringLiteral("button-layout"), layout});
+    // GTK header bars (client-side title bars) do the same on a double or
+    // middle click as NewTeller's own title bars.
+    auto gtkTitleAction = [](const QString &action) {
+        if (action == QLatin1String("minimize"))
+            return QStringLiteral("minimize");
+        if (action == QLatin1String("maximize"))
+            return QStringLiteral("toggle-maximize");
+        return QStringLiteral("none");
+    };
+    QProcess::startDetached(gsettings, {QStringLiteral("set"), QStringLiteral("org.gnome.desktop.wm.preferences"),
+                                        QStringLiteral("action-double-click-titlebar"),
+                                        gtkTitleAction(m_settings->value(QStringLiteral("decorations.doubleClick")).toString())});
+    QProcess::startDetached(gsettings, {QStringLiteral("set"), QStringLiteral("org.gnome.desktop.wm.preferences"),
+                                        QStringLiteral("action-middle-click-titlebar"),
+                                        gtkTitleAction(m_settings->value(QStringLiteral("decorations.middleClick")).toString())});
     const QString schema = QStringLiteral("org.gnome.desktop.interface");
     const QString scheme = m_settings->value(QStringLiteral("apps.colorScheme")).toString();
     if (scheme == QLatin1String("dark")) {

@@ -370,6 +370,8 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("decorations.titleCentered"), true);
     m_defaults.insert(QStringLiteral("decorations.showMinimize"), true);
     m_defaults.insert(QStringLiteral("decorations.showMaximize"), true);
+    m_defaults.insert(QStringLiteral("decorations.doubleClick"), QStringLiteral("maximize"));
+    m_defaults.insert(QStringLiteral("decorations.middleClick"), QStringLiteral("minimize"));
     m_defaults.insert(QStringLiteral("decorations.font"), QString());
     m_defaults.insert(QStringLiteral("decorations.activeBackground"), QStringLiteral("#262626"));
     m_defaults.insert(QStringLiteral("decorations.activeForeground"), QStringLiteral("#f2f2f5"));

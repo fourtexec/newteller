@@ -90,6 +90,11 @@ struct CompositorConfig {
     bool showMinimize;
     bool showMaximize;
     char titleFont[NT_CONFIG_TEXT];        // Pango description, "Sans Bold 10"
+    // What a double / middle click on a title bar does: maximize |
+    // minimize | alwaysOnTop | none.
+    char titleDoubleClick[16];
+    char titleMiddleClick[16];
+    int doubleClickMs;                     // mouse.doubleClickInterval
     float activeBackground[4];
     float activeForeground[4];
     float inactiveBackground[4];

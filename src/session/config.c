@@ -111,6 +111,9 @@ void ntConfigDefaults(struct CompositorConfig *config)
     config->titleCentered = true;
     config->showMinimize = true;
     config->showMaximize = true;
+    snprintf(config->titleDoubleClick, sizeof(config->titleDoubleClick), "%s", "maximize");
+    snprintf(config->titleMiddleClick, sizeof(config->titleMiddleClick), "%s", "minimize");
+    config->doubleClickMs = 400;
     snprintf(config->titleFont, sizeof(config->titleFont), "%s", "Sans Bold 10");
     ntConfigParseColor("#262626", config->activeBackground);
     ntConfigParseColor("#f2f2f5", config->activeForeground);
@@ -297,6 +300,12 @@ bool ntConfigLoadFile(struct CompositorConfig *config, const char *path)
             copyText(config->rulesAlwaysOnTop, sizeof(config->rulesAlwaysOnTop), value);
         else if (strcmp(key, "rules.maximized") == 0)
             copyText(config->rulesMaximized, sizeof(config->rulesMaximized), value);
+        else if (strcmp(key, "decorations.doubleClick") == 0)
+            copyText(config->titleDoubleClick, sizeof(config->titleDoubleClick), value);
+        else if (strcmp(key, "decorations.middleClick") == 0)
+            copyText(config->titleMiddleClick, sizeof(config->titleMiddleClick), value);
+        else if (strcmp(key, "mouse.doubleClickInterval") == 0)
+            config->doubleClickMs = parseInt(value, config->doubleClickMs, 100, 2000);
         else if (strcmp(key, "windows.gaps") == 0)
             config->gaps = parseInt(value, config->gaps, 0, 64);
         else if (strcmp(key, "rules.fullscreen") == 0)

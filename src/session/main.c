@@ -1731,6 +1731,17 @@ static struct wlr_box snapCell(struct View *view, uint32_t edges)
     return box;
 }
 
+// decorations.doubleClick / middleClick on a compositor-drawn title bar.
+static void titleClickAction(struct View *view, const char *action)
+{
+    if (strcmp(action, "maximize") == 0)
+        viewSetMaximized(view, !view->maximized);
+    else if (strcmp(action, "minimize") == 0)
+        viewSetMinimized(view, true);
+    else if (strcmp(action, "alwaysOnTop") == 0)
+        viewSetAlwaysOnTop(view, !view->alwaysOnTop);
+}
+
 static void viewSnap(struct View *view, uint32_t edge)
 {
     if (!view || view->overrideRedirect)
@@ -3272,7 +3283,7 @@ static void cursorButton(struct wl_listener *listener, void *data)
             break;
         case FRAME_TITLE:
             if (event->button == BTN_MIDDLE) {
-                viewSetMinimized(view, true);
+                titleClickAction(view, server->config.titleMiddleClick);
                 break;
             }
             if (event->button == BTN_RIGHT) {
@@ -3283,9 +3294,10 @@ static void cursorButton(struct wl_listener *listener, void *data)
             if (event->button != BTN_LEFT)
                 break;
             if (server->lastTitleView == view
-                && event->time_msec - server->lastTitleClick < 400) {
+                && event->time_msec - server->lastTitleClick < (uint32_t)server->config.doubleClickMs
+                && strcmp(server->config.titleDoubleClick, "none") != 0) {
                 server->lastTitleView = NULL;
-                viewSetMaximized(view, !view->maximized);
+                titleClickAction(view, server->config.titleDoubleClick);
                 break;
             }
             server->lastTitleView = view;

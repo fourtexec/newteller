@@ -3103,6 +3103,32 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("Double-click on a title bar")
+                                settingKey: "decorations.doubleClick"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "maximize", label: qsTr("Maximise") },
+                                        { value: "minimize", label: qsTr("Minimise") },
+                                        { value: "alwaysOnTop", label: qsTr("Keep on top") },
+                                        { value: "none", label: qsTr("Nothing") }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Middle-click on a title bar")
+                                settingKey: "decorations.middleClick"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "maximize", label: qsTr("Maximise") },
+                                        { value: "minimize", label: qsTr("Minimise") },
+                                        { value: "alwaysOnTop", label: qsTr("Keep on top") },
+                                        { value: "none", label: qsTr("Nothing") }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Centre the title")
                                 settingKey: "decorations.titleCentered"
                                 SettingsSwitch { settingKey: "decorations.titleCentered" }
@@ -3639,7 +3665,7 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Double-click speed")
-                                subtitle: qsTr("Longest pause between the two clicks; for the desktop and GTK applications.")
+                                subtitle: qsTr("Longest pause between the two clicks; for the desktop, title bars and GTK applications.")
                                 settingKey: "mouse.doubleClickInterval"
                                 SettingsSlider { from: 200; to: 1000; step: 50; suffix: qsTr(" ms") }
                             }
