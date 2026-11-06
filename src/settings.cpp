@@ -92,7 +92,7 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("startmenu.height"), 580);
     m_defaults.insert(QStringLiteral("startmenu.limit"), 200);
     m_defaults.insert(QStringLiteral("startmenu.fuzzy"), true);
-    m_defaults.insert(QStringLiteral("startmenu.highlight"), QStringLiteral("#ffffff"));
+    m_defaults.insert(QStringLiteral("startmenu.highlight"), QString());
     m_defaults.insert(QStringLiteral("startmenu.showRecent"), true);
     m_defaults.insert(QStringLiteral("theme.name"), QStringLiteral("default"));
     m_defaults.insert(QStringLiteral("theme.autoReload"), true);
@@ -151,10 +151,15 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("dock.customIconColor"), QStringLiteral("#ffffff"));
     // Start menu styling
     m_defaults.insert(QStringLiteral("startmenu.backgroundColor"), QString());
-    m_defaults.insert(QStringLiteral("startmenu.backgroundOpacity"), -1);
+    m_defaults.insert(QStringLiteral("startmenu.material"), QStringLiteral("default"));
+    m_defaults.insert(QStringLiteral("startmenu.opacityPercent"), 0);
+    m_defaults.insert(QStringLiteral("startmenu.cornerRadius"), -1);
+    m_defaults.insert(QStringLiteral("startmenu.layout"), QStringLiteral("list"));
+    m_defaults.insert(QStringLiteral("startmenu.gridIconSize"), 40);
+    m_defaults.insert(QStringLiteral("startmenu.searchPosition"), QStringLiteral("top"));
+    m_defaults.insert(QStringLiteral("startmenu.showPowerButtons"), true);
     m_defaults.insert(QStringLiteral("startmenu.foregroundColor"), QString());
     m_defaults.insert(QStringLiteral("startmenu.accentColor"), QString());
-    m_defaults.insert(QStringLiteral("startmenu.highlightColor"), QStringLiteral("#ffffff"));
     // Desktop styling
     m_defaults.insert(QStringLiteral("desktop.backgroundColor"), QString());
     m_defaults.insert(QStringLiteral("desktop.backgroundGradient"), true);

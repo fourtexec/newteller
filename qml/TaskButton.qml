@@ -107,6 +107,7 @@ Rectangle {
         anchors.horizontalCenter: btn.fillWidth ? undefined : parent.horizontalCenter
 
         Item {
+            id: iconBox
             width: btn.iconSize
             height: btn.iconSize
             anchors.verticalCenter: parent.verticalCenter
@@ -145,6 +146,13 @@ Rectangle {
         Text {
             visible: btn.label !== ""
             anchors.verticalCenter: parent.verticalCenter
+            // A full-width row (start menu, menus) gives the label the room
+            // left of the icon, so a long name ends in "..." instead of
+            // running past the button.
+            width: btn.fillWidth
+                   ? Math.min(implicitWidth, Math.max(0, btn.width - 24
+                                                         - (iconBox.visible ? btn.iconSize + row.spacing : 0)))
+                   : implicitWidth
             text: btn.label
             textFormat: btn.richLabel ? Text.StyledText : Text.PlainText
             color: btn.foregroundColor

@@ -1852,6 +1852,20 @@ def main():
             search.setProperty("text", "")
             QTest.qWait(20)
 
+        # Grid layout (startmenu.layout): the same results as large icons.
+        settings.setValue("startmenu.layout", "grid")
+        QTest.qWait(30)
+        grid = menu.findChild(QObject, "startGrid")
+        check(grid is not None and grid.property("visible"), "the grid layout shows a grid")
+        if grid is not None:
+            results = menu.property("results")
+            if hasattr(results, "toVariant"):
+                results = results.toVariant()
+            check(grid.property("count") == len(results or []),
+                  f"the grid shows every result ({grid.property('count')} of {len(results or [])})")
+        settings.setValue("startmenu.layout", "list")
+        QTest.qWait(20)
+
     # Run dialog (Alt+F2).
     dialogs = windows("RunDialog")
     check(len(dialogs) == 1, f"one run dialog (got {len(dialogs)})")

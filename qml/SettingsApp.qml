@@ -1630,6 +1630,123 @@ Window {
                                 SettingsStepper { from: 10; to: 500; step: 10 }
                             }
                         }
+
+                        SettingsSection {
+                            title: qsTr("Layout")
+
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Applications as")
+                                settingKey: "startmenu.layout"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "list", label: qsTr("List") },
+                                        { value: "grid", label: qsTr("Grid") }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Grid icon size")
+                                visible: Settings.values["startmenu.layout"] === "grid"
+                                settingKey: "startmenu.gridIconSize"
+                                SettingsSlider { from: 24; to: 96; step: 4; suffix: " px" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Search field")
+                                settingKey: "startmenu.searchPosition"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "top", label: qsTr("Top") },
+                                        { value: "bottom", label: qsTr("Bottom") }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Power buttons")
+                                subtitle: qsTr("Lock, log out, sleep, restart and shut down in the footer.")
+                                settingKey: "startmenu.showPowerButtons"
+                                SettingsSwitch {}
+                            }
+                        }
+
+                        SettingsSection {
+                            title: qsTr("Appearance")
+                            subtitle: qsTr("Empty colours follow the theme.")
+
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Surface")
+                                settingKey: "startmenu.material"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "default", label: qsTr("Like other popups") },
+                                        { value: "opaque", label: qsTr("Opaque") },
+                                        { value: "translucent", label: qsTr("Half transparent") },
+                                        { value: "frosted", label: qsTr("Frosted glass") },
+                                        { value: "liquid", label: qsTr("Liquid glass") }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Surface opacity")
+                                subtitle: qsTr("0 uses the selected material's preset opacity.")
+                                settingKey: "startmenu.opacityPercent"
+                                SettingsSlider { from: 0; to: 100; step: 5; suffix: " %" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Corner radius")
+                                subtitle: qsTr("-1 follows the other popups.")
+                                settingKey: "startmenu.cornerRadius"
+                                SettingsStepper { from: -1; to: 32; suffix: " px" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Background colour")
+                                settingKey: "startmenu.backgroundColor"
+                                SettingsColorField {
+                                    id: menuBgColorField
+                                    onEdited: (hex) => Settings.setValue("startmenu.backgroundColor", hex)
+                                    onPaletteRequested: settingsWindow.openPalette(menuBgColorField)
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Text colour")
+                                settingKey: "startmenu.foregroundColor"
+                                SettingsColorField {
+                                    id: menuFgColorField
+                                    onEdited: (hex) => Settings.setValue("startmenu.foregroundColor", hex)
+                                    onPaletteRequested: settingsWindow.openPalette(menuFgColorField)
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Accent colour")
+                                subtitle: qsTr("The selected row and the active category.")
+                                settingKey: "startmenu.accentColor"
+                                SettingsColorField {
+                                    id: menuAccentColorField
+                                    onEdited: (hex) => Settings.setValue("startmenu.accentColor", hex)
+                                    onPaletteRequested: settingsWindow.openPalette(menuAccentColorField)
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Search match colour")
+                                subtitle: qsTr("Letters that match the search; empty uses the accent.")
+                                settingKey: "startmenu.highlight"
+                                SettingsColorField {
+                                    id: menuHighlightColorField
+                                    onEdited: (hex) => Settings.setValue("startmenu.highlight", hex)
+                                    onPaletteRequested: settingsWindow.openPalette(menuHighlightColorField)
+                                }
+                            }
+                        }
                     }
                 }
             }

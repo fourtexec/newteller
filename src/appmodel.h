@@ -93,6 +93,10 @@ public:
     Q_INVOKABLE QVariantMap stats() const;
     Q_INVOKABLE QVariantMap scanReport() const;
 
+    // Colour of the matched letters when `startmenu.highlight` is empty: the
+    // theme's accent, so the highlight stays readable on light themes too.
+    void setHighlightFallback(const QString &color) { m_highlightFallback = color; }
+
 signals:
     void countChanged();
     void categoriesChanged();
@@ -115,7 +119,10 @@ private:
     void scanWithQt(const QString &locale);
     QStringList applicationDirs() const;
 
+    QString highlightColor() const;
+
     Settings *m_settings;
+    QString m_highlightFallback;
     QVector<AppEntry> m_apps;
     QHash<QString, int> m_indexById; // id -> row, rebuilt on reload only
     QStringList m_runningIds;

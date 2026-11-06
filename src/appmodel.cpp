@@ -499,14 +499,24 @@ QVariantList AppModel::searchDetailed(const QString &query, int limit) const
     return hits;
 }
 
+QString AppModel::highlightColor() const
+{
+    // Older configurations stored a bool here; "none"/false turns it off.
+    const QString chosen = m_settings->value(QStringLiteral("startmenu.highlight")).toString().trimmed();
+    if (chosen == QLatin1String("none") || chosen == QLatin1String("false"))
+        return QString();
+    if (!chosen.isEmpty() && chosen != QLatin1String("true"))
+        return chosen;
+    return m_highlightFallback.isEmpty() ? QStringLiteral("#ffffff") : m_highlightFallback;
+}
+
 QVariantList AppModel::searchDetailedOnce(const QString &query, int limit) const
 {
     if (!m_index.isValid())
         return {};
 
     const bool fuzzy = m_settings->value(QStringLiteral("startmenu.fuzzy"), true).toBool();
-    const QString highlight = m_settings->value(QStringLiteral("startmenu.highlight"),
-                                                QStringLiteral("#ffffff")).toString();
+    const QString highlight = highlightColor();
     return m_index.search(query.trimmed(), limit, highlight, fuzzy);
 }
 
@@ -515,8 +525,7 @@ QVariantMap AppModel::searchResult(const QString &query, int limit) const
     if (!m_index.isValid())
         return {};
     const bool fuzzy = m_settings->value(QStringLiteral("startmenu.fuzzy"), true).toBool();
-    const QString highlight = m_settings->value(QStringLiteral("startmenu.highlight"),
-                                                QStringLiteral("#ffffff")).toString();
+    const QString highlight = highlightColor();
     // The full result object, for the diagnostics window and CLI parity.
     QVariantMap out;
     const QVariantList hits = m_index.search(query.trimmed(), limit, highlight, fuzzy);

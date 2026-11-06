@@ -24,12 +24,20 @@ DropdownWindow {
           keywords: "panel dock taskbar tray clock pinned " + qsTr("panel dock taskbar tray clock pinned") },
         { page: "desktop", title: qsTr("Desktop"),
           keywords: "desktop wallpaper icons widgets background " + qsTr("desktop wallpaper icons widgets background") },
+        { page: "startmenu", title: qsTr("Start menu"),
+          keywords: "start menu search launcher grid recent " + qsTr("start menu search launcher grid recent") },
         { page: "apps", title: qsTr("Applications"),
           keywords: "applications startup autostart default " + qsTr("applications startup autostart default") },
         { page: "system", title: qsTr("System"),
           keywords: "system clipboard history network wifi bluetooth " + qsTr("system clipboard history network wifi bluetooth") },
         { page: "notifications", title: qsTr("Notifications"),
           keywords: "notifications sounds do not disturb popups bell " + qsTr("notifications sounds do not disturb popups bell") },
+        { page: "plugins", title: qsTr("Plugins"),
+          keywords: "plugins widgets weather clock notes " + qsTr("plugins widgets weather clock notes") },
+        { page: "hotkeys", title: qsTr("Hotkeys"),
+          keywords: "hotkeys shortcuts keys bindings " + qsTr("hotkeys shortcuts keys bindings") },
+        { page: "animations", title: qsTr("Animations"),
+          keywords: "animations effects motion speed blur " + qsTr("animations effects motion speed blur") },
         { page: "windows", title: qsTr("Windows"),
           keywords: "windows title bar snapping hot corners rules shortcuts focus " + qsTr("windows title bar snapping hot corners rules shortcuts focus") },
         { page: "keyboard", title: qsTr("Keyboard"),
@@ -138,6 +146,36 @@ DropdownWindow {
         return out;
     }
     property string categoryFilter: ""
+
+    // --- appearance (Settings -> Start menu) -------------------------------
+    // Empty colours follow the theme; the material "default" follows the
+    // other popup cards (Settings -> Appearance).
+    function colorSetting(key, fallback) {
+        const value = String(Settings.values[key] || "").trim();
+        return value.length > 0 ? Qt.color(value) : fallback;
+    }
+    readonly property color menuForeground: colorSetting("startmenu.foregroundColor", Theme.foreground)
+    readonly property color menuAccent: colorSetting("startmenu.accentColor", Theme.accent)
+    readonly property color menuBackground: colorSetting("startmenu.backgroundColor", Theme.background)
+    readonly property color menuMuted: String(Settings.values["startmenu.foregroundColor"] || "").length > 0
+                                       ? Theme.mix(menuForeground, menuBackground, 0.4) : Theme.muted
+    readonly property string menuMaterial: {
+        const value = Settings.values["startmenu.material"] || "default";
+        return value === "default" ? "" : value;
+    }
+    readonly property int menuOpacity: Number(Settings.values["startmenu.opacityPercent"] ?? 0)
+    // "list" (name rows) or "grid" (large icons with the name under them).
+    readonly property bool gridLayout: Settings.values["startmenu.layout"] === "grid"
+    readonly property int gridIconSize: Math.max(24, Math.min(96, Number(Settings.values["startmenu.gridIconSize"] ?? 40)))
+    readonly property int gridCell: gridIconSize + 52
+    readonly property int gridColumns: Math.max(1, Math.floor((cardWidth - 2 * padding) / gridCell))
+    readonly property bool searchAtBottom: Settings.values["startmenu.searchPosition"] === "bottom"
+
+    materialOverride: menuMaterial
+    useBackgroundColorOverride: String(Settings.values["startmenu.backgroundColor"] || "").length > 0
+    backgroundColorOverride: menuBackground
+    opacityPercentOverride: menuOpacity > 0 ? menuOpacity : (menuMaterial.length > 0 ? 0 : -1)
+    cornerRadiusOverride: Number(Settings.values["startmenu.cornerRadius"] ?? -1)
     // Index of the highlighted row: the keyboard walks the list, Enter runs
     // the highlighted application.
     property int selectedIndex: -1
@@ -171,7 +209,9 @@ DropdownWindow {
                                      : selectedIndex + delta;
         next = Math.max(0, Math.min(results.length - 1, next));
         selectedIndex = next;
-        if (list)
+        if (gridLayout)
+            grid.positionViewAtIndex(next, GridView.Contain);
+        else
             list.positionViewAtIndex(next, ListView.Contain);
     }
 
@@ -345,7 +385,7 @@ DropdownWindow {
 
         z: 50
         radius: Theme.radius + 2
-        color: Qt.rgba(Theme.background.r, Theme.background.g, Theme.background.b, 0.98)
+        color: Qt.rgba(menu.menuBackground.r, menu.menuBackground.g, menu.menuBackground.b, 0.98)
         border.width: 1
         border.color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.8)
 
@@ -366,6 +406,8 @@ DropdownWindow {
                 }
 
                 delegate: TaskButton {
+                    foregroundColor: menu.menuForeground
+                    activeTint: menu.menuAccent
                     required property var modelData
                     objectName: "startAppAction"
                     width: 180
@@ -384,6 +426,8 @@ DropdownWindow {
             }
 
             TaskButton {
+                foregroundColor: menu.menuForeground
+                activeTint: menu.menuAccent
                 width: 180
                 height: 32
                 fillWidth: true
@@ -395,6 +439,8 @@ DropdownWindow {
                 }
             }
             TaskButton {
+                foregroundColor: menu.menuForeground
+                activeTint: menu.menuAccent
                 objectName: "startAddToDesktop"
                 width: 180
                 height: 32
@@ -409,6 +455,8 @@ DropdownWindow {
                 }
             }
             TaskButton {
+                foregroundColor: menu.menuForeground
+                activeTint: menu.menuAccent
                 objectName: "startOpenWithRoot"
                 width: 180
                 height: 32
@@ -426,18 +474,23 @@ DropdownWindow {
         }
     }
 
-    ColumnLayout {
+    // One column; the rows are numbered so the search field can sit at the
+    // top or just above the footer (startmenu.searchPosition).
+    GridLayout {
         anchors.fill: parent
-        spacing: 10
+        columns: 1
+        rowSpacing: 10
+        columnSpacing: 0
 
         Rectangle {
             id: searchBox
+            Layout.row: menu.searchAtBottom ? 3 : 0
             Layout.fillWidth: true
             Layout.preferredHeight: 38
             radius: Theme.radius
             color: Qt.rgba(Theme.surface.r, Theme.surface.g, Theme.surface.b, 0.95)
             border.width: search.activeFocus ? 1 : 0
-            border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.7)
+            border.color: Qt.rgba(menu.menuAccent.r, menu.menuAccent.g, menu.menuAccent.b, 0.7)
 
             Row {
                 anchors.fill: parent
@@ -451,8 +504,8 @@ DropdownWindow {
                     sourceSize.width: 18
                     sourceSize.height: 18
                     fillMode: Image.PreserveAspectFit
-                    source: Shell.tintedIcon("search", Theme.foreground)
-                    visible: Shell.tintedIcon("search", Theme.foreground).toString().length > 0
+                    source: Shell.tintedIcon("search", menu.menuForeground)
+                    visible: Shell.tintedIcon("search", menu.menuForeground).toString().length > 0
                 }
 
                 TextInput {
@@ -461,7 +514,7 @@ DropdownWindow {
                     width: parent.width - 26
                     anchors.verticalCenter: parent.verticalCenter
                     focus: true
-                    color: Theme.foreground
+                    color: menu.menuForeground
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize + 1
                     verticalAlignment: TextInput.AlignVCenter
@@ -477,10 +530,19 @@ DropdownWindow {
                             menu.launch(menu.results[0]);
                     }
                     Keys.onDownPressed: (event) => {
-                        menu.moveSelection(1);
+                        menu.moveSelection(menu.gridLayout ? menu.gridColumns : 1);
                         event.accepted = true;
                     }
                     Keys.onUpPressed: (event) => {
+                        menu.moveSelection(menu.gridLayout ? -menu.gridColumns : -1);
+                        event.accepted = true;
+                    }
+                    // Tab / Shift+Tab step one result in either layout.
+                    Keys.onTabPressed: (event) => {
+                        menu.moveSelection(1);
+                        event.accepted = true;
+                    }
+                    Keys.onBacktabPressed: (event) => {
                         menu.moveSelection(-1);
                         event.accepted = true;
                     }
@@ -490,7 +552,7 @@ DropdownWindow {
                         verticalAlignment: Text.AlignVCenter
                         visible: search.text.length === 0
                         text: qsTr("Type to search apps...")
-                        color: Theme.muted
+                        color: menu.menuMuted
                         font: search.font
                     }
                 }
@@ -500,6 +562,7 @@ DropdownWindow {
         // Category chips, filtered by the full application list.
         Flow {
             id: chips
+            Layout.row: menu.searchAtBottom ? 0 : 1
             Layout.fillWidth: true
             spacing: 6
             // search.showCategories (Settings -> Start menu).
@@ -509,6 +572,8 @@ DropdownWindow {
                 model: Apps.categories.slice(0, 12)
 
                 delegate: TaskButton {
+                    foregroundColor: menu.menuForeground
+                    activeTint: menu.menuAccent
                     required property var modelData
                     label: modelData.name
                     active: menu.categoryFilter === modelData.name
@@ -521,61 +586,173 @@ DropdownWindow {
             }
         }
 
-        ListView {
-            id: list
+        Item {
+            id: resultsArea
+            Layout.row: menu.searchAtBottom ? 1 : 2
             Layout.fillWidth: true
             Layout.fillHeight: true
-            clip: true
-            spacing: 2
-            model: menu.results
-            cacheBuffer: 400
-            reuseItems: true
 
-            delegate: TaskButton {
-                id: appRow
-                required property var modelData
-                required property int index
-                width: ListView.view.width
-                fillWidth: true
-                iconSize: 24
-                iconName: modelData.icon || ""
-                richLabel: true
-                label: {
-                    if (modelData.highlight && modelData.highlight.length > 0)
-                        return modelData.highlight;
-                    return (modelData.name || modelData.id || "");
-                }
-                running: Settings.values["panel.showRunning"] !== false
-                         && Apps.isRunning(modelData.id)
-                active: menu.selectedIndex === index
-                onClicked: menu.launch(modelData)
+            ListView {
+                id: list
+                anchors.fill: parent
+                visible: !menu.gridLayout
+                clip: true
+                spacing: 2
+                model: menu.gridLayout ? [] : menu.results
+                cacheBuffer: 400
+                reuseItems: true
 
-                HoverHandler {
-                    onHoveredChanged: {
-                        if (hovered)
-                            menu.selectedIndex = index;
+                delegate: TaskButton {
+                    id: appRow
+                    foregroundColor: menu.menuForeground
+                    activeTint: menu.menuAccent
+                    required property var modelData
+                    required property int index
+                    width: ListView.view.width
+                    fillWidth: true
+                    iconSize: 24
+                    iconName: modelData.icon || ""
+                    richLabel: true
+                    label: {
+                        if (modelData.highlight && modelData.highlight.length > 0)
+                            return modelData.highlight;
+                        return (modelData.name || modelData.id || "");
+                    }
+                    running: Settings.values["panel.showRunning"] !== false
+                             && Apps.isRunning(modelData.id)
+                    active: menu.selectedIndex === index
+                    onClicked: menu.launch(modelData)
+
+                    HoverHandler {
+                        onHoveredChanged: {
+                            if (hovered)
+                                menu.selectedIndex = index;
+                        }
+                    }
+
+                    TapHandler {
+                        acceptedButtons: Qt.RightButton
+                        onTapped: menu.openPinMenu(appRow, modelData)
                     }
                 }
 
-                TapHandler {
-                    acceptedButtons: Qt.RightButton
-                    onTapped: menu.openPinMenu(appRow, modelData)
+            }
+
+            // Grid layout: large icons with the name underneath.
+            GridView {
+                id: grid
+                objectName: "startGrid"
+                anchors.fill: parent
+                visible: menu.gridLayout
+                clip: true
+                model: menu.gridLayout ? menu.results : []
+                cellWidth: Math.floor(width / menu.gridColumns)
+                cellHeight: menu.gridCell
+                cacheBuffer: 400
+                boundsBehavior: Flickable.StopAtBounds
+
+                delegate: Item {
+                    id: gridCellItem
+                    required property var modelData
+                    required property int index
+                    width: grid.cellWidth
+                    height: grid.cellHeight
+
+                    Rectangle {
+                        anchors.fill: parent
+                        anchors.margins: 3
+                        radius: Theme.radius
+                        color: cellMouse.pressed
+                               ? Qt.rgba(menu.menuAccent.r, menu.menuAccent.g, menu.menuAccent.b, 0.45)
+                               : menu.selectedIndex === gridCellItem.index
+                                 ? Qt.rgba(menu.menuAccent.r, menu.menuAccent.g, menu.menuAccent.b, 0.30)
+                                 : cellHover.hovered
+                                   ? Qt.rgba(menu.menuForeground.r, menu.menuForeground.g, menu.menuForeground.b, 0.08)
+                                   : "transparent"
+                    }
+
+                    Image {
+                        id: gridIcon
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        y: 8
+                        width: menu.gridIconSize
+                        height: menu.gridIconSize
+                        sourceSize.width: menu.gridIconSize * 2
+                        sourceSize.height: menu.gridIconSize * 2
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true
+                        source: Shell.tintedIcon(gridCellItem.modelData.icon || "", menu.menuForeground)
+                        scale: cellMouse.pressed ? 0.9 : cellHover.hovered ? 1.06 : 1.0
+                        Behavior on scale { NumberAnimation { duration: 90 } }
+                    }
+
+                    Rectangle {
+                        visible: Settings.values["panel.showRunning"] !== false
+                                 && Apps.isRunning(gridCellItem.modelData.id)
+                        width: 4
+                        height: 4
+                        radius: 2
+                        color: menu.menuAccent
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        y: gridIcon.y + gridIcon.height + 2
+                    }
+
+                    Text {
+                        anchors.top: gridIcon.bottom
+                        anchors.topMargin: 8
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.leftMargin: 6
+                        anchors.rightMargin: 6
+                        horizontalAlignment: Text.AlignHCenter
+                        wrapMode: Text.Wrap
+                        maximumLineCount: 2
+                        elide: Text.ElideRight
+                        textFormat: gridCellItem.modelData.highlight ? Text.StyledText : Text.PlainText
+                        text: gridCellItem.modelData.highlight || gridCellItem.modelData.name
+                              || gridCellItem.modelData.id || ""
+                        color: menu.menuForeground
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSize - 1
+                    }
+
+                    HoverHandler {
+                        id: cellHover
+                        onHoveredChanged: {
+                            if (hovered)
+                                menu.selectedIndex = gridCellItem.index;
+                        }
+                    }
+
+                    MouseArea {
+                        id: cellMouse
+                        anchors.fill: parent
+                        acceptedButtons: Qt.LeftButton | Qt.RightButton
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: (mouse) => {
+                            if (mouse.button === Qt.RightButton)
+                                menu.openPinMenu(gridCellItem, gridCellItem.modelData);
+                            else
+                                menu.launch(gridCellItem.modelData);
+                        }
+                    }
                 }
             }
 
-            Text {
-                anchors.centerIn: parent
-                visible: menu.results.length === 0
-                text: qsTr("No applications match")
-                color: Theme.muted
-                font.family: Theme.fontFamily
-                font.pointSize: Theme.fontSize
-            }
+                Text {
+                    anchors.centerIn: parent
+                    visible: menu.results.length === 0
+                    text: qsTr("No applications match")
+                    color: menu.menuMuted
+                    font.family: Theme.fontFamily
+                    font.pointSize: Theme.fontSize
+                }
         }
 
         // Recently launched applications, only with an empty search.
         Column {
             id: recentSection
+            Layout.row: menu.searchAtBottom ? 2 : 3
             Layout.fillWidth: true
             spacing: 6
             visible: Settings.values["startmenu.showRecent"] !== false
@@ -585,7 +762,7 @@ DropdownWindow {
 
             Text {
                 text: qsTr("Recently used")
-                color: Theme.muted
+                color: menu.menuMuted
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSize - 1
             }
@@ -598,8 +775,11 @@ DropdownWindow {
                     model: recentSection.recentModel
 
                     delegate: TaskButton {
+                        foregroundColor: menu.menuForeground
+                        activeTint: menu.menuAccent
                         required property var modelData
                         iconName: modelData.icon || ""
+                        tooltipText: modelData.name || ""
                         onClicked: menu.launch(modelData)
                     }
                 }
@@ -607,6 +787,7 @@ DropdownWindow {
         }
 
         Rectangle {
+            Layout.row: 4
             Layout.fillWidth: true
             Layout.preferredHeight: 1
             color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.6)
@@ -619,12 +800,13 @@ DropdownWindow {
             id: powerConfirm
             objectName: "powerConfirm"
             visible: menu.pendingPower.length > 0
+            Layout.row: 5
             Layout.fillWidth: true
             Layout.preferredHeight: powerRow.implicitHeight + 16
             radius: Theme.radius
-            color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.12)
+            color: Qt.rgba(menu.menuAccent.r, menu.menuAccent.g, menu.menuAccent.b, 0.12)
             border.width: 1
-            border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.4)
+            border.color: Qt.rgba(menu.menuAccent.r, menu.menuAccent.g, menu.menuAccent.b, 0.4)
 
             RowLayout {
                 id: powerRow
@@ -638,11 +820,13 @@ DropdownWindow {
                     text: menu.pendingPower === "logout" ? qsTr("Logging out in %1 s").arg(menu.powerCountdown)
                           : menu.pendingPower === "reboot" ? qsTr("Restarting in %1 s").arg(menu.powerCountdown)
                           : qsTr("Shutting down in %1 s").arg(menu.powerCountdown)
-                    color: Theme.foreground
+                    color: menu.menuForeground
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize
                 }
                 TaskButton {
+                    foregroundColor: menu.menuForeground
+                    activeTint: menu.menuAccent
                     objectName: "powerConfirmNow"
                     label: menu.pendingPower === "logout" ? qsTr("Log out")
                            : menu.pendingPower === "reboot" ? qsTr("Restart") : qsTr("Shut down")
@@ -650,6 +834,8 @@ DropdownWindow {
                     onClicked: menu.runPower()
                 }
                 TaskButton {
+                    foregroundColor: menu.menuForeground
+                    activeTint: menu.menuAccent
                     label: qsTr("Cancel")
                     onClicked: menu.cancelPower()
                 }
@@ -658,36 +844,57 @@ DropdownWindow {
 
         RowLayout {
             id: footer
+            Layout.row: 6
             Layout.fillWidth: true
+            // startmenu.showPowerButtons: lock, log out, sleep, restart and
+            // shut down; Settings stays either way.
+            readonly property bool powerButtons: Settings.values["startmenu.showPowerButtons"] !== false
             spacing: 4
 
             TaskButton {
+                foregroundColor: menu.menuForeground
+                activeTint: menu.menuAccent
                 iconName: "lock"
+                visible: footer.powerButtons
                 tooltipText: qsTr("Lock")
                 onClicked: { Shell.lock(); menu.hide(); }
             }
             TaskButton {
+                foregroundColor: menu.menuForeground
+                activeTint: menu.menuAccent
                 iconName: "log-out"
+                visible: footer.powerButtons
                 tooltipText: qsTr("Log out")
                 onClicked: menu.askPower("logout")
             }
             TaskButton {
+                foregroundColor: menu.menuForeground
+                activeTint: menu.menuAccent
                 iconName: "moon"
+                visible: footer.powerButtons
                 tooltipText: qsTr("Sleep")
                 onClicked: { Shell.suspend(); menu.hide(); }
             }
             TaskButton {
+                foregroundColor: menu.menuForeground
+                activeTint: menu.menuAccent
                 iconName: "rotate-cw"
+                visible: footer.powerButtons
                 tooltipText: qsTr("Restart")
                 onClicked: menu.askPower("reboot")
             }
             TaskButton {
+                foregroundColor: menu.menuForeground
+                activeTint: menu.menuAccent
                 iconName: "power"
+                visible: footer.powerButtons
                 tooltipText: qsTr("Shut down")
                 onClicked: menu.askPower("powerOff")
             }
             Item { Layout.fillWidth: true }
             TaskButton {
+                foregroundColor: menu.menuForeground
+                activeTint: menu.menuAccent
                 iconName: "settings"
                 label: qsTr("Settings")
                 onClicked: { Shell.openSettings(); menu.hide(); }

@@ -229,6 +229,9 @@ int main(int argc, char *argv[])
 
     ThemeManager theme(&settings);
     AppModel apps(&settings);
+    apps.setHighlightFallback(theme.accent().name());
+    QObject::connect(&theme, &ThemeManager::themeChanged, &apps,
+                     [&apps, &theme] { apps.setHighlightFallback(theme.accent().name()); });
     WindowList windows;
     NotificationDaemon notifications(&settings);
     ShellController shell(&settings, &notifications);

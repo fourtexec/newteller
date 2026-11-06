@@ -392,7 +392,7 @@ pub const SCHEMA: &[KeySchema] = &[
     KeySchema { key: "startmenu.height", kind: "int", default_json: "580", doc: "Start menu height." },
     KeySchema { key: "startmenu.limit", kind: "int", default_json: "200", doc: "Maximum number of search results." },
     KeySchema { key: "startmenu.fuzzy", kind: "bool", default_json: "true", doc: "Allow typos and scattered characters in the search." },
-    KeySchema { key: "startmenu.highlight", kind: "bool", default_json: "true", doc: "Emphasise the matched characters in the result list." },
+    KeySchema { key: "startmenu.highlight", kind: "string", default_json: "\"\"", doc: "Colour of the matched characters in the result list as hex; empty uses the theme accent, \"none\" turns the highlight off." },
     KeySchema { key: "startmenu.showRecent", kind: "bool", default_json: "true", doc: "Show recently used applications before typing." },
     KeySchema { key: "theme.name", kind: "string", default_json: "\"default\"", doc: "Theme name; a file of that name in ~/.config/newteller/themes overrides the built-in one." },
     KeySchema { key: "theme.autoReload", kind: "bool", default_json: "true", doc: "Reload the theme when its file changes." },
