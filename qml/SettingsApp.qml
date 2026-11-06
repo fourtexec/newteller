@@ -312,6 +312,118 @@ Window {
                         width: appearanceScroll.width - 32
                         spacing: 16
 
+                        // Profiles: the whole look saved under a name, to try
+                        // something else and come back, or to share it.
+                        SettingsSection {
+                            id: profileSection
+                            title: qsTr("Profiles")
+                            subtitle: qsTr("Save every setting under a name and switch back in one click. Recent applications, histories, notes and icon places are not part of a profile. Stored in %1").arg(Settings.profilesPath())
+
+                            property string message: ""
+
+                            Repeater {
+                                model: Settings.profiles
+                                delegate: SettingsRow {
+                                    id: profileRow
+                                    required property string modelData
+                                    width: parent ? parent.width : 320
+                                    title: modelData
+                                    Row {
+                                        spacing: 4
+                                        TaskButton {
+                                            objectName: "applyProfile"
+                                            iconName: "check"
+                                            label: qsTr("Apply")
+                                            onClicked: profileSection.message = Settings.applyProfile(profileRow.modelData)
+                                                       ? qsTr("Profile %1 applied.").arg(profileRow.modelData)
+                                                       : qsTr("Profile %1 could not be read.").arg(profileRow.modelData)
+                                        }
+                                        TaskButton {
+                                            iconName: "save"
+                                            tooltipText: qsTr("Replace with the current settings")
+                                            onClicked: {
+                                                if (Settings.saveProfile(profileRow.modelData))
+                                                    profileSection.message = qsTr("Profile %1 updated.").arg(profileRow.modelData);
+                                            }
+                                        }
+                                        TaskButton {
+                                            iconName: "trash"
+                                            tooltipText: qsTr("Delete")
+                                            onClicked: Settings.deleteProfile(profileRow.modelData)
+                                        }
+                                    }
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Save the current settings")
+                                Row {
+                                    spacing: 6
+                                    SettingsTextField {
+                                        id: profileName
+                                        objectName: "profileName"
+                                        width: 160
+                                        placeholder: qsTr("Profile name")
+                                        onAccepted: saveProfileButton.clicked()
+                                    }
+                                    TaskButton {
+                                        id: saveProfileButton
+                                        objectName: "saveProfile"
+                                        iconName: "plus"
+                                        label: qsTr("Save")
+                                        onClicked: {
+                                            const name = profileName.text.trim();
+                                            if (name.length === 0)
+                                                return;
+                                            profileSection.message = Settings.saveProfile(name)
+                                                    ? qsTr("Profile %1 saved.").arg(name)
+                                                    : qsTr("A profile cannot be called %1.").arg(name);
+                                            profileName.text = "";
+                                        }
+                                    }
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Import a profile")
+                                subtitle: qsTr("The path of an exported settings file (About -> Export) or a profile someone shared.")
+                                Row {
+                                    spacing: 6
+                                    SettingsTextField {
+                                        id: profileImportPath
+                                        width: 200
+                                        placeholder: "~/newteller-settings.json"
+                                        onAccepted: importProfileButton.clicked()
+                                    }
+                                    TaskButton {
+                                        id: importProfileButton
+                                        iconName: "download"
+                                        label: qsTr("Import")
+                                        onClicked: {
+                                            const path = profileImportPath.text.trim();
+                                            if (path.length === 0)
+                                                return;
+                                            const name = Settings.importProfile(path);
+                                            profileSection.message = name.length > 0
+                                                    ? qsTr("Imported as %1; apply it above.").arg(name)
+                                                    : qsTr("%1 is not a NewTeller settings file.").arg(path);
+                                            if (name.length > 0)
+                                                profileImportPath.text = "";
+                                        }
+                                    }
+                                }
+                            }
+                            Text {
+                                visible: profileSection.message.length > 0
+                                width: parent.width
+                                wrapMode: Text.Wrap
+                                text: profileSection.message
+                                color: Theme.muted
+                                font.family: Theme.fontFamily
+                                font.pointSize: Theme.fontSize - 1
+                            }
+                        }
+
                         SettingsSection {
                             title: qsTr("Theme")
                             subtitle: qsTr("Pick one of the themes; custom themes live in %1").arg(Theme.userThemesPath())

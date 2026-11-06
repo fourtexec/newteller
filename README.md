@@ -303,6 +303,10 @@ inside VirtualBox. The implemented pieces are:
   on another edge or go without one (Settings → Displays).
 - **Named desktops**: give desktops names (`workspaces.names`), show them on
   the panel as dots, numbers or names, and on screen when switching.
+- **Profiles**: save every setting under a name (Settings → Appearance →
+  Profiles), switch between looks in one click, update or delete them, and
+  import an exported settings file or someone else's profile. Recent
+  applications, histories, notes and icon places stay out of profiles.
 - **Accent, font and rounding over any theme**: an accent colour (nine
   presets or any colour), the interface font, its size and the corner
   rounding stay when you switch themes (`theme.accent`, `theme.font`,

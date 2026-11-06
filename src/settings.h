@@ -27,6 +27,8 @@ class Settings : public QObject {
     // that update automatically when any value changes.
     Q_PROPERTY(QVariantMap values READ values NOTIFY valuesChanged)
     Q_PROPERTY(bool dirty READ dirty NOTIFY dirtyChanged)
+    // Saved looks (~/.config/newteller/profiles/<name>.json), sorted.
+    Q_PROPERTY(QStringList profiles READ profiles NOTIFY profilesChanged)
 
 public:
     explicit Settings(QObject *parent = nullptr);
@@ -60,10 +62,26 @@ public:
     // Writes pending changes immediately.
     Q_INVOKABLE void flush();
 
+    // --- profiles: the whole configuration under a name -------------------
+    // Personal data (recent applications, histories, notes, icon places)
+    // stays out of a profile and is never touched by applying one.
+    QStringList profiles() const;
+    Q_INVOKABLE bool saveProfile(const QString &name);
+    // Every other setting returns to its default, then the profile's values
+    // apply.
+    Q_INVOKABLE bool applyProfile(const QString &name);
+    Q_INVOKABLE bool deleteProfile(const QString &name);
+    // Copies a JSON file (an export, a profile from someone else) into the
+    // profiles; returns the profile's name, or "" when it is not a settings
+    // file.
+    Q_INVOKABLE QString importProfile(const QString &path);
+    Q_INVOKABLE QString profilesPath() const;
+
 signals:
     void valuesChanged();
     void changed(const QString &key); // empty key = whole file reloaded
     void dirtyChanged();
+    void profilesChanged();
     // A file inside the config directory changed on disk (path is absolute).
     void externalChange(const QString &path);
 
@@ -73,6 +91,8 @@ private:
     bool writeBack();
     void startWatching();
     void handleWatchEvents();
+    static bool personalKey(const QString &key);
+    static QString profileFile(const QString &name);
 
     QVariantMap m_defaults;
     QVariantMap m_values;

@@ -1,6 +1,8 @@
 #include "settings.h"
 
 #include <QDir>
+#include <QFileInfo>
+#include <QUrl>
 #include <QFile>
 #include <QJsonDocument>
 #include <QJSValue>
@@ -672,3 +674,138 @@ void Settings::handleWatchEvents()
     if (pending >= 0)
         m_debounceTimer.start(int(qMin<qint64>(pending, 60000)));
 }
+
+// --- profiles ---------------------------------------------------------------
+
+bool Settings::personalKey(const QString &key)
+{
+    static const QStringList personal{
+        QStringLiteral("apps.recent"), QStringLiteral("apps.usage"), QStringLiteral("run.history"),
+        QStringLiteral("stickyNotes.notes"), QStringLiteral("notifications.dndUntil"),
+        QStringLiteral("desktop.gridPositions"), QStringLiteral("desktop.iconPositions"),
+        QStringLiteral("desktop.widgetPositions"), QStringLiteral("weather.location")};
+    return personal.contains(key);
+}
+
+QString Settings::profilesPath() const
+{
+    return configDir() + QStringLiteral("/profiles");
+}
+
+QString Settings::profileFile(const QString &name)
+{
+    return configDir() + QStringLiteral("/profiles/") + name + QStringLiteral(".json");
+}
+
+static bool validProfileName(const QString &name)
+{
+    return !name.isEmpty() && name.size() <= 64 && !name.contains(QLatin1Char('/'))
+           && !name.contains(QLatin1Char('\\')) && !name.startsWith(QLatin1Char('.'));
+}
+
+QStringList Settings::profiles() const
+{
+    QStringList names;
+    const QStringList files = QDir(profilesPath()).entryList({QStringLiteral("*.json")}, QDir::Files,
+                                                            QDir::Name | QDir::IgnoreCase);
+    for (const QString &file : files)
+        names << file.chopped(5);
+    return names;
+}
+
+bool Settings::saveProfile(const QString &input)
+{
+    const QString name = input.trimmed();
+    if (!validProfileName(name))
+        return false;
+    QVariantMap look;
+    for (auto it = m_values.constBegin(); it != m_values.constEnd(); ++it) {
+        if (!personalKey(it.key()) && m_defaults.value(it.key()) != it.value())
+            look.insert(it.key(), it.value());
+    }
+    QDir().mkpath(profilesPath());
+    QSaveFile file(profileFile(name));
+    if (!file.open(QIODevice::WriteOnly))
+        return false;
+    file.write(QJsonDocument(QJsonObject::fromVariantMap(look)).toJson(QJsonDocument::Indented));
+    if (!file.commit())
+        return false;
+    emit profilesChanged();
+    return true;
+}
+
+bool Settings::applyProfile(const QString &name)
+{
+    if (!validProfileName(name))
+        return false;
+    QFile file(profileFile(name));
+    if (!file.open(QIODevice::ReadOnly))
+        return false;
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    if (!doc.isObject())
+        return false;
+    const QVariantMap look = doc.object().toVariantMap();
+    QVariantMap next;
+    // Defaults first (keeping personal data), then the profile.
+    for (auto it = m_defaults.constBegin(); it != m_defaults.constEnd(); ++it)
+        next.insert(it.key(), personalKey(it.key()) ? m_values.value(it.key(), it.value()) : it.value());
+    for (auto it = m_values.constBegin(); it != m_values.constEnd(); ++it) {
+        if (personalKey(it.key()) || !m_defaults.contains(it.key()))
+            next.insert(it.key(), it.value());
+    }
+    for (auto it = look.constBegin(); it != look.constEnd(); ++it) {
+        if (!personalKey(it.key()) && !it.value().isNull())
+            next.insert(it.key(), it.value());
+    }
+    if (next == m_values)
+        return true;
+    m_values = next;
+    scheduleSave();
+    emit valuesChanged();
+    emit changed(QString()); // everything may have changed
+    return true;
+}
+
+bool Settings::deleteProfile(const QString &name)
+{
+    if (!validProfileName(name) || !QFile::remove(profileFile(name)))
+        return false;
+    emit profilesChanged();
+    return true;
+}
+
+QString Settings::importProfile(const QString &input)
+{
+    QString path = input.trimmed();
+    if (path.startsWith(QLatin1String("file://")))
+        path = QUrl(path).toLocalFile();
+    if (path.startsWith(QLatin1String("~/")))
+        path = QDir::homePath() + path.mid(1);
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly))
+        return {};
+    const QJsonDocument doc = QJsonDocument::fromJson(file.readAll());
+    if (!doc.isObject())
+        return {};
+    // A settings file has dotted keys we know; anything else is refused.
+    const QVariantMap look = doc.object().toVariantMap();
+    int known = 0;
+    for (auto it = look.constBegin(); it != look.constEnd(); ++it) {
+        if (m_defaults.contains(it.key()))
+            ++known;
+    }
+    if (known == 0)
+        return {};
+    QString name = QFileInfo(path).completeBaseName().trimmed();
+    if (!validProfileName(name))
+        name = QStringLiteral("imported");
+    const QString base = name;
+    for (int i = 2; QFile::exists(profileFile(name)); ++i)
+        name = base + QStringLiteral(" (%1)").arg(i);
+    QDir().mkpath(profilesPath());
+    if (!QFile::copy(path, profileFile(name)))
+        return {};
+    emit profilesChanged();
+    return name;
+}
+

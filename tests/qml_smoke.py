@@ -275,6 +275,46 @@ class Settings(QObject):
     def reload(self):
         pass
 
+    # Profiles: kept in memory by the mock.
+    profilesChanged = Signal()
+    _profiles = {}
+
+    @Property("QStringList", notify=profilesChanged)
+    def profiles(self):
+        return sorted(self._profiles)
+
+    @Slot(str, result=bool)
+    def saveProfile(self, name):
+        name = name.strip()
+        if not name or "/" in name:
+            return False
+        self._profiles[name] = dict(self._values)
+        self.profilesChanged.emit()
+        return True
+
+    @Slot(str, result=bool)
+    def applyProfile(self, name):
+        if name not in self._profiles:
+            return False
+        self._values = dict(self._profiles[name])
+        self.valuesChanged.emit()
+        return True
+
+    @Slot(str, result=bool)
+    def deleteProfile(self, name):
+        if self._profiles.pop(name, None) is None:
+            return False
+        self.profilesChanged.emit()
+        return True
+
+    @Slot(str, result=str)
+    def importProfile(self, path):
+        return ""
+
+    @Slot(result=str)
+    def profilesPath(self):
+        return "/tmp/newteller-test/profiles"
+
 
 class Theme(QObject):
     themeChanged = Signal()
@@ -3110,6 +3150,31 @@ def main():
             QTest.qWait(20)
             check(settings._values.get("hotkeys.lockScreen") == "none", "a shortcut can be turned off")
             settings.reset("hotkeys.lockScreen")
+            QTest.qWait(20)
+
+        # Profiles (Appearance): save the current settings under a name, change
+        # something, apply the profile and get it back.
+        settings_app.setProperty("currentPage", "appearance")
+        QTest.qWait(30)
+        name_field = find_item(settings_app.contentItem(), "profileName")
+        save_button = find_item(settings_app.contentItem(), "saveProfile")
+        check(name_field is not None and save_button is not None, "the appearance page offers profiles")
+        if name_field is not None and save_button is not None:
+            settings.setValue("panel.height", 52)
+            name_field.setProperty("text", "Mine")
+            QMetaObject.invokeMethod(save_button, "clicked")
+            QTest.qWait(30)
+            check("Mine" in settings._profiles, f"a profile is saved ({list(settings._profiles)})")
+            settings.setValue("panel.height", 60)
+            QTest.qWait(20)
+            apply_button = find_item(settings_app.contentItem(), "applyProfile")
+            check(apply_button is not None, "a saved profile is listed")
+            if apply_button is not None:
+                QMetaObject.invokeMethod(apply_button, "clicked")
+                QTest.qWait(30)
+                check(settings._values.get("panel.height") == 52,
+                      f"applying a profile restores its settings ({settings._values.get('panel.height')})")
+            settings.setValue("panel.height", 48)
             QTest.qWait(20)
         settings_app.setProperty("visible", False)
         QTest.qWait(20)
