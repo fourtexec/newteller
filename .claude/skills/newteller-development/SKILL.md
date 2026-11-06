@@ -148,6 +148,12 @@ line").
 - **Assigning to a bound property breaks the binding for good** (the clock
   card's calendar reassigned its cells every second and the month buttons
   stopped working). Make the binding depend on what should rebuild it.
+- **Read numbers that may be 0 with `??`, not `||`.** `values["x"] || 8`
+  turns a chosen 0 back into 8; the QML smoke test fails on it for keys
+  whose slider or stepper starts at 0.
+- **Give translated words their own source text.** A qsTr("Name") translated
+  for one sentence's grammar reads wrong elsewhere (and "Clear" is already
+  the weather's "Ясно"); use "By name", "Clear history".
 - **FolderListModel wants a URL.** A plain path ("/home/me/Pictures") as
   `folder` gives an empty model without a warning: prefix "file://".
   `FolderListModel.get(index, "filePath")` needs the role name.
