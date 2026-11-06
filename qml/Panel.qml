@@ -758,8 +758,12 @@ Window {
         objectName: "startButton"
         Component.onCompleted: panel.startButtonRef = startButton
         Layout.alignment: Qt.AlignVCenter | Qt.AlignHCenter
-        iconName: "layout-grid"
-        label: panel.vertical ? "" : qsTr("Start")
+        // panel.startIcon: a shell icon, a theme icon (start-here,
+        // distributor-logo) or an image file; panel.startLabel and
+        // panel.showStartLabel the text next to it.
+        iconName: String(Settings.values["panel.startIcon"] || "").trim() || "layout-grid"
+        label: panel.vertical || Settings.values["panel.showStartLabel"] === false ? ""
+               : (String(Settings.values["panel.startLabel"] || "").trim() || qsTr("Start"))
         foregroundColor: panel.panelTextColor
         onClicked: {
             panel.menuWanted = true;

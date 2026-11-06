@@ -1161,6 +1161,26 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("Start button icon")
+                                subtitle: qsTr("An icon name (start-here, distributor-logo, layout-grid) or the path of an image; empty is the default.")
+                                settingKey: "panel.startIcon"
+                                SettingsTextField { width: 200; placeholder: "layout-grid" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Start button text")
+                                settingKey: "panel.showStartLabel"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                visible: Settings.values["panel.showStartLabel"] !== false
+                                title: qsTr("Start button label")
+                                settingKey: "panel.startLabel"
+                                SettingsTextField { width: 200; placeholder: qsTr("Start") }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Length")
                                 subtitle: qsTr("Share of the screen edge; less than 100% makes a floating, centred panel.")
                                 settingKey: "panel.length"

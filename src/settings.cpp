@@ -51,6 +51,9 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("panel.position"), QStringLiteral("bottom"));
     m_defaults.insert(QStringLiteral("panel.margin"), 0);
     m_defaults.insert(QStringLiteral("panel.style"), QStringLiteral("pill"));
+    m_defaults.insert(QStringLiteral("panel.startIcon"), QString());
+    m_defaults.insert(QStringLiteral("panel.startLabel"), QString());
+    m_defaults.insert(QStringLiteral("panel.showStartLabel"), true);
     m_defaults.insert(QStringLiteral("panel.length"), 100);
     m_defaults.insert(QStringLiteral("panel.cornerRadius"), -1);
     m_defaults.insert(QStringLiteral("panel.autoHide"), false);
