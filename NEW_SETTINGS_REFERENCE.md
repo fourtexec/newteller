@@ -43,10 +43,8 @@ Each setting is documented with:
 | Key | Type | Default | Description | Page |
 |-----|------|---------|-------------|------|
 | `startmenu.backgroundColor` | color | `""` | Custom start menu background color | Appearance |
-| `startmenu.backgroundOpacity` | number | `-1` | Start menu background opacity (-1 = use theme) | Appearance |
 | `startmenu.foregroundColor` | color | `""` | Custom start menu text color | Appearance |
 | `startmenu.accentColor` | color | `""` | Custom start menu accent color | Appearance |
-| `startmenu.highlightColor` | color | `"#ffffff"` | Search result highlight color | Appearance |
 
 ### Desktop Styling
 | Key | Type | Default | Description | Page |
@@ -64,14 +62,10 @@ Each setting is documented with:
 | `windows.borderWidth` | integer | `-1` | Border width in pixels; -1 follows the theme | Appearance |
 | `windows.borderColor` | color | `""` | Border color; empty follows the theme | Appearance |
 | `windows.shadow` | integer | `1` | Shadow strength from 0 (off) to 3 | Appearance |
-| `windows.enableAnimations` | boolean | `true` | Enable window animations | Appearance |
-| `windows.animationSpeed` | number | `1.0` | Window animation speed multiplier | Appearance |
 
 ### Theme Variants
 | Key | Type | Default | Description | Page |
 |-----|------|---------|-------------|------|
-| `theme.followSystem` | boolean | `false` | Follow system light/dark theme | Appearance |
-| `theme.systemTheme` | string | `"auto"` | System theme preference: auto, light, dark | Appearance |
 
 ---
 
@@ -224,13 +218,10 @@ Each setting is documented with:
 ### Panel
 | Key | Type | Default | Description | Page |
 |-----|------|---------|-------------|------|
-| `animations.panelHide` | boolean | `true` | Enable panel hide/show animations | Animations |
 
 ### Windows
 | Key | Type | Default | Description | Page |
 |-----|------|---------|-------------|------|
-| `windows.enableAnimations` | boolean | `true` | Enable window animations | Animations |
-| `windows.animationSpeed` | number | `1.0` | Window animation speed multiplier | Animations |
 
 ---
 
@@ -239,9 +230,6 @@ Each setting is documented with:
 ### Metrics
 | Key | Type | Default | Description | Page |
 |-----|------|---------|-------------|------|
-| `system.showCpuTemp` | boolean | `false` | Show CPU temperature | System |
-| `system.showGpu` | boolean | `false` | Show GPU information | System |
-| `system.showFanSpeed` | boolean | `false` | Show fan speed | System |
 | `system.interval` | integer | `2000` | Sampling interval in milliseconds | System |
 | `system.perCore` | boolean | `false` | Per-core CPU metrics | System |
 | `system.battery` | boolean | `true` | Battery metrics | System |
@@ -251,10 +239,6 @@ Each setting is documented with:
 ### Caching
 | Key | Type | Default | Description | Page |
 |-----|------|---------|-------------|------|
-| `cache.iconCache` | boolean | `true` | Enable icon caching | System |
-| `cache.maxIconCacheSize` | integer | `1000` | Maximum icon cache size (100-5000) | System |
-| `cache.searchCache` | boolean | `true` | Enable search caching | System |
-| `cache.maxSearchCacheSize` | integer | `500` | Maximum search cache size (100-2000) | System |
 
 ### Clipboard
 | Key | Type | Default | Description | Page |
@@ -276,9 +260,7 @@ Each setting is documented with:
 ### Search
 | Key | Type | Default | Description | Page |
 |-----|------|---------|-------------|------|
-| `search.maxResults` | integer | `50` | Maximum search results (10-500) | Applications |
 | `search.showCategories` | boolean | `true` | Show category chips in search | Applications |
-| `search.categoryIcons` | boolean | `true` | Show category icons | Applications |
 
 ### Existing (Enhanced UI)
 | Key | Type | Default | Description | Page |
@@ -294,7 +276,6 @@ Each setting is documented with:
 | Key | Type | Default | Description | Page |
 |-----|------|---------|-------------|------|
 | `plugins.onlineEnabled` | boolean | `true` | Enable online plugin discovery | Plugins |
-| `plugins.autoUpdate` | boolean | `false` | Auto-update plugins | Plugins |
 | `plugins.showDescriptions` | boolean | `true` | Show plugin descriptions in list | Plugins |
 | `plugins.autoRescan` | boolean | `true` | Auto-rescan plugins on change | Plugins |
 
@@ -309,9 +290,7 @@ Each setting is documented with:
 
 | Key | Type | Default | Description | Page |
 |-----|------|---------|-------------|------|
-| `multiMonitor.perMonitorSettings` | boolean | `false` | Enable per-monitor settings | Not yet in UI |
-| `multiMonitor.panelPositions` | object | `{}` | Per-monitor panel positions | Not yet in UI |
-| `multiMonitor.wallpapers` | object | `{}` | Per-monitor wallpapers | Not yet in UI |
+| `multiMonitor.panelPositions` | object | `{}` | Per screen: `{"HDMI-A-1": "top"}`, an edge or `"none"` | Displays |
 
 ---
 
@@ -489,3 +468,42 @@ Example:
 - [CHANGES_SUMMARY.md](CHANGES_SUMMARY.md) - Comprehensive change overview
 - [IMPLEMENTATION_COMPLETE.md](IMPLEMENTATION_COMPLETE.md) - Implementation details
 - [plugins/README.md](plugins/README.md) - Plugin development guide
+
+---
+
+## Added later
+
+| Key | Type | Default | Description | Page |
+|-----|------|---------|-------------|------|
+| `startmenu.layout` | string | `"list"` | Applications as a `list` or an icon `grid` | Start menu |
+| `startmenu.gridIconSize` | integer | `40` | Icon size of the grid layout | Start menu |
+| `startmenu.searchPosition` | string | `"top"` | Search field at the `top` or `bottom` | Start menu |
+| `startmenu.showPowerButtons` | boolean | `true` | Lock, log out, sleep, restart and shut down in the footer | Start menu |
+| `startmenu.material` | string | `"default"` | Surface; `default` follows the other popups | Start menu |
+| `startmenu.opacityPercent` | integer | `0` | Surface opacity; 0 uses the material preset | Start menu |
+| `startmenu.cornerRadius` | integer | `-1` | Corner radius; -1 follows the other popups | Start menu |
+| `startmenu.highlight` | color | `""` | Colour of letters matching the search; empty uses the accent, `none` turns it off | Start menu |
+| `desktop.iconTextColor` | color | `"#ffffff"` | Colour of the names under desktop icons | Desktop |
+| `desktop.iconTextShadow` | boolean | `true` | Dark outline around those names | Desktop |
+| `desktop.iconTextSize` | integer | `0` | Their size in points; 0 uses the theme | Desktop |
+| `desktop.iconTextLines` | integer | `2` | Lines before a name is cut | Desktop |
+| `hotkeys.enabled` | boolean | `true` | Off: only built-in shortcuts given below work | Hotkeys |
+| `hotkeys.<action>` | string | `""` | New keys for a built-in shortcut (`Super+Shift+K`), `none` turns it off. Actions: startMenu, runDialog, terminal, fileManager, settings, quickSettings, notificationCenter, clipboard, lockScreen, closeWindow, maximize, minimize, fullscreen, alwaysOnTop, showDesktop, overview, windowMenu, nextLayout, screenshot, screenshotArea, screenshotWindow, screenRecording, forceQuit, logout, sleep, reboot, shutdown | Hotkeys |
+| `power.sleepAction` | string | `"suspend"` | suspend, hibernate, hybrid-sleep or suspend-then-hibernate | Power & lock |
+| `power.suspendAfter` | integer | `0` | Sleep after so many idle minutes; 0 = never | Power & lock |
+| `notifications.groupByApp` | boolean | `true` | Group the notification centre by application | Notifications |
+| `notifications.urgencyLevel` | integer | `2` | Lowest urgency shown while quiet: 1 normal, 2 critical, 3 nothing | Notifications |
+| `theme.schedule` | string | `"off"` | Day/night themes: `off`, `times` or `nightLight` | Appearance |
+| `theme.dayTheme` / `theme.nightTheme` | string | `"light"` / `"default"` | The two themes | Appearance |
+| `theme.dayStart` / `theme.nightStart` | string | `"07:00"` / `"20:00"` | When they switch (`times`) | Appearance |
+| `theme.scheduleApps` | boolean | `true` | Applications follow: light by day, dark at night | Appearance |
+| `panel.style` | string | `"pill"` | `pill` (only the dock) or `bar` (a bar in panel.material) | Panel & dock |
+| `panel.length` | integer | `100` | Share of the screen edge in percent; less floats the panel | Panel & dock |
+| `panel.cornerRadius` | integer | `-1` | Corner radius of the bar style | Panel & dock |
+| `windowRules.fullscreen` / `windowRules.minimized` | list | `[]` | Applications that open full screen / minimised | Windows |
+| `windowRules.workspaces` | string | `""` | `firefox=2, thunderbird=3`: the desktop an application opens on | Windows |
+| `workspaces.names` | string | `""` | `Work, Web, Chat` | Displays |
+| `workspaces.indicator` | string | `"dots"` | Panel indicator: dots, numbers or names | Displays |
+| `workspaces.osd` | boolean | `false` | The desktop's name on screen when switching | Displays |
+| `mouse.doubleClickInterval` | integer | `400` | Double-click speed in ms (shell and GTK) | Mouse & touchpad |
+

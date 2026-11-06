@@ -167,10 +167,6 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("desktop.iconColor"), QStringLiteral("#ffffff"));
     m_defaults.insert(QStringLiteral("desktop.iconShadow"), true);
     m_defaults.insert(QStringLiteral("desktop.iconGlow"), false);
-    // Window styling
-    m_defaults.insert(QStringLiteral("windows.enableAnimations"), true);
-    m_defaults.insert(QStringLiteral("windows.animationSpeed"), 1.0);
-    // Theme variants
     // Day and night themes: "off", "times" (theme.dayStart/nightStart) or
     // "nightLight" (the night light's evening and morning).
     m_defaults.insert(QStringLiteral("theme.schedule"), QStringLiteral("off"));
@@ -392,29 +388,14 @@ Settings::Settings(QObject *parent)
     // Animations
     m_defaults.insert(QStringLiteral("animations.enabled"), true);
     m_defaults.insert(QStringLiteral("animations.speed"), 1.0);
-    m_defaults.insert(QStringLiteral("animations.panelHide"), true);
-    // Caching
-    m_defaults.insert(QStringLiteral("cache.iconCache"), true);
-    m_defaults.insert(QStringLiteral("cache.searchCache"), true);
-    m_defaults.insert(QStringLiteral("cache.maxIconCacheSize"), 1000);
-    m_defaults.insert(QStringLiteral("cache.maxSearchCacheSize"), 500);
-    // Metrics
-    m_defaults.insert(QStringLiteral("system.showCpuTemp"), false);
-    m_defaults.insert(QStringLiteral("system.showGpu"), false);
-    m_defaults.insert(QStringLiteral("system.showFanSpeed"), false);
     // Search
-    m_defaults.insert(QStringLiteral("search.maxResults"), 50);
     m_defaults.insert(QStringLiteral("search.showCategories"), true);
-    m_defaults.insert(QStringLiteral("search.categoryIcons"), true);
 
     // ===== Multi-monitor =====
-    m_defaults.insert(QStringLiteral("multiMonitor.perMonitorSettings"), false);
     m_defaults.insert(QStringLiteral("multiMonitor.panelPositions"), QVariantMap());
-    m_defaults.insert(QStringLiteral("multiMonitor.wallpapers"), QVariantMap());
 
     // ===== Plugin System Improvements =====
     m_defaults.insert(QStringLiteral("plugins.onlineEnabled"), true);
-    m_defaults.insert(QStringLiteral("plugins.autoUpdate"), false);
     m_defaults.insert(QStringLiteral("plugins.showDescriptions"), true);
 
     // The Rust schema knows the same keys; merge its defaults on top so a new
