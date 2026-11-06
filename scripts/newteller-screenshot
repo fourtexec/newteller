@@ -9,8 +9,23 @@
 #                                 window, as the compositor knows it)
 #
 # The PNG goes to Screenshots in the pictures folder (~/Pictures) and, when wl-copy is installed, to
-# the clipboard as well, ready to paste.
+# the clipboard as well, ready to paste. shell.json can change that:
+#   screenshot.folder      another folder ("~/Desktop"); empty: the default
+#   screenshot.fileName    date(1) pattern of the name, "Screenshot_%Y%m%d-%H%M%S"
+#   screenshot.saveFile    false: only the clipboard (needs wl-copy)
+#   screenshot.clipboard   false: do not copy it
+#   screenshot.cursor      true: draw the pointer too
+#   screenshot.delay       seconds to wait before taking it (0-10)
 set -eu
+
+conf="${XDG_CONFIG_HOME:-$HOME/.config}/newteller/shell.json"
+# setting KEY: the value of a top level key of shell.json (one key per line,
+# as the shell writes it), without quotes; empty when it is not there.
+setting() {
+    key=$(printf '%s' "$1" | sed 's/\./\\./g')
+    sed -n "s/^[[:space:]]*\"$key\"[[:space:]]*:[[:space:]]*\(.*\)\$/\1/p" "$conf" 2>/dev/null \
+        | head -n 1 | sed 's/[[:space:]]*,[[:space:]]*$//; s/^"\(.*\)"$/\1/; s/\\"/"/g; s/\\\\/\\/g'
+}
 
 mode=full
 geometry=
@@ -44,8 +59,42 @@ if [ -z "$pictures" ]; then
 fi
 [ -n "$pictures" ] || pictures="$HOME/Pictures"
 dir="$pictures/Screenshots"
+folder=$(setting screenshot.folder)
+case "$folder" in
+    '') ;;
+    '~') dir="$HOME" ;;
+    '~/'*) dir="$HOME/${folder#\~/}" ;;
+    /*) dir="$folder" ;;
+    *) dir="$HOME/$folder" ;;
+esac
+
+pattern=$(setting screenshot.fileName)
+[ -n "$pattern" ] || pattern="Screenshot_%Y%m%d-%H%M%S"
+# A pattern cannot reach another folder.
+name=$(date +"$pattern" 2>/dev/null | tr '/' '-') || name=""
+[ -n "$name" ] || name="Screenshot_$(date +%Y%m%d-%H%M%S)"
+
+copy=yes
+[ "$(setting screenshot.clipboard)" = false ] && copy=no
+command -v wl-copy >/dev/null 2>&1 || copy=no
+keep=yes
+# Clipboard only: the picture lives in the runtime folder just long
+# enough to be copied. Without a clipboard it is always kept.
+[ "$(setting screenshot.saveFile)" = false ] && [ "$copy" = yes ] && keep=no
+if [ "$keep" = no ]; then
+    dir="${XDG_RUNTIME_DIR:-/tmp}"
+fi
 mkdir -p "$dir"
-file="$dir/Screenshot_$(date +%Y%m%d-%H%M%S)-$$.png"
+file="$dir/$name.png"
+# Two shots within the same second (or a pattern without the time) do not
+# overwrite each other.
+[ ! -e "$file" ] || file="$dir/$name-$$.png"
+
+cursor=
+[ "$(setting screenshot.cursor)" = true ] && cursor=-c
+delay=$(setting screenshot.delay | tr -cd '0-9')
+[ -n "$delay" ] || delay=0
+[ "$delay" -le 10 ] || delay=10
 
 # Messages follow the shell's language (shell.language in shell.json),
 # else the system locale.
@@ -62,6 +111,7 @@ case "$language" in
         msg_no_image="Композитор не вернул изображение"
         msg_saved="Снимок экрана сохранён"
         msg_copied="также скопирован в буфер обмена"
+        msg_copied_only="Снимок экрана скопирован в буфер обмена"
         ;;
     *)
         msg_failed="Screenshot failed"
@@ -70,6 +120,7 @@ case "$language" in
         msg_no_image="The compositor did not return an image"
         msg_saved="Screenshot saved"
         msg_copied="also copied to the clipboard"
+        msg_copied_only="Screenshot copied to the clipboard"
         ;;
 esac
 
@@ -109,21 +160,33 @@ if [ "$mode" = area ]; then
     # Escape in slurp cancels: no screenshot, no error.
     region=$(slurp -d 2>/dev/null) || exit 0
     [ -n "$region" ] || exit 0
-    grim -g "$region" "$file" || {
+    sleep "$delay"
+    grim $cursor -g "$region" "$file" || {
         notify "$msg_failed" "$msg_no_image"
         exit 1
     }
 elif [ "$mode" = geometry ]; then
-    grim -g "$geometry" "$file" || {
+    sleep "$delay"
+    grim $cursor -g "$geometry" "$file" || {
         notify "$msg_failed" "$msg_no_image"
         exit 1
     }
-elif ! grim "$file"; then
-    notify "$msg_failed" "$msg_no_image"
-    exit 1
+else
+    sleep "$delay"
+    if ! grim $cursor "$file"; then
+        notify "$msg_failed" "$msg_no_image"
+        exit 1
+    fi
 fi
 
-if command -v wl-copy >/dev/null 2>&1; then
+if [ "$keep" = no ]; then
+    # wl-copy has read the picture once it returns; the file can go.
+    wl-copy --type image/png < "$file" >/dev/null 2>&1 || true
+    rm -f "$file"
+    notify "$msg_copied_only" ""
+    exit 0
+fi
+if [ "$copy" = yes ]; then
     wl-copy --type image/png < "$file" >/dev/null 2>&1 &
     notify "$msg_saved" "$file ($msg_copied)" "$file"
 else

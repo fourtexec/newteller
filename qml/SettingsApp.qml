@@ -2667,6 +2667,54 @@ Window {
                         }
 
                         SettingsSection {
+                            title: qsTr("Screenshots")
+                            subtitle: qsTr("Print takes the screen, Shift+Print an area, Alt+Print the window.")
+
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Save screenshots as files")
+                                subtitle: qsTr("Off: only the clipboard gets them.")
+                                settingKey: "screenshot.saveFile"
+                                SettingsSwitch { settingKey: "screenshot.saveFile" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                enabled: Settings.values["screenshot.saveFile"] !== false
+                                title: qsTr("Screenshot folder")
+                                subtitle: qsTr("Empty: Screenshots in the pictures folder.")
+                                settingKey: "screenshot.folder"
+                                SettingsTextField { width: 220; placeholder: Shell.picturesPath + "/Screenshots" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                enabled: Settings.values["screenshot.saveFile"] !== false
+                                title: qsTr("File name")
+                                subtitle: qsTr("%Y year, %m month, %d day, %H hours, %M minutes, %S seconds.")
+                                settingKey: "screenshot.fileName"
+                                SettingsTextField { width: 220; placeholder: "Screenshot_%Y%m%d-%H%M%S" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Copy screenshots to the clipboard")
+                                settingKey: "screenshot.clipboard"
+                                SettingsSwitch { settingKey: "screenshot.clipboard" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Show the pointer in screenshots")
+                                settingKey: "screenshot.cursor"
+                                SettingsSwitch { settingKey: "screenshot.cursor" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Delay")
+                                subtitle: qsTr("Time to open a menu before the picture is taken.")
+                                settingKey: "screenshot.delay"
+                                SettingsStepper { from: 0; to: 10; suffix: qsTr(" s") }
+                            }
+                        }
+
+                        SettingsSection {
                             title: qsTr("Clipboard")
                             subtitle: qsTr("Clipboard history and management.")
 

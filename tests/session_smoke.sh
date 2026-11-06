@@ -50,7 +50,7 @@ chmod 700 "$runtime"
 export XDG_CONFIG_HOME="$runtime/config"
 mkdir -p "$XDG_CONFIG_HOME/newteller"
 # A moved built-in shortcut checks the hotkey lines of compositor.conf.
-printf '{\n    "desktop.defaultWallpaper": false,\n    "hotkeys.lockScreen": "Super+Shift+K",\n    "windowRules.workspaces": "org.example.Nothing = 2, broken",\n    "windows.gaps": 16,\n    "windows.dragModifier": "alt",\n    "windowRules.opacity": "org.example.Nothing=80, too.clear=5",\n    "lock.dim": 40,\n    "hotCorners.delay": 250,\n    "lock.clockFormat": "h:mm AP"\n}\n' \
+printf '{\n    "desktop.defaultWallpaper": false,\n    "hotkeys.lockScreen": "Super+Shift+K",\n    "windowRules.workspaces": "org.example.Nothing = 2, broken",\n    "windows.gaps": 16,\n    "windows.dragModifier": "alt",\n    "windowRules.opacity": "org.example.Nothing=80, too.clear=5",\n    "lock.dim": 40,\n    "hotCorners.delay": 250,\n    "screenshot.fileName": "smoke-%%Y",\n    "lock.clockFormat": "h:mm AP"\n}\n' \
     > "$XDG_CONFIG_HOME/newteller/shell.json"
 socket=newteller-smoke
 log="$runtime/compositor.log"
@@ -381,9 +381,11 @@ if command -v grim >/dev/null 2>&1; then
     shots="$runtime/shots"
     XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" XDG_PICTURES_DIR="$shots" \
         "$root/scripts/newteller-screenshot" >/dev/null
-    shot=$(find "$shots" -type f -name '*.png' -print -quit 2>/dev/null || true)
+    # screenshot.fileName in shell.json names the file.
+    shot=$(find "$shots" -type f -name 'smoke-*.png' -print -quit 2>/dev/null || true)
     if [[ -z $shot || ! -s $shot ]]; then
-        echo 'the screenshot helper did not write a PNG' >&2
+        echo 'the screenshot helper did not write a PNG named by screenshot.fileName:' >&2
+        find "$shots" -type f >&2 || true
         exit 1
     fi
 fi

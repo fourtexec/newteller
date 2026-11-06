@@ -245,6 +245,12 @@ Each setting is documented with:
 |-----|------|---------|-------------|------|
 | `clipboard.historyEnabled` | boolean | `true` | Enable clipboard history | System |
 | `clipboard.historySize` | integer | `100` | Clipboard history size (10-1000) | System |
+| `screenshot.folder` | string | `""` | Folder for screenshots; empty: Screenshots in the pictures folder (`~` works) | System |
+| `screenshot.fileName` | string | `"Screenshot_%Y%m%d-%H%M%S"` | date(1) pattern of a screenshot's file name | System |
+| `screenshot.saveFile` | boolean | `true` | Keep screenshots as files (false: clipboard only, when wl-copy is installed) | System |
+| `screenshot.clipboard` | boolean | `true` | Copy screenshots to the clipboard | System |
+| `screenshot.cursor` | boolean | `false` | Draw the pointer in screenshots | System |
+| `screenshot.delay` | integer | `0` | Seconds to wait before a screenshot (0-10) | System |
 | `clipboard.persistHistory` | boolean | `true` | Persist clipboard history across restarts | System |
 
 ---

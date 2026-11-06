@@ -388,7 +388,10 @@ inside VirtualBox. The implemented pieces are:
 - Screenshots: `Print` captures the whole screen, `Shift+Print` or `Super+Shift+S` an
   area picked with the mouse (slurp), `Alt+Print` the focused window with its frame; the PNG lands in `Screenshots` inside the pictures folder (`~/Pictures`, or its
   localized name from `user-dirs.dirs`), is
-  copied to the clipboard (wl-copy) and announced through the notification daemon
+  copied to the clipboard (wl-copy) and announced through the notification daemon.
+  Settings -> System -> Screenshots changes the folder, the file name
+  (a `date` pattern), clipboard only or file only, the pointer in the picture
+  and a delay of up to 10 seconds (`screenshot.*`)
 - **Screen recording** (wf-recorder): quick settings records the whole screen
   or an area picked with the mouse (slurp), optionally with the microphone
   (`recorder.audio`); `Super+Alt+R` starts and stops it. A red pill on the

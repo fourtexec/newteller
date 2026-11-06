@@ -320,6 +320,13 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("hotCorners.delay"), 0);
     // Screen recordings (wf-recorder) also record the default microphone.
     m_defaults.insert(QStringLiteral("recorder.audio"), false);
+    // Read by scripts/newteller-screenshot (Print and friends).
+    m_defaults.insert(QStringLiteral("screenshot.folder"), QString());
+    m_defaults.insert(QStringLiteral("screenshot.fileName"), QStringLiteral("Screenshot_%Y%m%d-%H%M%S"));
+    m_defaults.insert(QStringLiteral("screenshot.saveFile"), true);
+    m_defaults.insert(QStringLiteral("screenshot.clipboard"), true);
+    m_defaults.insert(QStringLiteral("screenshot.cursor"), false);
+    m_defaults.insert(QStringLiteral("screenshot.delay"), 0);
     // Power management
     m_defaults.insert(QStringLiteral("power.sleepAction"), QStringLiteral("suspend"));
     m_defaults.insert(QStringLiteral("power.lockOnSleep"), true);
