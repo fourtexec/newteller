@@ -505,6 +505,10 @@ Example:
 | `workspaces.names` | string | `""` | `Work, Web, Chat` | Displays |
 | `workspaces.indicator` | string | `"dots"` | Panel indicator: dots, numbers or names | Displays |
 | `workspaces.osd` | boolean | `false` | The desktop's name on screen when switching | Displays |
+| `osd.enabled` | boolean | `true` | Volume, brightness and media keys pill on screen | Keyboard |
+| `osd.position` | string | `"bottom"` | Where the pill shows: bottom, center or top | Keyboard |
+| `osd.timeout` | integer | `1500` | How long the pill stays, in milliseconds | Keyboard |
+| `osd.screen` | string | `"active"` | The screen of the pill: active (pointer) or primary | Keyboard |
 | `mouse.doubleClickInterval` | integer | `400` | Double-click speed in ms (shell and GTK) | Mouse & touchpad |
 | `startmenu.showPinned` | boolean | `false` | The dock's pinned applications as a row above the recent ones | Start menu |
 | `panel.startIcon / panel.startLabel / panel.showStartLabel` | string / string / boolean | "" / "" / true | The start button's icon (shell icon, theme icon or image), text, and whether the text shows | Panel & dock |

@@ -381,6 +381,10 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("workspaces.names"), QString());
     m_defaults.insert(QStringLiteral("workspaces.indicator"), QStringLiteral("dots"));
     m_defaults.insert(QStringLiteral("workspaces.osd"), false);
+    m_defaults.insert(QStringLiteral("osd.enabled"), true);
+    m_defaults.insert(QStringLiteral("osd.position"), QStringLiteral("bottom"));
+    m_defaults.insert(QStringLiteral("osd.timeout"), 1500);
+    m_defaults.insert(QStringLiteral("osd.screen"), QStringLiteral("active"));
     // The Alt+Tab overlay with the windows and their titles.
     m_defaults.insert(QStringLiteral("switcher.showOverlay"), true);
     m_defaults.insert(QStringLiteral("switcher.allWorkspaces"), false);

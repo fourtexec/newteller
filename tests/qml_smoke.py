@@ -3047,6 +3047,27 @@ def main():
             QTest.qWait(50)
             check(bool(osds) and osds[0].property("text") == "Caps Lock on",
                   f"Caps Lock shows on screen ({osds[0].property('text') if osds else None})")
+            if osds:
+                osd = osds[0]
+                settings.setValue("osd.timeout", 3000)
+                settings.setValue("osd.position", "top")
+                QTest.qWait(50)
+                hide_timer = [t for t in osd.findChildren(QObject)
+                              if t.metaObject().className() == "QQmlTimer"]
+                check(bool(hide_timer) and hide_timer[0].property("interval") == 3000,
+                      "osd.timeout sets how long the on-screen display stays")
+                check(osd.property("osdPosition") == "top", "osd.position moves the on-screen display")
+                settings.setValue("osd.enabled", False)
+                QTest.qWait(50)
+                check(not osd.isVisible(), "turning the on-screen display off hides it")
+                quick.calls.clear()
+                session.mediaKey.emit("volume-up")
+                QTest.qWait(50)
+                check(not osd.isVisible() and any(c[0] == "setVolume" for c in quick.calls),
+                      "with the on-screen display off the volume key still works, silently")
+                settings.setValue("osd.enabled", True)
+                settings.setValue("osd.position", "bottom")
+                settings.setValue("osd.timeout", 1500)
 
             # Super+V reaches the shell over D-Bus and opens the history.
             shell.clipboardToggleRequested.emit()

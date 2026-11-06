@@ -4032,6 +4032,53 @@ Window {
                         }
 
                         SettingsSection {
+                            title: qsTr("On-screen display")
+                            subtitle: qsTr("The pill that shows the volume, brightness and media keys.")
+
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Show the on-screen display")
+                                subtitle: qsTr("The keys keep working when it is off.")
+                                settingKey: "osd.enabled"
+                                SettingsSwitch { settingKey: "osd.enabled" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                enabled: Settings.values["osd.enabled"] !== false
+                                title: qsTr("Place on screen")
+                                settingKey: "osd.position"
+                                SettingsChoice {
+                                    objectName: "osdPositionChoice"
+                                    model: [
+                                        { value: "bottom", label: qsTr("Bottom") },
+                                        { value: "center", label: qsTr("Center") },
+                                        { value: "top", label: qsTr("Top") }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                enabled: Settings.values["osd.enabled"] !== false
+                                title: qsTr("Stays for")
+                                settingKey: "osd.timeout"
+                                SettingsSlider { from: 500; to: 5000; step: 250; suffix: qsTr(" ms") }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                visible: Qt.application.screens.length > 1
+                                enabled: Settings.values["osd.enabled"] !== false
+                                title: qsTr("Screen")
+                                settingKey: "osd.screen"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "active", label: qsTr("Screen with the pointer") },
+                                        { value: "primary", label: qsTr("Main screen") }
+                                    ]
+                                }
+                            }
+                        }
+
+                        SettingsSection {
                             title: qsTr("Advanced")
                             subtitle: qsTr("XKB names, comma separated, in the same order as the layouts.")
 

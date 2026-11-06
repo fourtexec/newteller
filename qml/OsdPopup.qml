@@ -3,8 +3,13 @@ import QtQuick.Window
 import org.kde.layershell 1.0 as LayerShell
 
 // The on-screen display for volume, brightness and media keys: a small pill
-// near the bottom of the screen with an icon and a level bar. It never takes
-// the keyboard or the pointer and hides itself after a moment.
+// with an icon and a level bar. It never takes the keyboard or the pointer
+// and hides itself after a moment.
+//
+// osd.enabled turns it off (the keys still work), osd.position puts it at the
+// "bottom", "top" or "center" of the screen, osd.timeout is how long it stays
+// (milliseconds) and osd.screen shows it on the "active" screen (where the
+// pointer is) or the "primary" one.
 Window {
     id: osd
 
@@ -13,25 +18,61 @@ Window {
     // 0..100, or -1 for no bar (media keys show the track instead).
     property int level: -1
 
+    readonly property bool osdEnabled: Settings.values["osd.enabled"] !== false
+    readonly property string osdPosition: Settings.values["osd.position"] || "bottom"
+    readonly property int timeout: Math.max(500, Math.min(10000, Number(Settings.values["osd.timeout"] ?? 1500)))
+
     width: 300
     height: 64
     visible: false
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus
 
-    LayerShell.Window.anchors: LayerShell.Window.AnchorBottom
+    LayerShell.Window.anchors: osdPosition === "top" ? LayerShell.Window.AnchorTop
+                               : osdPosition === "center" ? LayerShell.Window.AnchorNone
+                               : LayerShell.Window.AnchorBottom
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
     LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
     LayerShell.Window.exclusionZone: -1
     LayerShell.Window.scope: "newteller-osd"
     LayerShell.Window.margins.bottom: 120
+    LayerShell.Window.margins.top: 80
+
+    // The screen the pill belongs on: the one under the pointer unless
+    // osd.screen asks for the primary one.
+    function targetScreen() {
+        const screens = Qt.application.screens;
+        if (screens.length === 0)
+            return null;
+        if (Settings.values["osd.screen"] !== "primary") {
+            const name = Session.activeOutput || "";
+            for (let i = 0; i < screens.length; ++i) {
+                if (screens[i].name === name)
+                    return screens[i];
+            }
+        }
+        return screens[0];
+    }
 
     function show(icon, newLevel, newText) {
+        if (!osdEnabled)
+            return;
         iconName = icon;
         level = newLevel;
         text = newText || "";
+        const target = targetScreen();
+        if (target && osd.screen !== target) {
+            // A layer surface cannot move between outputs: hide, move, show.
+            visible = false;
+            osd.screen = target;
+        }
         visible = true;
         hideTimer.restart();
+    }
+
+    onOsdEnabledChanged: {
+        if (!osdEnabled)
+            visible = false;
     }
 
     onVisibleChanged: {
@@ -44,7 +85,7 @@ Window {
 
     Timer {
         id: hideTimer
-        interval: 1500
+        interval: osd.timeout
         onTriggered: osd.visible = false
     }
 
