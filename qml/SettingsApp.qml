@@ -1025,6 +1025,20 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("Dock button hover")
+                                subtitle: qsTr("How strongly a button lights up under the pointer.")
+                                settingKey: "dock.hoverOpacity"
+                                SettingsSlider { from: 0; to: 0.5; step: 0.05 }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Active dock button")
+                                subtitle: qsTr("How strongly the focused application's button is marked.")
+                                settingKey: "dock.activeOpacity"
+                                SettingsSlider { from: 0; to: 0.8; step: 0.05 }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Show labels")
                                 settingKey: "dock.showLabels"
                                 SettingsSwitch {}
