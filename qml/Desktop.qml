@@ -962,10 +962,23 @@ Window {
     readonly property string iconMenuPath: iconMenuUrl.length > 0
                                            ? decodeURIComponent(iconMenuUrl.replace(/^file:\/\//, "")) : ""
 
+    // "Open with": the applications that open the file's type (not for a
+    // launcher), the default one first, at most five.
+    property var openWithApps: []
     function openIconMenu(url, x, y, appId) {
         contextMenu.visible = false;
         iconMenuUrl = url;
         iconMenuApp = appId || "";
+        openWithApps = [];
+        if (iconMenuApp.length === 0) {
+            const mime = Shell.mimeTypeOf(url);
+            if (mime.length > 0) {
+                const preferred = Apps.defaultApp(mime);
+                const list = Apps.appsForMime(mime);
+                list.sort((a, b) => (b.id === preferred) - (a.id === preferred));
+                openWithApps = list.slice(0, 5);
+            }
+        }
         iconMenu.x = Math.max(8, Math.min(x, desk.width - iconMenu.width - 8));
         iconMenu.y = Math.max(8, Math.min(y, desk.height - iconMenu.height - 8));
         iconMenu.visible = true;
@@ -1009,6 +1022,21 @@ Window {
                 iconName: "folder"
                 label: qsTr("Open")
                 onClicked: desk.iconMenuAction("open")
+            }
+            Repeater {
+                model: desk.openWithApps
+                delegate: TaskButton {
+                    required property var modelData
+                    objectName: "openWithApp"
+                    width: iconMenuColumn.width
+                    fillWidth: true
+                    iconName: modelData.icon || "app-window"
+                    label: qsTr("Open with %1").arg(modelData.name)
+                    onClicked: {
+                        iconMenu.visible = false;
+                        Apps.launch(modelData.id, [desk.iconMenuPath]);
+                    }
+                }
             }
             TaskButton {
                 width: parent.width

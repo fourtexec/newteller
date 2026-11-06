@@ -379,6 +379,7 @@ class Apps(QObject):
     def __init__(self):
         super().__init__()
         self.launched = []
+        self.launched_files = []
         self.running = set()
 
     count = Property(int, lambda self: len(APPS), notify=runningChanged)
@@ -471,7 +472,10 @@ class Apps(QObject):
         return True
 
     @Slot(str, result=bool)
-    def launch(self, app_id):
+    @Slot(str, "QStringList", result=bool)
+    def launch(self, app_id, files=None):
+        if files:
+            self.launched_files.append((app_id, list(files)))
         self.launched.append(app_id)
         self.running.add(app_id)  # a launched application keeps running
         self.runningChanged.emit()
@@ -567,6 +571,10 @@ class Shell(QObject):
     def renameFile(self, path, name):
         self.calls.append(("renameFile", path, name))
         return True
+
+    @Slot(str, result=str)
+    def mimeTypeOf(self, path):
+        return "text/html" if path.endswith((".html", ".htm")) else "text/plain"
 
     @Slot(str, result=str)
     def pathKind(self, path):
@@ -2299,6 +2307,34 @@ def main():
             QMetaObject.invokeMethod(desk, "iconMenuAction", Q_ARG("QVariant", "trash"))
             check(("moveToTrash", url) in shell.calls and not icon_menu.isVisible(),
                   f"Move to Trash sends the icon's file to the trash ({shell.calls})")
+            # "Open with": an HTML file offers the applications that open
+            # HTML and starts the chosen one with the file.
+            page = os.path.join(desktop_dir, "page.html")
+            open(page, "w").close()
+            QMetaObject.invokeMethod(desk, "openIconMenu", Q_ARG("QVariant", "file://" + page),
+                                     Q_ARG("QVariant", 100), Q_ARG("QVariant", 100), Q_ARG("QVariant", ""))
+            QTest.qWait(30)
+            open_with = desk.property("openWithApps")
+            open_with = open_with.toVariant() if hasattr(open_with, "toVariant") else open_with
+            check([a["id"] for a in (open_with or [])] == ["firefox"],
+                  f"Open with lists the applications for the file's type ({open_with})")
+            buttons = []
+
+            def find_open_with(item):
+                if item.objectName() == "openWithApp":
+                    buttons.append(item)
+                for child in item.childItems():
+                    find_open_with(child)
+            find_open_with(desk.contentItem())
+            if buttons:
+                QMetaObject.invokeMethod(buttons[0], "clicked")
+                QTest.qWait(20)
+                check(apps.launched_files[-1:] == [("firefox", [page])],
+                      f"Open with starts the application with the file ({apps.launched_files})")
+                apps.launched.pop()
+            else:
+                check(False, "Open with shows a button per application")
+            os.remove(page)
 
         # An icon placed with the old pixel setting (desktop.iconPositions,
         # before the grid) keeps its place as the matching grid cell.

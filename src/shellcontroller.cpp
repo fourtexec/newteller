@@ -17,6 +17,7 @@
 #include <QThread>
 #include <QPointer>
 #include <QMimeData>
+#include <QMimeDatabase>
 #include <QStandardPaths>
 #include <QSysInfo>
 #include <QUrl>
@@ -178,6 +179,17 @@ QString ShellController::pathKind(const QString &path) const
     if (info.isFile())
         return info.isExecutable() ? QStringLiteral("exec") : QStringLiteral("file");
     return QString();
+}
+
+QString ShellController::mimeTypeOf(const QString &path) const
+{
+    QString local = path.trimmed();
+    if (local.startsWith(QLatin1String("file:")))
+        local = QUrl(local).toLocalFile();
+    local = expandHome(local);
+    if (local.isEmpty())
+        return QString();
+    return QMimeDatabase().mimeTypeForFile(local).name();
 }
 
 QVariantList ShellController::recentFiles(int limit) const

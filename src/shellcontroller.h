@@ -136,6 +136,9 @@ public:
     // What a typed path is: "dir", "exec" (an executable file), "file", or
     // "" when nothing is there. "~/" and file:// URLs are understood.
     Q_INVOKABLE QString pathKind(const QString &path) const;
+    // The MIME type of a file or folder ("text/plain", "inode/directory"),
+    // for "Open with"; a path or a file:// URL.
+    Q_INVOKABLE QString mimeTypeOf(const QString &path) const;
     // Recently used files (~/.local/share/recently-used.xbel, written by GTK
     // and Qt applications), newest first, only those that still exist:
     // [{ path, name, folder, image }]. Re-read only when the file changed.
