@@ -1651,6 +1651,21 @@ def main():
             if len(re.findall(r'\b%s\b' % match.group(1), text)) < 2:
                 unused_props.append(f"{os.path.basename(path)}:{match.group(1)} ({match.group(2)})")
     check(not unused_props, f"settings read into a property are used ({unused_props})")
+    # "value || 8" turns a chosen 0 into 8: keys whose control on the
+    # settings pages allows 0 (or less) must be read with "??".
+    zero_ok = set()
+    for match in re.finditer(r'settingKey:\s*"([^"]+)"\s*\n\s*(?:Settings(?:Slider|Stepper))\s*\{[^}]*\bfrom:\s*(-?[0-9.]+)',
+                             settings_qml):
+        if float(match.group(2)) <= 0:
+            zero_ok.add(match.group(1))
+    zero_lost = []
+    for path in sorted(glob.glob(os.path.join(ROOT, "qml", "*.qml"))):
+        with open(path, encoding="utf-8") as handle:
+            for number, line in enumerate(handle, 1):
+                for key in re.findall(r'Settings\.values\["([^"]+)"\]\s*\|\|\s*[1-9]', line):
+                    if key in zero_ok:
+                        zero_lost.append(f"{os.path.basename(path)}:{number} {key}")
+    check(not zero_lost, f"settings that may be 0 are not read with || (use ??): {zero_lost}")
     # English interface text in QML goes through qsTr(), or the Russian
     # interface shows it untranslated: labels, returned strings and the
     # branches of a ?: that pick a label.
