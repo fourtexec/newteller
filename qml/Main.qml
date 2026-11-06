@@ -354,7 +354,7 @@ QtObject {
             return null;
         for (let i = 0; i < root.panels.count; ++i) {
             const panel = root.panels.objectAt(i);
-            if (panel && panel.screen && panel.screen.name === Session.activeOutput)
+            if (panel && panel.visible && panel.screen && panel.screen.name === Session.activeOutput)
                 return panel;
         }
         return null;

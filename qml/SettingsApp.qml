@@ -3651,6 +3651,33 @@ Window {
                                         }
                                     }
                                 }
+                                // multiMonitor.panelPositions: { screen name: edge | "none" }.
+                                SettingsRow {
+                                    width: parent.width
+                                    visible: screenSection.modelData.enabled && displayColumn.screens.length > 1
+                                    title: qsTr("Panel on this screen")
+                                    SettingsChoice {
+                                        objectName: "screenPanelChoice"
+                                        value: {
+                                            const map = Settings.values["multiMonitor.panelPositions"] || ({});
+                                            return map[screenSection.modelData.name] || "same";
+                                        }
+                                        model: [
+                                            { value: "same", label: qsTr("As set") },
+                                            { value: "bottom", label: qsTr("Bottom") }, { value: "top", label: qsTr("Top") },
+                                            { value: "left", label: qsTr("Left") }, { value: "right", label: qsTr("Right") },
+                                            { value: "none", label: qsTr("No panel") }
+                                        ]
+                                        onChanged: (v) => {
+                                            const map = Object.assign({}, Settings.values["multiMonitor.panelPositions"] || ({}));
+                                            if (v === "same")
+                                                delete map[screenSection.modelData.name];
+                                            else
+                                                map[screenSection.modelData.name] = v;
+                                            Settings.setValue("multiMonitor.panelPositions", map);
+                                        }
+                                    }
+                                }
                             }
                         }
 

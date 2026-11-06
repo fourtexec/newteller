@@ -299,6 +299,8 @@ inside VirtualBox. The implemented pieces are:
 - **Panel style and length**: the dock pill alone (default) or a bar along
   the edge in the panel surface and colours, with its own corner radius; a
   length below 100% makes a floating, centred panel.
+- **A panel per screen**: with several monitors each screen can put its panel
+  on another edge or go without one (Settings → Displays).
 - **Named desktops**: give desktops names (`workspaces.names`), show them on
   the panel as dots, numbers or names, and on screen when switching.
 - **Day and night themes**: two themes switched at set times or together

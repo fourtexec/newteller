@@ -30,8 +30,16 @@ Window {
     // in every panel, so they talk to these shared windows.
     property var notificationCenter: null
     property var quickSettings: null
-    // "bottom", "top", "left" or "right".
-    readonly property string panelPosition: Settings.values["panel.position"] || "bottom"
+    // "bottom", "top", "left" or "right"; a screen can have its own edge or
+    // no panel at all (multiMonitor.panelPositions, Settings -> Displays).
+    readonly property string screenOverride: {
+        const map = Settings.values["multiMonitor.panelPositions"] || ({});
+        const name = panel.screen ? panel.screen.name : "";
+        return name.length > 0 && map[name] ? String(map[name]) : "";
+    }
+    readonly property bool hiddenOnScreen: screenOverride === "none"
+    readonly property string panelPosition: ["bottom", "top", "left", "right"].indexOf(screenOverride) >= 0
+                                             ? screenOverride : (Settings.values["panel.position"] || "bottom")
     readonly property bool vertical: panelPosition === "left" || panelPosition === "right"
     readonly property bool autoHide: Settings.values["panel.autoHide"] === true
     // The bar is never thinner than its dock needs: a bigger icon size or
@@ -220,7 +228,7 @@ Window {
     property string dockDraggingAppId: ""
     property int dockDropIndex: -1
 
-    visible: true
+    visible: !hiddenOnScreen
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.Tool
     // The hover strip of an auto-hidden panel is a few pixels at the edge.

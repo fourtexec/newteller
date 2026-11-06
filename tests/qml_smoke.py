@@ -1729,6 +1729,20 @@ def main():
         QTest.qWait(40)
         check(panel.width() == g.width(), "back to a full-width panel")
 
+        # A screen of its own: another edge, or no panel at all.
+        name = panel.screen().name()
+        settings.setValue("multiMonitor.panelPositions", {name: "top"})
+        QTest.qWait(30)
+        check(panel.property("panelPosition") == "top",
+              f"a screen can put its panel on another edge ({panel.property('panelPosition')})")
+        settings.setValue("multiMonitor.panelPositions", {name: "none"})
+        QTest.qWait(30)
+        check(not panel.isVisible(), "a screen can go without a panel")
+        settings.setValue("multiMonitor.panelPositions", {})
+        QTest.qWait(30)
+        check(panel.isVisible() and panel.property("panelPosition") == "bottom",
+              "the panel comes back on its usual edge")
+
     # Clicking Start below also proves each panel's startMenu points at this window.
     menu = menus[0] if menus else None
     if menu is not None and panels:
