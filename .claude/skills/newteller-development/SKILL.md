@@ -148,9 +148,13 @@ line").
 - **Assigning to a bound property breaks the binding for good** (the clock
   card's calendar reassigned its cells every second and the month buttons
   stopped working). Make the binding depend on what should rebuild it.
+- **FolderListModel wants a URL.** A plain path ("/home/me/Pictures") as
+  `folder` gives an empty model without a warning: prefix "file://".
+  `FolderListModel.get(index, "filePath")` needs the role name.
 - **A setting needs a reader.** The QML smoke test only checks that keys
   have defaults; a key nobody reads is a control that does nothing. Before
-  adding UI for a key, grep that something uses it.
+  adding UI for a key, grep that something uses it. The QML smoke test also
+  fails on a key read into a property that nothing uses.
 
 - **No blocking D-Bus or process calls on the UI thread.** A slow or hung
   service (an app's tray menu, MPRIS player, NetworkManager, wpctl) froze
