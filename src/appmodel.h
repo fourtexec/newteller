@@ -93,6 +93,16 @@ public:
     Q_INVOKABLE QVariantMap stats() const;
     Q_INVOKABLE QVariantMap scanReport() const;
 
+    // --- default applications (freedesktop mimeapps.list) ---------------
+    // Applications that declare `mime` in their MimeType ({id, name, icon}).
+    Q_INVOKABLE QVariantList appsForMime(const QString &mime) const;
+    // The application id that opens `mime` ("" when none is set or the
+    // one set is not installed): the user's list first, then the system's.
+    Q_INVOKABLE QString defaultApp(const QString &mime) const;
+    // Writes `id` as the default of every type in `mimes` into
+    // ~/.config/mimeapps.list [Default Applications].
+    Q_INVOKABLE bool setDefaultApp(const QStringList &mimes, const QString &id);
+
     // Colour of the matched letters when `startmenu.highlight` is empty: the
     // theme's accent, so the highlight stays readable on light themes too.
     void setHighlightFallback(const QString &color) { m_highlightFallback = color; }

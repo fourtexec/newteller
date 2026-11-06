@@ -3,6 +3,8 @@
 #include "settings.h"
 
 #include <QDir>
+#include <QFile>
+#include <QSaveFile>
 #include <QDirIterator>
 #include <QElapsedTimer>
 #include <QLocale>
@@ -873,3 +875,128 @@ QVariantMap AppModel::scanReport() const
         return {};
     return m_index.report();
 }
+
+// --- default applications ----------------------------------------------------
+
+namespace {
+
+// The mimeapps.list files in the order the spec reads them.
+QStringList mimeappsFiles()
+{
+    QStringList files;
+    for (const QString &dir : QStandardPaths::standardLocations(QStandardPaths::GenericConfigLocation))
+        files << dir + QStringLiteral("/mimeapps.list");
+    for (const QString &dir : QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation))
+        files << dir + QStringLiteral("/applications/mimeapps.list");
+    return files;
+}
+
+// "[Default Applications]" of one file: mime -> "a.desktop;b.desktop;".
+QHash<QString, QString> defaultsIn(const QString &path)
+{
+    QHash<QString, QString> out;
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+        return out;
+    bool inDefaults = false;
+    while (!file.atEnd()) {
+        const QString line = QString::fromUtf8(file.readLine()).trimmed();
+        if (line.startsWith(QLatin1Char('['))) {
+            inDefaults = line == QLatin1String("[Default Applications]");
+            continue;
+        }
+        const int equals = line.indexOf(QLatin1Char('='));
+        if (inDefaults && equals > 0)
+            out.insert(line.left(equals).trimmed(), line.mid(equals + 1).trimmed());
+    }
+    return out;
+}
+
+QString desktopId(QString file)
+{
+    if (file.endsWith(QLatin1String(".desktop")))
+        file.chop(8);
+    return file;
+}
+
+} // namespace
+
+QVariantList AppModel::appsForMime(const QString &mime) const
+{
+    QVariantList out;
+    for (const AppEntry &app : m_apps) {
+        if (app.noDisplay || app.hidden || !app.mimeTypes.contains(mime))
+            continue;
+        QVariantMap m;
+        m.insert(QStringLiteral("id"), app.id);
+        m.insert(QStringLiteral("name"), app.name);
+        m.insert(QStringLiteral("icon"), app.icon);
+        out.append(m);
+    }
+    return out;
+}
+
+QString AppModel::defaultApp(const QString &mime) const
+{
+    for (const QString &path : mimeappsFiles()) {
+        const QString value = defaultsIn(path).value(mime);
+        // Application ids are desktop file names ("firefox.desktop").
+        for (const QString &raw : value.split(QLatin1Char(';'), Qt::SkipEmptyParts)) {
+            const QString entry = raw.trimmed();
+            if (m_indexById.contains(entry))
+                return entry;
+            if (m_indexById.contains(desktopId(entry)))
+                return desktopId(entry);
+        }
+    }
+    return QString();
+}
+
+bool AppModel::setDefaultApp(const QStringList &mimes, const QString &id)
+{
+    if (mimes.isEmpty() || !m_indexById.contains(id))
+        return false;
+    const QString path = QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
+                         + QStringLiteral("/mimeapps.list");
+    QStringList lines;
+    {
+        QFile file(path);
+        if (file.open(QIODevice::ReadOnly | QIODevice::Text))
+            lines = QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'));
+    }
+    while (!lines.isEmpty() && lines.last().trimmed().isEmpty())
+        lines.removeLast();
+    // Drop the old lines for these types inside [Default Applications], then
+    // add the new ones at the start of the section (created when missing).
+    int section = -1;
+    bool inDefaults = false;
+    for (int i = 0; i < lines.size(); ++i) {
+        const QString line = lines.at(i).trimmed();
+        if (line.startsWith(QLatin1Char('['))) {
+            inDefaults = line == QLatin1String("[Default Applications]");
+            if (inDefaults)
+                section = i;
+            continue;
+        }
+        const int equals = line.indexOf(QLatin1Char('='));
+        if (inDefaults && equals > 0 && mimes.contains(line.left(equals).trimmed()))
+            lines.removeAt(i--);
+    }
+    if (section < 0) {
+        if (!lines.isEmpty())
+            lines << QString();
+        lines << QStringLiteral("[Default Applications]");
+        section = lines.size() - 1;
+    }
+    int at = section + 1;
+    for (const QString &mime : mimes)
+        lines.insert(at++, mime + QLatin1Char('=')
+                               + (id.endsWith(QLatin1String(".desktop")) ? id : id + QStringLiteral(".desktop")));
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text))
+        return false;
+    file.write((lines.join(QLatin1Char('\n')) + QLatin1Char('\n')).toUtf8());
+    return file.commit();
+}
+

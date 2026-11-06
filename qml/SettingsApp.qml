@@ -2331,6 +2331,63 @@ Window {
                         width: appsScroll.width - 32
                         spacing: 16
 
+                        // Default applications: ~/.config/mimeapps.list, which
+                        // every desktop and toolkit reads.
+                        SettingsSection {
+                            id: defaultApps
+                            title: qsTr("Default applications")
+                            subtitle: qsTr("What opens links, mail, folders and files of each kind.")
+                            // Bumped after a change, so the rows read the file again.
+                            property int revision: 0
+
+                            Repeater {
+                                model: [
+                                    { title: qsTr("Web browser"), mimes: ["x-scheme-handler/http", "x-scheme-handler/https", "text/html"] },
+                                    { title: qsTr("Mail"), mimes: ["x-scheme-handler/mailto"] },
+                                    { title: qsTr("Files"), mimes: ["inode/directory"] },
+                                    { title: qsTr("Text"), mimes: ["text/plain"] },
+                                    { title: qsTr("Pictures"), mimes: ["image/png", "image/jpeg", "image/webp", "image/gif"] },
+                                    { title: qsTr("Video"), mimes: ["video/mp4", "video/x-matroska", "video/webm"] },
+                                    { title: qsTr("Music"), mimes: ["audio/mpeg", "audio/flac", "audio/ogg"] },
+                                    { title: qsTr("PDF documents"), mimes: ["application/pdf"] }
+                                ]
+
+                                delegate: SettingsRow {
+                                    id: defaultRow
+                                    required property var modelData
+                                    // Every application that opens one of the types.
+                                    readonly property var candidates: {
+                                        const seen = {};
+                                        const out = [];
+                                        for (const mime of modelData.mimes) {
+                                            for (const app of Apps.appsForMime(mime)) {
+                                                if (!seen[app.id]) {
+                                                    seen[app.id] = true;
+                                                    out.push(app);
+                                                }
+                                            }
+                                        }
+                                        return out;
+                                    }
+                                    width: parent ? parent.width : 320
+                                    visible: candidates.length > 0
+                                    title: modelData.title
+                                    SettingsChoice {
+                                        objectName: "defaultAppChoice"
+                                        value: {
+                                            defaultApps.revision;
+                                            return Apps.defaultApp(defaultRow.modelData.mimes[0]);
+                                        }
+                                        model: defaultRow.candidates.map(app => ({ value: app.id, label: app.name }))
+                                        onChanged: (id) => {
+                                            Apps.setDefaultApp(defaultRow.modelData.mimes, id);
+                                            defaultApps.revision++;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
                         SettingsSection {
                             title: qsTr("Applications")
 

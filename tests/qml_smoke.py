@@ -177,6 +177,7 @@ class ShellWindowType(QObject):
 APPS = [
     {"id": "firefox", "name": "Firefox", "icon": "firefox",
      "generic": "web browser", "comment": "Browse the web",
+     "mimeTypes": ["text/html", "x-scheme-handler/http", "x-scheme-handler/https"],
      "categories": ["Network"], "keywords": ["internet", "web"],
      "actions": [{"id": "new-private-window", "name": "New Private Window"}]},
     {"id": "org.gnome.Terminal", "name": "Terminal", "icon": "utilities-terminal",
@@ -405,6 +406,24 @@ class Apps(QObject):
 
     @Slot(result=bool)
     def canLaunchAsRoot(self):
+        return True
+
+    # Default applications (mimeapps.list), kept in memory.
+    defaults = {}
+
+    @Slot(str, result="QVariantList")
+    def appsForMime(self, mime):
+        return [{"id": a["id"], "name": a["name"], "icon": a["icon"]}
+                for a in APPS if mime in a.get("mimeTypes", [])]
+
+    @Slot(str, result=str)
+    def defaultApp(self, mime):
+        return self.defaults.get(mime, "")
+
+    @Slot("QStringList", str, result=bool)
+    def setDefaultApp(self, mimes, app_id):
+        for mime in mimes:
+            self.defaults[mime] = app_id
         return True
 
     @Slot(str, str, result="QVariantMap")
@@ -3420,6 +3439,19 @@ def main():
             calendar = next((p for p in plugin_manager._plugins if p["id"] == "desktop-calendar"), {})
             check(False in calendar.get("settings", {}).values(),
                   f"a plugin setting changes from the settings window ({calendar.get('settings')})")
+
+        # Default applications: picking the browser writes every web type.
+        settings_app.setProperty("currentPage", "apps")
+        QTest.qWait(40)
+        default_choice = find_item(settings_app.contentItem(), "defaultAppChoice")
+        check(default_choice is not None, "the Applications page offers default applications")
+        if default_choice is not None:
+            QMetaObject.invokeMethod(default_choice, "pick", Q_ARG("QVariant", "firefox"))
+            QTest.qWait(30)
+            check(apps.defaults.get("x-scheme-handler/https") == "firefox"
+                  and apps.defaults.get("text/html") == "firefox",
+                  f"choosing the browser sets every web type ({apps.defaults})")
+            check(default_choice.property("value") == "firefox", "the choice shows the new default")
 
         # "Reset this page": the second click puts the page's keys back.
         settings_app.setProperty("currentPage", "windows")

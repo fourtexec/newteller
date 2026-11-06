@@ -332,6 +332,9 @@ inside VirtualBox. The implemented pieces are:
 - **Mute an application's notifications**: the bell next to its name in the
   notification centre sends its notifications straight to the history, no
   popup or sound (`notifications.mutedApps`; urgent ones still show).
+- **Default applications** (Settings → Applications): the web browser, mail,
+  file manager, text editor, picture viewer, video and music players and PDF
+  reader, written to `~/.config/mimeapps.list`, which every desktop reads.
 - **Named desktops**: give desktops names (`workspaces.names`), show them on
   the panel as dots, numbers or names, and on screen when switching.
 - **Settings search**: type in the field above the settings pages to find any
