@@ -206,7 +206,6 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("desktop.iconTextSize"), 0);
     m_defaults.insert(QStringLiteral("desktop.iconTextLines"), 2);
     m_defaults.insert(QStringLiteral("desktop.showHiddenFiles"), false);
-    m_defaults.insert(QStringLiteral("desktop.doubleClickSpeed"), 500);
     // Pixel positions from before the desktop grid (desktop.gridPositions):
     // { "notes.txt": { "x": 120, "y": 48 }, ... } and plugin id -> {x, y}.
     // Read once to keep an old layout; the next drag or reset clears them.
@@ -330,6 +329,7 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("mouse.naturalScroll"), false);
     m_defaults.insert(QStringLiteral("mouse.speed"), 0.0);
     m_defaults.insert(QStringLiteral("mouse.leftHanded"), false);
+    m_defaults.insert(QStringLiteral("mouse.doubleClickInterval"), 400);
     m_defaults.insert(QStringLiteral("cursor.theme"), QString());
     m_defaults.insert(QStringLiteral("cursor.size"), 24);
     // Colour scheme applications follow: "system" (leave it), "dark", "light".

@@ -3336,6 +3336,13 @@ Window {
                                 settingKey: "mouse.leftHanded"
                                 SettingsSwitch { settingKey: "mouse.leftHanded" }
                             }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Double-click speed")
+                                subtitle: qsTr("Longest pause between the two clicks; for the desktop and GTK applications.")
+                                settingKey: "mouse.doubleClickInterval"
+                                SettingsSlider { from: 200; to: 1000; step: 50; suffix: qsTr(" ms") }
+                            }
                         }
 
                         SettingsSection {

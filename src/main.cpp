@@ -32,6 +32,7 @@
 #include <QDesktopServices>
 #include <QFile>
 #include <QGuiApplication>
+#include <QStyleHints>
 #include <QDBusConnection>
 #include <QLocale>
 #include <memory>
@@ -316,6 +317,19 @@ int main(int argc, char *argv[])
                                                                                   : QLocale(language));
     };
     applyLanguage();
+
+    // mouse.doubleClickInterval: the shell's own double clicks (desktop
+    // icons, title bars of the shell's windows).
+    auto applyDoubleClick = [&settings]() {
+        const int interval = settings.value(QStringLiteral("mouse.doubleClickInterval"), 400).toInt();
+        if (interval >= 100 && interval <= 2000)
+            QGuiApplication::styleHints()->setMouseDoubleClickInterval(interval);
+    };
+    applyDoubleClick();
+    QObject::connect(&settings, &Settings::changed, &settings, [applyDoubleClick](const QString &key) {
+        if (key.isEmpty() || key == QLatin1String("mouse.doubleClickInterval"))
+            applyDoubleClick();
+    });
 
     QQmlApplicationEngine engine;
     QObject::connect(&settings, &Settings::changed, &engine, [&](const QString &key) {

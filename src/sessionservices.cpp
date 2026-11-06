@@ -611,6 +611,7 @@ void SessionServices::settingChanged(const QString &key)
         m_configDebounce.start();
     }
     if (inSession() && (all || key.startsWith(QLatin1String("apps."))
+                        || key == QLatin1String("mouse.doubleClickInterval")
                         || key.startsWith(QLatin1String("cursor."))
                         || key.startsWith(QLatin1String("decorations."))))
         applyAppearance();
@@ -1078,6 +1079,12 @@ void SessionServices::applyAppearance()
     if (!cursorTheme.isEmpty()) {
         QProcess::startDetached(gsettings, {QStringLiteral("set"), schema,
                                             QStringLiteral("cursor-theme"), cursorTheme});
+    }
+    // mouse.doubleClickInterval: GTK applications read it from here.
+    const int doubleClick = m_settings->value(QStringLiteral("mouse.doubleClickInterval")).toInt();
+    if (doubleClick >= 100 && doubleClick <= 2000) {
+        QProcess::startDetached(gsettings, {QStringLiteral("set"), QStringLiteral("org.gnome.desktop.peripherals.mouse"),
+                                            QStringLiteral("double-click"), QString::number(doubleClick)});
     }
     const int cursorSize = m_settings->value(QStringLiteral("cursor.size")).toInt();
     if (cursorSize >= 8) {
