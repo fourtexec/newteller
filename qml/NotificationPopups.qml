@@ -15,9 +15,24 @@ Window {
     readonly property bool rightEdge: corner.indexOf("right") > 0
     readonly property bool centered: corner.indexOf("center") > 0
     readonly property int screenMargin: 10
-    readonly property int cardWidth: 344
-    // Newest at the bottom, at most four cards on screen.
-    readonly property var shown: (Notifications.active || []).slice(-4)
+    readonly property int cardWidth: Math.max(260, Math.min(640, Number(Settings.values["notifications.width"] ?? 344)))
+    // notifications.screen: popups on "all" screens, the "primary" one (the
+    // first Qt lists) or the "active" one (under the pointer).
+    readonly property bool onThisScreen: {
+        const mode = Settings.values["notifications.screen"] || "all";
+        const screens = Qt.application.screens;
+        const primary = screens.length > 0 ? screens[0].name : "";
+        const mine = notif.screen ? notif.screen.name : "";
+        if (mode === "primary")
+            return mine === primary;
+        if (mode === "active")
+            return mine === (Session.activeOutput || primary);
+        return true;
+    }
+    onOnThisScreenChanged: Qt.callLater(notif.sync)
+    // Newest at the bottom, at most notifications.maxVisible cards on screen.
+    readonly property int maxVisible: Math.max(1, Math.min(10, Number(Settings.values["notifications.maxVisible"] ?? 4)))
+    readonly property var shown: onThisScreen ? (Notifications.active || []).slice(-maxVisible) : []
     readonly property NotificationAppearance appearance: NotificationAppearance {}
     readonly property int framePad: 8
     // Cards slide in from, and back out towards, the screen edge they are

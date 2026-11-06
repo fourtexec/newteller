@@ -2244,6 +2244,32 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                visible: Qt.application.screens.length > 1
+                                title: qsTr("Screen")
+                                settingKey: "notifications.screen"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "all", label: qsTr("Every screen") },
+                                        { value: "primary", label: qsTr("Main screen") },
+                                        { value: "active", label: qsTr("Screen with the pointer") }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Popup width")
+                                settingKey: "notifications.width"
+                                SettingsSlider { from: 260; to: 640; step: 10; suffix: " px" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Popups at once")
+                                subtitle: qsTr("Older ones wait in the notification centre.")
+                                settingKey: "notifications.maxVisible"
+                                SettingsStepper { from: 1; to: 10 }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Duration")
                                 subtitle: qsTr("0 keeps a popup until it is clicked.")
                                 settingKey: "notifications.duration"

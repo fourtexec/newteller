@@ -91,6 +91,9 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("notifications.quietInFullscreen"), true);
     m_defaults.insert(QStringLiteral("notifications.position"), QStringLiteral("top-right"));
     m_defaults.insert(QStringLiteral("notifications.duration"), 6);
+    m_defaults.insert(QStringLiteral("notifications.width"), 344);
+    m_defaults.insert(QStringLiteral("notifications.maxVisible"), 4);
+    m_defaults.insert(QStringLiteral("notifications.screen"), QStringLiteral("all"));
     m_defaults.insert(QStringLiteral("notifications.historyLimit"), 20);
     m_defaults.insert(QStringLiteral("startmenu.width"), 440);
     m_defaults.insert(QStringLiteral("startmenu.height"), 580);
