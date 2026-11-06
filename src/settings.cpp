@@ -135,6 +135,8 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("icons.cache"), true);
     m_defaults.insert(QStringLiteral("plugins.disabled"), QStringList());
     m_defaults.insert(QStringLiteral("plugins.autoRescan"), true);
+    // Changes to plugins' manifest settings: { plugin id: { key: value } }.
+    m_defaults.insert(QStringLiteral("plugins.settings"), QVariantMap());
     m_defaults.insert(QStringLiteral("apps.recent"), QStringList());
     m_defaults.insert(QStringLiteral("apps.recentLimit"), 8);
     m_defaults.insert(QStringLiteral("apps.usage"), QVariantMap());

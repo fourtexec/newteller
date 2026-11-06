@@ -69,7 +69,10 @@ plugin-name/
 - **y**: Initial Y position for desktop plugins
 - **order**: Sorting order (lower = earlier in lists)
 - **description**: Short description shown in the plugins list
-- **settings**: Default settings for the plugin (optional)
+- **settings**: Default settings for the plugin (optional). Settings → Plugins
+  shows each of them under the plugin (a switch for true/false, a field for
+  numbers and text); changes are kept in the shell's `plugins.settings` and
+  reach the plugin as `modelData.settings`, the manifest stays as shipped
 
 ## Creating Custom Plugins
 

@@ -2934,19 +2934,72 @@ Window {
                             Repeater {
                                 model: Plugins.plugins
 
-                                delegate: SettingsRow {
+                                delegate: Column {
+                                    id: pluginEntry
                                     required property var modelData
                                     width: parent.width
-                                    title: modelData.name
-                                    subtitle: (Settings.values["plugins.showDescriptions"] === true && modelData.description 
-                                              ? modelData.description + "  ·  " : "") +
-                                             modelData.id + "  ·  " + modelData.type
-                                              + "  ·  version "
-                                              + (modelData.version || "1.0.0")
+                                    // The manifest's "settings", edited here (plugins.settings).
+                                    readonly property var defaults: modelData.defaultSettings || modelData.settings || ({})
+                                    readonly property var keys: Object.keys(defaults)
 
-                                    SettingsSwitch {
-                                        checked: modelData.enabled
-                                        onChanged: (on) => Plugins.setEnabled(modelData.id, on)
+                                    SettingsRow {
+                                        width: parent.width
+                                        title: pluginEntry.modelData.name
+                                        subtitle: (Settings.values["plugins.showDescriptions"] === true
+                                                   && pluginEntry.modelData.description
+                                                   ? pluginEntry.modelData.description + "  ·  " : "")
+                                                  + pluginEntry.modelData.id + "  ·  " + pluginEntry.modelData.type
+                                                  + "  ·  " + qsTr("version %1").arg(pluginEntry.modelData.version || "1.0.0")
+
+                                        SettingsSwitch {
+                                            checked: pluginEntry.modelData.enabled
+                                            onChanged: (on) => Plugins.setEnabled(pluginEntry.modelData.id, on)
+                                        }
+                                    }
+
+                                    Repeater {
+                                        model: pluginEntry.modelData.enabled ? pluginEntry.keys : []
+
+                                        delegate: SettingsRow {
+                                            id: pluginSettingRow
+                                            required property string modelData
+                                            readonly property var fallback: pluginEntry.defaults[modelData]
+                                            readonly property var current: {
+                                                const values = pluginEntry.modelData.settings || ({});
+                                                return values[modelData] !== undefined ? values[modelData] : fallback;
+                                            }
+                                            width: parent.width
+                                            title: "    " + modelData
+                                            Loader {
+                                                sourceComponent: typeof pluginSettingRow.fallback === "boolean"
+                                                                 ? pluginBoolField : pluginTextField
+                                                Component {
+                                                    id: pluginBoolField
+                                                    SettingsSwitch {
+                                                        objectName: "pluginSettingSwitch"
+                                                        checked: pluginSettingRow.current === true
+                                                        onChanged: (on) => Plugins.setSetting(pluginEntry.modelData.id,
+                                                                                              pluginSettingRow.modelData, on)
+                                                    }
+                                                }
+                                                Component {
+                                                    id: pluginTextField
+                                                    SettingsTextField {
+                                                        width: 180
+                                                        text: String(pluginSettingRow.current)
+                                                        onTextEdited: (value) => {
+                                                            const number = Number(value);
+                                                            const typed = typeof pluginSettingRow.fallback === "number"
+                                                                          && value.trim().length > 0 && !isNaN(number)
+                                                                          ? number : value;
+                                                            if (String(typed) !== String(pluginSettingRow.current))
+                                                                Plugins.setSetting(pluginEntry.modelData.id,
+                                                                                   pluginSettingRow.modelData, typed);
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }

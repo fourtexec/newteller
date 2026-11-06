@@ -17,7 +17,8 @@ PluginManager::PluginManager(Settings *settings, QObject *parent)
 {
     rescan();
     connect(settings, &Settings::changed, this, [this](const QString &key) {
-        if (key.isEmpty() || key == QLatin1String("plugins.disabled"))
+        if (key.isEmpty() || key == QLatin1String("plugins.disabled")
+            || key == QLatin1String("plugins.settings"))
             rebuildCache();
     });
     // plugins.autoRescan: a new or edited plugin applies without a restart.
@@ -111,14 +112,44 @@ void PluginManager::rescan()
 void PluginManager::rebuildCache()
 {
     const QStringList disabled = disabledIds();
+    const QVariantMap overrides = m_settings->value(QStringLiteral("plugins.settings")).toMap();
     QVariantList out;
     out.reserve(m_plugins.size());
     for (QVariantMap p : m_plugins) {
-        p.insert(QStringLiteral("enabled"), !disabled.contains(p.value(QStringLiteral("id")).toString()));
+        const QString id = p.value(QStringLiteral("id")).toString();
+        p.insert(QStringLiteral("enabled"), !disabled.contains(id));
+        // The manifest's values stay as "defaultSettings"; "settings" is
+        // what the plugin reads, with the user's changes on top.
+        QVariantMap values = p.value(QStringLiteral("settings")).toMap();
+        p.insert(QStringLiteral("defaultSettings"), values);
+        const QVariantMap own = overrides.value(id).toMap();
+        for (auto it = own.constBegin(); it != own.constEnd(); ++it) {
+            if (values.contains(it.key()))
+                values.insert(it.key(), it.value());
+        }
+        p.insert(QStringLiteral("settings"), values);
         out.append(p);
     }
     m_cached = out;
     emit pluginsChanged();
+}
+
+void PluginManager::setSetting(const QString &id, const QString &key, const QVariant &value)
+{
+    if (id.isEmpty() || key.isEmpty())
+        return;
+    QVariantMap overrides = m_settings->value(QStringLiteral("plugins.settings")).toMap();
+    QVariantMap own = overrides.value(id).toMap();
+    own.insert(key, value);
+    overrides.insert(id, own);
+    m_settings->setValue(QStringLiteral("plugins.settings"), overrides);
+}
+
+void PluginManager::resetSettings(const QString &id)
+{
+    QVariantMap overrides = m_settings->value(QStringLiteral("plugins.settings")).toMap();
+    if (overrides.remove(id) > 0)
+        m_settings->setValue(QStringLiteral("plugins.settings"), overrides);
 }
 
 QVariantList PluginManager::ofType(const QString &type) const

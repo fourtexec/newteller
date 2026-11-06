@@ -747,6 +747,22 @@ class Plugins(QObject):
     def rescan(self):
         self.pluginsChanged.emit()
 
+    @Slot(str, str, "QVariant")
+    def setSetting(self, plugin_id, key, value):
+        if hasattr(value, "toVariant"):
+            value = value.toVariant()
+        for p in self._plugins:
+            if p["id"] == plugin_id:
+                p.setdefault("settings", {})[key] = value
+        self.pluginsChanged.emit()
+
+    @Slot(str)
+    def resetSettings(self, plugin_id):
+        for p in self._plugins:
+            if p["id"] == plugin_id:
+                p["settings"] = dict(p.get("defaultSettings", {}))
+        self.pluginsChanged.emit()
+
 
 class Windows(QObject):
     """Stand-in for the WindowList context property (src/windowlist.h)."""
@@ -3311,6 +3327,19 @@ def main():
                       f"a search result opens its page ({settings_app.property('currentPage')})")
             search_field.setProperty("text", "")
             QTest.qWait(20)
+
+        # Plugin settings (the manifest's "settings") are edited on the
+        # Plugins page: the calendar's switches reach the plugin manager.
+        settings_app.setProperty("currentPage", "plugins")
+        QTest.qWait(40)
+        plugin_switch = find_item(settings_app.contentItem(), "pluginSettingSwitch")
+        check(plugin_switch is not None, "the Plugins page shows the plugins' own settings")
+        if plugin_switch is not None:
+            QMetaObject.invokeMethod(plugin_switch, "set", Q_ARG("QVariant", False))
+            QTest.qWait(30)
+            calendar = next((p for p in plugin_manager._plugins if p["id"] == "desktop-calendar"), {})
+            check(False in calendar.get("settings", {}).values(),
+                  f"a plugin setting changes from the settings window ({calendar.get('settings')})")
 
         # "Reset this page": the second click puts the page's keys back.
         settings_app.setProperty("currentPage", "windows")

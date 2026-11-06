@@ -26,6 +26,10 @@ public:
     Q_INVOKABLE QVariantList ofType(const QString &type) const;
     Q_INVOKABLE QVariantMap at(const QString &id) const;
     Q_INVOKABLE void setEnabled(const QString &id, bool enabled);
+    // A value of the plugin's manifest "settings", changed from the shell's
+    // settings (stored in plugins.settings, so the manifest stays as shipped).
+    Q_INVOKABLE void setSetting(const QString &id, const QString &key, const QVariant &value);
+    Q_INVOKABLE void resetSettings(const QString &id);
     Q_INVOKABLE void rescan();
 
 signals:

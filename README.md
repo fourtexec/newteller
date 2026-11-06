@@ -316,6 +316,9 @@ inside VirtualBox. The implemented pieces are:
 - **Window opacity**: per application (`windowRules.opacity`, e.g.
   `kitty=85`) and for every window without the focus
   (`effects.inactiveOpacity`), drawn by the effects renderer.
+- **Plugin settings in the settings window**: every value of a plugin's
+  manifest `settings` can be changed under Settings → Plugins
+  (`plugins.settings`), no manifest editing needed.
 - **Named desktops**: give desktops names (`workspaces.names`), show them on
   the panel as dots, numbers or names, and on screen when switching.
 - **Settings search**: type in the field above the settings pages to find any
