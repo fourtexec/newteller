@@ -1404,6 +1404,19 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("Start button")
+                                subtitle: qsTr("Off: Super still opens the start menu.")
+                                settingKey: "panel.showStartButton"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Clock")
+                                settingKey: "panel.showClock"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Start button icon")
                                 subtitle: qsTr("An icon name (start-here, distributor-logo, layout-grid) or the path of an image; empty is the default.")
                                 settingKey: "panel.startIcon"

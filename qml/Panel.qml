@@ -779,6 +779,9 @@ Window {
     component StartButton: TaskButton {
         id: startButton
         objectName: "startButton"
+        // panel.showStartButton: without it the start menu opens with Super
+        // (from the screen corner).
+        visible: Settings.values["panel.showStartButton"] !== false
         Component.onCompleted: panel.startButtonRef = startButton
         Layout.alignment: Qt.AlignVCenter | Qt.AlignHCenter
         // panel.startIcon: a shell icon, a theme icon (start-here,
@@ -934,6 +937,7 @@ Window {
     component ClockButton: Rectangle {
         id: clockButton
         objectName: "clockButton"
+        visible: Settings.values["panel.showClock"] !== false
         Layout.alignment: Qt.AlignVCenter | Qt.AlignHCenter
         implicitWidth: panel.vertical ? Math.min(clockLabel.implicitWidth + 12, panel.barThickness - 8)
                                       : clockLabel.implicitWidth + 18

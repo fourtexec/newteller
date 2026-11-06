@@ -56,6 +56,8 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("panel.startIcon"), QString());
     m_defaults.insert(QStringLiteral("panel.startLabel"), QString());
     m_defaults.insert(QStringLiteral("panel.showStartLabel"), true);
+    m_defaults.insert(QStringLiteral("panel.showStartButton"), true);
+    m_defaults.insert(QStringLiteral("panel.showClock"), true);
     m_defaults.insert(QStringLiteral("panel.length"), 100);
     m_defaults.insert(QStringLiteral("panel.cornerRadius"), -1);
     m_defaults.insert(QStringLiteral("panel.autoHide"), false);

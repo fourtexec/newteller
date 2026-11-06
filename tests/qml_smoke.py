@@ -1825,6 +1825,23 @@ def main():
         QTest.qWait(40)
         check(panel.width() == g.width(), "back to a full-width panel")
 
+        # panel.showStartButton off: the button goes, Super still opens the
+        # menu (from the corner).
+        settings.setValue("panel.showStartButton", False)
+        QTest.qWait(30)
+        hidden_start = panel.findChild(QQuickItem, "startButton")
+        check(hidden_start is not None and not hidden_start.isVisible(), "the start button can be hidden")
+        start_menu = panel.property("startMenu")
+        if start_menu is not None:
+            QMetaObject.invokeMethod(panel, "openFromKeyboard", Q_ARG("QVariant", start_menu),
+                                     Q_ARG("QVariant", "start"))
+            QTest.qWait(80)
+            check(start_menu.isVisible(), "without the button the start menu still opens")
+            QMetaObject.invokeMethod(start_menu, "hide")
+            QTest.qWait(300)
+        settings.reset("panel.showStartButton")
+        QTest.qWait(20)
+
         # dock.middleClick: close (the default) or start a new instance.
         entry = {"appId": "org.gnome.Terminal", "windows": [{"id": "0x42"}]}
         window_list.calls.clear()
