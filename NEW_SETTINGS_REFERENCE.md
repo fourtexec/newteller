@@ -506,4 +506,31 @@ Example:
 | `workspaces.indicator` | string | `"dots"` | Panel indicator: dots, numbers or names | Displays |
 | `workspaces.osd` | boolean | `false` | The desktop's name on screen when switching | Displays |
 | `mouse.doubleClickInterval` | integer | `400` | Double-click speed in ms (shell and GTK) | Mouse & touchpad |
-
+| `startmenu.showPinned` | boolean | `false` | The dock's pinned applications as a row above the recent ones | Start menu |
+| `panel.startIcon / panel.startLabel / panel.showStartLabel` | string / string / boolean | "" / "" / true | The start button's icon (shell icon, theme icon or image), text, and whether the text shows | Panel & dock |
+| `panel.autoHideMode` | string | `"always"` | With auto-hide: `always`, or `maximized` (only over maximised / full-screen windows) | Panel & dock |
+| `panel.clockSize / panel.clockBold` | integer / boolean | 0 / false | Panel clock size in points (0 = theme) and weight | Panel & dock |
+| `clock.firstWeekday` | integer | `-1` | First day of the calendar week: -1 the language's, 0 Sunday … 6 Saturday | Panel & dock |
+| `clock.weekNumbers` | boolean | `false` | ISO week numbers in the calendars | Panel & dock |
+| `dock.middleClick` | string | `"close"` | Middle click on a dock button: close, new, minimize, none | Panel & dock |
+| `dock.hoverOpacity / dock.activeOpacity` | number | 0.15 / 0.30 | How strongly hovered / active dock buttons light up | Appearance |
+| `quick.hidden` | list | `[]` | Rows taken out of quick settings (media, volume, brightness, network, bluetooth, dnd, nightLight, recorder, powerProfile, battery) | System |
+| `notifications.width / notifications.maxVisible` | integer | 344 / 4 | Popup width and how many popups show at once | Notifications |
+| `notifications.screen` | string | `"all"` | Popups on every screen, the `primary` one or the `active` one | Notifications |
+| `theme.accent / theme.font / theme.fontSize / theme.radius` | color / string / integer / integer | "" / "" / 0 / -1 | Kept over any theme; empty / 0 / -1 use the theme's own | Appearance |
+| `multiMonitor.panelPositions` | object | `{}` | Per screen: an edge or `none` | Displays |
+| `desktop.sortBy / desktop.foldersFirst` | string / boolean | "name" / true | Order of auto-arranged icons: name, type, time, size | Desktop |
+| `desktop.slideshowFolder` | string | `""` | Folder of the wallpaper slideshow; empty = Pictures | Desktop |
+| `desktop.screenWallpapers` | object | `{}` | Per-monitor wallpapers: { screen name: path } | Desktop |
+| `desktop.doubleClick` | string | `"none"` | Double click on the empty desktop: none, startMenu, overview, terminal, files, settings | Desktop |
+| `windows.gaps` | integer | `0` | Pixels around and between snapped halves and quarters | Windows |
+| `decorations.doubleClick / decorations.middleClick` | string | "maximize" / "minimize" | Title bar clicks: maximize, minimize, alwaysOnTop, none (GTK header bars follow) | Windows |
+| `windowRules.opacity` | string | `""` | `kitty=85`: window opacity in percent per application | Windows |
+| `effects.animationStyle` | string | `"zoom"` | Windows open and close with a zoom, fade or slide | Animations |
+| `effects.inactiveOpacity` | integer | `100` | Opacity of windows without the focus | Animations |
+| `switcher.style` | string | `"thumbnails"` | Alt+Tab list: thumbnails or icons | Displays |
+| `overview.cardSize` | integer | `100` | Overview preview size in percent | Displays |
+| `lock.dim / lock.clockFormat` | integer / string | 0 / "" | Lock screen wallpaper veil (percent) and clock format (gtklock) | Power & lock |
+| `keyboard.volumeStep / keyboard.brightnessStep` | integer | 5 | Percent per volume / brightness key press | Keyboard |
+| `keyboard.indicatorStyle` | string | `"code"` | Layout indicator: code (EN), lower (en), name | Keyboard |
+| `plugins.settings` | object | `{}` | Changes to plugins' manifest settings: { plugin id: { key: value } } | Plugins |
