@@ -950,7 +950,7 @@ DropdownWindow {
     }
 
     function updateRecent() {
-        recentSection.recentModel = Apps.recent(Settings.values["apps.recentLimit"] || 8);
+        recentSection.recentModel = Apps.recent(Number(Settings.values["apps.recentLimit"] ?? 8));
     }
 
     Component.onCompleted: updateRecent()

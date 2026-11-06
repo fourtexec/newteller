@@ -187,10 +187,10 @@ Window {
     readonly property int dockPadding: 8
     readonly property real dockHoverOpacity: Math.max(0, Math.min(1, Number(Settings.values["dock.hoverOpacity"] ?? 0.15)))
     readonly property real dockActiveOpacity: Math.max(0, Math.min(1, Number(Settings.values["dock.activeOpacity"] ?? 0.30)))
-    readonly property int panelSpacing: Settings.values["panel.spacing"] || 8
-    readonly property int panelLeftSpacing: Settings.values["panel.leftSpacing"] || 8
-    readonly property int panelRightSpacing: Settings.values["panel.rightSpacing"] || 8
-    readonly property int panelZoneSpacing: Settings.values["panel.zoneSpacing"] || 8
+    readonly property int panelSpacing: Number(Settings.values["panel.spacing"] ?? 8)
+    readonly property int panelLeftSpacing: Number(Settings.values["panel.leftSpacing"] ?? 8)
+    readonly property int panelRightSpacing: Number(Settings.values["panel.rightSpacing"] ?? 8)
+    readonly property int panelZoneSpacing: Number(Settings.values["panel.zoneSpacing"] ?? 8)
     readonly property string dockPositionInPanel: Settings.values["dock.position"] || "left"
     readonly property bool centerDock: Settings.values["panel.centerDock"] === true
     readonly property int dockRows: Math.max(1, Math.min(3, Number(Settings.values["dock.rows"] ?? 1)))
