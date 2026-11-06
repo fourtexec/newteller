@@ -876,6 +876,19 @@ void SessionServices::restartIdle()
              << QStringLiteral("newteller-compositor --msg dpms off")
              << QStringLiteral("resume") << QStringLiteral("newteller-compositor --msg dpms on");
     }
+    // power.suspendAfter: sleep (the chosen power.sleepAction) after so
+    // many idle minutes; the lock and screen-off timeouts come first.
+    const int sleepMinutes = m_settings->value(QStringLiteral("power.suspendAfter")).toInt();
+    if (sleepMinutes > 0) {
+        static const QStringList actions{QStringLiteral("suspend"), QStringLiteral("hibernate"),
+                                         QStringLiteral("hybrid-sleep"),
+                                         QStringLiteral("suspend-then-hibernate")};
+        QString action = m_settings->value(QStringLiteral("power.sleepAction")).toString();
+        if (!actions.contains(action))
+            action = QStringLiteral("suspend");
+        args << QStringLiteral("timeout") << QString::number(sleepMinutes * 60)
+             << QStringLiteral("systemctl ") + action;
+    }
     if (lockOnSleep)
         args << QStringLiteral("before-sleep") << QStringLiteral("newteller-lock");
     // `loginctl lock-session` (and unlock-session) from anywhere.

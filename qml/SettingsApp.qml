@@ -2178,6 +2178,13 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("Group by application")
+                                subtitle: qsTr("In the notification centre; off lists every notification by time.")
+                                settingKey: "notifications.groupByApp"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Show app icon")
                                 settingKey: "notifications.showAppIcon"
                                 SettingsSwitch {}
@@ -3703,6 +3710,32 @@ Window {
                                 subtitle: qsTr("0 = never. Any key or mouse movement wakes it.")
                                 settingKey: "power.screenOffAfter"
                                 SettingsStepper { settingKey: "power.screenOffAfter"; from: 0; to: 240; step: 1; suffix: qsTr(" min") }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: qsTr("Sleep")
+
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Sleep means")
+                                subtitle: qsTr("Used by the Sleep button and the idle timer. Hibernation needs a swap partition at least as large as the memory.")
+                                settingKey: "power.sleepAction"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "suspend", label: qsTr("Suspend") },
+                                        { value: "hibernate", label: qsTr("Hibernate") },
+                                        { value: "hybrid-sleep", label: qsTr("Hybrid sleep") },
+                                        { value: "suspend-then-hibernate", label: qsTr("Suspend, then hibernate") }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Sleep after inactivity")
+                                subtitle: qsTr("0 = never.")
+                                settingKey: "power.suspendAfter"
+                                SettingsStepper { settingKey: "power.suspendAfter"; from: 0; to: 480; step: 5; suffix: qsTr(" min") }
                             }
                         }
 

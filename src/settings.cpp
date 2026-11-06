@@ -213,7 +213,7 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("notifications.cornerRadius"), -1);
     m_defaults.insert(QStringLiteral("notifications.customBackground"), QString());
     m_defaults.insert(QStringLiteral("notifications.customForeground"), QString());
-    m_defaults.insert(QStringLiteral("notifications.groupByApp"), false);
+    m_defaults.insert(QStringLiteral("notifications.groupByApp"), true);
     m_defaults.insert(QStringLiteral("notifications.showAppIcon"), true);
     m_defaults.insert(QStringLiteral("drives.notify"), true);
     // The weather widget: nothing is fetched until a city is set.
@@ -284,6 +284,7 @@ Settings::Settings(QObject *parent)
     // Minutes of inactivity before the screen locks / turns off (0 = never).
     m_defaults.insert(QStringLiteral("power.lockAfter"), 10);
     m_defaults.insert(QStringLiteral("power.screenOffAfter"), 10);
+    m_defaults.insert(QStringLiteral("power.suspendAfter"), 0);
     // Night light (wlsunset): warmer colours in the evening.
     m_defaults.insert(QStringLiteral("nightLight.enabled"), false);
     m_defaults.insert(QStringLiteral("nightLight.temperature"), 4000);

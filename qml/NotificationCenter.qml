@@ -17,6 +17,9 @@ DropdownWindow {
     readonly property var entries: {
         const list = (Notifications.history || []).slice();
         list.reverse(); // newest first
+        // notifications.groupByApp off: one plain list, newest first.
+        if (Settings.values["notifications.groupByApp"] === false)
+            return list.map(entry => Object.assign({}, entry, { groupStart: false, groupCount: 1 }));
         const order = [];
         const byApp = {};
         for (const entry of list) {

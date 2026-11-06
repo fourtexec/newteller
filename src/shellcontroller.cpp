@@ -851,7 +851,35 @@ void ShellController::logout() const
 
 void ShellController::suspend() const
 {
-    QProcess::startDetached(QStringLiteral("systemctl"), {QStringLiteral("suspend")});
+    // power.sleepAction: suspend, hibernate, hybrid-sleep or
+    // suspend-then-hibernate. Hibernation fails without a large enough swap
+    // or with secure boot; systemctl says why, and the user hears about it
+    // instead of the button doing nothing.
+    static const QStringList actions{QStringLiteral("suspend"), QStringLiteral("hibernate"),
+                                     QStringLiteral("hybrid-sleep"),
+                                     QStringLiteral("suspend-then-hibernate")};
+    QString action = m_settings->value(QStringLiteral("power.sleepAction")).toString();
+    if (!actions.contains(action))
+        action = QStringLiteral("suspend");
+    auto *process = new QProcess;
+    process->setProcessChannelMode(QProcess::MergedChannels);
+    QObject::connect(process, &QProcess::finished, process,
+                     [this, process, action](int code, QProcess::ExitStatus status) {
+                         if (status != QProcess::NormalExit || code != 0) {
+                             const QString reason = QString::fromLocal8Bit(process->readAll()).trimmed();
+                             notify(tr("Could not go to sleep"),
+                                    reason.isEmpty() ? tr("systemctl %1 failed.").arg(action) : reason);
+                         }
+                         process->deleteLater();
+                     });
+    QObject::connect(process, &QProcess::errorOccurred, process,
+                     [this, process](QProcess::ProcessError error) {
+                         if (error == QProcess::FailedToStart) {
+                             notify(tr("Could not go to sleep"), tr("systemctl was not found."));
+                             process->deleteLater();
+                         }
+                     });
+    process->start(QStringLiteral("systemctl"), {action});
 }
 
 void ShellController::reboot() const
