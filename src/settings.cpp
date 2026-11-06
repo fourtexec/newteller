@@ -170,8 +170,14 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("windows.enableAnimations"), true);
     m_defaults.insert(QStringLiteral("windows.animationSpeed"), 1.0);
     // Theme variants
-    m_defaults.insert(QStringLiteral("theme.followSystem"), false);
-    m_defaults.insert(QStringLiteral("theme.systemTheme"), QStringLiteral("auto"));
+    // Day and night themes: "off", "times" (theme.dayStart/nightStart) or
+    // "nightLight" (the night light's evening and morning).
+    m_defaults.insert(QStringLiteral("theme.schedule"), QStringLiteral("off"));
+    m_defaults.insert(QStringLiteral("theme.dayTheme"), QStringLiteral("light"));
+    m_defaults.insert(QStringLiteral("theme.nightTheme"), QStringLiteral("default"));
+    m_defaults.insert(QStringLiteral("theme.dayStart"), QStringLiteral("07:00"));
+    m_defaults.insert(QStringLiteral("theme.nightStart"), QStringLiteral("20:00"));
+    m_defaults.insert(QStringLiteral("theme.scheduleApps"), true);
 
     // ===== Panel & Dock Improvements =====
     m_defaults.insert(QStringLiteral("panel.spacing"), 8);

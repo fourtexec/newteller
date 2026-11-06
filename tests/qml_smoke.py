@@ -297,6 +297,7 @@ class Theme(QObject):
     radius = _const(8, int)
     fontSize = _const(10, int)
     fontFamily = _const("Sans", str)
+    night = _const(False, bool)
 
     @Slot(QColor, QColor, float, result=QColor)
     def mix(self, a, b, t):

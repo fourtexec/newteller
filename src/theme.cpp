@@ -2,6 +2,7 @@
 #include "settings.h"
 
 #include <QDir>
+#include <QTime>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonDocument>
@@ -28,9 +29,16 @@ ThemeManager::ThemeManager(Settings *settings, QObject *parent)
 {
     reload();
     connect(settings, &Settings::changed, this, [this](const QString &key) {
-        if (key.isEmpty() || key == QLatin1String("theme.name"))
+        if (key.isEmpty() || key == QLatin1String("theme.name") || key.startsWith(QLatin1String("theme.schedule"))
+            || key == QLatin1String("theme.dayTheme") || key == QLatin1String("theme.nightTheme")
+            || key == QLatin1String("theme.dayStart") || key == QLatin1String("theme.nightStart"))
             reload();
     });
+    // The day/night switch is checked every half minute; cheap, and it also
+    // catches a clock change or a resume from sleep.
+    m_scheduleTimer.setInterval(30 * 1000);
+    connect(&m_scheduleTimer, &QTimer::timeout, this, &ThemeManager::checkSchedule);
+    m_scheduleTimer.start();
     // theme.autoReload: editing the theme file in a text editor re-applies it.
     connect(settings, &Settings::externalChange, this, [this](const QString &path) {
         if (!m_settings->value(QStringLiteral("theme.autoReload"), true).toBool())
@@ -55,9 +63,53 @@ void ThemeManager::invalidateCache()
     m_cache.clear();
 }
 
+QString ThemeManager::scheduledName()
+{
+    const QString chosen = m_settings->value(QStringLiteral("theme.name"), QStringLiteral("default")).toString();
+    const QString mode = m_settings->value(QStringLiteral("theme.schedule")).toString();
+    if (mode != QLatin1String("times") && mode != QLatin1String("nightLight")) {
+        m_night = false;
+        return chosen;
+    }
+    // "nightLight" shares the night light's evening and morning.
+    const bool shared = mode == QLatin1String("nightLight");
+    auto time = [this](const char *key, const char *fallback) {
+        const QTime parsed = QTime::fromString(m_settings->value(QString::fromLatin1(key)).toString(),
+                                               QStringLiteral("HH:mm"));
+        return parsed.isValid() ? parsed : QTime::fromString(QString::fromLatin1(fallback), QStringLiteral("HH:mm"));
+    };
+    const QTime dayStart = shared ? time("nightLight.to", "07:00") : time("theme.dayStart", "07:00");
+    const QTime nightStart = shared ? time("nightLight.from", "20:00") : time("theme.nightStart", "20:00");
+    const QTime now = QTime::currentTime();
+    // The night may span midnight (20:00 -> 07:00) or not (01:00 -> 05:00).
+    m_night = dayStart < nightStart ? (now < dayStart || now >= nightStart)
+                                    : (now >= nightStart && now < dayStart);
+    const QString theme = m_settings->value(m_night ? QStringLiteral("theme.nightTheme")
+                                                    : QStringLiteral("theme.dayTheme")).toString();
+    return theme.isEmpty() ? chosen : theme;
+}
+
+void ThemeManager::checkSchedule()
+{
+    const bool wasNight = m_night;
+    if (scheduledName() != m_name || m_night != wasNight)
+        reload();
+}
+
 void ThemeManager::reload()
 {
-    const QString name = m_settings->value(QStringLiteral("theme.name"), QStringLiteral("default")).toString();
+    const bool wasNight = m_night;
+    const QString name = scheduledName();
+    // Applications follow along (GTK / libadwaita dark preference) when
+    // the schedule asks for it.
+    const QString mode = m_settings->value(QStringLiteral("theme.schedule")).toString();
+    if ((mode == QLatin1String("times") || mode == QLatin1String("nightLight"))
+        && m_settings->value(QStringLiteral("theme.scheduleApps"), true).toBool()
+        && (m_night != wasNight || m_name.isEmpty())) {
+        const QString scheme = m_night ? QStringLiteral("dark") : QStringLiteral("light");
+        if (m_settings->value(QStringLiteral("apps.colorScheme")).toString() != scheme)
+            m_settings->setValue(QStringLiteral("apps.colorScheme"), scheme);
+    }
 
     // Base is always the built-in default, so a partial theme still looks complete.
     QVariantMap theme = loadJson(QStringLiteral(":/themes/default.json"));

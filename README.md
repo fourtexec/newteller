@@ -294,6 +294,9 @@ inside VirtualBox. The implemented pieces are:
   field at the top or bottom, its own background, text, accent and search
   match colours, surface material, opacity and corner radius, and the power
   buttons shown or hidden.
+- **Day and night themes**: two themes switched at set times or together
+  with the night light, with applications following (light by day, dark at
+  night).
 - **Desktop labels**: colour, outline, size and number of lines of the names
   under desktop icons, independent of the icon tint.
 - **Application look**: dark/light preference, GTK theme, icon theme,

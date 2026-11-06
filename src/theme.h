@@ -5,6 +5,7 @@
 #include <QObject>
 #include <QString>
 #include <QStringList>
+#include <QTimer>
 #include <QVariantMap>
 
 class Settings;
@@ -28,11 +29,14 @@ class ThemeManager : public QObject {
     Q_PROPERTY(int radius READ radius NOTIFY themeChanged)
     Q_PROPERTY(int fontSize READ fontSize NOTIFY themeChanged)
     Q_PROPERTY(QString fontFamily READ fontFamily NOTIFY themeChanged)
+    // theme.schedule: true while the night theme is the one shown.
+    Q_PROPERTY(bool night READ night NOTIFY themeChanged)
 
 public:
     explicit ThemeManager(Settings *settings, QObject *parent = nullptr);
 
     QString name() const { return m_name; }
+    bool night() const { return m_night; }
     QColor background() const { return color(QStringLiteral("background")); }
     QColor foreground() const { return color(QStringLiteral("foreground")); }
     QColor accent() const { return color(QStringLiteral("accent")); }
@@ -71,10 +75,16 @@ signals:
 private:
     QColor color(const QString &key) const;
     void invalidateCache();
+    // The theme to show now: theme.name, or the day/night theme of
+    // theme.schedule.
+    QString scheduledName();
+    void checkSchedule();
 
     Settings *m_settings;
     QVariantMap m_t;
     mutable QHash<QString, QColor> m_cache;
     QString m_name;
     QString m_filePath; // the file the current theme came from, for watching
+    bool m_night = false;
+    QTimer m_scheduleTimer;
 };

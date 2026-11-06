@@ -399,6 +399,71 @@ Window {
                         }
 
                         SettingsSection {
+                            title: qsTr("Day and night")
+                            subtitle: Settings.values["theme.schedule"] === "times"
+                                      || Settings.values["theme.schedule"] === "nightLight"
+                                      ? (Theme.night ? qsTr("The night theme is shown now.")
+                                                     : qsTr("The day theme is shown now."))
+                                      : qsTr("Switch between two themes at set times.")
+
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Switch themes")
+                                settingKey: "theme.schedule"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "off", label: qsTr("Off") },
+                                        { value: "times", label: qsTr("At set times") },
+                                        { value: "nightLight", label: qsTr("With the night light") }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                visible: Settings.values["theme.schedule"] === "times"
+                                         || Settings.values["theme.schedule"] === "nightLight"
+                                title: qsTr("Day theme")
+                                settingKey: "theme.dayTheme"
+                                SettingsChoice {
+                                    model: Theme.availableThemes().map(name => ({ value: name, label: name }))
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                visible: Settings.values["theme.schedule"] === "times"
+                                         || Settings.values["theme.schedule"] === "nightLight"
+                                title: qsTr("Night theme")
+                                settingKey: "theme.nightTheme"
+                                SettingsChoice {
+                                    model: Theme.availableThemes().map(name => ({ value: name, label: name }))
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                visible: Settings.values["theme.schedule"] === "times"
+                                title: qsTr("Day starts at")
+                                settingKey: "theme.dayStart"
+                                SettingsTextField { width: 90; placeholder: "07:00" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                visible: Settings.values["theme.schedule"] === "times"
+                                title: qsTr("Night starts at")
+                                settingKey: "theme.nightStart"
+                                SettingsTextField { width: 90; placeholder: "20:00" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                visible: Settings.values["theme.schedule"] === "times"
+                                         || Settings.values["theme.schedule"] === "nightLight"
+                                title: qsTr("Applications follow")
+                                subtitle: qsTr("Light applications by day, dark ones at night.")
+                                settingKey: "theme.scheduleApps"
+                                SettingsSwitch {}
+                            }
+                        }
+
+                        SettingsSection {
                             title: qsTr("Language")
                             subtitle: qsTr("The language of the panel, menus and settings. Applications follow the system language.")
 
