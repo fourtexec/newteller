@@ -349,6 +349,7 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("keyboard.volumeStep"), 5);
     m_defaults.insert(QStringLiteral("keyboard.brightnessStep"), 5);
     m_defaults.insert(QStringLiteral("keyboard.showIndicator"), true);
+    m_defaults.insert(QStringLiteral("keyboard.indicatorStyle"), QStringLiteral("code"));
     // Pointer devices (libinput, applied by the compositor).
     m_defaults.insert(QStringLiteral("touchpad.tapToClick"), true);
     m_defaults.insert(QStringLiteral("touchpad.naturalScroll"), true);

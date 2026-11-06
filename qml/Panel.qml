@@ -1212,7 +1212,15 @@ Window {
         Text {
             id: layoutLabel
             anchors.centerIn: parent
-            text: Session.keyboardLayoutLabel
+            // keyboard.indicatorStyle: "code" (EN), "lower" (en) or the
+            // layout's "name" (a horizontal bar only).
+            text: {
+                const style = Settings.values["keyboard.indicatorStyle"] || "code";
+                if (style === "name" && !panel.vertical && Session.keyboardLayoutName.length > 0)
+                    return Session.keyboardLayoutName;
+                return style === "lower" ? Session.keyboardLayoutLabel.toLowerCase()
+                                         : Session.keyboardLayoutLabel;
+            }
             color: panel.panelTextColor
             font.family: Theme.fontFamily
             font.pointSize: Theme.fontSize - 1

@@ -3825,6 +3825,19 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                visible: Settings.values["keyboard.showIndicator"] !== false
+                                title: qsTr("Layout indicator shows")
+                                settingKey: "keyboard.indicatorStyle"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "code", label: "EN" },
+                                        { value: "lower", label: "en" },
+                                        { value: "name", label: qsTr("Full name") }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Remember the layout per window")
                                 subtitle: qsTr("Each window keeps the layout it was used with, as on Windows; new windows start with the first one.")
                                 settingKey: "keyboard.layoutPerWindow"
