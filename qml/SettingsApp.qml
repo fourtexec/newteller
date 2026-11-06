@@ -98,6 +98,17 @@ Window {
         for (let i = 0; i < kids.length; ++i)
             collectRows(kids[i], out);
     }
+    // Every key edited on one page back to its default.
+    function resetPage(pageId) {
+        const index = pageIndexOf(pageId);
+        const rows = [];
+        collectRows(pageStack.children[index], rows);
+        for (const row of rows) {
+            if (row.settingKey && row.settingKey.length > 0)
+                Settings.reset(row.settingKey);
+        }
+    }
+
     // Opens the row's page, scrolls it into view and lets it glow.
     function openSearchResult(result) {
         if (!result)
@@ -4717,7 +4728,37 @@ Window {
             }
         }
 
+        // Every setting of the page shown back to its default; the first
+        // click only asks.
+        TaskButton {
+            id: resetPageButton
+            objectName: "resetPage"
+            property bool armed: false
+            anchors.right: liveNote.left
+            anchors.rightMargin: 12
+            anchors.verticalCenter: parent.verticalCenter
+            height: 26
+            iconName: "rotate-ccw"
+            label: armed ? qsTr("Click again to reset this page") : qsTr("Reset this page")
+            active: armed
+            onClicked: {
+                if (!armed) {
+                    armed = true;
+                    disarm.restart();
+                    return;
+                }
+                armed = false;
+                settingsWindow.resetPage(settingsWindow.currentPage);
+            }
+            Timer {
+                id: disarm
+                interval: 4000
+                onTriggered: resetPageButton.armed = false
+            }
+        }
+
         Text {
+            id: liveNote
             anchors.right: parent.right
             anchors.rightMargin: 14
             anchors.verticalCenter: parent.verticalCenter

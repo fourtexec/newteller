@@ -3312,6 +3312,21 @@ def main():
             search_field.setProperty("text", "")
             QTest.qWait(20)
 
+        # "Reset this page": the second click puts the page's keys back.
+        settings_app.setProperty("currentPage", "windows")
+        QTest.qWait(30)
+        settings.setValue("windows.gaps", 12)
+        reset_page = find_item(settings_app.contentItem(), "resetPage")
+        check(reset_page is not None, "the settings footer offers to reset the page")
+        if reset_page is not None:
+            QMetaObject.invokeMethod(reset_page, "clicked")
+            QTest.qWait(20)
+            check(settings._values.get("windows.gaps") == 12, "the first click only asks")
+            QMetaObject.invokeMethod(reset_page, "clicked")
+            QTest.qWait(30)
+            check("windows.gaps" not in settings._values,
+                  f"the second click resets the page ({settings._values.get('windows.gaps')})")
+
         # Profiles (Appearance): save the current settings under a name, change
         # something, apply the profile and get it back.
         settings_app.setProperty("currentPage", "appearance")
