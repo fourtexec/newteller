@@ -1091,7 +1091,7 @@ class Session(QObject):
                 {"id": 2, "workspace": 0, "appId": "org.gnome.Terminal", "title": "Shell",
                  "focused": False, "minimized": False, "maximized": False},
                 {"id": 3, "workspace": 1, "appId": "", "title": "Elsewhere", "focused": False,
-                 "minimized": True, "maximized": False}]
+                 "minimized": True, "maximized": False}] + getattr(self, "_extra_windows", [])
 
     @Slot(int, int, result=str)
     def thumbnail(self, window_id, size):
@@ -3146,6 +3146,47 @@ def main():
                 shell.taskViewToggleRequested.emit()
                 QTest.qWait(200)
                 check(not views[0].isVisible(), "Super+Tab again closes the overview")
+
+                def overview_cards():
+                    return [c for c in (grid.childItems() if grid else [])
+                            if c.metaObject().className().startswith("QQuickRectangle") and c.isVisible()]
+
+                # A window on every desktop shows on each of them; 2 goes to
+                # the second desktop, Delete closes the selected window.
+                session._extra_windows = [{"id": 4, "workspace": 2, "appId": "", "title": "Pinned",
+                                           "focused": False, "minimized": False, "maximized": False,
+                                           "sticky": True}]
+                shell.taskViewToggleRequested.emit()
+                QTest.qWait(300)
+                check(len(overview_cards()) == 3,
+                      f"a window on every desktop shows in the overview of desktop 1 ({len(overview_cards())})")
+                QTest.keyClick(views[0], Qt.Key_2)
+                QTest.qWait(100)
+                check(views[0].property("desktop") == 1 and len(overview_cards()) == 2,
+                      f"2 shows the second desktop in the overview ({views[0].property('desktop')}, "
+                      f"{len(overview_cards())})")
+                session.calls.clear()
+                QTest.keyClick(views[0], Qt.Key_Delete)
+                QTest.qWait(100)
+                check(any(c[0] == "closeWindow" for c in session.calls),
+                      f"Delete closes the selected window in the overview ({session.calls})")
+                shell.taskViewToggleRequested.emit()
+                QTest.qWait(200)
+
+                # Many windows: the cards shrink until all of them fit.
+                session._extra_windows = [{"id": 10 + i, "workspace": 0, "appId": "", "title": f"Many {i}",
+                                           "focused": False, "minimized": False, "maximized": False}
+                                          for i in range(28)]
+                shell.taskViewToggleRequested.emit()
+                QTest.qWait(400)
+                cards = overview_cards()
+                bottom = max((c.mapToScene(QPointF(0, c.height())).y() for c in cards), default=0)
+                check(len(cards) == 30 and bottom <= views[0].height(),
+                      f"thirty windows fit on the overview ({len(cards)} cards, bottom {bottom} of "
+                      f"{views[0].height()})")
+                shell.taskViewToggleRequested.emit()
+                QTest.qWait(200)
+                session._extra_windows = []
 
             # The administrator prompt: polkit asks, the screen dims, the
             # password goes back, Cancel refuses.

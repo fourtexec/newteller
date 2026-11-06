@@ -287,7 +287,12 @@ inside VirtualBox. The implemented pieces are:
   (`keyboard.lockKeysOsd`).
 - **Overview** (`Super+Tab`): every window of a desktop as a live thumbnail,
   desktops along the top; click to switch, close, or move a window to
-  another desktop. Alt+Tab shows thumbnails too.
+  another desktop. Arrows and Enter pick a window, Delete closes it, 1-9
+  show another desktop, and the cards shrink so every window fits. Alt+Tab
+  shows thumbnails, icons or a list (`switcher.style`).
+- **On-screen display** for volume, brightness and media keys: off, at the
+  bottom, centre or top, how long it stays, on the screen with the pointer
+  or the main one (`osd.*`).
 - **Displays page**: resolution, refresh rate, scale, rotation, position and
   on/off for each screen, with a 15-second "keep these settings?" revert.
 - **Bluetooth** in quick settings: power, connect, disconnect, pair, forget.

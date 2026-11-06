@@ -5,8 +5,9 @@ import org.kde.layershell 1.0 as LayerShell
 // The overview (Super+Tab), like Windows' Task View or GNOME's Activities:
 // every window of a desktop as a live thumbnail, the desktops along the top.
 // Click a window to go to it, x to close it, the numbers under a hovered
-// window move it to another desktop. Arrows and Enter work too; Escape or a
-// click on the background closes the overview.
+// window move it to another desktop. Arrows and Enter work too, Delete closes
+// the selected window and 1-9 show that desktop; Escape or a click on the
+// background closes the overview.
 Window {
     id: view
 
@@ -23,14 +24,35 @@ Window {
     // The desktop shown (not necessarily the current one until a click).
     property int desktop: 0
     property int selected: 0
-    readonly property var shown: windowsList.filter(function (w) { return w.workspace === view.desktop; })
+    // Windows shown on every desktop (sticky) belong to each of them.
+    function onDesktop(w, index) {
+        return w.workspace === index || w.sticky === true;
+    }
+    readonly property var shown: windowsList.filter(function (w) { return view.onDesktop(w, view.desktop); })
 
-    // overview.cardSize (percent): bigger or smaller window previews.
+    // overview.cardSize (percent): bigger or smaller window previews. With
+    // many windows the cards shrink until every one fits on the screen.
     readonly property real cardScale: Math.max(0.5, Math.min(1.6, Number(Settings.values["overview.cardSize"] ?? 100) / 100))
-    readonly property int cardWidth: Math.round(340 * cardScale)
-    readonly property int cardHeight: Math.round(250 * cardScale)
+    readonly property real fitScale: {
+        const available = height - 28 - 64 - 40 - 40;
+        let scale = cardScale;
+        while (scale > 0.3) {
+            const cols = Math.max(1, Math.min(shown.length, Math.floor((width - 80) / (340 * scale + 24))));
+            const rowCount = Math.ceil(shown.length / cols);
+            if (rowCount * (250 * scale + 24) <= available)
+                break;
+            scale -= 0.05;
+        }
+        return Math.max(0.3, scale);
+    }
+    readonly property int cardWidth: Math.round(340 * fitScale)
+    readonly property int cardHeight: Math.round(250 * fitScale)
     readonly property int columns: Math.max(1, Math.min(shown.length,
                                                         Math.floor((width - 80) / (cardWidth + 24))))
+    onShownChanged: {
+        if (selected >= shown.length)
+            selected = Math.max(0, shown.length - 1);
+    }
 
     visible: false
     color: "transparent"
@@ -115,6 +137,21 @@ Window {
                 view.activate(view.shown[view.selected]);
         }
         Keys.onTabPressed: view.selected = (view.selected + 1) % Math.max(1, view.shown.length)
+        Keys.onDeletePressed: {
+            if (view.selected >= 0 && view.selected < view.shown.length) {
+                Session.closeWindow(view.shown[view.selected].id);
+                closeLater.start();
+            }
+        }
+        Keys.onPressed: (event) => {
+            const number = event.key - Qt.Key_1;
+            if (number >= 0 && number < 9 && number < Session.workspaceCount
+                    && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier))) {
+                view.desktop = number;
+                view.selected = 0;
+                event.accepted = true;
+            }
+        }
     }
 
     // --- desktops ---------------------------------------------------------
@@ -131,7 +168,7 @@ Window {
             delegate: Rectangle {
                 required property int index
                 readonly property int count: view.windowsList.filter(function (w) {
-                    return w.workspace === index;
+                    return view.onDesktop(w, index);
                 }).length
                 width: 150
                 height: 64
