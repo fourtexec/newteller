@@ -7,11 +7,27 @@ Rectangle {
 
     readonly property var pluginSettings: (parent && parent.modelData && parent.modelData.settings)
                                           ? parent.modelData.settings : ({})
-    property bool showWeekNumbers: pluginSettings.showWeekNumbers === true
-    // 0 = Sunday ... 6 = Saturday; the locale's own first weekday unless
-    // the manifest sets one.
-    property int firstDayOfWeek: pluginSettings.firstDayOfWeek !== undefined
-                                 ? Number(pluginSettings.firstDayOfWeek) : Qt.locale().firstDayOfWeek % 7
+    // The manifest's choice, else the shell's calendar settings
+    // (clock.weekNumbers, clock.firstWeekday), else the locale.
+    property bool showWeekNumbers: pluginSettings.showWeekNumbers !== undefined
+                                   ? pluginSettings.showWeekNumbers === true
+                                   : Settings.values["clock.weekNumbers"] === true
+    // 0 = Sunday ... 6 = Saturday.
+    property int firstDayOfWeek: {
+        if (pluginSettings.firstDayOfWeek !== undefined)
+            return Number(pluginSettings.firstDayOfWeek);
+        const chosen = Number(Settings.values["clock.firstWeekday"] ?? -1);
+        return chosen >= 0 && chosen <= 6 ? chosen : Qt.locale().firstDayOfWeek % 7;
+    }
+
+    // ISO 8601 week of a date.
+    function isoWeek(date) {
+        const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+        const day = d.getUTCDay() || 7;
+        d.setUTCDate(d.getUTCDate() + 4 - day);
+        const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+        return Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+    }
     property bool showHeader: pluginSettings.showHeader !== false
     property bool showTodayMarker: pluginSettings.showTodayMarker !== false
 
@@ -202,7 +218,9 @@ Rectangle {
                         required property int index
                         width: 22
                         height: 30
-                        text: String(index + 1)
+                        // The week of the row's first day of this month.
+                        text: String(widget.isoWeek(new Date(widget.displayYear, widget.displayMonth,
+                                                             Math.max(1, index * 7 - widget.offset + 1))))
                         color: Theme.muted
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSize - 2
