@@ -141,6 +141,16 @@ line").
 
 ## Shell pitfalls already paid for
 
+- **A Grid/Row/Column skips invisible children.** Hiding a placeholder
+  (an empty calendar cell) shifts everything after it; keep it visible and
+  empty instead.
+- **Assigning to a bound property breaks the binding for good** (the clock
+  card's calendar reassigned its cells every second and the month buttons
+  stopped working). Make the binding depend on what should rebuild it.
+- **A setting needs a reader.** The QML smoke test only checks that keys
+  have defaults; a key nobody reads is a control that does nothing. Before
+  adding UI for a key, grep that something uses it.
+
 - **No blocking D-Bus or process calls on the UI thread.** A slow or hung
   service (an app's tray menu, MPRIS player, NetworkManager, wpctl) froze
   the whole shell. Use `asyncCall` + `QDBusPendingCallWatcher` or an
@@ -240,6 +250,32 @@ line").
 `ubuntu:26.04` containers, that installs `libwlroots-0.18-dev` /
 `libwlroots-0.19-dev` and greps/prints the headers you need. Read the job
 logs, then delete the workflow in your next commit.
+
+## Running the QML smoke test locally
+
+The QML smoke test runs in the sandbox in about 30 s and catches most QML
+mistakes before CI:
+
+```sh
+apt-get install -y libegl1 libgl1 libxkbcommon0 libfontconfig1 libdbus-1-3 libglib2.0-0
+python3 -m venv /tmp/venv && /tmp/venv/bin/pip install PySide6
+QT_QPA_PLATFORM=offscreen /tmp/venv/bin/python tests/qml_smoke.py
+```
+
+`cargo test --workspace` in `rust/` works locally too. The C and C++ parts
+still need CI. Items created by a `Repeater` have no QObject parent, so
+`findChild` cannot see them: walk `contentItem().childItems()` instead.
+
+## Built-in shortcuts (Settings -> Hotkeys)
+
+Every built-in shortcut is an `enum NtHotkey` value (`config.h`) run by
+`runHotkey()` in `main.c`. Its name lives in three lists that must stay in
+the same order and spelling: `ntHotkeyNames` (`config.c`), `hotkeyNames` in
+`SessionServices::compositorConfigText()` and the model of the Hotkeys page.
+`hotkeys.<name>` = "" keeps the default keys (guarded by `builtinKeys()` in
+`keyHandled()`), "none" turns it off, anything else moves it. Shortcuts
+compare the key's Latin symbol (`latinKeysym()`), so they work with any
+layout active; new letter shortcuts must compare `sym` the same way.
 
 ## Verifying (GitHub Actions)
 
