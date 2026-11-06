@@ -399,13 +399,18 @@ uint NotificationDaemon::publish(uint replacesId, const QString &appName, const 
         }
     }
 
-    const bool critical = hints.value(QStringLiteral("urgency")).toInt() >= kUrgencyCritical;
+    const int urgency = hints.contains(QStringLiteral("urgency"))
+                            ? hints.value(QStringLiteral("urgency")).toInt() : 1;
+    const bool critical = urgency >= kUrgencyCritical;
+    // notifications.urgencyLevel: the lowest urgency that still shows while
+    // quiet (1 normal, 2 critical - the default, 3 nothing).
+    const int breakThrough = qBound(1, m_settings->value(QStringLiteral("notifications.urgencyLevel"), 2).toInt(), 3);
     const bool dnd = (m_settings->value(QStringLiteral("notifications.doNotDisturb"), false).toBool()
                       || scheduledQuiet()
                       || (m_fullscreenQuiet
                           && m_settings->value(QStringLiteral("notifications.quietInFullscreen"), true)
                                  .toBool()))
-                     && !critical;
+                     && urgency < breakThrough;
 
     QVariantMap entry;
     const uint id = known ? replacesId : m_nextId++;

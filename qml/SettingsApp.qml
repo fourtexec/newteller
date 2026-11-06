@@ -2302,6 +2302,19 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("While quiet, still show")
+                                subtitle: qsTr("Under do not disturb and over full-screen windows.")
+                                settingKey: "notifications.urgencyLevel"
+                                SettingsChoice {
+                                    model: [
+                                        { value: 1, label: qsTr("All but unimportant") },
+                                        { value: 2, label: qsTr("Urgent only") },
+                                        { value: 3, label: qsTr("Nothing") }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Play the bell when an application rings it")
                                 subtitle: qsTr("Terminals and other applications (not under do-not-disturb).")
                                 settingKey: "sounds.bell"
