@@ -520,15 +520,50 @@ void Settings::load()
     // Remember the on-disk body so the watcher can tell real edits apart from
     // the echo of our own save.
     QFile file(configFile());
-    if (file.open(QIODevice::ReadOnly))
-        m_lastWritten = QString::fromUtf8(file.readAll());
-    else
+    if (file.open(QIODevice::ReadOnly)) {
+        const QByteArray body = file.readAll();
+        m_lastWritten = QString::fromUtf8(body);
+        checkFile(body, true);
+    } else {
         m_lastWritten.clear();
+        checkFile(QByteArray(), false);
+    }
 
     m_values = merged;
     m_dirty = false;
     emit valuesChanged();
     emit dirtyChanged();
+}
+
+// A file that does not parse is kept as shell.json.broken before the next
+// save replaces it (the values come from the backup meanwhile), so a typo
+// made in a text editor never costs the edits around it.
+void Settings::checkFile(const QByteArray &body, bool exists)
+{
+    QString error;
+    if (exists && !body.trimmed().isEmpty()) {
+        QJsonParseError err;
+        const QJsonDocument doc = QJsonDocument::fromJson(body, &err);
+        if (err.error != QJsonParseError::NoError) {
+            const int line = body.left(err.offset).count('\n') + 1;
+            error = tr("Line %1: %2").arg(line).arg(err.errorString());
+        } else if (!doc.isObject()) {
+            error = tr("The file does not hold a JSON object.");
+        }
+    }
+
+    QString copy;
+    if (!error.isEmpty()) {
+        copy = configFile() + QStringLiteral(".broken");
+        QFile out(copy);
+        if (!out.open(QIODevice::WriteOnly | QIODevice::Truncate) || out.write(body) != body.size())
+            copy.clear();
+    }
+    if (error != m_loadError || copy != m_brokenCopy) {
+        m_loadError = error;
+        m_brokenCopy = copy;
+        emit loadErrorChanged();
+    }
 }
 
 void Settings::scheduleSave()

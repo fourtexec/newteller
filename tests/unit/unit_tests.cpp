@@ -90,6 +90,26 @@ void testApplications(const QString &root)
           QStringLiteral("mimeapps.list keeps other entries and has no duplicates"));
 }
 
+// A typo made in a text editor: the shell says where it is and keeps the
+// broken file, and a fixed file clears the error.
+void testBrokenSettings()
+{
+    const QString file = Settings::configFile();
+    const QByteArray broken = "{\n  \"panel.height\": 64\n  \"dock.iconSize\": 40\n}\n";
+    writeFile(file, broken);
+    Settings settings;
+    check(settings.loadError().startsWith(QLatin1String("Line 3")),
+          QStringLiteral("a broken settings file names the line of the error (%1)").arg(settings.loadError()));
+    check(settings.value(QStringLiteral("panel.height")).toInt() != 64,
+          QStringLiteral("values of a broken file are not half-applied"));
+    check(readFile(settings.brokenCopy()).toUtf8() == broken,
+          QStringLiteral("the broken file is kept next to it"));
+    writeFile(file, "{\"panel.height\": 64}");
+    settings.reload();
+    check(settings.loadError().isEmpty() && settings.value(QStringLiteral("panel.height")).toInt() == 64,
+          QStringLiteral("a fixed file clears the error and applies"));
+}
+
 void testProfiles(const QString &root)
 {
     Settings settings;
@@ -223,6 +243,7 @@ int main(int argc, char **argv)
     QCoreApplication app(argc, argv);
 
     testApplications(root);
+    testBrokenSettings();
     testProfiles(root);
     testThemeSchedule();
     testNotifications();

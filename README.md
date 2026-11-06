@@ -603,7 +603,10 @@ Build on the target distribution; Debian and Ubuntu binaries are not interchange
 ## Configuration
 
 `~/.config/newteller/shell.json` is a flat JSON object with dotted keys. The file is
-watched, so edits apply without a restart:
+watched, so edits apply without a restart. A typo that breaks the JSON is
+reported with its line (a notification and a notice in Settings -> About),
+the last good settings stay in use, and your file is kept as
+`shell.json.broken` so the next save cannot lose it:
 
 ```json
 {

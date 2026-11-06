@@ -29,6 +29,11 @@ class Settings : public QObject {
     Q_PROPERTY(bool dirty READ dirty NOTIFY dirtyChanged)
     // Saved looks (~/.config/newteller/profiles/<name>.json), sorted.
     Q_PROPERTY(QStringList profiles READ profiles NOTIFY profilesChanged)
+    // Set while shell.json cannot be read (a typo made in a text editor):
+    // what is wrong and where, and the copy of the broken file that the next
+    // save will not overwrite. Empty when the file is fine.
+    Q_PROPERTY(QString loadError READ loadError NOTIFY loadErrorChanged)
+    Q_PROPERTY(QString brokenCopy READ brokenCopy NOTIFY loadErrorChanged)
 
 public:
     explicit Settings(QObject *parent = nullptr);
@@ -39,6 +44,8 @@ public:
 
     QVariantMap values() const { return m_values; }
     bool dirty() const { return m_dirty; }
+    QString loadError() const { return m_loadError; }
+    QString brokenCopy() const { return m_brokenCopy; }
 
     Q_INVOKABLE QVariant value(const QString &key, const QVariant &fallback = QVariant()) const;
     // apps.terminalCommand as a prefix for a command to run in a terminal.
@@ -82,11 +89,13 @@ signals:
     void changed(const QString &key); // empty key = whole file reloaded
     void dirtyChanged();
     void profilesChanged();
+    void loadErrorChanged();
     // A file inside the config directory changed on disk (path is absolute).
     void externalChange(const QString &path);
 
 private:
     void load();
+    void checkFile(const QByteArray &body, bool exists);
     void scheduleSave();
     bool writeBack();
     void startWatching();
@@ -97,6 +106,8 @@ private:
     QVariantMap m_defaults;
     QVariantMap m_values;
     QString m_lastWritten; // file body of the last save, to ignore our own writes
+    QString m_loadError;
+    QString m_brokenCopy;
     QTimer m_saveTimer;
     bool m_dirty = false;
 

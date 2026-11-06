@@ -35,7 +35,26 @@ QtObject {
         screen: Qt.application.screens[0]
     }
 
-    // Hardware keys arrive from the compositor (they work over any window
+    // A typo in shell.json made in a text editor: say so once per error
+    // instead of quietly running on the backup.
+    property string reportedSettingsError: ""
+    function reportSettingsError() {
+        const error = Settings.loadError;
+        if (error.length > 0 && error !== reportedSettingsError)
+            Notifications.send("NewTeller", qsTr("The settings file has an error"),
+                               qsTr("%1. The last good settings are used until it is fixed; your file is kept as %2.")
+                               .arg(error).arg(Settings.brokenCopy), "dialog-warning", -1);
+        reportedSettingsError = error;
+    }
+    readonly property Connections settingsFile: Connections {
+        target: Settings
+        function onLoadErrorChanged() {
+            root.reportSettingsError();
+        }
+    }
+    Component.onCompleted: Qt.callLater(reportSettingsError)
+
+        // Hardware keys arrive from the compositor (they work over any window
     // and on the lock screen): change the level, then show it.
     readonly property Connections mediaKeys: Connections {
         target: Session

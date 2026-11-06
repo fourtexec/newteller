@@ -4919,6 +4919,25 @@ Window {
                         }
 
                         SettingsSection {
+                            objectName: "settingsFileError"
+                            title: qsTr("The settings file has an error")
+                            subtitle: qsTr("Until it is fixed, the last good copy is used. Your file is kept as %1.")
+                                      .arg(Settings.brokenCopy)
+                            visible: Settings.loadError.length > 0
+
+                            SettingsRow {
+                                width: parent.width
+                                title: Settings.loadError
+                                subtitle: Settings.configPath()
+                                TaskButton {
+                                    iconName: "file-text"
+                                    label: qsTr("Open JSON")
+                                    onClicked: Shell.openConfig()
+                                }
+                            }
+                        }
+
+                        SettingsSection {
                             title: qsTr("Configuration problems")
                             subtitle: qsTr("Reported by the same validator as newteller-ctl validate.")
                             visible: Settings.validate().length > 0

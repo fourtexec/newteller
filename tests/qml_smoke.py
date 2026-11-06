@@ -234,6 +234,14 @@ class Settings(QObject):
         return self._values
 
     dirty = Property(bool, lambda self: False, notify=dirtyChanged)
+    loadErrorChanged = Signal()
+    loadError = Property(str, lambda self: getattr(self, "_load_error", ""), notify=loadErrorChanged)
+    brokenCopy = Property(str, lambda self: getattr(self, "_broken_copy", ""), notify=loadErrorChanged)
+
+    def set_load_error(self, error, copy):
+        self._load_error = error
+        self._broken_copy = copy
+        self.loadErrorChanged.emit()
 
     @Slot(str, "QVariant", result="QVariant")
     def value(self, key, fallback=None):
@@ -876,6 +884,7 @@ class Notifications(QObject):
 
     @Slot(str, str, str, str, int, result="QVariant")
     def send(self, app, summary, body, icon, timeout):
+        self.calls.append(("send", summary, body))
         return 1
 
     @Slot("QVariant", "QVariant")
@@ -3053,6 +3062,20 @@ def main():
             QTest.qWait(50)
             check(bool(osds) and osds[0].property("text") == "Caps Lock on",
                   f"Caps Lock shows on screen ({osds[0].property('text') if osds else None})")
+            # A typo in shell.json: one notification per error, none when fixed.
+            notifications.calls.clear()
+            settings.set_load_error("Line 3: missing value separator", "/tmp/shell.json.broken")
+            QTest.qWait(50)
+            settings.set_load_error("Line 3: missing value separator", "/tmp/shell.json.broken")
+            QTest.qWait(50)
+            sent = [c for c in notifications.calls if c[0] == "send"]
+            check(len(sent) == 1 and "Line 3" in sent[0][2] and "shell.json.broken" in sent[0][2],
+                  f"a broken settings file is reported once, with the line and the kept copy ({sent})")
+            settings.set_load_error("", "")
+            QTest.qWait(50)
+            check(len([c for c in notifications.calls if c[0] == "send"]) == 1,
+                  "fixing the settings file reports nothing more")
+
             # Alt+Tab: the compositor sends the list, the overlay draws it.
             switchers = windows_of_kind("SwitcherOverlay")
             if switchers:
