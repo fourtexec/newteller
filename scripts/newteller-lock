@@ -23,6 +23,8 @@ done
 # Written by the shell from its settings: the wallpaper and accent colour.
 config="${XDG_CONFIG_HOME:-$HOME/.config}/newteller/lock.conf"
 image=''
+dim=0
+time_format=''
 color='141414'
 ring='8e8e93'
 if [ -r "$config" ]; then
@@ -31,6 +33,8 @@ if [ -r "$config" ]; then
             image) image=$value ;;
             color) color=$value ;;
             accent) ring=$value ;;
+            dim) dim=$value ;;
+            time) time_format=$value ;;
         esac
     done < "$config"
 fi
@@ -71,6 +75,15 @@ if gtklock_usable; then
         # Quotes and backslashes are escaped for the CSS string.
         css_image=$(printf '%s' "$image" | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')
         background="background-image: url(\"$css_image\");"
+        # lock.dim: a dark veil over the wallpaper.
+        case "$dim" in
+            ''|*[!0-9]*) ;;
+            0) ;;
+            *)
+                veil=$(awk -v d="$dim" 'BEGIN { printf "%.2f", (d > 90 ? 90 : d) / 100 }')
+                background="background-image: linear-gradient(rgba(0, 0, 0, $veil), rgba(0, 0, 0, $veil)), url(\"$css_image\");"
+                ;;
+        esac
     fi
     cat > "$style" <<EOF
 window {
@@ -125,7 +138,12 @@ EOF
     # --daemonize returns once the session is locked; if gtklock could not
     # lock it, swaylock below still does.
     note "locking with gtklock $version"
-    if gtklock --daemonize --style "$style"; then
+    if [ -n "$time_format" ]; then
+        set -- --time-format "$time_format"
+    else
+        set --
+    fi
+    if gtklock --daemonize --style "$style" "$@"; then
         exit 0
     fi
     note 'gtklock failed, falling back to swaylock'

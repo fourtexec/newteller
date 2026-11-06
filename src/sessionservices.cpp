@@ -877,6 +877,37 @@ void SessionServices::writeLockConfig()
     const QString lockColor = m_settings->value(QStringLiteral("lock.color")).toString();
     if (QColor::isValidColorName(lockColor))
         text += QStringLiteral("color=") + QColor(lockColor).name(QColor::HexRgb).mid(1) + QLatin1Char('\n');
+    // lock.dim: darken the wallpaper behind the clock (percent).
+    const int dim = qBound(0, m_settings->value(QStringLiteral("lock.dim")).toInt(), 90);
+    if (dim > 0)
+        text += QStringLiteral("dim=") + QString::number(dim) + QLatin1Char('\n');
+    // lock.clockFormat (Qt notation, as the panel clock) -> strftime for
+    // gtklock; empty keeps gtklock's own clock.
+    const QString clock = m_settings->value(QStringLiteral("lock.clockFormat")).toString().trimmed();
+    if (!clock.isEmpty()) {
+        QString strftime;
+        for (int i = 0; i < clock.size();) {
+            auto take = [&](const char *token, const char *out) {
+                const QLatin1String t(token);
+                if (QStringView(clock).mid(i).startsWith(t)) {
+                    strftime += QLatin1String(out);
+                    i += t.size();
+                    return true;
+                }
+                return false;
+            };
+            if (take("HH", "%H") || take("H", "%-H") || take("hh", "%I") || take("h", "%-I")
+                || take("mm", "%M") || take("m", "%-M") || take("ss", "%S") || take("s", "%-S")
+                || take("AP", "%p") || take("ap", "%P") || take("A", "%p") || take("a", "%P"))
+                continue;
+            const QChar c = clock.at(i++);
+            if (c == QLatin1Char('%'))
+                strftime += QStringLiteral("%%");
+            else if (c != QLatin1Char('\'') && c != QLatin1Char('\n'))
+                strftime += c;
+        }
+        text += QStringLiteral("time=") + strftime + QLatin1Char('\n');
+    }
     if (m_theme) {
         text += QStringLiteral("accent=")
                 + m_theme->property("accent").value<QColor>().name(QColor::HexRgb).mid(1)

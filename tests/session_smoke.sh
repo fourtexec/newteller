@@ -50,7 +50,7 @@ chmod 700 "$runtime"
 export XDG_CONFIG_HOME="$runtime/config"
 mkdir -p "$XDG_CONFIG_HOME/newteller"
 # A moved built-in shortcut checks the hotkey lines of compositor.conf.
-printf '{\n    "desktop.defaultWallpaper": false,\n    "hotkeys.lockScreen": "Super+Shift+K",\n    "windowRules.workspaces": "org.example.Nothing = 2, broken",\n    "windows.gaps": 16\n}\n' \
+printf '{\n    "desktop.defaultWallpaper": false,\n    "hotkeys.lockScreen": "Super+Shift+K",\n    "windowRules.workspaces": "org.example.Nothing = 2, broken",\n    "windows.gaps": 16,\n    "lock.dim": 40,\n    "lock.clockFormat": "h:mm AP"\n}\n' \
     > "$XDG_CONFIG_HOME/newteller/shell.json"
 socket=newteller-smoke
 log="$runtime/compositor.log"
@@ -165,6 +165,14 @@ if [[ $reply != 'ok pong' ]]; then
     exit 1
 fi
 echo "session smoke: moved shortcuts and desktop rules reach compositor.conf"
+# lock.conf for newteller-lock: the veil and the clock format in strftime.
+lock_conf="$XDG_CONFIG_HOME/newteller/lock.conf"
+if ! grep -q '^dim=40$' "$lock_conf" 2>/dev/null || ! grep -q '^time=%-I:%M %p$' "$lock_conf"; then
+    echo "lock.conf lacks the lock screen settings:" >&2
+    cat "$lock_conf" >&2 || true
+    exit 1
+fi
+echo "session smoke: lock screen settings reach lock.conf"
 reply=$(msg locked || true)
 if [[ $reply != 'ok 0' ]]; then
     echo "a fresh session reports itself locked ($reply)" >&2

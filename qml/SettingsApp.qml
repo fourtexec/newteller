@@ -4186,6 +4186,21 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                visible: Settings.values["lock.useWallpaper"] !== false
+                                title: qsTr("Darken the lock screen wallpaper")
+                                subtitle: qsTr("With gtklock; keeps the clock readable on bright pictures.")
+                                settingKey: "lock.dim"
+                                SettingsSlider { from: 0; to: 90; step: 5; suffix: " %" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Lock screen clock format")
+                                subtitle: qsTr("As the panel clock, e.g. HH:mm or h:mm AP; empty uses the locker's own (gtklock).")
+                                settingKey: "lock.clockFormat"
+                                SettingsTextField { width: 140; placeholder: "HH:mm" }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Lock screen colour")
                                 subtitle: qsTr("Behind the wallpaper, or the whole background without one.")
                                 settingKey: "lock.color"

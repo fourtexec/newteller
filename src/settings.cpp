@@ -401,6 +401,10 @@ Settings::Settings(QObject *parent)
     // Lock screen.
     m_defaults.insert(QStringLiteral("lock.color"), QStringLiteral("#1e1e2e"));
     m_defaults.insert(QStringLiteral("lock.useWallpaper"), true);
+    // Darken the wallpaper behind the lock screen clock (percent), and its
+    // clock format in the panel clock's notation (empty: the locker's own).
+    m_defaults.insert(QStringLiteral("lock.dim"), 0);
+    m_defaults.insert(QStringLiteral("lock.clockFormat"), QString());
     // Clipboard
     m_defaults.insert(QStringLiteral("clipboard.historyEnabled"), true);
     m_defaults.insert(QStringLiteral("clipboard.historySize"), 100);
