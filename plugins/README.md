@@ -234,6 +234,14 @@ The calendar widget demonstrates:
 - Dynamic layout
 - Navigation controls
 - Month/year display
+- ISO week numbers; the first weekday and week numbers follow the shell's
+  calendar settings unless `settings.firstDayOfWeek` / `settings.showWeekNumbers`
+  are set in the manifest
+
+### Clock Widget (`desktop-clock`)
+
+Follows the panel clock's format (`panel.clockFormat`); the manifest's
+`settings.format`, `settings.dateFormat` and `settings.fontSize` override it.
 
 ### CPU Monitor (`panel-cpu-monitor`)
 
