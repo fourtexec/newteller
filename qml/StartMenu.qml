@@ -527,10 +527,12 @@ DropdownWindow {
                         else
                             menu.hide();
                     }
-                    Keys.onReturnPressed: {
+                    function launchFirst() {
                         if (!menu.launchSelected() && menu.results.length > 0)
                             menu.launch(menu.results[0]);
                     }
+                    Keys.onReturnPressed: launchFirst()
+                    Keys.onEnterPressed: launchFirst()
                     Keys.onDownPressed: (event) => {
                         menu.moveSelection(menu.gridLayout ? menu.gridColumns : 1);
                         event.accepted = true;

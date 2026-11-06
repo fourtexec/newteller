@@ -332,10 +332,12 @@ Window {
                     font.family: Theme.fontFamily
                     font.pointSize: Theme.fontSize
                     onTextChanged: settingsWindow.searchText = text
-                    Keys.onReturnPressed: {
+                    function openFirst() {
                         if (settingsWindow.searchResults.length > 0)
                             settingsWindow.openSearchResult(settingsWindow.searchResults[0]);
                     }
+                    Keys.onReturnPressed: openFirst()
+                    Keys.onEnterPressed: openFirst()
                     Keys.onEscapePressed: text = ""
 
                     Text {

@@ -132,10 +132,12 @@ Window {
         Keys.onRightPressed: view.selected = Math.min(view.shown.length - 1, view.selected + 1)
         Keys.onUpPressed: view.selected = Math.max(0, view.selected - view.columns)
         Keys.onDownPressed: view.selected = Math.min(view.shown.length - 1, view.selected + view.columns)
-        Keys.onReturnPressed: {
+        function activateSelected() {
             if (view.selected >= 0 && view.selected < view.shown.length)
                 view.activate(view.shown[view.selected]);
         }
+        Keys.onReturnPressed: activateSelected()
+        Keys.onEnterPressed: activateSelected()
         Keys.onTabPressed: view.selected = (view.selected + 1) % Math.max(1, view.shown.length)
         Keys.onDeletePressed: {
             if (view.selected >= 0 && view.selected < view.shown.length) {

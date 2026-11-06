@@ -2087,6 +2087,16 @@ def main():
             if hasattr(results, "toVariant"):
                 results = results.toVariant()
             check(len(results or []) == 0, f"no stale results for a bad query ({results})")
+            # The keypad's Enter starts the first hit, like Return.
+            QMetaObject.invokeMethod(menu, "show")
+            QTest.qWait(100)
+            search.setProperty("text", "term")
+            QTest.qWait(20)
+            apps.launched.clear()
+            QTest.keyClick(menu, Qt.Key_Enter, Qt.KeypadModifier)
+            QTest.qWait(300)
+            check("org.gnome.Terminal" in apps.launched,
+                  f"the keypad's Enter starts the first search hit ({apps.launched})")
             search.setProperty("text", "")
             QTest.qWait(20)
 
