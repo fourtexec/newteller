@@ -132,6 +132,7 @@ void ntConfigDefaults(struct CompositorConfig *config)
         snprintf(config->hotCorners[i], sizeof(config->hotCorners[i]), "%s", "none");
     config->bindingCount = 0;
     config->builtinShortcuts = true;
+    config->hotCornerDelay = 0;
 
     config->effects = true;
     config->cornerRadius = 10;
@@ -322,6 +323,8 @@ bool ntConfigLoadFile(struct CompositorConfig *config, const char *path)
             copyText(config->rulesMinimized, sizeof(config->rulesMinimized), value);
         else if (strcmp(key, "rules.workspace") == 0)
             copyText(config->rulesWorkspace, sizeof(config->rulesWorkspace), value);
+        else if (strcmp(key, "hotCorners.delay") == 0)
+            config->hotCornerDelay = parseInt(value, config->hotCornerDelay, 0, 2000);
         else if (strcmp(key, "hotCorners.topLeft") == 0)
             copyText(config->hotCorners[0], sizeof(config->hotCorners[0]), value);
         else if (strcmp(key, "hotCorners.topRight") == 0)

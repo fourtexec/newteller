@@ -314,6 +314,8 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("hotCorners.topRight"), QStringLiteral("none"));
     m_defaults.insert(QStringLiteral("hotCorners.bottomLeft"), QStringLiteral("none"));
     m_defaults.insert(QStringLiteral("hotCorners.bottomRight"), QStringLiteral("none"));
+    // Milliseconds the pointer must rest in a corner (0 = at once).
+    m_defaults.insert(QStringLiteral("hotCorners.delay"), 0);
     // Screen recordings (wf-recorder) also record the default microphone.
     m_defaults.insert(QStringLiteral("recorder.audio"), false);
     // Power management

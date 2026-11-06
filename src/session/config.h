@@ -120,6 +120,7 @@ struct CompositorConfig {
     // Hot corners (top left, top right, bottom left, bottom right): none |
     // overview | desktop | startMenu | notifications | lock.
     char hotCorners[4][16];
+    int hotCornerDelay;                    // ms the pointer must rest in a corner
 
     struct NtBinding bindings[NT_MAX_BINDINGS];
     int bindingCount;

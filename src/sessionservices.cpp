@@ -792,6 +792,9 @@ QString SessionServices::compositorConfigText() const
                          cornerActions.contains(action) ? action : QStringLiteral("none"));
     }
 
+    text += confLine(QStringLiteral("hotCorners.delay"),
+                     QString::number(qBound(0, value("hotCorners.delay").toInt(), 2000)));
+
     // Desktop effects.
     text += confLine(QStringLiteral("effects.enabled"), boolText(value("effects.enabled")));
     text += confLine(QStringLiteral("effects.cornerRadius"),

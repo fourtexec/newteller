@@ -3604,6 +3604,13 @@ Window {
                                     }
                                 }
                             }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Delay")
+                                subtitle: qsTr("How long the pointer has to stay in the corner; avoids accidental triggers.")
+                                settingKey: "hotCorners.delay"
+                                SettingsSlider { from: 0; to: 1000; step: 50; suffix: qsTr(" ms") }
+                            }
                         }
 
                         SettingsSection {

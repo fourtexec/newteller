@@ -599,6 +599,9 @@ struct Server {
     // The hot corner the pointer last fired (-1: none); it fires again only
     // after the pointer has left that corner.
     int hotCornerFired;
+    // hotCorners.delay: the corner waiting for its timer, and the timer.
+    int hotCornerPending;
+    struct wl_event_source *hotCornerTimer;
     // The output under the pointer, as last reported ("event output NAME"):
     // the shell opens keyboard-invoked cards on that screen.
     struct wlr_output *pointerOutput;
@@ -3084,18 +3087,12 @@ static void broadcastPointerOutput(struct Server *server)
     ipcBroadcast(server, line);
 }
 
-static void checkHotCorner(struct Server *server)
+// The corner under the pointer (0 top left, 1 top right, 2 bottom left,
+// 3 bottom right) on its output, or -1; *awayX/awayY tell how far it is
+// from `near` (for re-arming).
+static int hotCornerAt(struct Server *server, struct wlr_output *output, int near,
+                       double *awayX, double *awayY)
 {
-    struct wlr_output *output = wlr_output_layout_output_at(server->outputLayout,
-                                                            server->cursor->x, server->cursor->y);
-    if (output && output != server->pointerOutput) {
-        server->pointerOutput = output;
-        broadcastPointerOutput(server);
-    }
-    if (!output) {
-        server->hotCornerFired = -1;
-        return;
-    }
     struct wlr_box box;
     wlr_output_layout_get_box(server->outputLayout, output, &box);
     const double x = server->cursor->x - box.x;
@@ -3104,28 +3101,21 @@ static void checkHotCorner(struct Server *server)
     const bool right = x > box.width - 2;
     const bool top = y < 1;
     const bool bottom = y > box.height - 2;
-    int corner = -1;
+    *awayX = (near == 1 || near == 3) ? box.width - x : x;
+    *awayY = (near == 2 || near == 3) ? box.height - y : y;
     if (top && left)
-        corner = 0;
-    else if (top && right)
-        corner = 1;
-    else if (bottom && left)
-        corner = 2;
-    else if (bottom && right)
-        corner = 3;
-    if (corner < 0) {
-        // Re-armed once the pointer is clearly away from the corner.
-        const double cx = (server->hotCornerFired == 1 || server->hotCornerFired == 3)
-                              ? box.width - x : x;
-        const double cy = (server->hotCornerFired == 2 || server->hotCornerFired == 3)
-                              ? box.height - y : y;
-        if (cx > 12 || cy > 12)
-            server->hotCornerFired = -1;
-        return;
-    }
-    if (server->hotCornerFired == corner)
-        return;
-    server->hotCornerFired = corner;
+        return 0;
+    if (top && right)
+        return 1;
+    if (bottom && left)
+        return 2;
+    if (bottom && right)
+        return 3;
+    return -1;
+}
+
+static void runHotCorner(struct Server *server, int corner)
+{
     const char *action = server->config.hotCorners[corner];
     if (strcmp(action, "none") == 0 || action[0] == '\0' || server->locked
         || server->seat->drag || server->cursorMode != CURSOR_PASSTHROUGH
@@ -3141,6 +3131,60 @@ static void checkHotCorner(struct Server *server)
         shellAction("toggleNotifications");
     else if (strcmp(action, "lock") == 0)
         spawnLocker(server);
+}
+
+// hotCorners.delay: the pointer rested in the corner long enough.
+static int hotCornerTimeout(void *data)
+{
+    struct Server *server = data;
+    const int corner = server->hotCornerPending;
+    server->hotCornerPending = -1;
+    if (corner < 0)
+        return 0;
+    struct wlr_output *output = wlr_output_layout_output_at(server->outputLayout,
+                                                            server->cursor->x, server->cursor->y);
+    double awayX, awayY;
+    if (output && hotCornerAt(server, output, corner, &awayX, &awayY) == corner)
+        runHotCorner(server, corner);
+    return 0;
+}
+
+static void checkHotCorner(struct Server *server)
+{
+    struct wlr_output *output = wlr_output_layout_output_at(server->outputLayout,
+                                                            server->cursor->x, server->cursor->y);
+    if (output && output != server->pointerOutput) {
+        server->pointerOutput = output;
+        broadcastPointerOutput(server);
+    }
+    if (!output) {
+        server->hotCornerFired = -1;
+        server->hotCornerPending = -1;
+        return;
+    }
+    double awayX, awayY;
+    const int corner = hotCornerAt(server, output, server->hotCornerFired, &awayX, &awayY);
+    if (corner < 0) {
+        // Leaving the corner before the delay cancels it; the corner is
+        // re-armed once the pointer is clearly away from it.
+        server->hotCornerPending = -1;
+        if (awayX > 12 || awayY > 12)
+            server->hotCornerFired = -1;
+        return;
+    }
+    if (server->hotCornerFired == corner)
+        return;
+    server->hotCornerFired = corner;
+    if (server->config.hotCornerDelay <= 0) {
+        runHotCorner(server, corner);
+        return;
+    }
+    if (!server->hotCornerTimer)
+        server->hotCornerTimer = wl_event_loop_add_timer(server->eventLoop, hotCornerTimeout, server);
+    if (server->hotCornerTimer) {
+        server->hotCornerPending = corner;
+        wl_event_source_timer_update(server->hotCornerTimer, server->config.hotCornerDelay);
+    }
 }
 
 // Every input event counts as activity for ext-idle-notify clients
@@ -8980,6 +9024,7 @@ static int run(struct Server *server)
     wl_list_init(&server->outputs);
     wl_list_init(&server->views);
     server->hotCornerFired = -1;
+    server->hotCornerPending = -1;
     wl_list_init(&server->layers);
     wl_list_init(&server->keyboards);
     wl_list_init(&server->pointers);
