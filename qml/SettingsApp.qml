@@ -2673,7 +2673,7 @@ Window {
                                 visible: Settings.values["effects.enabled"] !== false
                                          && Settings.values["effects.animations"] !== false
                                 title: qsTr("Animation speed")
-                                subtitle: "1.0 = normal, 2.0 = twice as fast."
+                                subtitle: qsTr("1.0 = normal, 2.0 = twice as fast.")
                                 settingKey: "effects.animationSpeed"
                                 SettingsSlider { settingKey: "effects.animationSpeed"; from: 0.5; to: 3.0; step: 0.1 }
                             }
@@ -2693,7 +2693,7 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Animation speed multiplier")
-                                subtitle: "1.0 = normal speed, 0.5 = half speed, 2.0 = double speed"
+                                subtitle: qsTr("1.0 = normal speed, 0.5 = half speed, 2.0 = double speed")
                                 settingKey: "animations.speed"
                                 SettingsSlider { from: 0.1; to: 3.0; step: 0.1; onChanged: (v) => Settings.setValue("animations.speed", Math.round(v * 10) / 10) }
                             }
@@ -2831,7 +2831,7 @@ Window {
                                 title: qsTr("Title font")
                                 subtitle: qsTr("Pango name, e.g. \"Inter Bold 10\". Empty: the theme font.")
                                 settingKey: "decorations.font"
-                                SettingsTextField { settingKey: "decorations.font"; placeholder: "(theme font)" }
+                                SettingsTextField { settingKey: "decorations.font"; placeholder: qsTr("(theme font)") }
                             }
                             SettingsRow {
                                 width: parent.width
@@ -3039,7 +3039,7 @@ Window {
                                     SettingsTextField {
                                         id: shortcutCommand
                                         width: 200
-                                        placeholder: "command"
+                                        placeholder: qsTr("command")
                                     }
                                     TaskButton {
                                         iconName: "plus"
@@ -3246,14 +3246,14 @@ Window {
                                 title: qsTr("Variants")
                                 subtitle: qsTr("For example \",phonetic\" for a phonetic second layout.")
                                 settingKey: "keyboard.variants"
-                                SettingsTextField { settingKey: "keyboard.variants"; placeholder: "(default)" }
+                                SettingsTextField { settingKey: "keyboard.variants"; placeholder: qsTr("(default)") }
                             }
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Extra XKB options")
                                 subtitle: qsTr("For example ctrl:nocaps or compose:ralt.")
                                 settingKey: "keyboard.options"
-                                SettingsTextField { settingKey: "keyboard.options"; placeholder: "(none)" }
+                                SettingsTextField { settingKey: "keyboard.options"; placeholder: qsTr("(none)") }
                             }
                         }
                     }
@@ -3352,7 +3352,7 @@ Window {
                                 title: qsTr("Cursor theme")
                                 subtitle: qsTr("An installed theme name, e.g. Adwaita or breeze_cursors. Empty = default.")
                                 settingKey: "cursor.theme"
-                                SettingsTextField { settingKey: "cursor.theme"; placeholder: "(default)" }
+                                SettingsTextField { settingKey: "cursor.theme"; placeholder: qsTr("(default)") }
                             }
                             SettingsRow {
                                 width: parent.width

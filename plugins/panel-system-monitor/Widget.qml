@@ -21,7 +21,7 @@ Rectangle {
             spacing: 2
 
             Text {
-                text: "cpu " + Math.round(System.cpuPercent) + "%"
+                text: qsTr("cpu %1%").arg(Math.round(System.cpuPercent))
                 color: Theme.foreground
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSize - 1
@@ -44,7 +44,7 @@ Rectangle {
             spacing: 2
 
             Text {
-                text: "mem " + Math.round(System.memoryPercent) + "%"
+                text: qsTr("mem %1%").arg(Math.round(System.memoryPercent))
                 color: Theme.foreground
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSize - 1
@@ -67,13 +67,13 @@ Rectangle {
             spacing: 2
 
             Text {
-                text: "down " + System.networkDownText
+                text: qsTr("down %1").arg(System.networkDownText)
                 color: Theme.foreground
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSize - 1
             }
             Text {
-                text: "up " + System.networkUpText
+                text: qsTr("up %1").arg(System.networkUpText)
                 color: Theme.muted
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSize - 1
