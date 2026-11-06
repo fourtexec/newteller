@@ -2067,10 +2067,10 @@ Window {
                                 settingKey: "desktop.sortBy"
                                 SettingsChoice {
                                     model: [
-                                        { value: "name", label: qsTr("Name") },
-                                        { value: "type", label: qsTr("Type") },
+                                        { value: "name", label: qsTr("By name") },
+                                        { value: "type", label: qsTr("By type") },
                                         { value: "time", label: qsTr("Newest first") },
-                                        { value: "size", label: qsTr("Size") }
+                                        { value: "size", label: qsTr("By size") }
                                     ]
                                 }
                             }
