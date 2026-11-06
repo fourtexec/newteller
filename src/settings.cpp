@@ -648,7 +648,21 @@ QVariantList Settings::schema() const
 
 QVariantList Settings::validate() const
 {
-    return Rust::available() ? Rust::validateConfig(m_values) : QVariantList();
+    if (!Rust::available())
+        return {};
+    // The Rust schema covers the older keys only; a key the shell has a
+    // default for is known, so "unknown key" is reported for the others
+    // (typos in a hand-edited shell.json) and not for 200 working settings.
+    QVariantList out;
+    const QVariantList issues = Rust::validateConfig(m_values);
+    for (const QVariant &issue : issues) {
+        const QVariantMap map = issue.toMap();
+        if (map.value(QStringLiteral("message")).toString().startsWith(QLatin1String("unknown key"))
+            && m_defaults.contains(map.value(QStringLiteral("key")).toString()))
+            continue;
+        out.append(issue);
+    }
+    return out;
 }
 
 void Settings::reload()
