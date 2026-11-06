@@ -2330,6 +2330,22 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("Run dialog history")
+                                subtitle: qsTr("Commands Alt+F2 remembers (Up and Down walk them).")
+                                settingKey: "run.historyLimit"
+                                SettingsStepper { from: 1; to: 100 }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Forget the run history")
+                                TaskButton {
+                                    iconName: "trash"
+                                    label: qsTr("Clear history")
+                                    onClicked: Settings.reset("run.history")
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Application catalogue cap")
                                 subtitle: qsTr("0 keeps every installed application.")
                                 settingKey: "apps.maxApps"
