@@ -360,6 +360,7 @@ Settings::Settings(QObject *parent)
     // The Alt+Tab overlay with the windows and their titles.
     m_defaults.insert(QStringLiteral("switcher.showOverlay"), true);
     m_defaults.insert(QStringLiteral("switcher.allWorkspaces"), false);
+    m_defaults.insert(QStringLiteral("switcher.style"), QStringLiteral("thumbnails"));
     m_defaults.insert(QStringLiteral("workspaces.wrap"), false);
     // Title bars drawn by the compositor for windows that want them.
     m_defaults.insert(QStringLiteral("decorations.server"), true);

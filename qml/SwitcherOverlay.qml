@@ -14,8 +14,11 @@ Window {
     readonly property bool wanted: selected >= 0 && entries.length > 1
                                    && Settings.values["switcher.showOverlay"] !== false
 
-    readonly property int tileWidth: 200
-    readonly property int tileHeight: 168
+    // switcher.style: "thumbnails" (the windows as they look) or "icons"
+    // (compact tiles with the application icon).
+    readonly property bool iconsOnly: Settings.values["switcher.style"] === "icons"
+    readonly property int tileWidth: iconsOnly ? 108 : 200
+    readonly property int tileHeight: iconsOnly ? 104 : 168
     readonly property int columns: Math.max(1, Math.min(entries.length,
                                                         Math.floor((Screen.width - 120) / (tileWidth + 6))))
     readonly property int rows: Math.ceil(entries.length / columns)
@@ -99,7 +102,8 @@ Window {
                         fillMode: Image.PreserveAspectFit
                         asynchronous: true
                         cache: false
-                        source: modelData.id !== undefined ? Session.cachedThumbnail(modelData.id) : ""
+                        source: modelData.id !== undefined && !overlay.iconsOnly
+                                ? Session.cachedThumbnail(modelData.id) : ""
                     }
                     Image {
                         x: thumb.status === Image.Ready ? 14 : (parent.width - width) / 2

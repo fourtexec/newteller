@@ -4059,6 +4059,18 @@ Window {
                                 settingKey: "switcher.showOverlay"
                                 SettingsSwitch { settingKey: "switcher.showOverlay" }
                             }
+                            SettingsRow {
+                                width: parent.width
+                                visible: Settings.values["switcher.showOverlay"] !== false
+                                title: qsTr("Window list style")
+                                settingKey: "switcher.style"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "thumbnails", label: qsTr("Previews") },
+                                        { value: "icons", label: qsTr("Icons") }
+                                    ]
+                                }
+                            }
                         }
 
                         SettingsSection {
