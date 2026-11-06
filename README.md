@@ -319,6 +319,13 @@ inside VirtualBox. The implemented pieces are:
 - **Plugin settings in the settings window**: every value of a plugin's
   manifest `settings` can be changed under Settings → Plugins
   (`plugins.settings`), no manifest editing needed.
+- **More small choices**: what a middle click on a dock button does (close,
+  new window, minimise), a double click on the empty desktop and on title
+  bars, windows opening with a zoom, fade or slide, Alt+Tab with previews or
+  icons, the overview's preview size, notification popup width, count and
+  screen, calendar week start and week numbers, the panel clock's size and
+  weight, the volume and brightness key steps, how the layout indicator reads,
+  and a darker lock screen wallpaper with its own clock format.
 - **Named desktops**: give desktops names (`workspaces.names`), show them on
   the panel as dots, numbers or names, and on screen when switching.
 - **Settings search**: type in the field above the settings pages to find any
