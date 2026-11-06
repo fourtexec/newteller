@@ -4730,14 +4730,17 @@ Window {
 
         FolderListModel {
             id: picturesModel
-            folder: settingsWindow.wallpaperFolders[0]
+            objectName: "picturesModel"
+            // A folder URL: the model does not read a plain path as one.
+            folder: "file://" + settingsWindow.wallpaperFolders[0]
             nameFilters: ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp"]
             showDirs: false
             showDotAndDotDot: false
         }
         FolderListModel {
             id: backgroundsModel
-            folder: settingsWindow.wallpaperFolders[1]
+            // A folder URL: the model does not read a plain path as one.
+            folder: "file://" + settingsWindow.wallpaperFolders[1]
             nameFilters: ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp"]
             showDirs: false
             showDotAndDotDot: false

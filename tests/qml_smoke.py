@@ -3287,6 +3287,16 @@ def main():
         settings.valuesChanged.emit()
         QTest.qWait(20)
 
+        # The settings' own wallpaper grid lists the pictures of Pictures (it
+        # stayed empty while its model got a plain path instead of a URL).
+        pictures_model = settings_app.findChild(QObject, "picturesModel")
+        for _ in range(40):
+            if pictures_model is not None and pictures_model.property("count") > 0:
+                break
+            QTest.qWait(25)
+        check(pictures_model is not None and pictures_model.property("count") > 0,
+              f"the wallpaper grid lists Pictures ({pictures_model and pictures_model.property('count')})")
+
         # 1. The system chooser is asked first and starts in a real folder.
         file_portal.calls.clear()
         call(settings_app, "pickWallpaper", shots)
