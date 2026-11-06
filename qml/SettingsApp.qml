@@ -2969,6 +2969,38 @@ Window {
                                     placeholder: qsTr("e.g. firefox, code")
                                 }
                             }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Open full screen")
+                                settingKey: "windowRules.fullscreen"
+                                SettingsTextField {
+                                    width: 240
+                                    settingKey: "windowRules.fullscreen"
+                                    placeholder: qsTr("e.g. mpv")
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Open minimised")
+                                subtitle: qsTr("Handy for chat applications started at login.")
+                                settingKey: "windowRules.minimized"
+                                SettingsTextField {
+                                    width: 240
+                                    settingKey: "windowRules.minimized"
+                                    placeholder: qsTr("e.g. telegram-desktop")
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Open on a desktop")
+                                subtitle: qsTr("Application id = desktop number, e.g. firefox=2, thunderbird=3.")
+                                settingKey: "windowRules.workspaces"
+                                SettingsTextField {
+                                    width: 240
+                                    settingKey: "windowRules.workspaces"
+                                    placeholder: "firefox=2"
+                                }
+                            }
                         }
 
                         SettingsSection {

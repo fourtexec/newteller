@@ -270,7 +270,9 @@ inside VirtualBox. The implemented pieces are:
   screen, **always on top**, show on every desktop, move to another desktop
   or (with several monitors) the next screen, close. Settings →
   Windows → Window rules keeps chosen applications on top or opens them
-  maximized (`windowRules.alwaysOnTop`, `windowRules.maximized`).
+  maximized, full screen, minimised or on a given desktop
+  (`windowRules.alwaysOnTop`, `maximized`, `fullscreen`, `minimized`,
+  `workspaces` as `firefox=2, thunderbird=3`).
 - **Hot corners** (Settings → Windows): push the pointer into a screen corner
   to open the overview, show the desktop, open the start menu or the
   notifications, or lock (`hotCorners.topLeft` … `bottomRight`; off by

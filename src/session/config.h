@@ -104,6 +104,11 @@ struct CompositorConfig {
     // Window rules: comma separated app ids (or X11 classes), any case.
     char rulesAlwaysOnTop[NT_CONFIG_TEXT];
     char rulesMaximized[NT_CONFIG_TEXT];
+    char rulesFullscreen[NT_CONFIG_TEXT];
+    char rulesMinimized[NT_CONFIG_TEXT];
+    // "firefox=2,telegram-desktop=3": the desktop (1-based) an application
+    // opens on.
+    char rulesWorkspace[NT_CONFIG_TEXT * 2];
     // Hot corners (top left, top right, bottom left, bottom right): none |
     // overview | desktop | startMenu | notifications | lock.
     char hotCorners[4][16];
@@ -147,6 +152,10 @@ int ntConfigSplitList(const char *list, char out[][32], int max);
 // True when `name` is one of the comma separated entries of `list`
 // (case-insensitive, spaces around entries ignored). Empty names never match.
 bool ntConfigListContains(const char *list, const char *name);
+
+// The number after `name=` in a comma separated "name=N" list (names as in
+// ntConfigListContains), or -1 when the name is not there.
+int ntConfigListNumber(const char *list, const char *name);
 
 // A saved output configuration, keyed by the output's make/model/serial.
 struct SavedOutput {

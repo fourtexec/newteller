@@ -296,6 +296,12 @@ bool ntConfigLoadFile(struct CompositorConfig *config, const char *path)
             copyText(config->rulesAlwaysOnTop, sizeof(config->rulesAlwaysOnTop), value);
         else if (strcmp(key, "rules.maximized") == 0)
             copyText(config->rulesMaximized, sizeof(config->rulesMaximized), value);
+        else if (strcmp(key, "rules.fullscreen") == 0)
+            copyText(config->rulesFullscreen, sizeof(config->rulesFullscreen), value);
+        else if (strcmp(key, "rules.minimized") == 0)
+            copyText(config->rulesMinimized, sizeof(config->rulesMinimized), value);
+        else if (strcmp(key, "rules.workspace") == 0)
+            copyText(config->rulesWorkspace, sizeof(config->rulesWorkspace), value);
         else if (strcmp(key, "hotCorners.topLeft") == 0)
             copyText(config->hotCorners[0], sizeof(config->hotCorners[0]), value);
         else if (strcmp(key, "hotCorners.topRight") == 0)
@@ -461,4 +467,33 @@ bool ntConfigListContains(const char *list, const char *name)
             return true;
     }
     return false;
+}
+
+int ntConfigListNumber(const char *list, const char *name)
+{
+    if (!list || !name || name[0] == '\0')
+        return -1;
+    size_t length = strlen(name);
+    const char *p = list;
+    while (*p) {
+        while (*p == ' ' || *p == '\t' || *p == ',')
+            ++p;
+        const char *start = p;
+        while (*p && *p != ',')
+            ++p;
+        const char *equals = memchr(start, '=', (size_t)(p - start));
+        if (!equals)
+            continue;
+        const char *end = equals;
+        while (end > start && (end[-1] == ' ' || end[-1] == '\t'))
+            --end;
+        if ((size_t)(end - start) == length && strncasecmp(start, name, length) == 0) {
+            char *after = NULL;
+            long number = strtol(equals + 1, &after, 10);
+            if (after != equals + 1 && number >= 0 && number < 1000)
+                return (int)number;
+            return -1;
+        }
+    }
+    return -1;
 }

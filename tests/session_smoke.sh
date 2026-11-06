@@ -50,7 +50,7 @@ chmod 700 "$runtime"
 export XDG_CONFIG_HOME="$runtime/config"
 mkdir -p "$XDG_CONFIG_HOME/newteller"
 # A moved built-in shortcut checks the hotkey lines of compositor.conf.
-printf '{\n    "desktop.defaultWallpaper": false,\n    "hotkeys.lockScreen": "Super+Shift+K"\n}\n' \
+printf '{\n    "desktop.defaultWallpaper": false,\n    "hotkeys.lockScreen": "Super+Shift+K",\n    "windowRules.workspaces": "org.example.Nothing = 2, broken"\n}\n' \
     > "$XDG_CONFIG_HOME/newteller/shell.json"
 socket=newteller-smoke
 log="$runtime/compositor.log"
@@ -153,7 +153,8 @@ msg reload >/dev/null
 # compositor reloads them.
 conf="$XDG_CONFIG_HOME/newteller/compositor.conf"
 if ! grep -q '^hotkey.lockScreen = Super+Shift+K$' "$conf" 2>/dev/null \
-    || ! grep -q '^hotkeys.enabled = true$' "$conf"; then
+    || ! grep -q '^hotkeys.enabled = true$' "$conf" \
+    || ! grep -q '^rules.workspace = org.example.Nothing=2$' "$conf"; then
     echo "compositor.conf lacks the moved shortcut:" >&2
     cat "$conf" >&2 || true
     exit 1
@@ -163,7 +164,7 @@ if [[ $reply != 'ok pong' ]]; then
     echo "the compositor stopped answering after loading the shortcuts ($reply)" >&2
     exit 1
 fi
-echo "session smoke: moved shortcuts reach compositor.conf"
+echo "session smoke: moved shortcuts and desktop rules reach compositor.conf"
 reply=$(msg locked || true)
 if [[ $reply != 'ok 0' ]]; then
     echo "a fresh session reports itself locked ($reply)" >&2

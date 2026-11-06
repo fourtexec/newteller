@@ -736,6 +736,30 @@ QString SessionServices::compositorConfigText() const
     };
     text += confLine(QStringLiteral("rules.alwaysOnTop"), appIds("windowRules.alwaysOnTop"));
     text += confLine(QStringLiteral("rules.maximized"), appIds("windowRules.maximized"));
+    text += confLine(QStringLiteral("rules.fullscreen"), appIds("windowRules.fullscreen"));
+    text += confLine(QStringLiteral("rules.minimized"), appIds("windowRules.minimized"));
+    // "firefox=2, telegram-desktop=3": application id = desktop number.
+    {
+        QStringList pairs;
+        const QStringList entries = value("windowRules.workspaces").toString()
+                                        .split(QRegularExpression(QStringLiteral("[,;\\n]+")), Qt::SkipEmptyParts);
+        for (const QString &entry : entries) {
+            const int equals = entry.indexOf(QLatin1Char('='));
+            if (equals <= 0)
+                continue;
+            QString id;
+            for (const QChar c : entry.left(equals)) {
+                if (c.isLetterOrNumber() || c == QLatin1Char('.') || c == QLatin1Char('_')
+                    || c == QLatin1Char('-'))
+                    id += c;
+            }
+            bool ok = false;
+            const int desktop = entry.mid(equals + 1).trimmed().toInt(&ok);
+            if (!id.isEmpty() && ok && desktop >= 1 && desktop <= 9)
+                pairs.append(id + QLatin1Char('=') + QString::number(desktop));
+        }
+        text += confLine(QStringLiteral("rules.workspace"), pairs.join(QLatin1Char(',')));
+    }
     static const QStringList cornerActions{
         QStringLiteral("none"), QStringLiteral("overview"), QStringLiteral("desktop"),
         QStringLiteral("startMenu"), QStringLiteral("notifications"), QStringLiteral("lock")};

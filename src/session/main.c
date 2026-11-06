@@ -223,6 +223,9 @@ static struct wlr_box viewOuterBox(struct View *view);
 static uint32_t dragSnapEdges(struct Server *server, struct View *view);
 static void updateSnapPreview(struct Server *server, bool dragging);
 static void viewSetMaximized(struct View *view, bool maximized);
+static void viewSetFullscreen(struct View *view, bool fullscreen);
+static void viewSetMinimized(struct View *view, bool minimized);
+static void moveViewToWorkspace(struct View *view, int index, bool follow);
 static void requestWindowMenu(struct View *view, int x, int y);
 struct Keyboard;
 static struct wlr_input_method_keyboard_grab_v2 *keyboardImGrab(struct Keyboard *keyboard);
@@ -1498,6 +1501,15 @@ static void applyWindowRules(struct View *view)
     if (ntConfigListContains(config->rulesMaximized, appId) && !view->maximized
         && !view->fullscreen)
         viewSetMaximized(view, true);
+    if (ntConfigListContains(config->rulesFullscreen, appId) && !view->fullscreen)
+        viewSetFullscreen(view, true);
+    // The desktop it opens on (1-based in the setting), without following.
+    int desktop = ntConfigListNumber(config->rulesWorkspace, appId);
+    if (desktop >= 1 && desktop <= config->workspaceCount)
+        moveViewToWorkspace(view, desktop - 1, false);
+    // Last: a minimized window gives the focus back.
+    if (ntConfigListContains(config->rulesMinimized, appId))
+        viewSetMinimized(view, true);
 }
 
 static void focusView(struct View *view, struct wlr_surface *surface)
