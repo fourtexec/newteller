@@ -613,6 +613,11 @@ struct Server {
     uint32_t nextViewId;
     struct Binding bindings[NT_MAX_BINDINGS];
     int bindingCount;
+    // Built-in shortcuts moved to other keys (sym NoSymbol: none), and
+    // which built-in default keys no longer apply (moved, off, or every
+    // built-in shortcut turned off).
+    struct Binding hotkeys[NT_HOTKEY_COUNT];
+    bool hotkeyDefaultOff[NT_HOTKEY_COUNT];
     struct wlr_xdg_decoration_manager_v1 *xdgDecorationManager;
     struct wl_listener newXdgDecoration;
     // Pointer state over compositor-drawn frames.
@@ -3685,6 +3690,21 @@ static void compileBindings(struct Server *server)
                  server->config.bindings[i].command);
         ++server->bindingCount;
     }
+    for (int i = 0; i < NT_HOTKEY_COUNT; ++i) {
+        const char *keys = server->config.hotkeys[i];
+        struct Binding *hotkey = &server->hotkeys[i];
+        hotkey->sym = XKB_KEY_NoSymbol;
+        hotkey->modifiers = 0;
+        hotkey->command[0] = '\0';
+        server->hotkeyDefaultOff[i] = keys[0] != '\0' || !server->config.builtinShortcuts;
+        if (keys[0] == '\0' || strcasecmp(keys, "none") == 0)
+            continue;
+        if (!parseBinding(keys, &hotkey->modifiers, &hotkey->sym)) {
+            wlr_log(WLR_ERROR, "ignoring shortcut '%s' for %s: unknown key", keys,
+                    ntHotkeyNames[i]);
+            hotkey->sym = XKB_KEY_NoSymbol;
+        }
+    }
 }
 
 static void applyCursorTheme(struct Server *server)
@@ -4131,6 +4151,168 @@ static void handleNewShortcutsInhibitor(struct wl_listener *listener, void *data
 
 // `baseSym` is the key's symbol without Shift and other levels (1 for the
 // key that gives "!" with Shift), for shortcuts that use Shift on digits.
+// The Latin symbol of a key for shortcut matching. With a second layout
+// active (Russian, Greek, ...) the L key reports Cyrillic_de, so Super+L,
+// Super+E and the user's own Super+letter shortcuts stopped working until one
+// switched back to English. Other layouts are searched for a printable ASCII
+// symbol on the first level; keys that already are Latin, function keys,
+// media keys and dead keys come back unchanged.
+static xkb_keysym_t latinKeysym(struct xkb_keymap *keymap, xkb_keycode_t keycode,
+                                xkb_keysym_t sym)
+{
+    if (!keymap || sym == XKB_KEY_NoSymbol || sym < 0x100
+        || (sym >= 0xfd00 && sym <= 0xffff) || (sym >= 0x1000000 && sym < 0x1000100)
+        || sym >= 0x10080000)
+        return sym;
+    xkb_layout_index_t layouts = xkb_keymap_num_layouts_for_key(keymap, keycode);
+    for (xkb_layout_index_t layout = 0; layout < layouts; ++layout) {
+        const xkb_keysym_t *syms = NULL;
+        if (xkb_keymap_key_get_syms_by_level(keymap, keycode, layout, 0, &syms) > 0
+            && syms[0] >= 0x20 && syms[0] <= 0x7e)
+            return syms[0];
+    }
+    return sym;
+}
+
+static void spawnScreenshot(struct Server *server, const char *mode, const char *geometry)
+{
+    const char *argv[] = {"newteller-screenshot", mode, geometry, NULL};
+    if (!mode)
+        argv[1] = NULL;
+    setChildEnvironment(server);
+    spawnDetached(argv[0], argv);
+}
+
+// What a built-in shortcut does, whichever keys run it. False when it has
+// nothing to act on (no focused window), so the keys reach the application.
+static bool runHotkey(struct Server *server, enum NtHotkey hotkey)
+{
+    struct View *focused = server->focusedView;
+    switch (hotkey) {
+    case NT_HOTKEY_START_MENU:
+        shellAction("toggleStartMenu");
+        return true;
+    case NT_HOTKEY_RUN_DIALOG:
+        shellAction("showRunDialog");
+        return true;
+    case NT_HOTKEY_TERMINAL: {
+        // newteller-terminal finds the installed terminal (and follows the
+        // shell's apps.terminalCommand); x-terminal-emulator is Debian's.
+        const char *argv[] = {"/bin/sh", "-c",
+                              "command -v newteller-terminal >/dev/null 2>&1"
+                              " && exec newteller-terminal; exec x-terminal-emulator",
+                              NULL};
+        setChildEnvironment(server);
+        spawnDetached(argv[0], argv);
+        return true;
+    }
+    case NT_HOTKEY_FILE_MANAGER: {
+        const char *home = getenv("HOME");
+        const char *argv[] = {"xdg-open", home ? home : "/", NULL};
+        setChildEnvironment(server);
+        spawnDetached(argv[0], argv);
+        return true;
+    }
+    case NT_HOTKEY_SETTINGS:
+        shellAction("openSettings");
+        return true;
+    case NT_HOTKEY_QUICK_SETTINGS:
+        shellAction("toggleQuickSettings");
+        return true;
+    case NT_HOTKEY_NOTIFICATIONS:
+        shellAction("toggleNotifications");
+        return true;
+    case NT_HOTKEY_CLIPBOARD:
+        shellAction("toggleClipboard");
+        return true;
+    case NT_HOTKEY_LOCK:
+        spawnLocker(server);
+        return true;
+    case NT_HOTKEY_CLOSE:
+        if (focused)
+            viewClose(focused);
+        return true;
+    case NT_HOTKEY_MAXIMIZE:
+        if (focused)
+            viewSetMaximized(focused, !focused->maximized);
+        return true;
+    case NT_HOTKEY_FULLSCREEN:
+        if (focused)
+            viewSetFullscreen(focused, !focused->fullscreen);
+        return true;
+    case NT_HOTKEY_MINIMIZE:
+        if (focused)
+            viewSetMinimized(focused, true);
+        return true;
+    case NT_HOTKEY_ALWAYS_ON_TOP:
+        if (focused)
+            viewSetAlwaysOnTop(focused, !focused->alwaysOnTop);
+        return true;
+    case NT_HOTKEY_SHOW_DESKTOP:
+        toggleShowDesktop(server);
+        return true;
+    case NT_HOTKEY_OVERVIEW:
+        shellAction("toggleTaskView");
+        return true;
+    case NT_HOTKEY_RECORD:
+        shellAction("toggleScreenRecording");
+        return true;
+    case NT_HOTKEY_FORCE_QUIT:
+        shellAction("showForceQuit");
+        return true;
+    case NT_HOTKEY_SCREENSHOT:
+        spawnScreenshot(server, NULL, NULL);
+        return true;
+    case NT_HOTKEY_SCREENSHOT_AREA:
+        spawnScreenshot(server, "--area", NULL);
+        return true;
+    case NT_HOTKEY_SCREENSHOT_WINDOW: {
+        if (!focused)
+            return false;
+        struct wlr_box box = viewOuterBox(focused);
+        char geometry[64];
+        snprintf(geometry, sizeof(geometry), "%d,%d %dx%d", box.x, box.y, box.width,
+                 box.height);
+        spawnScreenshot(server, "--geometry", geometry);
+        return true;
+    }
+    case NT_HOTKEY_NEXT_LAYOUT:
+        if (server->layoutCount < 2)
+            return false;
+        setLayout(server, server->layoutIndex + 1);
+        return true;
+    case NT_HOTKEY_WINDOW_MENU: {
+        // At the window's top-left corner: the pointer may be anywhere.
+        if (!focused || !ipcHasWatchers(server))
+            return false;
+        int top = focused->ssd ? focused->y - server->config.titleHeight / 2 : focused->y + 8;
+        requestWindowMenu(focused, focused->x + 16, top);
+        return true;
+    }
+    case NT_HOTKEY_LOGOUT:
+        shellAction("logout");
+        return true;
+    case NT_HOTKEY_SLEEP:
+        shellAction("suspend");
+        return true;
+    case NT_HOTKEY_REBOOT:
+        shellAction("reboot");
+        return true;
+    case NT_HOTKEY_SHUTDOWN:
+        shellAction("powerOff");
+        return true;
+    case NT_HOTKEY_COUNT:
+        break;
+    }
+    return false;
+}
+
+// The built-in default keys of `hotkey` still apply.
+static bool builtinKeys(struct Server *server, enum NtHotkey hotkey)
+{
+    return !server->hotkeyDefaultOff[hotkey];
+}
+
 static bool keyHandled(struct Server *server, xkb_keysym_t sym,
                        uint32_t modifiers, xkb_keysym_t baseSym)
 {
@@ -4193,33 +4375,44 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
     uint32_t chord = modifiers & (WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL
                                   | WLR_MODIFIER_ALT | WLR_MODIFIER_SHIFT);
     xkb_keysym_t lower = xkb_keysym_to_lower(sym);
+    // With Shift the symbol is the shifted one ("exclam"); the first level
+    // ("1") is what "Super+Shift+1" names.
+    xkb_keysym_t lowerBase = xkb_keysym_to_lower(baseSym);
     for (int i = 0; i < server->bindingCount; ++i) {
-        if (server->bindings[i].sym == lower && server->bindings[i].modifiers == chord) {
+        if ((server->bindings[i].sym == lower
+             || (baseSym != XKB_KEY_NoSymbol && server->bindings[i].sym == lowerBase))
+            && server->bindings[i].modifiers == chord) {
             const char *argv[] = {"sh", "-c", server->bindings[i].command, NULL};
             setChildEnvironment(server);
             spawnDetached(argv[0], argv);
             return true;
         }
     }
-    // Ctrl+Shift+Esc (Windows) or Ctrl+Alt+Esc: end a frozen application.
-    if ((modifiers & WLR_MODIFIER_CTRL) && sym == XKB_KEY_Escape
-        && ((modifiers & WLR_MODIFIER_SHIFT) || alt)) {
-        shellAction("showForceQuit");
-        return true;
+    // Built-in shortcuts the user moved to other keys (Settings -> Hotkeys).
+    for (int i = 0; i < NT_HOTKEY_COUNT; ++i) {
+        const struct Binding *hotkey = &server->hotkeys[i];
+        if (hotkey->sym != XKB_KEY_NoSymbol && hotkey->modifiers == chord
+            && (hotkey->sym == lower
+                || (baseSym != XKB_KEY_NoSymbol && hotkey->sym == lowerBase))
+            && runHotkey(server, (enum NtHotkey)i))
+            return true;
     }
-    if (logo && (sym == XKB_KEY_Tab || sym == XKB_KEY_ISO_Left_Tab) && !alt) {
-        // Super+Tab: the overview of every window (as Windows' Task View).
-        shellAction("toggleTaskView");
-        return true;
-    }
-    if (logo && (sym == XKB_KEY_l || sym == XKB_KEY_L)) {
-        spawnLocker(server);
-        return true;
-    }
-    // Workspaces: Ctrl+Super+Left/Right (as on Windows), Super+Page Up/Down
-    // (as on GNOME); with Shift the focused window moves along.
+
     bool ctrl = (modifiers & WLR_MODIFIER_CTRL) != 0;
     bool shift = (modifiers & WLR_MODIFIER_SHIFT) != 0;
+    // Ctrl+Shift+Esc (Windows) or Ctrl+Alt+Esc: end a frozen application.
+    if (builtinKeys(server, NT_HOTKEY_FORCE_QUIT) && ctrl && sym == XKB_KEY_Escape
+        && (shift || alt))
+        return runHotkey(server, NT_HOTKEY_FORCE_QUIT);
+    // Super+Tab: the overview of every window (as Windows' Task View).
+    if (builtinKeys(server, NT_HOTKEY_OVERVIEW) && logo && !alt
+        && (sym == XKB_KEY_Tab || sym == XKB_KEY_ISO_Left_Tab))
+        return runHotkey(server, NT_HOTKEY_OVERVIEW);
+    if (builtinKeys(server, NT_HOTKEY_LOCK) && logo && !ctrl && !alt
+        && (sym == XKB_KEY_l || sym == XKB_KEY_L))
+        return runHotkey(server, NT_HOTKEY_LOCK);
+    // Workspaces: Ctrl+Super+Left/Right (as on Windows), Super+Page Up/Down
+    // (as on GNOME); with Shift the focused window moves along.
     int workspaceStep = 0;
     if (logo && ctrl && sym == XKB_KEY_Left)
         workspaceStep = -1;
@@ -4237,24 +4430,17 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
             switchWorkspace(server, target);
         return true;
     }
-    if (logo && sym == XKB_KEY_space && server->layoutCount > 1) {
-        setLayout(server, server->layoutIndex + 1);
+    if (builtinKeys(server, NT_HOTKEY_NEXT_LAYOUT) && logo && !ctrl && !alt
+        && sym == XKB_KEY_space && runHotkey(server, NT_HOTKEY_NEXT_LAYOUT))
         return true;
-    }
-    // Alt+Space: the focused window's menu (as on Windows and GNOME), at its
-    // top-left corner since the pointer may be anywhere.
-    if (alt && !logo && !ctrl && sym == XKB_KEY_space && server->focusedView
-        && ipcHasWatchers(server)) {
-        struct View *view = server->focusedView;
-        int top = view->ssd ? view->y - server->config.titleHeight / 2 : view->y + 8;
-        requestWindowMenu(view, view->x + 16, top);
+    // Alt+Space: the focused window's menu (as on Windows and GNOME).
+    if (builtinKeys(server, NT_HOTKEY_WINDOW_MENU) && alt && !logo && !ctrl
+        && sym == XKB_KEY_space && runHotkey(server, NT_HOTKEY_WINDOW_MENU))
         return true;
-    }
     // Super+Alt+R: start or stop a screen recording (as Windows' Game Bar).
-    if (logo && alt && !ctrl && (sym == XKB_KEY_r || sym == XKB_KEY_R)) {
-        shellAction("toggleScreenRecording");
-        return true;
-    }
+    if (builtinKeys(server, NT_HOTKEY_RECORD) && logo && alt && !ctrl
+        && (sym == XKB_KEY_r || sym == XKB_KEY_R))
+        return runHotkey(server, NT_HOTKEY_RECORD);
     // Super+Shift+1..9: the focused window to that desktop, followed.
     if (logo && shift && !ctrl && !alt && baseSym >= XKB_KEY_1 && baseSym <= XKB_KEY_9) {
         int index = (int)(baseSym - XKB_KEY_1);
@@ -4278,76 +4464,52 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
         return true;
     }
     if (logo)
-        wlr_log(WLR_DEBUG, "logo key sym=%u shift=%d focus=%p", sym,
-                (modifiers & WLR_MODIFIER_SHIFT) != 0,
+        wlr_log(WLR_DEBUG, "logo key sym=%u shift=%d focus=%p", sym, shift,
                 (void *)server->focusedView);
 
-    if (alt && sym == XKB_KEY_F2) {
-        shellAction("showRunDialog");
+    // Alt+F2 and Super+R (Windows): run a command.
+    if (builtinKeys(server, NT_HOTKEY_RUN_DIALOG)
+        && ((alt && !logo && sym == XKB_KEY_F2)
+            || (logo && !alt && !ctrl && (sym == XKB_KEY_r || sym == XKB_KEY_R))))
+        return runHotkey(server, NT_HOTKEY_RUN_DIALOG);
+    if (builtinKeys(server, NT_HOTKEY_TERMINAL) && logo && !alt && !ctrl
+        && (sym == XKB_KEY_Return || sym == XKB_KEY_KP_Enter))
+        return runHotkey(server, NT_HOTKEY_TERMINAL);
+    // Print: the whole screen. Shift+Print or Super+Shift+S (the Windows
+    // snipping shortcut): pick an area first. Alt+Print (often reported as
+    // SysRq): the focused window with its frame.
+    if (builtinKeys(server, NT_HOTKEY_SCREENSHOT_WINDOW) && alt && !logo
+        && (sym == XKB_KEY_Print || sym == XKB_KEY_Sys_Req)
+        && runHotkey(server, NT_HOTKEY_SCREENSHOT_WINDOW))
         return true;
-    }
-    if (logo && sym == XKB_KEY_Return) {
-        // newteller-terminal finds the installed terminal (and follows the
-        // shell's apps.terminalCommand); x-terminal-emulator is Debian's.
-        const char *argv[] = {"/bin/sh", "-c",
-                              "command -v newteller-terminal >/dev/null 2>&1"
-                              " && exec newteller-terminal; exec x-terminal-emulator",
-                              NULL};
-        setChildEnvironment(server);
-        spawnDetached(argv[0], argv);
-        return true;
-    }
-    if (logo && !(modifiers & WLR_MODIFIER_SHIFT)
-        && (sym == XKB_KEY_s || sym == XKB_KEY_S || sym == XKB_KEY_i || sym == XKB_KEY_I)) {
-        shellAction("openSettings");
-        return true;
-    }
+    if (builtinKeys(server, NT_HOTKEY_SCREENSHOT_AREA)
+        && ((sym == XKB_KEY_Print && shift)
+            || (logo && shift && !ctrl && !alt && (sym == XKB_KEY_s || sym == XKB_KEY_S))))
+        return runHotkey(server, NT_HOTKEY_SCREENSHOT_AREA);
+    if (builtinKeys(server, NT_HOTKEY_SCREENSHOT) && sym == XKB_KEY_Print)
+        return runHotkey(server, NT_HOTKEY_SCREENSHOT);
+    if (builtinKeys(server, NT_HOTKEY_SETTINGS) && logo && !shift && !alt && !ctrl
+        && (sym == XKB_KEY_s || sym == XKB_KEY_S || sym == XKB_KEY_i || sym == XKB_KEY_I))
+        return runHotkey(server, NT_HOTKEY_SETTINGS);
     // The Windows shortcuts: Super+N notifications, Super+A quick
-    // settings, Super+R run, Super+E the home folder in the file manager.
-    if (logo && (sym == XKB_KEY_n || sym == XKB_KEY_N)) {
-        shellAction("toggleNotifications");
-        return true;
-    }
-    if (logo && (sym == XKB_KEY_a || sym == XKB_KEY_A)) {
-        shellAction("toggleQuickSettings");
-        return true;
-    }
-    if (logo && (sym == XKB_KEY_v || sym == XKB_KEY_V)) {
-        shellAction("toggleClipboard");
-        return true;
-    }
-    if (logo && (sym == XKB_KEY_r || sym == XKB_KEY_R)) {
-        shellAction("showRunDialog");
-        return true;
-    }
-    if (logo && (sym == XKB_KEY_e || sym == XKB_KEY_E)) {
-        const char *home = getenv("HOME");
-        const char *argv[] = {"xdg-open", home ? home : "/", NULL};
-        setChildEnvironment(server);
-        spawnDetached(argv[0], argv);
-        return true;
-    }
-    if (logo && (sym == XKB_KEY_q || sym == XKB_KEY_Q)) {
-        if (server->focusedView)
-            viewClose(server->focusedView);
-        return true;
-    }
-    if (logo && (sym == XKB_KEY_m || sym == XKB_KEY_M)) {
-        if (server->focusedView) {
-            viewSetMaximized(server->focusedView,
-                             !server->focusedView->maximized);
+    // settings, Super+V clipboard, Super+E the home folder.
+    if (logo && !alt && !ctrl) {
+        enum NtHotkey letter = NT_HOTKEY_COUNT;
+        switch (xkb_keysym_to_lower(sym)) {
+        case XKB_KEY_n: letter = NT_HOTKEY_NOTIFICATIONS; break;
+        case XKB_KEY_a: letter = NT_HOTKEY_QUICK_SETTINGS; break;
+        case XKB_KEY_v: letter = NT_HOTKEY_CLIPBOARD; break;
+        case XKB_KEY_e: letter = NT_HOTKEY_FILE_MANAGER; break;
+        case XKB_KEY_q: letter = NT_HOTKEY_CLOSE; break;
+        case XKB_KEY_m: letter = NT_HOTKEY_MAXIMIZE; break;
+        case XKB_KEY_f: letter = NT_HOTKEY_FULLSCREEN; break;
+        case XKB_KEY_d: letter = NT_HOTKEY_SHOW_DESKTOP; break;
+        default: break;
         }
-        return true;
+        if (letter != NT_HOTKEY_COUNT && builtinKeys(server, letter))
+            return runHotkey(server, letter);
     }
-    if (logo && (sym == XKB_KEY_f || sym == XKB_KEY_F)) {
-        if (server->focusedView) {
-            viewSetFullscreen(server->focusedView,
-                              !server->focusedView->fullscreen);
-        }
-        return true;
-    }
-    if (logo && (modifiers & WLR_MODIFIER_SHIFT)
-        && (sym == XKB_KEY_Left || sym == XKB_KEY_Right)) {
+    if (logo && shift && (sym == XKB_KEY_Left || sym == XKB_KEY_Right)) {
         if (server->focusedView)
             moveViewToOutput(server->focusedView, sym == XKB_KEY_Right ? 1 : -1);
         return true;
@@ -4373,43 +4535,8 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
         }
         return true;
     }
-    if (logo && (sym == XKB_KEY_d || sym == XKB_KEY_D)) {
-        toggleShowDesktop(server);
-        return true;
-    }
-    if (alt && sym == XKB_KEY_F4) {
-        if (server->focusedView)
-            viewClose(server->focusedView);
-        return true;
-    }
-    // Print: the whole screen. Shift+Print or Super+Shift+S (the Windows
-    // snipping shortcut): pick an area first.
-    bool shiftHeld = (modifiers & WLR_MODIFIER_SHIFT) != 0;
-    // Alt+Print (often reported as SysRq): the focused window with its frame.
-    if (alt && !logo && (sym == XKB_KEY_Print || sym == XKB_KEY_Sys_Req)
-        && server->focusedView) {
-        struct wlr_box box = viewOuterBox(server->focusedView);
-        char geometry[64];
-        snprintf(geometry, sizeof(geometry), "%d,%d %dx%d", box.x, box.y, box.width,
-                 box.height);
-        const char *argv[] = {"newteller-screenshot", "--geometry", geometry, NULL};
-        setChildEnvironment(server);
-        spawnDetached(argv[0], argv);
-        return true;
-    }
-    if ((sym == XKB_KEY_Print && shiftHeld)
-        || (logo && shiftHeld && (sym == XKB_KEY_s || sym == XKB_KEY_S))) {
-        const char *argv[] = {"newteller-screenshot", "--area", NULL};
-        setChildEnvironment(server);
-        spawnDetached(argv[0], argv);
-        return true;
-    }
-    if (sym == XKB_KEY_Print) {
-        const char *argv[] = {"newteller-screenshot", NULL};
-        setChildEnvironment(server);
-        spawnDetached(argv[0], argv);
-        return true;
-    }
+    if (builtinKeys(server, NT_HOTKEY_CLOSE) && alt && !logo && !ctrl && sym == XKB_KEY_F4)
+        return runHotkey(server, NT_HOTKEY_CLOSE);
     // Alt+` (the key above Tab; Ё on a Russian layout): the next window of
     // the same application, as on GNOME and macOS. Without another window
     // of that application the key goes to the application.
@@ -4437,8 +4564,7 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
         }
     }
     if (alt && (sym == XKB_KEY_Tab || sym == XKB_KEY_ISO_Left_Tab)) {
-        bool backwards = sym == XKB_KEY_ISO_Left_Tab
-            || (modifiers & WLR_MODIFIER_SHIFT) != 0;
+        bool backwards = sym == XKB_KEY_ISO_Left_Tab || shift;
         switcherStep(server, backwards);
         return true;
     }
@@ -4548,11 +4674,15 @@ static void keyboardKey(struct wl_listener *listener, void *data)
                                                     layout, 0, &syms) > 0)
                 baseSym = syms[0];
         }
-        if (keyHandled(server, sym, modifiers, baseSym))
+        // Shortcuts match the Latin key whatever layout is active.
+        xkb_keysym_t shortcutSym = latinKeysym(keyboard->keyboard->keymap, event->keycode + 8, sym);
+        xkb_keysym_t shortcutBase = latinKeysym(keyboard->keyboard->keymap, event->keycode + 8, baseSym);
+        if (keyHandled(server, shortcutSym, modifiers, shortcutBase))
             return;
     } else if (isLogo && server->logoTap) {
         server->logoTap = false;
-        if (!server->switching && !server->locked)
+        if (!server->switching && !server->locked
+            && builtinKeys(server, NT_HOTKEY_START_MENU))
             shellAction("toggleStartMenu");
     }
 

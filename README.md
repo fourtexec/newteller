@@ -288,7 +288,14 @@ inside VirtualBox. The implemented pieces are:
 - **Bluetooth** in quick settings: power, connect, disconnect, pair, forget.
 - **Window behaviour and shortcuts**: focus follows mouse, placement of new
   windows, edge snapping, Alt+Tab across desktops, wrapping desktops, and
-  your own key combinations for any command.
+  your own key combinations for any command; every built-in shortcut can be
+  moved to other keys or turned off.
+- **Start menu look**: list or icon grid (with its own icon size), search
+  field at the top or bottom, its own background, text, accent and search
+  match colours, surface material, opacity and corner radius, and the power
+  buttons shown or hidden.
+- **Desktop labels**: colour, outline, size and number of lines of the names
+  under desktop icons, independent of the icon tint.
 - **Application look**: dark/light preference, GTK theme, icon theme,
   application font and text size, cursor theme; lock screen colour.
 - **Wi-Fi networks** from quick settings: scan, join (with the password asked
@@ -457,7 +464,13 @@ folder), `Super+I` (settings), `Super+Shift+S` (area screenshot),
 `Ctrl+Alt+F1…F12` (virtual terminals), `Print` (screenshot), a tap of `Super` on its own (open or close
 the start menu), and `Alt+Tab` (switch windows: keep Alt held and press Tab again to walk
 through every window, most recently used first, with the candidate raised as a preview;
-`Shift+Tab` steps back, `Escape` cancels and releasing Alt switches). The running shell
+`Shift+Tab` steps back, `Escape` cancels and releasing Alt switches). Shortcuts
+match the Latin key whatever keyboard layout is active, so `Super+L` also locks
+with a Russian layout. **Settings → Hotkeys** moves any of the built-in
+shortcuts above to other keys (click the shortcut, press the new keys) or turns
+it off, gives keys to actions that have none by default (minimise, keep on top,
+log out, sleep, restart, shut down), and can switch every built-in shortcut off
+at once (`hotkeys.*` in shell.json, `hotkey.<name>` in compositor.conf). The running shell
 exports `org.newteller.Shell` on the session bus;
 scripts can call `showStartMenu`, `toggleStartMenu`, `showRunDialog`, `openSettings`, `lock`, `logout`
 and the other session methods with `gdbus call`.

@@ -27,6 +27,12 @@ Window {
     readonly property string iconColor: Settings.values["desktop.iconColor"] || "#ffffff"
     readonly property bool iconShadow: Settings.values["desktop.iconShadow"] !== false
     readonly property bool iconGlow: Settings.values["desktop.iconGlow"] === true
+    // Labels under the icons: their own colour, outline and size (0 follows
+    // the theme font), independent of the icon tint.
+    readonly property string labelColor: Settings.values["desktop.iconTextColor"] || "#ffffff"
+    readonly property bool labelShadow: Settings.values["desktop.iconTextShadow"] !== false
+    readonly property int labelSize: Number(Settings.values["desktop.iconTextSize"] ?? 0)
+    readonly property int labelLines: Math.max(1, Math.min(4, Number(Settings.values["desktop.iconTextLines"] ?? 2)))
     readonly property bool showHiddenFiles: Settings.values["desktop.showHiddenFiles"] === true
     readonly property bool autoArrangeIcons: Settings.values["desktop.autoArrangeIcons"] !== false
     // Exposed for the smoke test and for plugins.
@@ -526,13 +532,13 @@ Window {
                     horizontalAlignment: Text.AlignHCenter
                     wrapMode: Text.Wrap
                     elide: Text.ElideRight
-                    maximumLineCount: 2
+                    maximumLineCount: desk.labelLines
                     visible: !iconDelegate.renaming
                     text: iconDelegate.label
-                    color: desk.iconColor && desk.iconColor.length > 0 ? desk.iconColor : "white"
+                    color: desk.labelColor
                     font.family: Theme.fontFamily
-                    font.pointSize: Theme.fontSize
-                    style: desk.iconShadow ? Text.Outline : Text.Plain
+                    font.pointSize: desk.labelSize > 0 ? desk.labelSize : Theme.fontSize
+                    style: desk.labelShadow ? Text.Outline : Text.Plain
                     styleColor: "#80000000"
                 }
 

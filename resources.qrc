@@ -23,6 +23,7 @@
     <file>qml/SettingsStepper.qml</file>
     <file>qml/SettingsChoice.qml</file>
     <file>qml/SettingsTextField.qml</file>
+    <file>qml/SettingsKeyField.qml</file>
     <file>qml/SettingsColorField.qml</file>
     <file>qml/ShellFrame.qml</file>
     <file>qml/SurfaceStyle.qml</file>

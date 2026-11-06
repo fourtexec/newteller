@@ -196,6 +196,8 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("desktop.autoArrangeIcons"), true);
     m_defaults.insert(QStringLiteral("desktop.iconTextColor"), QStringLiteral("#ffffff"));
     m_defaults.insert(QStringLiteral("desktop.iconTextShadow"), true);
+    m_defaults.insert(QStringLiteral("desktop.iconTextSize"), 0);
+    m_defaults.insert(QStringLiteral("desktop.iconTextLines"), 2);
     m_defaults.insert(QStringLiteral("desktop.showHiddenFiles"), false);
     m_defaults.insert(QStringLiteral("desktop.doubleClickSpeed"), 500);
     // Pixel positions from before the desktop grid (desktop.gridPositions):
@@ -229,20 +231,36 @@ Settings::Settings(QObject *parent)
 
     // ===== System & Behavior =====
     // Hotkeys
+    // Built-in shortcuts (Settings -> Hotkeys): "" keeps the default keys,
+    // "none" turns the shortcut off, anything else moves it there.
     m_defaults.insert(QStringLiteral("hotkeys.enabled"), true);
-    m_defaults.insert(QStringLiteral("hotkeys.startMenu"), QStringLiteral("Meta"));
-    m_defaults.insert(QStringLiteral("hotkeys.runDialog"), QStringLiteral("Alt+F2"));
-    m_defaults.insert(QStringLiteral("hotkeys.settings"), QStringLiteral("Meta+,Meta+S"));
-    m_defaults.insert(QStringLiteral("hotkeys.notificationCenter"), QStringLiteral("Meta+N"));
-    m_defaults.insert(QStringLiteral("hotkeys.quickSettings"), QStringLiteral("Meta+Q"));
-    m_defaults.insert(QStringLiteral("hotkeys.lockScreen"), QStringLiteral("Meta+L"));
-    m_defaults.insert(QStringLiteral("hotkeys.logout"), QStringLiteral("Meta+Shift+Q"));
-    m_defaults.insert(QStringLiteral("hotkeys.sleep"), QStringLiteral("Meta+Shift+S"));
-    m_defaults.insert(QStringLiteral("hotkeys.reboot"), QStringLiteral("Meta+Shift+R"));
-    m_defaults.insert(QStringLiteral("hotkeys.shutdown"), QStringLiteral("Meta+Shift+P"));
-    m_defaults.insert(QStringLiteral("hotkeys.terminal"), QStringLiteral("Meta+T"));
-    m_defaults.insert(QStringLiteral("hotkeys.fileManager"), QStringLiteral("Meta+E"));
-    m_defaults.insert(QStringLiteral("hotkeys.switcher"), QStringLiteral("Alt+Tab"));
+    m_defaults.insert(QStringLiteral("hotkeys.startMenu"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.runDialog"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.terminal"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.fileManager"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.settings"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.quickSettings"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.notificationCenter"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.clipboard"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.lockScreen"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.closeWindow"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.maximize"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.fullscreen"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.showDesktop"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.overview"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.screenRecording"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.forceQuit"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.screenshot"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.screenshotArea"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.screenshotWindow"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.nextLayout"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.windowMenu"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.minimize"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.alwaysOnTop"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.logout"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.sleep"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.reboot"), QString());
+    m_defaults.insert(QStringLiteral("hotkeys.shutdown"), QString());
     // Startup apps
     m_defaults.insert(QStringLiteral("startup.apps"), QStringList());
     m_defaults.insert(QStringLiteral("startup.delay"), 0);

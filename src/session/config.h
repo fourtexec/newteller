@@ -19,6 +19,41 @@ struct NtBinding {
     char command[NT_CONFIG_TEXT];
 };
 
+// Built-in shortcuts the user can move or turn off (Settings -> Hotkeys).
+// The order matches ntHotkeyNames; the shell writes `hotkey.<name> = keys`.
+enum NtHotkey {
+    NT_HOTKEY_START_MENU,
+    NT_HOTKEY_RUN_DIALOG,
+    NT_HOTKEY_TERMINAL,
+    NT_HOTKEY_FILE_MANAGER,
+    NT_HOTKEY_SETTINGS,
+    NT_HOTKEY_QUICK_SETTINGS,
+    NT_HOTKEY_NOTIFICATIONS,
+    NT_HOTKEY_CLIPBOARD,
+    NT_HOTKEY_LOCK,
+    NT_HOTKEY_CLOSE,
+    NT_HOTKEY_MAXIMIZE,
+    NT_HOTKEY_FULLSCREEN,
+    NT_HOTKEY_SHOW_DESKTOP,
+    NT_HOTKEY_OVERVIEW,
+    NT_HOTKEY_RECORD,
+    NT_HOTKEY_FORCE_QUIT,
+    NT_HOTKEY_SCREENSHOT,
+    NT_HOTKEY_SCREENSHOT_AREA,
+    NT_HOTKEY_SCREENSHOT_WINDOW,
+    NT_HOTKEY_NEXT_LAYOUT,
+    NT_HOTKEY_WINDOW_MENU,
+    NT_HOTKEY_MINIMIZE,
+    NT_HOTKEY_ALWAYS_ON_TOP,
+    NT_HOTKEY_LOGOUT,
+    NT_HOTKEY_SLEEP,
+    NT_HOTKEY_REBOOT,
+    NT_HOTKEY_SHUTDOWN,
+    NT_HOTKEY_COUNT
+};
+
+extern const char *const ntHotkeyNames[NT_HOTKEY_COUNT];
+
 struct CompositorConfig {
     char keyboardLayout[NT_CONFIG_TEXT];   // "us,ru"
     char keyboardVariant[NT_CONFIG_TEXT];  // ",phonetic"
@@ -75,6 +110,11 @@ struct CompositorConfig {
 
     struct NtBinding bindings[NT_MAX_BINDINGS];
     int bindingCount;
+    // Per built-in shortcut: "" keeps the default keys, "none" turns it
+    // off, anything else replaces the default ("Super+Shift+L").
+    char hotkeys[NT_HOTKEY_COUNT][64];
+    // hotkeys.enabled = false: only shortcuts given above stay.
+    bool builtinShortcuts;
 
     // Effects renderer: rounded corners, blur behind the shell, animations.
     bool effects;

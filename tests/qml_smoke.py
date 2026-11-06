@@ -3041,6 +3041,33 @@ def main():
             QTest.qWait(15)
             check(settings_app.property("currentPage") == entry["id"],
                   f"settings page switching works ({entry['id']})")
+
+        # Hotkeys page: a recorded combination is stored in the compositor's
+        # notation, Escape cancels, the cross turns the shortcut off.
+        settings_app.setProperty("currentPage", "hotkeys")
+        QTest.qWait(30)
+        # Repeater delegates have no QObject parent: walk the item tree.
+        def find_item(item, name):
+            if item.objectName() == name:
+                return item
+            for child in item.childItems():
+                found = find_item(child, name)
+                if found is not None:
+                    return found
+            return None
+        key_field = find_item(settings_app.contentItem(), "hotkeyField_hotkeys.lockScreen")
+        check(key_field is not None, "the hotkeys page lists the lock shortcut")
+        if key_field is not None:
+            QMetaObject.invokeMethod(key_field, "store", Q_ARG("QVariant", "Super+Shift+K"))
+            QTest.qWait(20)
+            check(settings._values.get("hotkeys.lockScreen") == "Super+Shift+K",
+                  f"a recorded shortcut is stored ({settings._values.get('hotkeys.lockScreen')!r})")
+            check(key_field.property("current") == "Super+Shift+K", "the field shows the new keys")
+            QMetaObject.invokeMethod(key_field, "store", Q_ARG("QVariant", "none"))
+            QTest.qWait(20)
+            check(settings._values.get("hotkeys.lockScreen") == "none", "a shortcut can be turned off")
+            settings.reset("hotkeys.lockScreen")
+            QTest.qWait(20)
         settings_app.setProperty("visible", False)
         QTest.qWait(20)
 

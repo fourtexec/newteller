@@ -603,7 +603,7 @@ void SessionServices::settingChanged(const QString &key)
         || key == QLatin1String("windows.focusFollowsMouse")
         || key == QLatin1String("windows.placement") || key == QLatin1String("windows.snapping")
         || key.startsWith(QLatin1String("windowRules."))
-        || key.startsWith(QLatin1String("hotCorners."))
+        || key.startsWith(QLatin1String("hotCorners.")) || key.startsWith(QLatin1String("hotkeys."))
         || key.startsWith(QLatin1String("mouse.")) || key.startsWith(QLatin1String("cursor."))
         || key == QLatin1String("desktop.wallpaper")
         || key == QLatin1String("desktop.defaultWallpaper")
@@ -768,6 +768,27 @@ QString SessionServices::compositorConfigText() const
         if (keys.isEmpty() || command.isEmpty())
             continue;
         text += confLine(QStringLiteral("bind.%1").arg(index++), keys + QLatin1Char('|') + command);
+    }
+
+    // Built-in shortcuts moved or turned off (Settings -> Hotkeys): only the
+    // changed ones are written; the compositor keeps its defaults otherwise.
+    // The names match ntHotkeyNames in src/session/config.c.
+    text += confLine(QStringLiteral("hotkeys.enabled"), boolText(value("hotkeys.enabled")));
+    static const char *const hotkeyNames[] = {
+        "startMenu", "runDialog", "terminal", "fileManager", "settings", "quickSettings",
+        "notificationCenter", "clipboard", "lockScreen", "closeWindow", "maximize",
+        "fullscreen", "showDesktop", "overview", "screenRecording", "forceQuit",
+        "screenshot", "screenshotArea", "screenshotWindow", "nextLayout", "windowMenu",
+        "minimize", "alwaysOnTop", "logout", "sleep", "reboot", "shutdown"};
+    for (const char *name : hotkeyNames) {
+        QString keys = m_settings->value(QStringLiteral("hotkeys.") + QLatin1String(name))
+                           .toString().simplified();
+        // A lone modifier is the start menu's own default (a tap of Super).
+        if (keys.compare(QLatin1String("Super"), Qt::CaseInsensitive) == 0
+            || keys.compare(QLatin1String("Meta"), Qt::CaseInsensitive) == 0)
+            keys.clear();
+        if (!keys.isEmpty())
+            text += confLine(QStringLiteral("hotkey.") + QLatin1String(name), keys);
     }
     return text;
 }

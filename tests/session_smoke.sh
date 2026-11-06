@@ -49,7 +49,9 @@ chmod 700 "$runtime"
 # plain themed gradient, so the default wallpaper is switched off here.
 export XDG_CONFIG_HOME="$runtime/config"
 mkdir -p "$XDG_CONFIG_HOME/newteller"
-printf '{\n    "desktop.defaultWallpaper": false\n}\n' > "$XDG_CONFIG_HOME/newteller/shell.json"
+# A moved built-in shortcut checks the hotkey lines of compositor.conf.
+printf '{\n    "desktop.defaultWallpaper": false,\n    "hotkeys.lockScreen": "Super+Shift+K"\n}\n' \
+    > "$XDG_CONFIG_HOME/newteller/shell.json"
 socket=newteller-smoke
 log="$runtime/compositor.log"
 before="$runtime/before.png"
@@ -147,6 +149,21 @@ if [[ $reply != *'HEADLESS-1:1280x800@'* ]]; then
     exit 1
 fi
 msg reload >/dev/null
+# The shell mirrors moved built-in shortcuts into compositor.conf, and the
+# compositor reloads them.
+conf="$XDG_CONFIG_HOME/newteller/compositor.conf"
+if ! grep -q '^hotkey.lockScreen = Super+Shift+K$' "$conf" 2>/dev/null \
+    || ! grep -q '^hotkeys.enabled = true$' "$conf"; then
+    echo "compositor.conf lacks the moved shortcut:" >&2
+    cat "$conf" >&2 || true
+    exit 1
+fi
+reply=$(msg ping || true)
+if [[ $reply != 'ok pong' ]]; then
+    echo "the compositor stopped answering after loading the shortcuts ($reply)" >&2
+    exit 1
+fi
+echo "session smoke: moved shortcuts reach compositor.conf"
 reply=$(msg locked || true)
 if [[ $reply != 'ok 0' ]]; then
     echo "a fresh session reports itself locked ($reply)" >&2

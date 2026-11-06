@@ -11,6 +11,14 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+const char *const ntHotkeyNames[NT_HOTKEY_COUNT] = {
+    "startMenu", "runDialog", "terminal", "fileManager", "settings", "quickSettings",
+    "notificationCenter", "clipboard", "lockScreen", "closeWindow", "maximize",
+    "fullscreen", "showDesktop", "overview", "screenRecording", "forceQuit",
+    "screenshot", "screenshotArea", "screenshotWindow", "nextLayout", "windowMenu",
+    "minimize", "alwaysOnTop", "logout", "sleep", "reboot", "shutdown",
+};
+
 static void copyText(char *target, size_t size, const char *value)
 {
     snprintf(target, size, "%s", value ? value : "");
@@ -119,6 +127,7 @@ void ntConfigDefaults(struct CompositorConfig *config)
     for (int i = 0; i < 4; ++i)
         snprintf(config->hotCorners[i], sizeof(config->hotCorners[i]), "%s", "none");
     config->bindingCount = 0;
+    config->builtinShortcuts = true;
 
     config->effects = true;
     config->cornerRadius = 10;
@@ -295,6 +304,16 @@ bool ntConfigLoadFile(struct CompositorConfig *config, const char *path)
             copyText(config->hotCorners[2], sizeof(config->hotCorners[2]), value);
         else if (strcmp(key, "hotCorners.bottomRight") == 0)
             copyText(config->hotCorners[3], sizeof(config->hotCorners[3]), value);
+        else if (strcmp(key, "hotkeys.enabled") == 0)
+            config->builtinShortcuts = parseBool(value, config->builtinShortcuts);
+        else if (strncmp(key, "hotkey.", 7) == 0) {
+            for (int i = 0; i < NT_HOTKEY_COUNT; ++i) {
+                if (strcmp(key + 7, ntHotkeyNames[i]) == 0) {
+                    copyText(config->hotkeys[i], sizeof(config->hotkeys[i]), value);
+                    break;
+                }
+            }
+        }
         else if (strncmp(key, "bind.", 5) == 0 && config->bindingCount < NT_MAX_BINDINGS) {
             // bind.N = Super+Shift+T|command
             char *bar = strchr(value, '|');

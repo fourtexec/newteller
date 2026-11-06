@@ -1536,6 +1536,37 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("Label colour")
+                                settingKey: "desktop.iconTextColor"
+                                SettingsColorField {
+                                    id: desktopLabelColorField
+                                    onEdited: (hex) => Settings.setValue("desktop.iconTextColor", hex)
+                                    onPaletteRequested: settingsWindow.openPalette(desktopLabelColorField)
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Label outline")
+                                subtitle: qsTr("A dark outline keeps names readable on light wallpapers.")
+                                settingKey: "desktop.iconTextShadow"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Label size")
+                                subtitle: qsTr("0 uses the theme font size.")
+                                settingKey: "desktop.iconTextSize"
+                                SettingsStepper { from: 0; to: 20; suffix: " pt" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Label lines")
+                                subtitle: qsTr("Longer names end in an ellipsis.")
+                                settingKey: "desktop.iconTextLines"
+                                SettingsStepper { from: 1; to: 4 }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Show hidden files")
                                 settingKey: "desktop.showHiddenFiles"
                                 SettingsSwitch {}
@@ -2373,58 +2404,63 @@ Window {
 
                         SettingsSection {
                             title: qsTr("Keyboard shortcuts")
-                            subtitle: qsTr("The shortcuts built into NewTeller. Your own ones are added under Windows -> Your shortcuts and take priority.")
+                            subtitle: qsTr("Click a shortcut and press the new keys; the cross turns it off. Your own commands are added under Windows -> Your shortcuts and take priority.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: qsTr("Open start menu")
-                                subtitle: "Super"
+                                title: qsTr("Built-in shortcuts")
+                                subtitle: qsTr("Off: only the shortcuts you changed below keep working.")
+                                settingKey: "hotkeys.enabled"
+                                SettingsSwitch {}
                             }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Run a command")
-                                subtitle: "Alt+F2, Super+R"
+
+                            Repeater {
+                                model: [
+                                    { key: "hotkeys.startMenu", title: qsTr("Open start menu"), keys: qsTr("Super (tap)") },
+                                    { key: "hotkeys.runDialog", title: qsTr("Run a command"), keys: "Alt+F2, Super+R" },
+                                    { key: "hotkeys.terminal", title: qsTr("Open terminal"), keys: "Super+Return" },
+                                    { key: "hotkeys.fileManager", title: qsTr("Open file manager"), keys: "Super+E" },
+                                    { key: "hotkeys.settings", title: qsTr("Open settings"), keys: "Super+S, Super+I" },
+                                    { key: "hotkeys.quickSettings", title: qsTr("Open quick settings"), keys: "Super+A" },
+                                    { key: "hotkeys.notificationCenter", title: qsTr("Open notification centre"), keys: "Super+N" },
+                                    { key: "hotkeys.clipboard", title: qsTr("Clipboard history"), keys: "Super+V" },
+                                    { key: "hotkeys.lockScreen", title: qsTr("Lock now"), keys: "Super+L" },
+                                    { key: "hotkeys.closeWindow", title: qsTr("Close the window"), keys: "Super+Q, Alt+F4" },
+                                    { key: "hotkeys.maximize", title: qsTr("Maximise or restore the window"), keys: "Super+M" },
+                                    { key: "hotkeys.minimize", title: qsTr("Minimise the window"), keys: qsTr("not set") },
+                                    { key: "hotkeys.fullscreen", title: qsTr("Fullscreen"), keys: "Super+F" },
+                                    { key: "hotkeys.alwaysOnTop", title: qsTr("Keep the window on top"), keys: qsTr("not set") },
+                                    { key: "hotkeys.showDesktop", title: qsTr("Show the desktop"), keys: "Super+D" },
+                                    { key: "hotkeys.overview", title: qsTr("Overview of the windows"), keys: "Super+Tab" },
+                                    { key: "hotkeys.windowMenu", title: qsTr("Window menu (always on top, move to a desktop)"), keys: "Alt+Space" },
+                                    { key: "hotkeys.nextLayout", title: qsTr("Next keyboard layout"), keys: "Super+Space" },
+                                    { key: "hotkeys.screenshot", title: qsTr("Screenshot"), keys: "Print" },
+                                    { key: "hotkeys.screenshotArea", title: qsTr("Screenshot of an area"), keys: "Shift+Print, Super+Shift+S" },
+                                    { key: "hotkeys.screenshotWindow", title: qsTr("Screenshot of the window"), keys: "Alt+Print" },
+                                    { key: "hotkeys.screenRecording", title: qsTr("Record the screen"), keys: "Super+Alt+R" },
+                                    { key: "hotkeys.forceQuit", title: qsTr("End a frozen application"), keys: "Ctrl+Shift+Esc" },
+                                    { key: "hotkeys.logout", title: qsTr("Log out"), keys: qsTr("not set") },
+                                    { key: "hotkeys.sleep", title: qsTr("Sleep"), keys: qsTr("not set") },
+                                    { key: "hotkeys.reboot", title: qsTr("Restart"), keys: qsTr("not set") },
+                                    { key: "hotkeys.shutdown", title: qsTr("Shut down"), keys: qsTr("not set") }
+                                ]
+
+                                delegate: SettingsRow {
+                                    required property var modelData
+                                    width: parent ? parent.width : 320
+                                    title: modelData.title
+                                    settingKey: modelData.key
+                                    SettingsKeyField {
+                                        objectName: "hotkeyField_" + modelData.key
+                                        defaultKeys: modelData.keys
+                                    }
+                                }
                             }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Open terminal")
-                                subtitle: "Super+Return"
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Open file manager")
-                                subtitle: "Super+E"
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Open settings")
-                                subtitle: "Super+S, Super+I"
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Open quick settings")
-                                subtitle: "Super+A"
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Open notification centre")
-                                subtitle: "Super+N"
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Clipboard history")
-                                subtitle: "Super+V"
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Lock now")
-                                subtitle: "Super+L"
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Close the window")
-                                subtitle: "Super+Q, Alt+F4"
-                            }
+                        }
+
+                        SettingsSection {
+                            title: qsTr("Fixed shortcuts")
+
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Snap to the left or right half")
@@ -2433,22 +2469,7 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Maximise and restore")
-                                subtitle: "Super+Up, Super+Down, Super+M"
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Fullscreen")
-                                subtitle: "Super+F"
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Show the desktop")
-                                subtitle: "Super+D"
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Overview of the windows")
-                                subtitle: "Super+Tab"
+                                subtitle: "Super+Up, Super+Down"
                             }
                             SettingsRow {
                                 width: parent.width
@@ -2462,11 +2483,6 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: qsTr("Window menu (always on top, move to a desktop)")
-                                subtitle: qsTr("Alt+Space, or right-click the title bar")
-                            }
-                            SettingsRow {
-                                width: parent.width
                                 title: qsTr("Snap to a quarter")
                                 subtitle: qsTr("Super+Left/Right, then Super+Up/Down")
                             }
@@ -2477,11 +2493,6 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
-                                title: qsTr("Record the screen")
-                                subtitle: "Super+Alt+R"
-                            }
-                            SettingsRow {
-                                width: parent.width
                                 title: qsTr("Switch desktops")
                                 subtitle: "Ctrl+Super+Left/Right, Ctrl+Super+1…9, Super+Page Up/Down; Super+Shift+1…9"
                             }
@@ -2489,21 +2500,6 @@ Window {
                                 width: parent.width
                                 title: qsTr("Move the window to another screen")
                                 subtitle: "Super+Shift+Left, Super+Shift+Right"
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Next keyboard layout")
-                                subtitle: "Super+Space"
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Screenshot")
-                                subtitle: qsTr("Print; Shift+Print or Super+Shift+S for an area; Alt+Print for the window")
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("End a frozen application")
-                                subtitle: "Ctrl+Shift+Esc"
                             }
                             SettingsRow {
                                 width: parent.width
@@ -2551,7 +2547,7 @@ Window {
                                 width: parent.width
                                 visible: Settings.values["effects.enabled"] !== false
                                 title: qsTr("Window corner radius")
-                                subtitle: "0 = square corners."
+                                subtitle: qsTr("0 = square corners.")
                                 settingKey: "effects.cornerRadius"
                                 SettingsSlider { settingKey: "effects.cornerRadius"; from: 0; to: 24; step: 1; suffix: " px" }
                             }
