@@ -100,6 +100,8 @@ qt_add_executable(newteller
     src/quicksettings.cpp
     src/sessionservices.cpp
     src/clipboardhistory.cpp
+    src/screenrecorder.cpp
+    src/audiodevices.cpp
     src/bluetooth.cpp
     src/polkitagent.cpp
     src/screensaver.cpp
@@ -150,6 +152,8 @@ set(NEWTELLER_XDG_SHELL_HEADER ${CMAKE_BINARY_DIR}/xdg-shell-protocol.h)
 set(NEWTELLER_POINTER_CONSTRAINTS_HEADER ${CMAKE_BINARY_DIR}/pointer-constraints-unstable-v1-protocol.h)
 # Likewise wlr_cursor_shape_v1.h.
 set(NEWTELLER_CURSOR_SHAPE_HEADER ${CMAKE_BINARY_DIR}/cursor-shape-v1-protocol.h)
+# Likewise wlr_output_power_management_v1.h.
+set(NEWTELLER_OUTPUT_POWER_HEADER ${CMAKE_BINARY_DIR}/wlr-output-power-management-unstable-v1-protocol.h)
 add_custom_command(
     OUTPUT ${NEWTELLER_LAYER_SHELL_HEADER}
     COMMAND ${WAYLAND_SCANNER_EXECUTABLE} server-header
@@ -178,6 +182,13 @@ add_custom_command(
             ${NEWTELLER_CURSOR_SHAPE_HEADER}
     DEPENDS ${CMAKE_SOURCE_DIR}/protocols/cursor-shape-v1.xml
     COMMENT "Generating cursor-shape protocol header")
+add_custom_command(
+    OUTPUT ${NEWTELLER_OUTPUT_POWER_HEADER}
+    COMMAND ${WAYLAND_SCANNER_EXECUTABLE} server-header
+            ${CMAKE_SOURCE_DIR}/protocols/wlr-output-power-management-unstable-v1.xml
+            ${NEWTELLER_OUTPUT_POWER_HEADER}
+    DEPENDS ${CMAKE_SOURCE_DIR}/protocols/wlr-output-power-management-unstable-v1.xml
+    COMMENT "Generating wlr-output-power-management protocol header")
 
 add_executable(newteller-compositor
     src/session/main.c
@@ -186,6 +197,7 @@ add_executable(newteller-compositor
     ${NEWTELLER_XDG_SHELL_HEADER}
     ${NEWTELLER_POINTER_CONSTRAINTS_HEADER}
     ${NEWTELLER_CURSOR_SHAPE_HEADER}
+    ${NEWTELLER_OUTPUT_POWER_HEADER}
 )
 target_compile_definitions(newteller-compositor PRIVATE
     WLR_USE_UNSTABLE

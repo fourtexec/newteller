@@ -56,8 +56,32 @@ Window {
             a |= rightEdge ? LayerShell.Window.AnchorRight : LayerShell.Window.AnchorLeft;
         return a;
     }
-    LayerShell.Window.layer: LayerShell.Window.LayerTop
+    // Urgent notifications (critical battery, pairing codes) show above a
+    // fullscreen game or video too: the top layer is hidden then.
+    readonly property bool anyUrgent: {
+        const list = notif.shown || [];
+        for (let i = 0; i < list.length; ++i) {
+            if (list[i] && list[i].urgent === true)
+                return true;
+        }
+        return false;
+    }
+    LayerShell.Window.layer: anyUrgent ? LayerShell.Window.LayerOverlay
+                                       : LayerShell.Window.LayerTop
     LayerShell.Window.exclusionZone: 0
+    // The keyboard only when a card has a reply field (a click in it then
+    // focuses the popup); otherwise popups never take the keyboard.
+    readonly property bool anyReplyable: {
+        const list = notif.shown || [];
+        for (let i = 0; i < list.length; ++i) {
+            if (list[i] && list[i].replyable === true)
+                return true;
+        }
+        return false;
+    }
+    LayerShell.Window.keyboardInteractivity: anyReplyable
+                                             ? LayerShell.Window.KeyboardInteractivityOnDemand
+                                             : LayerShell.Window.KeyboardInteractivityNone
     LayerShell.Window.scope: "newteller-notifications"
     LayerShell.Window.margins {
         left: centered ? 0 : notif.screenMargin
@@ -103,6 +127,9 @@ Window {
                 app: e.app || "",
                 summary: e.summary || "",
                 body: e.body || "",
+                bodyMarkup: e.bodyMarkup || "",
+                replyable: e.replyable === true,
+                replyPlaceholder: e.replyPlaceholder || "",
                 icon: e.icon || "",
                 image: e.image || "",
                 value: e.value === undefined ? -1 : e.value,
@@ -236,6 +263,9 @@ Window {
                 app: model.app,
                 summary: model.summary,
                 body: model.body,
+                bodyMarkup: model.bodyMarkup,
+                replyable: model.replyable,
+                replyPlaceholder: model.replyPlaceholder,
                 icon: model.icon,
                 image: model.image,
                 value: model.value,
@@ -250,7 +280,7 @@ Window {
                 const out = [];
                 for (let i = 0; i + 1 < list.length; i += 2) {
                     const key = String(list[i] || "");
-                    if (key.length > 0 && key !== "default")
+                    if (key.length > 0 && key !== "default" && key !== "inline-reply")
                         out.push({ key: key, label: String(list[i + 1] || "") || key });
                 }
                 return out;
@@ -263,6 +293,13 @@ Window {
                 }
                 return false;
             }
+            function sendReply() {
+                if (replyField.text.trim().length === 0)
+                    return;
+                Notifications.reply(card.entry.id, replyField.text);
+                replyField.text = "";
+            }
+
             // 1.0 -> 0.0 while the timeout runs; drives the progress line.
             property real progress: (entry.timeout || 0) > 0 ? 1.0 : 0.0
             // A new revision (the notification was replaced) starts the
@@ -397,7 +434,10 @@ Window {
                     Text {
                         Layout.fillWidth: true
                         visible: (card.entry.body || "").length > 0
-                        text: card.entry.body || ""
+                        // The daemon's sanitised markup (bold, italic,
+                        // underline, line breaks); never raw HTML.
+                        textFormat: card.entry.bodyMarkup ? Text.StyledText : Text.PlainText
+                        text: card.entry.bodyMarkup || card.entry.body || ""
                         color: Qt.rgba(notif.appearance.foreground.r, notif.appearance.foreground.g,
                                        notif.appearance.foreground.b, 0.88)
                         font.family: Theme.fontFamily
@@ -428,6 +468,33 @@ Window {
                             Behavior on width {
                                 NumberAnimation { duration: motion.fast }
                             }
+                        }
+                    }
+
+                    // Inline reply (Telegram, KDE Connect): answer without
+                    // opening the application.
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.topMargin: 4
+                        spacing: 6
+                        visible: card.entry.replyable === true
+
+                        SettingsTextField {
+                            id: replyField
+                            objectName: "notificationReply"
+                            Layout.fillWidth: true
+                            placeholder: card.entry.replyPlaceholder || qsTr("Reply")
+                            // Typing keeps the popup open.
+                            onTextChanged: {
+                                if (text.length > 0)
+                                    lifeTimer.stop();
+                            }
+                            onAccepted: card.sendReply()
+                        }
+                        TaskButton {
+                            objectName: "notificationReplySend"
+                            label: qsTr("Send")
+                            onClicked: card.sendReply()
                         }
                     }
 

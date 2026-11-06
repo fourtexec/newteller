@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
@@ -113,6 +114,10 @@ void ntConfigDefaults(struct CompositorConfig *config)
     config->snapping = true;
     config->switcherAllWorkspaces = false;
     snprintf(config->placement, sizeof(config->placement), "%s", "center");
+    config->rulesAlwaysOnTop[0] = '\0';
+    config->rulesMaximized[0] = '\0';
+    for (int i = 0; i < 4; ++i)
+        snprintf(config->hotCorners[i], sizeof(config->hotCorners[i]), "%s", "none");
     config->bindingCount = 0;
 
     config->effects = true;
@@ -278,6 +283,18 @@ bool ntConfigLoadFile(struct CompositorConfig *config, const char *path)
             config->animationSpeed = parseDouble(value, config->animationSpeed, 0.25, 4.0);
         else if (strcmp(key, "windows.placement") == 0)
             copyText(config->placement, sizeof(config->placement), value);
+        else if (strcmp(key, "rules.alwaysOnTop") == 0)
+            copyText(config->rulesAlwaysOnTop, sizeof(config->rulesAlwaysOnTop), value);
+        else if (strcmp(key, "rules.maximized") == 0)
+            copyText(config->rulesMaximized, sizeof(config->rulesMaximized), value);
+        else if (strcmp(key, "hotCorners.topLeft") == 0)
+            copyText(config->hotCorners[0], sizeof(config->hotCorners[0]), value);
+        else if (strcmp(key, "hotCorners.topRight") == 0)
+            copyText(config->hotCorners[1], sizeof(config->hotCorners[1]), value);
+        else if (strcmp(key, "hotCorners.bottomLeft") == 0)
+            copyText(config->hotCorners[2], sizeof(config->hotCorners[2]), value);
+        else if (strcmp(key, "hotCorners.bottomRight") == 0)
+            copyText(config->hotCorners[3], sizeof(config->hotCorners[3]), value);
         else if (strncmp(key, "bind.", 5) == 0 && config->bindingCount < NT_MAX_BINDINGS) {
             // bind.N = Super+Shift+T|command
             char *bar = strchr(value, '|');
@@ -404,4 +421,25 @@ bool ntOutputsSave(const char *path, const struct SavedOutput *outputs, int coun
         return false;
     }
     return rename(temporary, path) == 0;
+}
+
+bool ntConfigListContains(const char *list, const char *name)
+{
+    if (!list || !name || name[0] == '\0')
+        return false;
+    size_t length = strlen(name);
+    const char *p = list;
+    while (*p) {
+        while (*p == ' ' || *p == '\t' || *p == ',')
+            ++p;
+        const char *start = p;
+        while (*p && *p != ',')
+            ++p;
+        const char *end = p;
+        while (end > start && (end[-1] == ' ' || end[-1] == '\t'))
+            --end;
+        if ((size_t)(end - start) == length && strncasecmp(start, name, length) == 0)
+            return true;
+    }
+    return false;
 }

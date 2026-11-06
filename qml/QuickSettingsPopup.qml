@@ -20,6 +20,8 @@ DropdownWindow {
     property var wifiPopup: null
     // The Bluetooth device list.
     property var bluetoothPopup: null
+    // Outputs and per-application volume.
+    property var soundPopup: null
     // Rows that are on right now, for the height computation.
     readonly property int visibleRows: {
         var rows = 0;
@@ -39,6 +41,8 @@ DropdownWindow {
             rows++;
         if (Session.powerProfiles.length > 0)
             rows++;
+        if (Recorder.available)
+            rows++;
         return rows + 1 /* dnd */ + 1 /* footer separator */;
     }
 
@@ -46,6 +50,12 @@ DropdownWindow {
     cardHeight: Math.max(240, Math.min(560, 24 + 46 * visibleRows + (Quick.mediaAvailable ? (Quick.mediaArtUrl.length > 0 ? 84 : 74) : 0)))
     padding: 12
     scopeName: "newteller-quick-settings"
+
+    // 75 -> "1:15".
+    function formatDuration(seconds) {
+        const s = Math.max(0, Math.floor(seconds));
+        return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+    }
 
     // Reading the mixer on the way in, so the sliders show the live values.
     function opened() {
@@ -173,13 +183,18 @@ DropdownWindow {
                 }
             }
             TaskButton {
-                visible: Session.soundSettingsTool.length > 0
+                objectName: "soundDevicesButton"
+                visible: (popup.soundPopup !== null && Audio.available)
+                         || Session.soundSettingsTool.length > 0
                 width: 30
                 iconName: "chevron-right"
                 tooltipText: qsTr("Sound devices")
                 onClicked: {
                     popup.hide();
-                    Session.openSoundSettings();
+                    if (popup.soundPopup !== null && Audio.available)
+                        popup.soundPopup.show();
+                    else
+                        Session.openSoundSettings();
                 }
             }
         }
@@ -370,10 +385,26 @@ DropdownWindow {
             }
             Text {
                 Layout.fillWidth: true
-                text: qsTr("Do not disturb")
+                readonly property real until: Number(Settings.values["notifications.dndUntil"]) || 0
+                text: Settings.values["notifications.doNotDisturb"] === true && until > 0
+                      ? qsTr("Do not disturb until %1")
+                            .arg(Qt.formatTime(new Date(until), Qt.locale().timeFormat(Locale.ShortFormat)))
+                      : qsTr("Do not disturb")
                 color: Theme.foreground
                 font.family: Theme.fontFamily
                 font.pointSize: Theme.fontSize
+                elide: Text.ElideRight
+            }
+            // Quiet for an hour, then notifications come back by themselves.
+            TaskButton {
+                objectName: "dndHourButton"
+                visible: Settings.values["notifications.doNotDisturb"] !== true
+                label: qsTr("1 h")
+                tooltipText: qsTr("Do not disturb for an hour")
+                onClicked: {
+                    Settings.setValue("notifications.dndUntil", Date.now() + 3600 * 1000);
+                    Settings.setValue("notifications.doNotDisturb", true);
+                }
             }
             SettingsSwitch {
                 settingKey: "notifications.doNotDisturb"
@@ -411,6 +442,74 @@ DropdownWindow {
             }
             SettingsSwitch {
                 settingKey: "nightLight.enabled"
+            }
+        }
+
+        // --- screen recording (wf-recorder) -------------------------------
+        RowLayout {
+            objectName: "recorderRow"
+            Layout.fillWidth: true
+            visible: Recorder.available
+            spacing: 4
+
+            Item {
+                width: 34
+                height: 34
+                Image {
+                    anchors.centerIn: parent
+                    width: 18
+                    height: 18
+                    sourceSize.width: 36
+                    sourceSize.height: 36
+                    fillMode: Image.PreserveAspectFit
+                    source: Shell.tintedIcon("video", Recorder.recording ? "#e5484d"
+                                                                         : Theme.foreground)
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                text: Recorder.recording
+                      ? qsTr("Recording %1").arg(popup.formatDuration(Recorder.elapsed))
+                      : qsTr("Record the screen")
+                color: Theme.foreground
+                font.family: Theme.fontFamily
+                font.pointSize: Theme.fontSize
+                elide: Text.ElideRight
+            }
+            // The microphone goes into the video too (recorder.audio).
+            TaskButton {
+                objectName: "recorderAudio"
+                visible: !Recorder.busy
+                iconName: "mic"
+                iconSize: 18
+                active: Settings.values["recorder.audio"] === true
+                onClicked: Settings.setValue("recorder.audio",
+                                             Settings.values["recorder.audio"] !== true)
+            }
+            TaskButton {
+                objectName: "recorderScreen"
+                visible: !Recorder.busy
+                label: qsTr("Screen")
+                onClicked: {
+                    popup.hide();
+                    Recorder.start(false, popup.screen ? popup.screen.name : "");
+                }
+            }
+            TaskButton {
+                objectName: "recorderArea"
+                visible: !Recorder.busy && Recorder.areaAvailable
+                label: qsTr("Area")
+                onClicked: {
+                    popup.hide();
+                    Recorder.start(true, "");
+                }
+            }
+            TaskButton {
+                objectName: "recorderStop"
+                visible: Recorder.busy
+                iconName: "circle-stop"
+                label: qsTr("Stop")
+                onClicked: Recorder.stop()
             }
         }
 

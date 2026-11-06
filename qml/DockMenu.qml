@@ -200,6 +200,27 @@ DropdownWindow {
         }
     }
 
+    // The application's own actions from its .desktop file ("New Private
+    // Window", "Compose Message", ...).
+    Repeater {
+        model: dockMenu.entry && dockMenu.entry.app && dockMenu.entry.app.actions
+               ? dockMenu.entry.app.actions : []
+
+        delegate: TaskButton {
+            required property var modelData
+            objectName: "dockMenuAction"
+            width: menuColumn.width
+            height: 34
+            fillWidth: true
+            iconName: "chevron-right"
+            label: modelData.name || modelData.id || ""
+            onClicked: {
+                Apps.launchAction(dockMenu.entry.appId, modelData.id);
+                dockMenu.close();
+            }
+        }
+    }
+
     TaskButton {
         width: menuColumn.width
         height: 34

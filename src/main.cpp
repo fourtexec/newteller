@@ -15,6 +15,8 @@
 #include "screensaver.h"
 #include "translator.h"
 #include "clipboardhistory.h"
+#include "screenrecorder.h"
+#include "audiodevices.h"
 #include "bluetooth.h"
 #include "bluetoothagent.h"
 #include "drivemonitor.h"
@@ -256,7 +258,14 @@ int main(int argc, char *argv[])
     QObject::connect(&screenSaver, &ScreenSaverService::inhibitedChanged, &session,
                      &SessionServices::setIdleInhibited);
     QObject::connect(&screenSaver, &ScreenSaverService::lockRequested, &session, &SessionServices::lock);
+    // Over a game or a video notifications wait in the history.
+    QObject::connect(&session, &SessionServices::fullscreenChanged, &notifications,
+                     [&session, &notifications] {
+                         notifications.setFullscreenQuiet(session.fullscreenActive());
+                     });
     ClipboardHistory clipboard(&settings);
+    ScreenRecorder recorder(&settings, &notifications);
+    AudioDevices audio;
     Bluetooth bluetooth;
     // Pairing codes and confirmations (org.bluez.Agent1), only in the
     // NewTeller session: another desktop has its own agent.
@@ -331,6 +340,8 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("Quick"), &quick);
     engine.rootContext()->setContextProperty(QStringLiteral("Session"), &session);
     engine.rootContext()->setContextProperty(QStringLiteral("Clipboard"), &clipboard);
+    engine.rootContext()->setContextProperty(QStringLiteral("Recorder"), &recorder);
+    engine.rootContext()->setContextProperty(QStringLiteral("Audio"), &audio);
     engine.rootContext()->setContextProperty(QStringLiteral("Bluetooth"), &bluetooth);
     engine.rootContext()->setContextProperty(QStringLiteral("Polkit"), &polkit);
 

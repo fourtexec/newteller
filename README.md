@@ -11,8 +11,13 @@ inside another Wayland or X11 session for development, but that is now the fallb
 the product.
 
 - **Session:** a small wlroots 0.18/0.19 compositor (`newteller-compositor`)
-  with layer-shell, xdg-shell, XWayland, foreign-toplevel, screenshots, clipboard,
-  idle-inhibit and the usual input protocols. `newteller-session` is the login-session
+  with layer-shell, xdg-shell, XWayland, foreign-toplevel (wlr and ext),
+  output power management (`wlopm --off '*'`),
+  xdg-foreign (portal dialogs attach to their application), security-context
+  (sandboxed Flatpak apps cannot capture the screen, read the clipboard of
+  others, inject input or draw over the desktop), screenshots, clipboard,
+  idle-inhibit and the usual input protocols. Dialogs open centred over their
+  window and stay above it. `newteller-session` is the login-session
   entry point.
 - **Core:** C++20 + Qt 6 (settings, themes, application catalogue, session actions, plugin loader)
 - **UI:** QML components with JavaScript logic, rendered by Qt Quick's scene graph (panel, start menu, desktop, widgets, plugins). The shell does not embed Chromium/WebEngine; a literal HTML/CSS UI would need a browser engine or a separate, much larger custom renderer.
@@ -40,6 +45,11 @@ inside VirtualBox. The implemented pieces are:
   either as pixmaps (IconPixmap) or through the system icon theme, and the
   tray hides itself when another tray host owns the session (`tray.enabled`,
   `tray.menus`).
+- **Sound card** (the arrow next to the volume slider): pick the output
+  (speakers, headphones, HDMI, a Bluetooth headset; what is playing moves
+  along), the microphone when there are several, and set or mute the volume
+  of each application that plays. Uses
+  `pactl` (PipeWire or PulseAudio); without it the arrow opens pavucontrol.
 - **Quick settings: the indicators button at the end of the panel.** One card
   with the media player that is playing (MPRIS over D-Bus: title, artist,
   play/pause, next/previous), a volume slider (via `wpctl` or `pactl`, with a
@@ -57,7 +67,8 @@ inside VirtualBox. The implemented pieces are:
   minimised and closed from the dock (click, middle click and a right-click
   menu; read-only toplevels fall back to launching the application), and
   windows of one application can be grouped into a single button. The dock
-  menu shows a live preview of every X11/XWayland window (`dock.thumbnails`),
+  menu shows a live preview of every X11/XWayland window (`dock.thumbnails`)
+  and the application's own actions ("New Private Window", ...),
   and pinned buttons can be dragged to reorder them.
 - Start menu: highlighted fuzzy search, category chips, recently used row,
   Lock / Log out / Sleep / Restart / Shut down, Settings; right-click an
@@ -70,13 +81,26 @@ inside VirtualBox. The implemented pieces are:
   icon and name and starts it on a double-click; other launchers start only
   when they are marked executable (otherwise they open as text)
 - **Notification centre: the bell at the end of the panel.** The history of the
-  built-in notification daemon, newest first, with per-entry removal, a clear-all
+  built-in notification daemon, grouped by application (with a clear button per
+  application), newest first, with per-entry removal, a clear-all
   button and the do-not-disturb switch; the bell counts what arrived while it
   was closed. Per-row removal is `Notifications.removeHistory()` on the daemon.
 - **Notification sounds** (`notifications.soundEnabled`): a new popup plays
   the application's `sound-file`, the chosen `notifications.soundFile` or
   the theme's message sound (canberra-gtk-play, pw-play or paplay); never
   under do-not-disturb or for `suppress-sound`.
+- **Notification markup**: bold, italic, underline and line breaks in a
+  notification's text are shown (body-markup); links, pictures and any
+  other HTML are reduced to their text, so no notification can load remote
+  content. The daemon advertises what it does (`body-markup`, `sound`,
+  `persistence`, `icon-static`, `inline-reply`), so applications leave
+  sounds to it.
+- **Quiet in full screen** (`notifications.quietInFullscreen`): while a
+  fullscreen window is shown, popups and their sounds wait in the history
+  (urgent ones still show); the compositor reports it as `event fullscreen 1|0`.
+- **Reply from the notification**: messengers that offer an inline reply
+  (Telegram Desktop, KDE Connect) get a text field in the popup; Enter or
+  Send answers without opening the application.
 - **Notification popups** follow the spec's hints: pictures (`image-data`,
   `image-path`), a click runs the `default` action, `transient` ones stay out
   of the history, `resident` ones stay after an action, and a popup tagged
@@ -91,6 +115,14 @@ inside VirtualBox. The implemented pieces are:
   plugged in is announced with Open (mounts it through UDisks2 and opens the
   folder) and Eject (unmounts it and powers the drive off); internal disks
   and loop devices stay quiet. Needs udisks2.
+- **Calculator in the start menu search**: `2+2*3`, `(15,5-3)/4`, `2^10`
+  show the result first; Enter copies it.
+- **Recent files in the start menu search**: documents opened in other
+  applications (`recently-used.xbel`) show up when part of their name is
+  typed (`startmenu.recentFiles`).
+- **Settings in the start menu search**: "resolution", "wifi", "раскладка"
+  and the like list the matching Settings page ("Settings: Displays"), which
+  opens on that page (`Shell.openSettingsPage`).
 - **Search in the wrong layout**: the start menu and the run dialog retry a
   query that finds nothing in the other keyboard layout, so "ашкуащч" finds
   Firefox and "nthv" finds Терминал (ЙЦУКЕН <-> QWERTY).
@@ -139,7 +171,9 @@ inside VirtualBox. The implemented pieces are:
 - Themes (JSON, including `nord`, `ocean` and `highcontrast`) and a settings file
   with live reload
 - Plugin system (manifest + QML) with enable/disable and auto-rescan
-- Window management: snap a window to the left/right half with `Super+Left`/`Super+Right`,
+- Window management: snap a window to the left/right half with `Super+Left`/`Super+Right`
+  (then `Super+Up`/`Super+Down` for a quarter, or drag it into a screen corner;
+  while dragging, a translucent preview shows where it will snap),
   maximise with `Super+Up`, restore with `Super+Down`, drag a window to an edge to snap it,
   move it between outputs with `Super+Shift+Left`/`Super+Shift+Right`, and show/hide the
   desktop with `Super+D`, and move or resize a window from anywhere inside it with
@@ -216,8 +250,9 @@ inside VirtualBox. The implemented pieces are:
   typing, pointer speed and left-handed buttons, applied live through
   libinput; cursor theme and size.
 - **Workspaces.** Four virtual desktops by default (`workspaces.count`):
-  `Ctrl+Super+Left/Right` or `Super+Page Up/Down` switch, add `Shift` to take
-  the focused window along; dots on the panel show and switch them.
+  `Ctrl+Super+Left/Right` or `Super+Page Up/Down` switch (`Ctrl+Super+1…9`
+  goes straight to one, `Super+Shift+1…9` takes the focused window there),
+  add `Shift` to take the focused window along; dots on the panel show and switch them.
 - **Alt+Tab** walks through every window of the current desktop in
   most-recently-used order with a window list overlay and a live preview;
   `Shift+Tab` goes back, `Escape` cancels. A tap of `Super` opens the start menu.
@@ -230,6 +265,21 @@ inside VirtualBox. The implemented pieces are:
   "system title bar") get one: title, minimize/maximize/close, double click to
   maximize, drag to move, edges to resize. Buttons left or right, height,
   border, font and colours (or the theme's) in Settings → Windows.
+- **Window menu**: right-click a title bar (NewTeller's own or an
+  application's header bar) or press `Alt+Space`: minimize, maximize, full
+  screen, **always on top**, show on every desktop, move to another desktop
+  or (with several monitors) the next screen, close. Settings →
+  Windows → Window rules keeps chosen applications on top or opens them
+  maximized (`windowRules.alwaysOnTop`, `windowRules.maximized`).
+- **Hot corners** (Settings → Windows): push the pointer into a screen corner
+  to open the overview, show the desktop, open the start menu or the
+  notifications, or lock (`hotCorners.topLeft` … `bottomRight`; off by
+  default, never during a drag, a full-screen window or a game).
+- **Application bells** (xdg-system-bell, wlroots 0.19+): a terminal's or an
+  application's bell plays the sound theme's bell (`sounds.bell`), not under
+  do-not-disturb.
+- **Caps Lock / Num Lock on screen** for keyboards without indicator lights
+  (`keyboard.lockKeysOsd`).
 - **Overview** (`Super+Tab`): every window of a desktop as a live thumbnail,
   desktops along the top; click to switch, close, or move a window to
   another desktop. Alt+Tab shows thumbnails too.
@@ -242,28 +292,40 @@ inside VirtualBox. The implemented pieces are:
 - **Application look**: dark/light preference, GTK theme, icon theme,
   application font and text size, cursor theme; lock screen colour.
 - **Wi-Fi networks** from quick settings: scan, join (with the password asked
-  inline for new secured networks; WPA2/WPA3), disconnect; NetworkManager
+  inline for new secured networks; WPA2/WPA3), join a hidden network by its
+  name, disconnect; NetworkManager
   keeps them. The shell talks to NetworkManager over D-Bus and, when Wi-Fi
   cannot work, says why: NetworkManager not running, no adapter (driver or
   firmware missing), adapter unmanaged, switched off or blocked. The
   installer adds NetworkManager and, on real hardware, the common Wi-Fi
   firmware packages, and starts NetworkManager.
 - **Clipboard history** on `Super+V` (wl-clipboard): the texts copied in the
-  session, newest first; click one to copy it again. Kept in memory unless
+  session, newest first; click one to copy it again. Pin the snippets you
+  reuse (they stay across restarts and are never pushed out) and type to
+  search; Enter takes the first match. Kept in memory unless
   `clipboard.persistHistory` is on. Passwords that a password manager marks as secret
   (KeePassXC, Bitwarden and others) are never recorded.
 - **Power profiles** (power-profiles-daemon) in quick settings and low-battery
-  notifications at 10% and 5%.
+  notifications at 10% and 5%; at 20% on battery the power saver profile
+  switches on until the machine is plugged in (`power.batterySaver`).
 - **Night light** (wlsunset) on a schedule or always, from quick settings or
   Settings → Displays.
 - **Desktop services.** Screen sharing and screenshots through
   xdg-desktop-portal-wlr, a polkit agent for administrator prompts, and
   `Ctrl+Alt+F1…F12` to switch virtual terminals.
 - Screenshots: `Print` captures the whole screen, `Shift+Print` or `Super+Shift+S` an
-  area picked with the mouse (slurp); the PNG lands in `Screenshots` inside the pictures folder (`~/Pictures`, or its
+  area picked with the mouse (slurp), `Alt+Print` the focused window with its frame; the PNG lands in `Screenshots` inside the pictures folder (`~/Pictures`, or its
   localized name from `user-dirs.dirs`), is
   copied to the clipboard (wl-copy) and announced through the notification daemon
-- Multi-monitor: one desktop and one panel per screen
+- **Screen recording** (wf-recorder): quick settings records the whole screen
+  or an area picked with the mouse (slurp), optionally with the microphone
+  (`recorder.audio`); `Super+Alt+R` starts and stops it. A red pill on the
+  panel shows the time and stops the recording; the MP4 lands in
+  `Screencasts` inside the videos folder and a notification offers Play and
+  Show in folder.
+- Multi-monitor: one desktop and one panel per screen; cards opened from the
+  keyboard (`Super`, `Super+A`, `Super+N`, `Super+V`) open on the screen the
+  pointer is on (`event output NAME` on the control socket)
 - Rust core (application search index, metrics sampler, config, watcher) with a
   C++/Qt fallback, plus the `newteller-ctl` command line tool
 
@@ -364,6 +426,13 @@ distribution has them.
 The compositor reads `~/.config/newteller/compositor.conf`, which the shell
 writes from its settings, and listens on a control socket (`$NEWTELLER_IPC`):
 `newteller-compositor --msg reload|lock|locked|dpms on|dpms off|layout next|workspace N|outputs|windows|kill ID|exit`.
+Window commands take the id from `windows`: `minimize ID [on|off]`,
+`maximize ID [on|off|toggle]`, `fullscreen ID [on|off|toggle]`,
+`always-on-top ID [on|off|toggle]`, `sticky ID [on|off|toggle]` (every
+desktop), `move-to-output ID [next|prev]` and `window-menu [ID [X Y]]` (opens the
+window menu; watchers get `event window-menu ID X Y DESKTOP FLAGS TITLE`).
+`windows` flags: `f` focused, `m` minimized, `x` maximized, `F` full screen,
+`t` always on top, `s` on every desktop, `h` not responding (`-` for none).
 `windows` marks frozen windows with the `h` flag and reports each window's
 process id; `kill ID` force-quits one (never the compositor or the shell).
 `idle-inhibit on|off` keeps the screen awake while the connection that sent
@@ -380,7 +449,8 @@ these shortcuts globally, even when an application has focus:
 `Super+Up`/`Super+Down` (maximise/restore), `Super+Shift+Left`/`Super+Shift+Right`
 (move to another output), `Super+D` (show desktop), `Super+M` (maximise),
 `Super+F` (fullscreen), `Super+L` (lock), `Super+Space` (next keyboard layout),
-`Super+V` (clipboard history), `Super+N` (notifications), `Super+A` (quick settings), `Super+R` (run), `Super+E` (home
+`Super+V` (clipboard history), `Super+Alt+R` (start/stop screen recording), `` Alt+` `` (the next window of the same application), `Super+1…9` (the Nth dock application: start
+it, bring it up, or cycle its windows), `Alt+Space` (window menu), `Super+N` (notifications), `Super+A` (quick settings), `Super+R` (run), `Super+E` (home
 folder), `Super+I` (settings), `Super+Shift+S` (area screenshot),
 `Ctrl+Super+Left/Right` (switch desktop, with `Shift` to move the window),
 `Ctrl+Shift+Esc` or `Ctrl+Alt+Esc` (force quit),

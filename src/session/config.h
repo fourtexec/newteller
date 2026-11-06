@@ -66,6 +66,12 @@ struct CompositorConfig {
     bool snapping;                         // edge snapping while dragging
     bool switcherAllWorkspaces;            // Alt+Tab over every desktop
     char placement[16];                    // center | cascade | mouse
+    // Window rules: comma separated app ids (or X11 classes), any case.
+    char rulesAlwaysOnTop[NT_CONFIG_TEXT];
+    char rulesMaximized[NT_CONFIG_TEXT];
+    // Hot corners (top left, top right, bottom left, bottom right): none |
+    // overview | desktop | startMenu | notifications | lock.
+    char hotCorners[4][16];
 
     struct NtBinding bindings[NT_MAX_BINDINGS];
     int bindingCount;
@@ -97,6 +103,10 @@ bool ntConfigParseColor(const char *text, float out[4]);
 
 // Splits the comma separated layout list; returns how many were written.
 int ntConfigSplitList(const char *list, char out[][32], int max);
+
+// True when `name` is one of the comma separated entries of `list`
+// (case-insensitive, spaces around entries ignored). Empty names never match.
+bool ntConfigListContains(const char *list, const char *name);
 
 // A saved output configuration, keyed by the output's make/model/serial.
 struct SavedOutput {

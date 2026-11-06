@@ -69,13 +69,91 @@ QtObject {
             } else if (name === "previous") {
                 Quick.mediaPrevious();
                 root.osd.show("skip-back", -1, qsTr("Previous track"));
+            } else if (name.startsWith("caps-") || name.startsWith("num-")) {
+                if (Settings.values["keyboard.lockKeysOsd"] === false)
+                    return;
+                const on = name.endsWith("-on");
+                if (name.startsWith("caps-"))
+                    root.osd.show("keyboard", -1, on ? qsTr("Caps Lock on") : qsTr("Caps Lock off"));
+                else
+                    root.osd.show("keyboard", -1, on ? qsTr("Num Lock on") : qsTr("Num Lock off"));
             }
+        }
+    }
+
+    // A tray icon that cannot be activated (Electron and AppIndicator apps:
+    // Discord, Slack, Steam...): start the application behind it, which
+    // brings its window back, instead of doing nothing.
+    readonly property Connections trayFallback: Connections {
+        target: Tray
+        function onActivateFailed(id, candidates) {
+            for (const candidate of candidates) {
+                const app = Apps.matchWindowApp(candidate, "");
+                if (app && app.id) {
+                    Apps.launch(app.id);
+                    return;
+                }
+            }
+            // The application's name as the start menu knows it.
+            for (const candidate of candidates) {
+                const found = Apps.search(candidate, 1);
+                if (found.length > 0 && found[0].id
+                    && String(found[0].name).toLowerCase() === candidate.toLowerCase()) {
+                    Apps.launch(found[0].id);
+                    return;
+                }
+            }
+            Shell.notify(qsTr("%1 cannot be opened from its icon")
+                             .arg(candidates.length > 0 ? candidates[candidates.length - 1]
+                                                        : qsTr("This application")),
+                         qsTr("Right-click the icon for its menu."));
+        }
+    }
+
+    // "Do not disturb for an hour" ends by itself; switching it off by hand
+    // forgets the end time.
+    readonly property Timer dndTimer: Timer {
+        interval: 20000
+        repeat: true
+        running: true
+        triggeredOnStart: true
+        onTriggered: {
+            const until = Number(Settings.values["notifications.dndUntil"]) || 0;
+            if (until <= 0)
+                return;
+            if (Settings.values["notifications.doNotDisturb"] !== true) {
+                Settings.setValue("notifications.dndUntil", 0);
+            } else if (Date.now() >= until) {
+                Settings.setValue("notifications.doNotDisturb", false);
+                Settings.setValue("notifications.dndUntil", 0);
+            }
+        }
+    }
+
+    // A new keyboard layout shows on screen for a moment (Super+Space,
+    // Alt+Shift, the panel). Not with a layout per window, where every
+    // window switch would show it.
+    property int shownLayout: -1
+    readonly property Connections layoutHint: Connections {
+        target: Session
+        function onKeyboardChanged() {
+            const index = Session.keyboardLayout;
+            const previous = root.shownLayout;
+            root.shownLayout = index;
+            if (previous < 0 || previous === index || Session.keyboardLayouts.length < 2
+                || Settings.values["keyboard.layoutOsd"] === false
+                || Settings.values["keyboard.layoutPerWindow"] === true)
+                return;
+            root.osd.show("keyboard", -1, Session.keyboardLayoutName);
         }
     }
 
     // Low battery: one notification at 10% and one at 5% while discharging,
     // re-armed once the machine is plugged in.
     property int batteryWarned: 100
+    // The power profile in use before the battery saver switched to
+    // power-saver; restored when the machine is plugged in.
+    property string profileBeforeSaver: ""
     readonly property Connections batteryWatch: Connections {
         target: System
         function onSnapshotUpdated() {
@@ -83,9 +161,24 @@ QtObject {
                 return;
             if (System.batteryCharging) {
                 root.batteryWarned = 100;
+                if (root.profileBeforeSaver.length > 0) {
+                    // Only if the user did not pick another profile since.
+                    if (Session.powerProfile === "power-saver")
+                        Session.setPowerProfile(root.profileBeforeSaver);
+                    root.profileBeforeSaver = "";
+                }
                 return;
             }
             const level = Math.round(System.batteryPercent);
+            if (level <= 20 && Settings.values["power.batterySaver"] !== false
+                && root.profileBeforeSaver.length === 0
+                && Session.powerProfiles.indexOf("power-saver") >= 0
+                && Session.powerProfile !== "power-saver" && Session.powerProfile.length > 0) {
+                root.profileBeforeSaver = Session.powerProfile;
+                Session.setPowerProfile("power-saver");
+                Shell.notify(qsTr("Battery saver on"),
+                             qsTr("%1% left: the power saver profile is on until you plug in.").arg(level));
+            }
             if (level <= 5 && root.batteryWarned > 5) {
                 root.batteryWarned = 5;
                 // Urgent: do-not-disturb must not hide it.
@@ -116,6 +209,11 @@ QtObject {
         notificationCenter: root.notificationCenter
         wifiPopup: root.wifiPopup
         bluetoothPopup: root.bluetoothPopup
+        soundPopup: root.soundPopup
+    }
+
+    readonly property SoundPopup soundPopup: SoundPopup {
+        screen: Qt.application.screens[0]
     }
 
     readonly property BluetoothPopup bluetoothPopup: BluetoothPopup {
@@ -130,6 +228,20 @@ QtObject {
     // The administrator prompt (polkit): "Open with root", system changes.
     readonly property AuthDialog authDialog: AuthDialog {
         screen: Qt.application.screens[0]
+    }
+
+    // Right click on a title bar, Alt+Space: minimize, maximize, always on
+    // top, move to another desktop, close.
+    readonly property WindowMenu windowMenu: WindowMenu {
+        screen: Qt.application.screens[0]
+    }
+
+    readonly property Connections windowMenuRequests: Connections {
+        target: Session
+        function onWindowMenuRequested(id, x, y, desktop, flags, title) {
+            root.startMenu.hide();
+            root.windowMenu.openAt(id, x, y, desktop, flags, title);
+        }
     }
 
     // Ctrl+Shift+Esc: end a frozen application.
@@ -214,6 +326,28 @@ QtObject {
         }
     }
 
+    // The panel of the screen under the pointer (multi-monitor), or null
+    // outside a NewTeller session.
+    function activePanel() {
+        if (!Session.activeOutput)
+            return null;
+        for (let i = 0; i < root.panels.count; ++i) {
+            const panel = root.panels.objectAt(i);
+            if (panel && panel.screen && panel.screen.name === Session.activeOutput)
+                return panel;
+        }
+        return null;
+    }
+
+    // A card asked for from the keyboard opens on the screen in use.
+    function toggleOnActiveScreen(dropdown, kind) {
+        const panel = root.activePanel();
+        if (panel)
+            panel.openFromKeyboard(dropdown, kind);
+        else
+            dropdown.toggle();
+    }
+
     // The start menu, the desktop menu and `newteller --settings` all open the
     // same embedded settings window.
     readonly property Connections shellConnections: Connections {
@@ -222,12 +356,19 @@ QtObject {
             root.startMenu.hide();
             root.settingsApp.showFromShell();
         }
+        function onSettingsPageRequested(page) {
+            root.startMenu.hide();
+            if (root.settingsApp.pages.some(p => p.id === page))
+                root.settingsApp.currentPage = page;
+            root.settingsApp.showFromShell();
+        }
         function onStartMenuRequested() {
-            root.startMenu.show();
+            if (!root.startMenu.visible)
+                root.toggleOnActiveScreen(root.startMenu, "start");
         }
         function onNotificationsToggleRequested() {
             root.startMenu.hide();
-            root.notificationCenter.toggle();
+            root.toggleOnActiveScreen(root.notificationCenter, "bell");
         }
         function onTaskViewToggleRequested() {
             root.startMenu.hide();
@@ -239,19 +380,30 @@ QtObject {
         }
         function onClipboardToggleRequested() {
             root.startMenu.hide();
-            root.clipboard.toggle();
+            root.toggleOnActiveScreen(root.clipboard, "");
         }
         function onQuickSettingsToggleRequested() {
             root.startMenu.hide();
-            root.quickSettings.toggle();
+            root.toggleOnActiveScreen(root.quickSettings, "indicators");
         }
         function onStartMenuToggleRequested() {
             root.runDialog.hide();
-            root.startMenu.toggle();
+            root.toggleOnActiveScreen(root.startMenu, "start");
         }
         function onRunDialogRequested() {
             root.startMenu.hide();
             root.runDialog.show();
+        }
+        function onScreenRecordingToggleRequested() {
+            Recorder.toggle();
+        }
+        function onDockItemRequested(index) {
+            // The panel of the first screen: every panel shows the same dock.
+            const panel = root.panels.objectAt(0);
+            if (panel) {
+                root.startMenu.hide();
+                panel.activateDockIndex(index);
+            }
         }
     }
 }

@@ -110,6 +110,7 @@ install_debian() {
         lxpolkit procps wdisplays
         network-manager wpasupplicant network-manager-gnome
         blueman pavucontrol slurp wl-clipboard sound-theme-freedesktop udisks2
+        wf-recorder pulseaudio-utils
     )
     # Wi-Fi firmware for the common adapters (Debian: non-free-firmware;
     # Ubuntu: linux-firmware). Missing firmware is the usual reason an
@@ -159,6 +160,7 @@ install_arch() {
         polkit-gnome procps-ng wdisplays
         networkmanager wpa_supplicant network-manager-applet
         blueman pavucontrol slurp wl-clipboard sound-theme-freedesktop udisks2
+        wf-recorder libpulse
     )
     wants_firmware && optional+=(linux-firmware)
     power_manager_installed || optional+=(power-profiles-daemon)
@@ -197,6 +199,7 @@ install_fedora() {
         lxpolkit procps-ng wdisplays
         NetworkManager NetworkManager-wifi wpa_supplicant network-manager-applet
         blueman pavucontrol slurp wl-clipboard sound-theme-freedesktop udisks2
+        wf-recorder pulseaudio-utils
     )
     wants_firmware && optional+=(linux-firmware)
     power_manager_installed || optional+=(power-profiles-daemon)

@@ -120,6 +120,12 @@ signals:
     void enabledChanged();
     void menuReady(const QString &id, const QVariantList &items);
     void menuChanged(const QString &id);
+    // The item refused Activate (Electron and AppIndicator items do not
+    // implement it). `candidates` name the application behind it: the
+    // item's Id and title, the executable and Flatpak id of its process.
+    // Main.qml starts the matching application, which brings its window
+    // back.
+    void activateFailed(const QString &id, const QStringList &candidates);
 
     // org.kde.StatusNotifierWatcher signals, exported on the bus.
     Q_SCRIPTABLE void StatusNotifierItemRegistered(const QString &service);
@@ -134,6 +140,8 @@ private slots:
     void handleMenuLayoutUpdated();
 
 private:
+    void activateFallback(const QString &id, const QString &service, const QStringList &names);
+    static QStringList processNames(uint pid);
     void setupDBus();
     void teardownDBus();
     void scanExistingItems();

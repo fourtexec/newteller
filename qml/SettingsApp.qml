@@ -465,7 +465,7 @@ Window {
                                 title: qsTr("Application font")
                                 subtitle: qsTr("Name and size, e.g. \"Noto Sans 11\". Empty: unchanged.")
                                 settingKey: "apps.font"
-                                SettingsTextField { settingKey: "apps.font"; placeholder: "(unchanged)" }
+                                SettingsTextField { settingKey: "apps.font"; placeholder: qsTr("(unchanged)") }
                             }
                             SettingsRow {
                                 width: parent.width
@@ -922,21 +922,21 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Corner radius")
-                                subtitle: "-1 follows the theme radius."
+                                subtitle: qsTr("-1 follows the theme radius.")
                                 settingKey: "windows.radius"
                                 SettingsStepper { from: -1; to: 32; suffix: " px" }
                             }
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Background opacity")
-                                subtitle: "0 uses the selected material's preset opacity."
+                                subtitle: qsTr("0 uses the selected material's preset opacity.")
                                 settingKey: "windows.opacityPercent"
                                 SettingsSlider { from: 0; to: 100; step: 5; suffix: " %" }
                             }
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Border width")
-                                subtitle: "-1 follows the theme."
+                                subtitle: qsTr("-1 follows the theme.")
                                 settingKey: "windows.borderWidth"
                                 SettingsStepper { from: -1; to: 6; suffix: " px" }
                             }
@@ -1612,6 +1612,13 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("Search recently used files")
+                                subtitle: qsTr("Documents opened in other applications show up when their name is typed.")
+                                settingKey: "startmenu.recentFiles"
+                                SettingsSwitch { settingKey: "startmenu.recentFiles" }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Recent list length")
                                 settingKey: "apps.recentLimit"
                                 SettingsStepper { from: 0; to: 30 }
@@ -1932,7 +1939,7 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Duration")
-                                subtitle: "0 keeps a popup until it is clicked."
+                                subtitle: qsTr("0 keeps a popup until it is clicked.")
                                 settingKey: "notifications.duration"
                                 SettingsStepper { from: 0; to: 120; suffix: qsTr(" s") }
                             }
@@ -1989,7 +1996,7 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Surface opacity")
-                                subtitle: "0 uses the selected material's preset opacity."
+                                subtitle: qsTr("0 uses the selected material's preset opacity.")
                                 settingKey: "notifications.opacityPercent"
                                 SettingsSlider { from: 0; to: 100; step: 5; suffix: " %" }
                             }
@@ -2044,6 +2051,20 @@ Window {
                                 title: qsTr("Enable notification sounds")
                                 settingKey: "notifications.soundEnabled"
                                 SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Quiet while a window is full screen")
+                                subtitle: qsTr("Games, videos and presentations are not interrupted; notifications wait in the history. Urgent ones still show.")
+                                settingKey: "notifications.quietInFullscreen"
+                                SettingsSwitch { settingKey: "notifications.quietInFullscreen" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Play the bell when an application rings it")
+                                subtitle: qsTr("Terminals and other applications (not under do-not-disturb).")
+                                settingKey: "sounds.bell"
+                                SettingsSwitch { settingKey: "sounds.bell" }
                             }
                             SettingsRow {
                                 width: parent.width
@@ -2319,8 +2340,33 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("Windows of the same application")
+                                subtitle: "Alt+`"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Window menu (always on top, move to a desktop)")
+                                subtitle: qsTr("Alt+Space, or right-click the title bar")
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Snap to a quarter")
+                                subtitle: qsTr("Super+Left/Right, then Super+Up/Down")
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Applications on the dock")
+                                subtitle: "Super+1 … Super+9"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Record the screen")
+                                subtitle: "Super+Alt+R"
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Switch desktops")
-                                subtitle: "Ctrl+Super+Left/Right, Super+Page Up/Down"
+                                subtitle: "Ctrl+Super+Left/Right, Ctrl+Super+1…9, Super+Page Up/Down; Super+Shift+1…9"
                             }
                             SettingsRow {
                                 width: parent.width
@@ -2335,7 +2381,7 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Screenshot")
-                                subtitle: "Print; Shift+Print or Super+Shift+S for an area"
+                                subtitle: qsTr("Print; Shift+Print or Super+Shift+S for an area; Alt+Print for the window")
                             }
                             SettingsRow {
                                 width: parent.width
@@ -2663,6 +2709,63 @@ Window {
                         }
 
                         SettingsSection {
+                            title: qsTr("Hot corners")
+                            subtitle: qsTr("Push the pointer into a corner of the screen to run an action.")
+
+                            Repeater {
+                                model: [
+                                    { key: "hotCorners.topLeft", label: qsTr("Top left") },
+                                    { key: "hotCorners.topRight", label: qsTr("Top right") },
+                                    { key: "hotCorners.bottomLeft", label: qsTr("Bottom left") },
+                                    { key: "hotCorners.bottomRight", label: qsTr("Bottom right") }
+                                ]
+                                delegate: SettingsRow {
+                                    required property var modelData
+                                    width: parent ? parent.width : 320
+                                    title: modelData.label
+                                    settingKey: modelData.key
+                                    SettingsChoice {
+                                        settingKey: modelData.key
+                                        model: [
+                                            { value: "none", label: qsTr("Nothing") },
+                                            { value: "overview", label: qsTr("Overview") },
+                                            { value: "desktop", label: qsTr("Show desktop") },
+                                            { value: "startMenu", label: qsTr("Start menu") },
+                                            { value: "notifications", label: qsTr("Notifications") },
+                                            { value: "lock", label: qsTr("Lock") }
+                                        ]
+                                    }
+                                }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: qsTr("Window rules")
+                            subtitle: qsTr("Application ids, separated by commas (the overview and Ctrl+Shift+Esc show them). Any window can also be put on top from its window menu: right-click the title bar or press Alt+Space.")
+
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Always on top")
+                                settingKey: "windowRules.alwaysOnTop"
+                                SettingsTextField {
+                                    width: 240
+                                    settingKey: "windowRules.alwaysOnTop"
+                                    placeholder: qsTr("e.g. org.gnome.Calculator")
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Open maximized")
+                                settingKey: "windowRules.maximized"
+                                SettingsTextField {
+                                    width: 240
+                                    settingKey: "windowRules.maximized"
+                                    placeholder: qsTr("e.g. firefox, code")
+                                }
+                            }
+                        }
+
+                        SettingsSection {
                             title: qsTr("Your shortcuts")
                             subtitle: qsTr("Run any command from a key combination, e.g. Super+T -> konsole, Ctrl+Alt+F -> firefox. They take priority over the built-in ones.")
 
@@ -2880,6 +2983,19 @@ Window {
                                 title: qsTr("Num Lock on at login")
                                 settingKey: "keyboard.numlock"
                                 SettingsSwitch { settingKey: "keyboard.numlock" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Show Caps Lock and Num Lock on screen")
+                                subtitle: qsTr("For keyboards without indicator lights.")
+                                settingKey: "keyboard.lockKeysOsd"
+                                SettingsSwitch { settingKey: "keyboard.lockKeysOsd" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Show the keyboard layout on screen when it changes")
+                                settingKey: "keyboard.layoutOsd"
+                                SettingsSwitch { settingKey: "keyboard.layoutOsd" }
                             }
                         }
 
@@ -3408,15 +3524,23 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Lock after inactivity")
-                                subtitle: "0 = never."
+                                subtitle: qsTr("0 = never.")
                                 settingKey: "power.lockAfter"
-                                SettingsStepper { settingKey: "power.lockAfter"; from: 0; to: 240; step: 1; suffix: " min" }
+                                SettingsStepper { settingKey: "power.lockAfter"; from: 0; to: 240; step: 1; suffix: qsTr(" min") }
                             }
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Lock before suspend")
                                 settingKey: "power.lockOnSleep"
                                 SettingsSwitch { settingKey: "power.lockOnSleep" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                visible: Session.powerProfiles.length > 0
+                                title: qsTr("Battery saver at 20%")
+                                subtitle: qsTr("Switches to the power saver profile on battery and back when plugged in.")
+                                settingKey: "power.batterySaver"
+                                SettingsSwitch { settingKey: "power.batterySaver" }
                             }
                             SettingsRow {
                                 width: parent.width
@@ -3463,9 +3587,9 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Turn the screen off after")
-                                subtitle: "0 = never. Any key or mouse movement wakes it."
+                                subtitle: qsTr("0 = never. Any key or mouse movement wakes it.")
                                 settingKey: "power.screenOffAfter"
-                                SettingsStepper { settingKey: "power.screenOffAfter"; from: 0; to: 240; step: 1; suffix: " min" }
+                                SettingsStepper { settingKey: "power.screenOffAfter"; from: 0; to: 240; step: 1; suffix: qsTr(" min") }
                             }
                         }
 

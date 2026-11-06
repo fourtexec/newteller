@@ -13,6 +13,130 @@ DropdownWindow {
     id: menu
 
     property var results: []
+
+    // Settings pages the search finds ("wifi", "resolution", "раскладка"):
+    // the title and the keywords, which translations extend with their own
+    // words. A hit opens Settings on that page.
+    readonly property var settingsPages: [
+        { page: "appearance", title: qsTr("Appearance"),
+          keywords: "theme dark light wallpaper font colour color language icons cursor " + qsTr("theme dark light wallpaper font colour language icons cursor") },
+        { page: "panel", title: qsTr("Panel & dock"),
+          keywords: "panel dock taskbar tray clock pinned " + qsTr("panel dock taskbar tray clock pinned") },
+        { page: "desktop", title: qsTr("Desktop"),
+          keywords: "desktop wallpaper icons widgets background " + qsTr("desktop wallpaper icons widgets background") },
+        { page: "apps", title: qsTr("Applications"),
+          keywords: "applications startup autostart default " + qsTr("applications startup autostart default") },
+        { page: "system", title: qsTr("System"),
+          keywords: "system clipboard history network wifi bluetooth " + qsTr("system clipboard history network wifi bluetooth") },
+        { page: "notifications", title: qsTr("Notifications"),
+          keywords: "notifications sounds do not disturb popups bell " + qsTr("notifications sounds do not disturb popups bell") },
+        { page: "windows", title: qsTr("Windows"),
+          keywords: "windows title bar snapping hot corners rules shortcuts focus " + qsTr("windows title bar snapping hot corners rules shortcuts focus") },
+        { page: "keyboard", title: qsTr("Keyboard"),
+          keywords: "keyboard layout language input repeat num lock caps " + qsTr("keyboard layout language input repeat num lock caps") },
+        { page: "mouse", title: qsTr("Mouse & touchpad"),
+          keywords: "mouse touchpad pointer cursor scroll tap speed " + qsTr("mouse touchpad pointer cursor scroll tap speed") },
+        { page: "display", title: qsTr("Displays"),
+          keywords: "display screen monitor resolution refresh scale rotation night light " + qsTr("display screen monitor resolution refresh scale rotation night light") },
+        { page: "power", title: qsTr("Power & lock"),
+          keywords: "power battery sleep suspend lock idle screen off saver " + qsTr("power battery sleep suspend lock idle screen off saver") },
+        { page: "about", title: qsTr("About"),
+          keywords: "about version system information diagnostics " + qsTr("about version system information diagnostics") }
+    ]
+
+    // A small calculator: "2+2*3", "(15,5-3)/4", "2^10", "-3 % 2". Numbers,
+    // + - * / % ^ and parentheses only (no eval); NaN for anything else.
+    function calculate(text) {
+        const src = String(text).replace(/,/g, ".").replace(/\s+/g, "");
+        if (!/^[0-9.+\-*\/%^()]+$/.test(src) || !/[0-9]/.test(src)
+            || !/[+\-*\/%^]/.test(src.replace(/^-/, "")))
+            return NaN;
+        let pos = 0;
+        function peek() { return src[pos]; }
+        function number() {
+            const start = pos;
+            while (pos < src.length && /[0-9.]/.test(src[pos]))
+                ++pos;
+            const piece = src.slice(start, pos);
+            if (piece.length === 0 || piece.split(".").length > 2)
+                throw "number";
+            return parseFloat(piece);
+        }
+        function factor() {
+            if (peek() === "-") { ++pos; return -factor(); }
+            if (peek() === "+") { ++pos; return factor(); }
+            let value;
+            if (peek() === "(") {
+                ++pos;
+                value = sum();
+                if (peek() !== ")")
+                    throw "paren";
+                ++pos;
+            } else {
+                value = number();
+            }
+            if (peek() === "^") {
+                ++pos;
+                value = Math.pow(value, factor());
+            }
+            return value;
+        }
+        function product() {
+            let value = factor();
+            while (peek() === "*" || peek() === "/" || peek() === "%") {
+                const op = src[pos++];
+                const rhs = factor();
+                value = op === "*" ? value * rhs : op === "/" ? value / rhs : value % rhs;
+            }
+            return value;
+        }
+        function sum() {
+            let value = product();
+            while (peek() === "+" || peek() === "-") {
+                const op = src[pos++];
+                const rhs = product();
+                value = op === "+" ? value + rhs : value - rhs;
+            }
+            return value;
+        }
+        try {
+            const value = sum();
+            return pos === src.length && isFinite(value) ? value : NaN;
+        } catch (err) {
+            return NaN;
+        }
+    }
+
+    function recentFileMatches(query) {
+        if (Settings.values["startmenu.recentFiles"] === false)
+            return [];
+        const needle = query.toLowerCase();
+        const out = [];
+        const files = Shell.recentFiles(300);
+        for (let i = 0; i < files.length && out.length < 5; ++i) {
+            const f = files[i];
+            if (String(f.name).toLowerCase().indexOf(needle) < 0)
+                continue;
+            out.push({ id: "", filePath: f.path,
+                       icon: f.folder ? "folder" : f.image ? "image" : "file-text",
+                       name: qsTr("%1 (recent file)").arg(f.name) });
+        }
+        return out;
+    }
+
+    function settingsMatches(query) {
+        const words = query.toLowerCase().split(/\s+/).filter(w => w.length > 0);
+        if (words.length === 0)
+            return [];
+        const out = [];
+        for (const page of settingsPages) {
+            const haystack = (page.title + " " + page.keywords).toLowerCase();
+            if (words.every(w => haystack.indexOf(w) >= 0))
+                out.push({ id: "", settingsPage: page.page, icon: "settings",
+                           name: qsTr("Settings: %1").arg(page.title) });
+        }
+        return out;
+    }
     property string categoryFilter: ""
     // Index of the highlighted row: the keyboard walks the list, Enter runs
     // the highlighted application.
@@ -70,11 +194,39 @@ DropdownWindow {
                 return (app.categories || []).indexOf(categoryFilter) >= 0;
             });
         }
+        // Settings pages after the applications (never inside a category),
+        // then recently used files whose name matches.
+        if (q.length >= 2 && categoryFilter.length === 0) {
+            hits = hits.concat(settingsMatches(q));
+            hits = hits.concat(recentFileMatches(q));
+        }
+        // An arithmetic expression: its result comes first.
+        const value = calculate(q);
+        if (!isNaN(value)) {
+            const shown = String(Math.round(value * 1e10) / 1e10);
+            hits = [{ id: "", calculation: shown, icon: "type",
+                      name: qsTr("= %1 (Enter copies it)").arg(shown) }].concat(hits);
+        }
         results = hits;
         selectedIndex = hits.length > 0 ? 0 : -1;
     }
 
     function launch(app) {
+        if (app.filePath) {
+            Shell.openPath(app.filePath);
+            hide();
+            return;
+        }
+        if (app.calculation !== undefined) {
+            Shell.copyToClipboard(app.calculation);
+            hide();
+            return;
+        }
+        if (app.settingsPage) {
+            Shell.openSettingsPage(app.settingsPage);
+            hide();
+            return;
+        }
         Apps.launch(app.id);
         hide();
     }
@@ -140,6 +292,9 @@ DropdownWindow {
     }
 
     function openPinMenu(button, app) {
+        // Settings rows cannot be pinned.
+        if (!app || !app.id)
+            return;
         pinTarget = app;
         const pos = button.mapToItem(menu.bodyItem, button.width, 0);
         pinMenu.x = Math.max(8, Math.min(pos.x - pinMenu.width,
@@ -200,6 +355,33 @@ DropdownWindow {
         Column {
             id: pinColumn
             anchors.centerIn: parent
+
+            // The application's own actions ("New Private Window", ...).
+            Repeater {
+                model: {
+                    if (!menu.pinTarget || !menu.pinTarget.id)
+                        return [];
+                    const app = Apps.byId(menu.pinTarget.id);
+                    return app && app.actions ? app.actions : [];
+                }
+
+                delegate: TaskButton {
+                    required property var modelData
+                    objectName: "startAppAction"
+                    width: 180
+                    height: 32
+                    fillWidth: true
+                    iconName: "chevron-right"
+                    label: modelData.name || modelData.id || ""
+                    onClicked: {
+                        const app = menu.pinTarget;
+                        pinMenu.close();
+                        menu.hide();
+                        if (app && app.id)
+                            Apps.launchAction(app.id, modelData.id);
+                    }
+                }
+            }
 
             TaskButton {
                 width: 180

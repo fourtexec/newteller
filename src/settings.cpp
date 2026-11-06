@@ -80,6 +80,11 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("windows.shadow"), 1);
     m_defaults.insert(QStringLiteral("notifications.enabled"), true);
     m_defaults.insert(QStringLiteral("notifications.doNotDisturb"), false);
+    // Do not disturb ends at this time (ms since the epoch; 0 = until
+    // switched off). Set by "1 h" in quick settings.
+    m_defaults.insert(QStringLiteral("notifications.dndUntil"), 0);
+    // While a fullscreen window is shown, popups and sounds wait.
+    m_defaults.insert(QStringLiteral("notifications.quietInFullscreen"), true);
     m_defaults.insert(QStringLiteral("notifications.position"), QStringLiteral("top-right"));
     m_defaults.insert(QStringLiteral("notifications.duration"), 6);
     m_defaults.insert(QStringLiteral("notifications.historyLimit"), 20);
@@ -239,9 +244,20 @@ Settings::Settings(QObject *parent)
     // Window management
     m_defaults.insert(QStringLiteral("windowRules.alwaysOnTop"), QStringList());
     m_defaults.insert(QStringLiteral("windowRules.maximized"), QStringList());
+    // The start menu search also lists recently used files.
+    m_defaults.insert(QStringLiteral("startmenu.recentFiles"), true);
+    // Hot corners: none | overview | desktop | startMenu | notifications | lock.
+    m_defaults.insert(QStringLiteral("hotCorners.topLeft"), QStringLiteral("none"));
+    m_defaults.insert(QStringLiteral("hotCorners.topRight"), QStringLiteral("none"));
+    m_defaults.insert(QStringLiteral("hotCorners.bottomLeft"), QStringLiteral("none"));
+    m_defaults.insert(QStringLiteral("hotCorners.bottomRight"), QStringLiteral("none"));
+    // Screen recordings (wf-recorder) also record the default microphone.
+    m_defaults.insert(QStringLiteral("recorder.audio"), false);
     // Power management
     m_defaults.insert(QStringLiteral("power.sleepAction"), QStringLiteral("suspend"));
     m_defaults.insert(QStringLiteral("power.lockOnSleep"), true);
+    // Power saver profile from 20% on battery until plugged in.
+    m_defaults.insert(QStringLiteral("power.batterySaver"), true);
     // Minutes of inactivity before the screen locks / turns off (0 = never).
     m_defaults.insert(QStringLiteral("power.lockAfter"), 10);
     m_defaults.insert(QStringLiteral("power.screenOffAfter"), 10);
@@ -262,6 +278,12 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("keyboard.numlock"), false);
     // Every window remembers its keyboard layout (as on Windows).
     m_defaults.insert(QStringLiteral("keyboard.layoutPerWindow"), false);
+    // Applications' bells (xdg-system-bell) play the sound theme's bell.
+    m_defaults.insert(QStringLiteral("sounds.bell"), true);
+    // Show Caps Lock / Num Lock changes on screen.
+    m_defaults.insert(QStringLiteral("keyboard.lockKeysOsd"), true);
+    // Show the new keyboard layout on screen when it changes.
+    m_defaults.insert(QStringLiteral("keyboard.layoutOsd"), true);
     m_defaults.insert(QStringLiteral("keyboard.showIndicator"), true);
     // Pointer devices (libinput, applied by the compositor).
     m_defaults.insert(QStringLiteral("touchpad.tapToClick"), true);

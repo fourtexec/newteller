@@ -178,6 +178,50 @@ if [[ $reply != ok* || ! -s $thumb ]]; then
 fi
 echo "session smoke: window $window_id has a thumbnail ($(stat -c %s "$thumb") bytes)"
 
+# The window menu's commands: always on top, maximize, minimize, and the
+# state letters in `windows` that the menu reads.
+window_flags() {
+    msg windows | sed 's/^ok //' | tr '\037' '\n' \
+        | awk -F $'\x1e' -v id="$window_id" '$1 == id { print $5 }'
+}
+if [[ $(msg always-on-top "$window_id" on || true) != 'ok 1' ]]; then
+    echo "always-on-top does not pin the window" >&2
+    exit 1
+fi
+if [[ $(window_flags) != *t* ]]; then
+    echo "a pinned window is not listed as always on top ($(window_flags))" >&2
+    exit 1
+fi
+msg maximize "$window_id" on >/dev/null
+if [[ $(window_flags) != *x* ]]; then
+    echo "maximize did not maximize the window ($(window_flags))" >&2
+    exit 1
+fi
+msg maximize "$window_id" off >/dev/null
+msg minimize "$window_id" >/dev/null
+if [[ $(window_flags) != *m* ]]; then
+    echo "minimize did not minimize the window ($(window_flags))" >&2
+    exit 1
+fi
+msg minimize "$window_id" off >/dev/null
+msg fullscreen "$window_id" on >/dev/null
+if [[ $(window_flags) != *F* ]]; then
+    echo "fullscreen did not make the window full screen ($(window_flags))" >&2
+    exit 1
+fi
+msg fullscreen "$window_id" off >/dev/null
+if [[ $(msg sticky "$window_id" on || true) != 'ok 1' || $(window_flags) != *s* ]]; then
+    echo "sticky does not put the window on every desktop ($(window_flags))" >&2
+    exit 1
+fi
+msg sticky "$window_id" off >/dev/null
+msg always-on-top "$window_id" off >/dev/null
+if [[ $(window_flags) == *[mxtFs]* ]]; then
+    echo "the window did not come back to normal ($(window_flags))" >&2
+    exit 1
+fi
+echo "session smoke: window menu commands (on top, maximize, minimize, full screen, every desktop) work"
+
 # Settings -> Displays goes through output-set.
 reply=$(msg outputs-detail || true)
 if [[ $reply != ok\ HEADLESS-1* ]]; then
@@ -318,6 +362,18 @@ if has_shell_name; then
         exit 1
     fi
     echo "session smoke: notifications arrive over D-Bus and update in place (id $first_id)"
+    # Applications read the capabilities to decide whether to send markup
+    # and whether to play their own sound.
+    caps=$(gdbus call --session --dest org.freedesktop.Notifications \
+        --object-path /org/freedesktop/Notifications \
+        --method org.freedesktop.Notifications.GetCapabilities 2>&1)
+    for cap in actions body-markup sound persistence; do
+        if [[ $caps != *"'$cap'"* ]]; then
+            echo "the notification daemon does not advertise $cap: $caps" >&2
+            exit 1
+        fi
+    done
+    echo "session smoke: notification capabilities $caps"
 
     # A tray application registers its StatusNotifierItem with the shell's
     # watcher through the org.kde.StatusNotifierWatcher interface.

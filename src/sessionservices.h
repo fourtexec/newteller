@@ -64,6 +64,11 @@ class SessionServices : public QObject
     Q_PROPERTY(bool wifiBusy READ wifiBusy NOTIFY wifiChanged)
     // Ids of the windows that stopped answering the compositor's pings.
     Q_PROPERTY(QVariantList hungWindows READ hungWindows NOTIFY hungWindowsChanged)
+    // The output (QScreen name) under the pointer, from the compositor;
+    // empty outside a NewTeller session.
+    Q_PROPERTY(QString activeOutput READ activeOutput NOTIFY activeOutputChanged)
+    // A fullscreen window is shown (a game, a video, a presentation).
+    Q_PROPERTY(bool fullscreenActive READ fullscreenActive NOTIFY fullscreenChanged)
 
 public:
     explicit SessionServices(Settings *settings, QObject *parent = nullptr);
@@ -112,10 +117,21 @@ public:
     Q_INVOKABLE void activateWindow(int id);
     Q_INVOKABLE void closeWindow(int id);
     Q_INVOKABLE void moveWindow(int id, int workspace);
+    // The window menu's actions (compositor ids, as in windows()).
+    Q_INVOKABLE void minimizeWindow(int id);
+    Q_INVOKABLE void toggleMaximizeWindow(int id);
+    Q_INVOKABLE void toggleFullscreenWindow(int id);
+    Q_INVOKABLE void setWindowAlwaysOnTop(int id, bool onTop);
+    // Shown on every desktop.
+    Q_INVOKABLE void setWindowSticky(int id, bool sticky);
+    // To the next screen (multi-monitor).
+    Q_INVOKABLE void moveWindowToNextScreen(int id);
     // Force quit: kills the process behind the window. "" on success, else
     // the reason.
     Q_INVOKABLE QString killWindow(int id);
     QVariantList hungWindows() const;
+    QString activeOutput() const { return m_activeOutput; }
+    bool fullscreenActive() const { return m_fullscreen; }
 
     // --- displays ---
     // name, description, enabled, width, height, refresh (mHz), x, y,
@@ -183,12 +199,21 @@ signals:
     void hungWindowsChanged();
     // A window stopped responding (the force-quit dialog offers to end it).
     void windowHung(int id);
+    void activeOutputChanged();
+    void fullscreenChanged();
+    // Open the window menu at x/y (layout coordinates). `flags` holds the
+    // state letters of the window (m minimized, x maximized, F fullscreen,
+    // t always on top), `desktop` the desktop it is on.
+    void windowMenuRequested(int id, int x, int y, int desktop, const QString &flags,
+                             const QString &title);
 
 private:
     void connectCompositor();
     void sendCommand(const QString &command);
     void readCompositor();
     void handleEvent(const QString &line);
+    void followWifiActivation(const QString &device, const QString &ssid);
+    void playBell() const;
     void settingChanged(const QString &key);
     void writeCompositorConfig();
     void writeLockConfig();
@@ -216,6 +241,10 @@ private:
     int m_layout = 0;
     bool m_locked = false;
     int m_workspace = 0;
+    QString m_activeOutput;
+    bool m_fullscreen = false;
+    // Bumped by every read of the Wi-Fi networks; older answers are dropped.
+    quint64 m_accessPointRead = 0;
     int m_workspaceCount = 1;
     int m_workspaceOccupied = 0;
     QVariantList m_switcherEntries;

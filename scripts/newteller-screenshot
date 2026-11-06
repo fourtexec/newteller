@@ -4,16 +4,28 @@
 #   newteller-screenshot          the whole screen (Print)
 #   newteller-screenshot --area   a region picked with the mouse (Shift+Print,
 #                                 Super+Shift+S); needs slurp
+#   newteller-screenshot --geometry "X,Y WxH"
+#                                 that rectangle (Alt+Print: the focused
+#                                 window, as the compositor knows it)
 #
 # The PNG goes to Screenshots in the pictures folder (~/Pictures) and, when wl-copy is installed, to
 # the clipboard as well, ready to paste.
 set -eu
 
 mode=full
+geometry=
 case "${1:-}" in
     --area|-a) mode=area ;;
+    --geometry|-g)
+        mode=geometry
+        geometry="${2:-}"
+        case "$geometry" in
+            *,*\ *x*) ;;
+            *) echo "usage: newteller-screenshot --geometry \"X,Y WxH\"" >&2; exit 2 ;;
+        esac
+        ;;
     '' ) ;;
-    *) echo "usage: newteller-screenshot [--area]" >&2; exit 2 ;;
+    *) echo "usage: newteller-screenshot [--area | --geometry \"X,Y WxH\"]" >&2; exit 2 ;;
 esac
 
 # The pictures folder is localized on many systems (~/Изображения): ask
@@ -98,6 +110,11 @@ if [ "$mode" = area ]; then
     region=$(slurp -d 2>/dev/null) || exit 0
     [ -n "$region" ] || exit 0
     grim -g "$region" "$file" || {
+        notify "$msg_failed" "$msg_no_image"
+        exit 1
+    }
+elif [ "$mode" = geometry ]; then
+    grim -g "$geometry" "$file" || {
         notify "$msg_failed" "$msg_no_image"
         exit 1
     }

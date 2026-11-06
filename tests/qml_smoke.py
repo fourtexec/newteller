@@ -30,6 +30,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import xml.etree.ElementTree as ElementTree
 from enum import IntEnum
 
@@ -176,7 +177,8 @@ class ShellWindowType(QObject):
 APPS = [
     {"id": "firefox", "name": "Firefox", "icon": "firefox",
      "generic": "web browser", "comment": "Browse the web",
-     "categories": ["Network"], "keywords": ["internet", "web"]},
+     "categories": ["Network"], "keywords": ["internet", "web"],
+     "actions": [{"id": "new-private-window", "name": "New Private Window"}]},
     {"id": "org.gnome.Terminal", "name": "Terminal", "icon": "utilities-terminal",
      "generic": "terminal emulator", "comment": "Use the command line",
      "categories": ["System"], "keywords": ["shell", "console"]},
@@ -403,6 +405,11 @@ class Apps(QObject):
     def isRunning(self, app_id):
         return app_id in self.running
 
+    @Slot(str, str, result=bool)
+    def launchAction(self, app_id, action_id):
+        self.launched.append((app_id, action_id))
+        return True
+
     @Slot(str, result=bool)
     def launch(self, app_id):
         self.launched.append(app_id)
@@ -418,6 +425,7 @@ class Apps(QObject):
 class Shell(QObject):
     nowChanged = Signal()
     settingsRequested = Signal()
+    settingsPageRequested = Signal(str)
     startMenuRequested = Signal()
     startMenuToggleRequested = Signal()
     notificationsToggleRequested = Signal()
@@ -426,6 +434,8 @@ class Shell(QObject):
     taskViewToggleRequested = Signal()
     forceQuitRequested = Signal()
     runDialogRequested = Signal()
+    dockItemRequested = Signal(int)
+    screenRecordingToggleRequested = Signal()
 
     def __init__(self, desktop_dir, home_dir):
         super().__init__()
@@ -478,6 +488,11 @@ class Shell(QObject):
     @Slot(str)
     def openPath(self, path):
         self.calls.append(("openPath", path))
+
+    @Slot(int, result="QVariantList")
+    def recentFiles(self, limit):
+        return [{"path": "/home/test/Documents/Report 2026.odt", "name": "Report 2026.odt",
+                 "folder": False, "image": False}][:limit]
 
     @Slot(str, result=int)
     def pasteFiles(self, folder):
@@ -584,6 +599,10 @@ class Shell(QObject):
     def openSettings(self):
         self.calls.append(("openSettings",))
         self.settingsRequested.emit()
+
+    @Slot(str)
+    def openSettingsPage(self, page):
+        self.calls.append(("openSettingsPage", page))
 
     @Slot()
     def lock(self):
@@ -775,6 +794,10 @@ class Notifications(QObject):
     def invokeAction(self, notification_id, action_key):
         self.calls.append(("invokeAction", notification_id, action_key))
 
+    @Slot("QVariant", str)
+    def reply(self, notification_id, text):
+        self.calls.append(("reply", notification_id, text))
+
     @Slot()
     def clearHistory(self):
         self._history.clear()
@@ -791,6 +814,7 @@ class Tray(QObject):
     itemsChanged = Signal()
     menuReady = Signal(str, "QVariantList")
     menuChanged = Signal(str)
+    activateFailed = Signal(str, "QStringList")
 
     def __init__(self):
         super().__init__()
@@ -906,6 +930,33 @@ class Session(QObject):
     pointerPressed = Signal(int, int)
     hungWindowsChanged = Signal()
     windowHung = Signal(int)
+    windowMenuRequested = Signal(int, int, int, int, str, str)
+    activeOutputChanged = Signal()
+    activeOutput = Property(str, lambda self: "", notify=activeOutputChanged)
+
+    @Slot(int)
+    def minimizeWindow(self, window_id):
+        self.calls.append(("minimizeWindow", window_id))
+
+    @Slot(int)
+    def toggleMaximizeWindow(self, window_id):
+        self.calls.append(("toggleMaximizeWindow", window_id))
+
+    @Slot(int)
+    def toggleFullscreenWindow(self, window_id):
+        self.calls.append(("toggleFullscreenWindow", window_id))
+
+    @Slot(int, bool)
+    def setWindowAlwaysOnTop(self, window_id, on_top):
+        self.calls.append(("setWindowAlwaysOnTop", window_id, on_top))
+
+    @Slot(int, bool)
+    def setWindowSticky(self, window_id, sticky):
+        self.calls.append(("setWindowSticky", window_id, sticky))
+
+    @Slot(int)
+    def moveWindowToNextScreen(self, window_id):
+        self.calls.append(("moveWindowToNextScreen", window_id))
     hungWindows = Property("QVariantList", lambda self: [], notify=hungWindowsChanged)
 
     @Slot(int, result=str)
@@ -1161,9 +1212,23 @@ class ClipboardStub(QObject):
     def __init__(self):
         super().__init__()
         self._items = ["first copied text", "second\nline"]
+        self._pinned = ["pinned snippet"]
         self.calls = []
 
     items = Property("QVariantList", lambda self: self._items, notify=itemsChanged)
+    pinnedItems = Property("QVariantList", lambda self: self._pinned, notify=itemsChanged)
+
+    @Slot(str)
+    def copyText(self, text):
+        self.calls.append(("copyText", text))
+
+    @Slot(str)
+    def pin(self, text):
+        self.calls.append(("pin", text))
+
+    @Slot(str)
+    def unpin(self, text):
+        self.calls.append(("unpin", text))
 
     @Slot(int)
     def copy(self, index):
@@ -1176,6 +1241,90 @@ class ClipboardStub(QObject):
     @Slot()
     def clear(self):
         self.calls.append(("clear",))
+
+
+class AudioStub(QObject):
+    """Stand-in for the Audio context property (src/audiodevices.h)."""
+
+    changed = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self.calls = []
+
+    available = Property(bool, lambda self: True, notify=changed)
+    outputs = Property("QVariantList", lambda self: [
+        {"name": "alsa_output.speakers", "description": "Speakers", "isDefault": True,
+         "volume": 40, "muted": False, "bluetooth": False},
+        {"name": "bluez_output.headset", "description": "Headset", "isDefault": False,
+         "volume": 60, "muted": False, "bluetooth": True}], notify=changed)
+    streams = Property("QVariantList", lambda self: [
+        {"index": 12, "app": "Firefox", "title": "Video", "icon": "firefox", "volume": 80,
+         "muted": False}], notify=changed)
+    inputs = Property("QVariantList", lambda self: [
+        {"name": "alsa_input.internal", "description": "Internal microphone", "isDefault": True,
+         "volume": 70, "muted": False, "bluetooth": False},
+        {"name": "bluez_input.headset", "description": "Headset microphone", "isDefault": False,
+         "volume": 70, "muted": False, "bluetooth": True}], notify=changed)
+
+    @Slot(str)
+    def setDefaultInput(self, name):
+        self.calls.append(("setDefaultInput", name))
+
+    @Slot()
+    def refresh(self):
+        self.calls.append(("refresh",))
+
+    @Slot(str)
+    def setDefaultOutput(self, name):
+        self.calls.append(("setDefaultOutput", name))
+
+    @Slot(int, int)
+    def setStreamVolume(self, index, percent):
+        self.calls.append(("setStreamVolume", index, percent))
+
+    @Slot(int)
+    def toggleStreamMuted(self, index):
+        self.calls.append(("toggleStreamMuted", index))
+
+
+class RecorderStub(QObject):
+    """Stand-in for the Recorder context property (src/screenrecorder.h)."""
+
+    stateChanged = Signal()
+    elapsedChanged = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self.calls = []
+        self._recording = False
+
+    available = Property(bool, lambda self: True, constant=True)
+    areaAvailable = Property(bool, lambda self: True, constant=True)
+    busy = Property(bool, lambda self: self._recording, notify=stateChanged)
+    recording = Property(bool, lambda self: self._recording, notify=stateChanged)
+    elapsed = Property(int, lambda self: 75 if self._recording else 0, notify=elapsedChanged)
+
+    @Slot(bool, str)
+    def start(self, area, screen):
+        self.calls.append(("start", area))
+        self._recording = True
+        self.stateChanged.emit()
+        self.elapsedChanged.emit()
+
+    @Slot()
+    def stop(self):
+        self.calls.append(("stop",))
+        self._recording = False
+        self.stateChanged.emit()
+        self.elapsedChanged.emit()
+
+    @Slot()
+    def toggle(self):
+        if self._recording:
+            self.stop()
+        else:
+            self.start(False, "")
 
 
 class Quick(QObject):
@@ -1294,8 +1443,11 @@ def main():
     desktop_dir = os.path.join(work, "Desktop")
     os.makedirs(os.path.join(desktop_dir, "Projects"))
     os.makedirs(os.path.join(work, "Pictures"))
-    for name in ("notes.txt", "photo.png"):
-        open(os.path.join(desktop_dir, name), "w").close()
+    open(os.path.join(desktop_dir, "notes.txt"), "w").close()
+    # A real picture: the desktop shows it as its own thumbnail.
+    photo = QImage(16, 16, QImage.Format_RGB32)
+    photo.fill(QColor("#3366aa"))
+    photo.save(os.path.join(desktop_dir, "photo.png"), "PNG")
     # A launcher of an installed application (the desktop shows it as that
     # application and starts it on a double-click).
     with open(os.path.join(desktop_dir, "firefox.desktop"), "w") as f:
@@ -1332,6 +1484,8 @@ def main():
     notifications, file_portal = Notifications(), FilePortal()
     tray, quick, session = Tray(), Quick(), Session()
     clipboard = ClipboardStub()
+    recorder = RecorderStub()
+    audio = AudioStub()
     bluetooth = BluetoothStub()
     polkit = PolkitStub()
     engine = QQmlApplicationEngine()
@@ -1339,7 +1493,8 @@ def main():
                       ("Plugins", plugin_manager), ("System", system), ("Windows", window_list),
                       ("Notifications", notifications), ("FilePortal", file_portal),
                       ("Tray", tray), ("Quick", quick), ("Session", session),
-                      ("Clipboard", clipboard), ("Bluetooth", bluetooth), ("Polkit", polkit)):
+                      ("Clipboard", clipboard), ("Bluetooth", bluetooth), ("Polkit", polkit),
+                      ("Recorder", recorder), ("Audio", audio)):
         engine.rootContext().setContextProperty(name, obj)
 
     failures = []
@@ -1599,6 +1754,41 @@ def main():
         check(not menu.isVisible(), "launching an application closes the menu")
         check(apps.isRunning("org.gnome.Terminal"), "the launched application is marked running")
 
+        # The search is also a calculator.
+        for expression, expected in (("2+2*3", 8), ("(15,5-3)/4", 3.125), ("2^10", 1024)):
+            got = QMetaObject.invokeMethod(menu, "calculate", Qt.DirectConnection,
+                                           Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", expression))
+            got = got.toVariant() if hasattr(got, "toVariant") else got
+            check(got == expected, f"the start menu calculates {expression} = {expected} ({got})")
+        for text in ("firefox", "12", "2+", "alert(1)"):
+            got = QMetaObject.invokeMethod(menu, "calculate", Qt.DirectConnection,
+                                           Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", text))
+            got = got.toVariant() if hasattr(got, "toVariant") else got
+            check(got != got, f"{text!r} is not a calculation ({got})")
+
+        # Recently used files whose name matches.
+        recent = QMetaObject.invokeMethod(menu, "recentFileMatches", Qt.DirectConnection,
+                                          Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "report"))
+        recent = recent.toVariant() if hasattr(recent, "toVariant") else recent
+        check(isinstance(recent, list) and len(recent) == 1
+              and recent[0].get("filePath", "").endswith("Report 2026.odt"),
+              f"the start menu finds recently used files ({recent})")
+
+        # Searching finds settings pages too ("resolution" -> Displays).
+        found = QMetaObject.invokeMethod(menu, "settingsMatches", Qt.DirectConnection,
+                                         Q_RETURN_ARG("QVariant"), Q_ARG("QVariant", "resolution"))
+        found = found.toVariant() if hasattr(found, "toVariant") else found
+        check(isinstance(found, list) and len(found) == 1
+              and found[0].get("settingsPage") == "display",
+              f"the start menu finds the Displays settings page ({found})")
+        if isinstance(found, list) and found:
+            shell.calls.clear()
+            QMetaObject.invokeMethod(menu, "show")
+            QMetaObject.invokeMethod(menu, "launch", Q_ARG("QVariant", found[0]))
+            QTest.qWait(300)
+            check(("openSettingsPage", "display") in shell.calls,
+                  f"a settings result opens that page ({shell.calls})")
+
         # Right-clicking an application row offers pin/unpin; the function
         # writes the same panel.pinned list the dock reads.
         QMetaObject.invokeMethod(menu, "togglePin", Q_ARG("QVariant", {"id": "org.gnome.Nautilus"}))
@@ -1747,6 +1937,17 @@ def main():
                  and i.objectName() == "desktopIcon" and i.isVisible()]
         icon_menu = desk.findChild(QQuickItem, "iconMenu")
         check(bool(icons) and icon_menu is not None, f"desktop icons and their menu exist ({len(icons)})")
+        # A picture shows itself (loaded asynchronously).
+        thumbs = []
+        for _ in range(20):
+            QTest.qWait(50)
+            desk_items.clear()
+            collect(desk.contentItem())
+            thumbs = [i for i in desk_items if isinstance(i, QQuickItem)
+                      and i.objectName() == "desktopThumbnail" and i.isVisible()]
+            if thumbs:
+                break
+        check(len(thumbs) == 1, f"a picture on the desktop shows as its thumbnail ({len(thumbs)})")
         if icons and icon_menu is not None:
             target = icons[0]
             url = target.property("fileUrl").toString()
@@ -2036,6 +2237,19 @@ def main():
                     and i.objectName() == "historyImage" and i.isVisible()]
         check(len(pictures) == 1 and pictures[0].property("implicitWidth") > 0,
               f"the history shows a notification's picture ({len(pictures)})")
+        # Grouped by application, the one with the newest notification first.
+        notifications._history.append({"id": 3, "app": "Mail", "summary": "Again", "body": "Third",
+                                       "time": 3000, "icon": "bell", "image": ""})
+        notifications.historyChanged.emit()
+        QTest.qWait(100)
+        grouped = center.property("entries")
+        grouped = grouped.toVariant() if hasattr(grouped, "toVariant") else grouped
+        check([(e.get("app"), bool(e.get("groupStart"))) for e in (grouped or [])]
+              == [("Mail", True), ("Mail", False), ("Chat", True)],
+              f"the notification centre groups by application ({grouped})")
+        notifications._history.pop()
+        notifications.historyChanged.emit()
+        QTest.qWait(50)
         # Everything on screen counts as seen; closing keeps the mark.
         check(int(center.property("unreadCount")) == 0,
               f"an open centre counts as seen ({center.property('unreadCount')})")
@@ -2227,6 +2441,17 @@ def main():
                       "the dock menu sits just above the bar")
                 check(dock_menus[0].property("nubEdge") == "bottom",
                       "the dock menu points at the icon")
+                app_actions = (entries[0].get("app") or {}).get("actions") or []
+                if app_actions:
+                    rows = []
+                    stack = [dock_menus[0].contentItem()]
+                    while stack:
+                        item = stack.pop()
+                        if item.objectName() == "dockMenuAction":
+                            rows.append(item)
+                        stack.extend(item.childItems())
+                    check(len(rows) == len(app_actions),
+                          f"the dock menu offers the application's actions ({len(rows)})")
                 QMetaObject.invokeMethod(dock_menus[0], "close")
                 QTest.qWait(300)
                 check(not dock_menus[0].isVisible(), "the dock menu closes again")
@@ -2260,6 +2485,140 @@ def main():
             QTest.qWait(300)
             check(not tray_menus[0].isVisible(), "the tray menu closes again")
 
+        # The window menu (title bar right click, Alt+Space) opens where the
+        # compositor says and sends its actions back over Session.
+        window_menus = windows_of_kind("WindowMenu")
+        check(len(window_menus) == 1, f"one window menu ({len(window_menus)})")
+        if window_menus:
+            wmenu = window_menus[0]
+            session.calls.clear()
+            session.windowMenuRequested.emit(7, geometry.x() + 300, geometry.y() + 120, 1, "x",
+                                             "Notes - Editor")
+            QTest.qWait(300)
+            check(wmenu.isVisible(), "a window menu request opens the window menu")
+            card = on_screen(wmenu, "the window menu")
+            check(card[0] <= geometry.x() + 300 <= card[0] + card[2]
+                  and card[1] >= geometry.y() + 120 - 2,
+                  f"the window menu hangs below the pointer ({card})")
+            check(wmenu.property("isMaximized") and not wmenu.property("isOnTop"),
+                  "the window menu reads the window's state")
+            QMetaObject.invokeMethod(wmenu, "run", Q_ARG("QVariant", "onTop"),
+                                     Q_ARG("QVariant", 0))
+            QTest.qWait(300)
+            check(("setWindowAlwaysOnTop", 7, True) in session.calls,
+                  f"Always on top is sent to the compositor ({session.calls})")
+            check(not wmenu.isVisible(), "the window menu closes after an action")
+            session.windowMenuRequested.emit(7, geometry.x() + 300, geometry.y() + 120, 1, "t", "")
+            QTest.qWait(300)
+            QMetaObject.invokeMethod(wmenu, "run", Q_ARG("QVariant", "desktop"),
+                                     Q_ARG("QVariant", 2))
+            QTest.qWait(300)
+            check(("moveWindow", 7, 2) in session.calls,
+                  f"the window menu moves the window to another desktop ({session.calls})")
+
+        # A tray icon that refuses Activate starts the application behind it.
+        before = len(apps.launched)
+        tray.activateFailed.emit("item-1", ["no-such-thing", "firefox"])
+        QTest.qWait(100)
+        check(apps.launched[before:] == ["firefox"],
+              f"a tray icon that cannot be activated starts its application ({apps.launched[before:]})")
+
+        # A hidden Wi-Fi network is joined by its name.
+        wifi_cards = windows_of_kind("WifiPopup")
+        if wifi_cards:
+            toggle = wifi_cards[0].findChild(QObject, "hiddenWifiButton")
+            check(toggle is not None, "the Wi-Fi card offers a hidden network")
+            if toggle is not None:
+                QMetaObject.invokeMethod(toggle, "clicked")
+                QTest.qWait(50)
+                check(bool(wifi_cards[0].property("hiddenForm")), "the hidden network form opens")
+                stack = [wifi_cards[0].contentItem()]
+                name_field = None
+                while stack and name_field is None:
+                    item = stack.pop()
+                    if item.objectName() == "hiddenWifiForm":
+                        fields = [c for c in item.childItems() if c.property("placeholder") is not None]
+                        name_field = fields[0] if fields else None
+                    stack.extend(item.childItems())
+                if name_field is not None:
+                    session.calls.clear()
+                    name_field.setProperty("text", "Office")
+                    QMetaObject.invokeMethod(wifi_cards[0], "joinHidden")
+                    QTest.qWait(50)
+                    check(("connectWifi", "Office") in session.calls,
+                          f"joining a hidden network asks NetworkManager ({session.calls})")
+                QMetaObject.invokeMethod(toggle, "clicked")
+
+        # Do not disturb for an hour: switches on with an end time.
+        dnd_cards = windows_of_kind("QuickSettingsPopup")
+        if dnd_cards:
+            hour = dnd_cards[0].findChild(QObject, "dndHourButton")
+            check(hour is not None, "quick settings offers do not disturb for an hour")
+            if hour is not None:
+                was = settings._values.get("notifications.doNotDisturb")
+                QMetaObject.invokeMethod(hour, "clicked")
+                QTest.qWait(50)
+                until = float(settings._values.get("notifications.dndUntil") or 0)
+                check(settings._values.get("notifications.doNotDisturb") is True
+                      and until > time.time() * 1000 + 3500 * 1000,
+                      f"one hour of do not disturb ({until})")
+                settings.setValue("notifications.doNotDisturb", bool(was))
+                settings.setValue("notifications.dndUntil", 0)
+
+        # The sound card: outputs to pick from, one row per playing application.
+        sound_cards = windows_of_kind("SoundPopup")
+        quick_cards = windows_of_kind("QuickSettingsPopup")
+        check(len(sound_cards) == 1, f"one sound card ({len(sound_cards)})")
+        if sound_cards and quick_cards:
+            button = quick_cards[0].findChild(QObject, "soundDevicesButton")
+            check(button is not None, "quick settings links to the sound card")
+            if button is not None:
+                QMetaObject.invokeMethod(button, "clicked")
+                QTest.qWait(300)
+                check(sound_cards[0].isVisible(), "the volume row opens the sound card")
+                # Repeater delegates are visual children only: walk childItems().
+                outputs = []
+                microphones = []
+                stack = [sound_cards[0].contentItem()]
+                while stack:
+                    item = stack.pop()
+                    if item.objectName() == "soundOutput":
+                        outputs.append(item)
+                    elif item.objectName() == "soundInput":
+                        microphones.append(item)
+                    stack.extend(item.childItems())
+                check(len(outputs) == 2, f"the sound card lists the outputs ({len(outputs)})")
+                check(len(microphones) == 2,
+                      f"the sound card lists the microphones ({len(microphones)})")
+                headset = next((o for o in outputs if o.property("label") == "Headset"), None)
+                if headset is not None:
+                    QMetaObject.invokeMethod(headset, "clicked")
+                    QTest.qWait(50)
+                check(("setDefaultOutput", "bluez_output.headset") in audio.calls,
+                      f"picking an output makes it the default ({audio.calls})")
+                QMetaObject.invokeMethod(sound_cards[0], "hide")
+                QTest.qWait(300)
+
+        # Screen recording: quick settings starts it, the panel shows a pill
+        # with the time, Super+Alt+R (through Shell) stops it.
+        quick_cards = windows_of_kind("QuickSettingsPopup")
+        if quick_cards:
+            record = quick_cards[0].findChild(QObject, "recorderScreen")
+            check(record is not None, "quick settings has a Record the screen button")
+            if record is not None:
+                QMetaObject.invokeMethod(record, "clicked")
+                QTest.qWait(300)
+                check(("start", False) in recorder.calls,
+                      f"the Screen button starts a recording ({recorder.calls})")
+                pill = panel.findChild(QObject, "recordingButton")
+                check(pill is not None and pill.property("visible"),
+                      "the panel shows the recording pill while recording")
+                shell.screenRecordingToggleRequested.emit()
+                QTest.qWait(100)
+                check(("stop",) in recorder.calls, "Super+Alt+R stops the recording")
+                check(pill is None or not pill.property("visible"),
+                      "the recording pill goes away when the recording stops")
+
         # Panel shortcuts that never open a card: the middle click mutes, the
         # bell's right click flips do-not-disturb.
         if quicks and centres:
@@ -2292,6 +2651,10 @@ def main():
                   f"the volume-up key raises the volume by 5% ({quick.calls})")
             osds = windows_of_kind("OsdPopup")
             check(bool(osds) and osds[0].isVisible(), "the volume key shows the on-screen level")
+            session.mediaKey.emit("caps-on")
+            QTest.qWait(50)
+            check(bool(osds) and osds[0].property("text") == "Caps Lock on",
+                  f"Caps Lock shows on screen ({osds[0].property('text') if osds else None})")
 
             # Super+V reaches the shell over D-Bus and opens the history.
             shell.clipboardToggleRequested.emit()
@@ -2300,8 +2663,21 @@ def main():
             check(bool(clips) and clips[0].isVisible(), "Super+V opens the clipboard history")
             if clips:
                 entries = clips[0].findChild(QObject, "clipboardList")
-                check(entries is not None and entries.property("count") == 2,
-                      "the clipboard history lists the copied texts")
+                check(entries is not None and entries.property("count") == 3,
+                      "the clipboard history lists the pinned and the copied texts")
+                clips[0].setProperty("filter", "second")
+                QTest.qWait(50)
+                check(entries is not None and entries.property("count") == 1,
+                      "searching the clipboard history narrows the list")
+                clips[0].setProperty("filter", "")
+                QMetaObject.invokeMethod(clips[0], "pick",
+                                         Q_ARG("QVariant", {"text": "pinned snippet",
+                                                            "pinned": True, "index": -1}))
+                QTest.qWait(300)
+                check(("copyText", "pinned snippet") in clipboard.calls,
+                      f"a pinned entry goes back on the clipboard ({clipboard.calls})")
+                shell.clipboardToggleRequested.emit()
+                QTest.qWait(300)
                 shell.clipboardToggleRequested.emit()
                 QTest.qWait(400)
                 check(not clips[0].isVisible(), "Super+V again closes it")
@@ -2530,6 +2906,42 @@ def main():
             check(("invokeAction", 3, "default") in notifications.calls,
                   f"clicking a notification runs its default action ({notifications.calls})")
 
+            # Inline reply: a text field instead of an "inline-reply" button.
+            notifications._active = [{"id": 9, "app": "Telegram", "summary": "Anna",
+                                      "body": "Lunch?", "icon": "", "image": "",
+                                      "actions": ["default", "", "inline-reply", "Reply"],
+                                      "timeout": 0, "replyable": True,
+                                      "replyPlaceholder": "Message Anna"}]
+            notifications.activeChanged.emit()
+            QTest.qWait(400)
+            fields = items_named(stack.property("contentItem"), "notificationReply")
+            check(len(fields) == 1 and fields[0].isVisible(),
+                  f"a notification with inline-reply shows a reply field ({len(fields)})")
+            reply_buttons = [b for b in items_named(stack.property("contentItem"),
+                                                    "notificationAction")
+                             if b.property("label") == "Reply"]
+            check(not reply_buttons, "inline-reply is not shown as a button")
+            if fields:
+                fields[0].setProperty("text", "Yes!")
+                card_item, _ = card_of(fields[0])
+                if card_item is not None:
+                    QMetaObject.invokeMethod(card_item, "sendReply")
+                check(("reply", 9, "Yes!") in notifications.calls,
+                      f"sending a reply reaches the daemon ({notifications.calls})")
+
+        # An urgent notification lifts the popups above fullscreen windows.
+        nls = attached("layershell", notif_win)
+        if nls is not None:
+            check(nls.layer == LayerShellWindow.Layer.LayerTop,
+                  f"ordinary notifications sit in the top layer ({nls.layer})")
+            notifications._active = [{"id": 11, "app": "NewTeller", "summary": "Battery critically low",
+                                      "body": "4% left", "icon": "battery", "image": "",
+                                      "actions": [], "timeout": 0, "urgent": True}]
+            notifications.activeChanged.emit()
+            QTest.qWait(100)
+            check(nls.layer == LayerShellWindow.Layer.LayerOverlay,
+                  f"an urgent notification shows above fullscreen windows ({nls.layer})")
+
         notifications._active = []
         notifications.activeChanged.emit()
         QTest.qWait(400)  # the exit animation plays before the window hides
@@ -2544,6 +2956,8 @@ def main():
     QTest.qWait(50)
     urgent = [c for c in shell.calls if c[0] == "notifyUrgent"]
     check(len(urgent) == 1, f"a critically low battery warns urgently, once ({shell.calls})")
+    check(("setPowerProfile", "power-saver") in session.calls,
+          f"a low battery switches to the power saver profile ({session.calls})")
     system.battery = (False, 0.0, False)
     system.snapshotUpdated.emit()
     QTest.qWait(50)

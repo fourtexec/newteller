@@ -29,6 +29,7 @@
 #include <wlr/types/wlr_data_control_v1.h>
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_export_dmabuf_v1.h>
+#include <wlr/types/wlr_ext_foreign_toplevel_list_v1.h>
 #include <wlr/types/wlr_fractional_scale_v1.h>
 #include <wlr/types/wlr_gamma_control_v1.h>
 #include <wlr/types/wlr_foreign_toplevel_management_v1.h>
@@ -43,6 +44,7 @@
 #include <wlr/types/wlr_output.h>
 #include <wlr/types/wlr_output_layout.h>
 #include <wlr/types/wlr_output_management_v1.h>
+#include <wlr/types/wlr_output_power_management_v1.h>
 #include <wlr/types/wlr_pointer_gestures_v1.h>
 #include <wlr/types/wlr_pointer.h>
 #include <wlr/types/wlr_presentation_time.h>
@@ -54,6 +56,7 @@
 #include <wlr/types/wlr_scene.h>
 #include <wlr/types/wlr_screencopy_v1.h>
 #include <wlr/types/wlr_seat.h>
+#include <wlr/types/wlr_security_context_v1.h>
 #include <wlr/types/wlr_session_lock_v1.h>
 #include <wlr/types/wlr_server_decoration.h>
 #include <wlr/types/wlr_single_pixel_buffer_v1.h>
@@ -67,12 +70,19 @@
 #include <wlr/types/wlr_xcursor_manager.h>
 #include <wlr/types/wlr_xdg_activation_v1.h>
 #include <wlr/types/wlr_xdg_decoration_v1.h>
+#include <wlr/types/wlr_xdg_foreign_registry.h>
+#include <wlr/types/wlr_xdg_foreign_v1.h>
+#include <wlr/types/wlr_xdg_foreign_v2.h>
 #include <wlr/types/wlr_xdg_output_v1.h>
 #include <wlr/types/wlr_xdg_shell.h>
 #include <wlr/util/log.h>
 #include <wlr/util/region.h>
 #include <wlr/util/transform.h>
 #include <wlr/version.h>
+// Version-dependent headers go after wlr/version.h, which defines the macros.
+#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR >= 19
+#include <wlr/types/wlr_xdg_system_bell_v1.h>
+#endif
 #include <wlr/xwayland/xwayland.h>
 
 #include <xkbcommon/xkbcommon.h>
@@ -204,6 +214,16 @@ static pid_t viewPid(struct View *view);
 static void updateIdleInhibited(struct Server *server);
 static bool surfaceLayoutPosition(struct Server *server, struct wlr_surface *surface, int *x, int *y);
 static bool shortcutsInhibited(struct Server *server);
+static void raisePinnedViews(struct Server *server);
+static void toggleShowDesktop(struct Server *server);
+static void shellAction(const char *method);
+static void checkHotCorner(struct Server *server);
+static void broadcastFullscreen(struct Server *server, bool force);
+static struct wlr_box viewOuterBox(struct View *view);
+static uint32_t dragSnapEdges(struct Server *server, struct View *view);
+static void updateSnapPreview(struct Server *server, bool dragging);
+static void viewSetMaximized(struct View *view, bool maximized);
+static void requestWindowMenu(struct View *view, int x, int y);
 struct Keyboard;
 static struct wlr_input_method_keyboard_grab_v2 *keyboardImGrab(struct Keyboard *keyboard);
 
@@ -253,6 +273,8 @@ struct View {
 
     struct wlr_scene_tree *tree;
     struct wlr_foreign_toplevel_handle_v1 *handle;
+    // ext-foreign-toplevel-list: the read-only window list (portals, tools).
+    struct wlr_ext_foreign_toplevel_handle_v1 *extHandle;
 
     bool mapped;
     bool minimized;
@@ -261,6 +283,14 @@ struct View {
     bool overrideRedirect;
     bool positioned;
     bool hiddenByShowDesktop;
+    // Stays above ordinary windows (window menu, rules.alwaysOnTop).
+    bool alwaysOnTop;
+    // Shown on every desktop (window menu).
+    bool sticky;
+    // Told it is suspended (xdg-shell v6) while hidden.
+    bool suspended;
+    // rules.* were applied at the first map.
+    bool rulesApplied;
     // The virtual desktop the window lives on.
     int workspace;
     // A stable number for the control socket (thumbnails, overview).
@@ -325,6 +355,7 @@ struct View {
     struct wl_listener requestMaximize;
     struct wl_listener requestFullscreen;
     struct wl_listener requestMinimize;
+    struct wl_listener requestShowMenu;
     struct wl_listener foreignClose;
     struct wl_listener foreignActivate;
     struct wl_listener foreignMinimize;
@@ -344,6 +375,9 @@ struct Keyboard {
     struct wlr_keyboard *keyboard;
     // Virtual keyboards that bring their own keymap keep it on reload.
     bool ownKeymap;
+    // Caps Lock (1) and Num Lock (2) as last seen; the shell shows changes.
+    int lockKeys;
+    bool lockKeysKnown;
     struct wl_listener modifiers;
     struct wl_listener key;
     struct wl_listener destroy;
@@ -482,6 +516,10 @@ struct Server {
     struct wlr_scene_tree *backgroundTree;
     struct wlr_scene_tree *bottomTree;
     struct wlr_scene_tree *toplevelTree;
+    // Where a dragged window will snap: a translucent rectangle above the
+    // windows, shown while the pointer is at a screen edge.
+    struct wlr_scene_tree *snapTree;
+    struct wlr_scene_rect *snapRect;
     struct wlr_scene_tree *topTree;
     struct wlr_scene_tree *overlayTree;
     // Input method candidate windows, above everything but the lock screen.
@@ -491,6 +529,11 @@ struct Server {
     struct wlr_xdg_shell *xdgShell;
     struct wlr_layer_shell_v1 *layerShell;
     struct wlr_foreign_toplevel_manager_v1 *foreignToplevels;
+    struct wlr_ext_foreign_toplevel_list_v1 *extToplevels;
+    // Sandboxed clients (Flatpak) are known by their security context and
+    // kept away from the privileged protocols (globalFilter).
+    struct wlr_security_context_manager_v1 *securityContexts;
+    struct wl_listener securityContextsDestroy;
     struct wlr_xdg_activation_v1 *activation;
     struct wlr_server_decoration_manager *serverDecoration;
     // org_kde_kwin_server_decoration objects (GTK 3 asks through this one).
@@ -549,6 +592,14 @@ struct Server {
     // only a plain tap of Super toggles the start menu.
     bool logoTap;
     bool showDesktop;
+    // The hot corner the pointer last fired (-1: none); it fires again only
+    // after the pointer has left that corner.
+    int hotCornerFired;
+    // The output under the pointer, as last reported ("event output NAME"):
+    // the shell opens keyboard-invoked cards on that screen.
+    struct wlr_output *pointerOutput;
+    // A fullscreen window is shown (as last reported, "event fullscreen").
+    bool fullscreenShown;
     enum CursorMode cursorMode;
     double grabX;
     double grabY;
@@ -628,6 +679,12 @@ struct Server {
 
     struct wlr_output_manager_v1 *outputManager;
     struct wlr_gamma_control_manager_v1 *gammaManager;
+    // wlr-output-power-management: wlopm and idle tools turn screens off.
+    struct wlr_output_power_manager_v1 *outputPowerManager;
+    struct wl_listener outputPowerSetMode;
+    // xdg-system-bell (wlroots 0.19+): a terminal's or an application's bell.
+    struct wl_listener systemBellRing;
+    uint64_t lastBell;
 
     int ipcFd;
     struct wl_event_source *ipcSource;
@@ -928,7 +985,7 @@ static const char *viewAppId(struct View *view)
 // are never hidden by a workspace switch.
 static bool viewOnWorkspace(struct View *view)
 {
-    return view->overrideRedirect || view->workspace == view->server->workspace;
+    return view->overrideRedirect || view->sticky || view->workspace == view->server->workspace;
 }
 
 static void viewSyncVisible(struct View *view)
@@ -937,6 +994,18 @@ static void viewSyncVisible(struct View *view)
         wlr_scene_node_set_enabled(&view->tree->node,
                                    view->mapped && !view->minimized
                                        && viewOnWorkspace(view));
+    }
+    // xdg-shell v6: a minimized window or one on another desktop is told it
+    // is suspended, so browsers and GTK 4 applications stop drawing frames
+    // nobody sees (battery, CPU). Its last frame stays for previews.
+    // (Only clients that bound xdg_wm_base version 6 know the state.)
+    if (view->xdg && view->xdg->base->initialized && view->mapped
+        && wl_resource_get_version(view->xdg->resource) >= 6) {
+        bool hidden = view->minimized || !viewOnWorkspace(view);
+        if (hidden != view->suspended) {
+            view->suspended = hidden;
+            wlr_xdg_toplevel_set_suspended(view->xdg, hidden);
+        }
     }
     // A video in a minimized window or on another desktop no longer keeps
     // the screen awake.
@@ -1244,9 +1313,21 @@ static void viewUpdateDecoration(struct View *view)
     }
 }
 
+static void updateExtToplevel(struct View *view)
+{
+    if (!view->extHandle)
+        return;
+    const struct wlr_ext_foreign_toplevel_handle_v1_state state = {
+        .title = viewTitle(view),
+        .app_id = viewAppId(view),
+    };
+    wlr_ext_foreign_toplevel_handle_v1_update_state(view->extHandle, &state);
+}
+
 static void updateForeignToplevel(struct View *view)
 {
     viewUpdateDecoration(view);
+    updateExtToplevel(view);
     if (!view->handle)
         return;
     wlr_foreign_toplevel_handle_v1_set_title(view->handle, viewTitle(view));
@@ -1310,18 +1391,115 @@ static void viewSetActivated(struct View *view, bool activated)
     viewUpdateDecoration(view);
 }
 
+// The window a dialog belongs to (xdg parent, X11 transient-for), if it is
+// one of ours and mapped.
+static struct View *viewParent(struct View *view)
+{
+    struct View *other;
+    wl_list_for_each(other, &view->server->views, link) {
+        if (other == view || !other->mapped)
+            continue;
+        if (view->xdg && view->xdg->parent && other->xdg == view->xdg->parent)
+            return other;
+        if (view->x11 && view->x11->parent && other->x11 == view->x11->parent)
+            return other;
+    }
+    return NULL;
+}
+
+// Always on top itself, or a dialog of such a window (it must not open
+// under its pinned parent).
+static bool viewPinned(struct View *view)
+{
+    for (int depth = 0; view && depth < 8; ++depth) {
+        if (view->alwaysOnTop)
+            return true;
+        view = viewParent(view);
+    }
+    return false;
+}
+
+// Raises a window and then its dialogs, so a dialog never ends up hidden
+// behind the window it belongs to.
+static void raiseWithChildren(struct View *view, int depth)
+{
+    if (!view->tree || depth > 8)
+        return;
+    wlr_scene_node_raise_to_top(&view->tree->node);
+    struct View *child;
+    wl_list_for_each_reverse(child, &view->server->views, link) {
+        if (child != view && child->mapped && !child->overrideRedirect
+            && viewParent(child) == view)
+            raiseWithChildren(child, depth + 1);
+    }
+}
+
 static void viewRaise(struct View *view)
 {
     if (!view->tree)
         return;
-    wlr_scene_node_raise_to_top(&view->tree->node);
+    raiseWithChildren(view, 0);
     wl_list_remove(&view->link);
     wl_list_insert(&view->server->views, &view->link);
+    raisePinnedViews(view->server);
+}
+
+// Always-on-top windows go back above the ordinary ones after anything was
+// raised. X11 menus and tooltips (override-redirect) stay above them, or a
+// pinned window would cover the menu of the application under it.
+static void raisePinnedViews(struct Server *server)
+{
+    bool any = false;
+    struct View *view;
+    wl_list_for_each(view, &server->views, link) {
+        if (view->alwaysOnTop && view->tree) {
+            any = true;
+            break;
+        }
+    }
+    if (!any)
+        return;
+    // Least recently used first, so the most recent one ends on top.
+    wl_list_for_each_reverse(view, &server->views, link) {
+        if (view->tree && !view->overrideRedirect && viewPinned(view))
+            wlr_scene_node_raise_to_top(&view->tree->node);
+    }
+    wl_list_for_each_reverse(view, &server->views, link) {
+        if (view->overrideRedirect && view->tree)
+            wlr_scene_node_raise_to_top(&view->tree->node);
+    }
+}
+
+static void viewSetAlwaysOnTop(struct View *view, bool onTop)
+{
+    view->alwaysOnTop = onTop;
+    if (onTop && view->tree)
+        wlr_scene_node_raise_to_top(&view->tree->node);
+    raisePinnedViews(view->server);
+    scheduleAllFrames(view->server);
+}
+
+// Settings -> Windows -> Window rules: applications that always start on
+// top or maximized. Applied once, when the window first appears.
+static void applyWindowRules(struct View *view)
+{
+    if (view->rulesApplied || view->overrideRedirect)
+        return;
+    view->rulesApplied = true;
+    const struct CompositorConfig *config = &view->server->config;
+    const char *appId = viewAppId(view);
+    if (ntConfigListContains(config->rulesAlwaysOnTop, appId))
+        viewSetAlwaysOnTop(view, true);
+    if (ntConfigListContains(config->rulesMaximized, appId) && !view->maximized
+        && !view->fullscreen)
+        viewSetMaximized(view, true);
 }
 
 static void focusView(struct View *view, struct wlr_surface *surface)
 {
-    if (!view || !viewSurface(view) || view->minimized)
+    // A hidden (unmapped) window, e.g. an application closed to the tray,
+    // cannot take the focus; the dock starts the application instead.
+    if (!view || !view->mapped || !viewSurface(view) || view->minimized)
         return;
 
     struct Server *server = view->server;
@@ -1496,8 +1674,9 @@ static void viewRestoreSnap(struct View *view)
 }
 
 // Snap the focused window to one half of the output's usable area. The
-// direction is a wlr edge: WLR_EDGE_LEFT/RIGHT for the two halves, and
-// WLR_EDGE_TOP for maximise. WLR_EDGE_BOTTOM restores the saved geometry.
+// direction is a wlr edge: WLR_EDGE_LEFT/RIGHT for the two halves, one of
+// them with TOP or BOTTOM for a quarter, WLR_EDGE_TOP alone for maximise.
+// WLR_EDGE_BOTTOM alone restores the saved geometry.
 static void viewSnap(struct View *view, uint32_t edge)
 {
     if (!view || view->overrideRedirect)
@@ -1518,7 +1697,11 @@ static void viewSnap(struct View *view, uint32_t edge)
         viewSetMaximized(view, true);
         return;
     }
-    if (edge != WLR_EDGE_LEFT && edge != WLR_EDGE_RIGHT)
+    // A half (left or right), or a quarter: a side plus top or bottom.
+    const uint32_t side = edge & (WLR_EDGE_LEFT | WLR_EDGE_RIGHT);
+    const uint32_t vertical = edge & (WLR_EDGE_TOP | WLR_EDGE_BOTTOM);
+    if ((side != WLR_EDGE_LEFT && side != WLR_EDGE_RIGHT)
+        || vertical == (WLR_EDGE_TOP | WLR_EDGE_BOTTOM))
         return;
     if (view->maximized)
         viewSetMaximized(view, false);
@@ -1534,8 +1717,10 @@ static void viewSnap(struct View *view, uint32_t edge)
 
     const struct wlr_box area = usableBoxForView(view);
     const int half = area.width / 2;
-    struct wlr_box outer = {edge == WLR_EDGE_LEFT ? area.x : area.x + area.width - half,
-                            area.y, half, area.height};
+    const int height = vertical ? area.height / 2 : area.height;
+    struct wlr_box outer = {side == WLR_EDGE_LEFT ? area.x : area.x + area.width - half,
+                            vertical == WLR_EDGE_BOTTOM ? area.y + area.height - height : area.y,
+                            half, height};
     struct wlr_box content = frameContentBox(view, outer);
     viewSetPosition(view, content.x, content.y);
     viewSetSize(view, content.width, content.height);
@@ -1627,8 +1812,10 @@ static void toggleShowDesktop(struct Server *server)
 // Workspaces (virtual desktops)
 // ---------------------------------------------------------------------------
 
-// The panel and menus hide behind a fullscreen window only while that window
-// is on the desktop being shown.
+// The panel and menus (the top layer) hide behind a fullscreen window only
+// while that window is on the desktop being shown. The overlay layer stays:
+// it holds what must reach the user over a game or a video (the
+// administrator prompt, Ctrl+Shift+Esc, Alt+Tab, the volume display).
 static void updateFullscreenLayers(struct Server *server)
 {
     if (server->locked)
@@ -1636,7 +1823,21 @@ static void updateFullscreenLayers(struct Server *server)
     bool covered = server->fullscreenView && server->fullscreenView->mapped
                    && viewOnWorkspace(server->fullscreenView);
     wlr_scene_node_set_enabled(&server->topTree->node, !covered);
-    wlr_scene_node_set_enabled(&server->overlayTree->node, !covered);
+    wlr_scene_node_set_enabled(&server->overlayTree->node, true);
+    broadcastFullscreen(server, false);
+}
+
+// "event fullscreen 1|0": a fullscreen window is (no longer) shown. The
+// shell holds back notification popups and sounds meanwhile.
+static void broadcastFullscreen(struct Server *server, bool force)
+{
+    bool shown = server->fullscreenView && server->fullscreenView->mapped
+                 && viewOnWorkspace(server->fullscreenView);
+    if (shown == server->fullscreenShown && !force)
+        return;
+    server->fullscreenShown = shown;
+    if (ipcHasWatchers(server))
+        ipcBroadcast(server, shown ? "event fullscreen 1" : "event fullscreen 0");
 }
 
 static void broadcastWorkspaces(struct Server *server)
@@ -1782,10 +1983,10 @@ static void viewSetFullscreen(struct View *view, bool fullscreen)
         }
         view->server->fullscreenView = view;
         // The panel and menus are layer-shell surfaces above normal windows.
-        // Hide those layers while a client is fullscreen, as a desktop session
-        // normally does; Super+F (or F11) brings them back.
+        // Hide the top layer while a client is fullscreen, as a desktop
+        // session normally does; Super+F (or F11) brings it back. Overlay
+        // surfaces (prompts, Alt+Tab, Ctrl+Shift+Esc) still show.
         wlr_scene_node_set_enabled(&view->server->topTree->node, false);
-        wlr_scene_node_set_enabled(&view->server->overlayTree->node, false);
     } else if (view->server->fullscreenView == view) {
         view->server->fullscreenView = NULL;
         wlr_scene_node_set_enabled(&view->server->topTree->node, true);
@@ -1794,6 +1995,7 @@ static void viewSetFullscreen(struct View *view, bool fullscreen)
     if (view->xdg)
         wlr_xdg_toplevel_set_fullscreen(view->xdg, fullscreen);
     updateForeignToplevel(view);
+    broadcastFullscreen(view->server, false);
 }
 
 static void viewClose(struct View *view)
@@ -1876,6 +2078,23 @@ static void centerView(struct View *view)
         return;
     }
 
+    // A dialog opens centred over its window (file choosers, "save
+    // changes?"), kept inside that window's screen.
+    struct View *parent = viewParent(view);
+    if (parent && !parent->minimized) {
+        struct wlr_box parentArea = usableBoxForView(parent);
+        parentArea = frameContentBox(view, parentArea);
+        int x = parent->x + (parent->width - view->width) / 2;
+        int y = parent->y + (parent->height - view->height) / 2;
+        if (x + view->width > parentArea.x + parentArea.width)
+            x = parentArea.x + parentArea.width - view->width;
+        if (y + view->height > parentArea.y + parentArea.height)
+            y = parentArea.y + parentArea.height - view->height;
+        viewSetPosition(view, x < parentArea.x ? parentArea.x : x,
+                        y < parentArea.y ? parentArea.y : y);
+        return;
+    }
+
     struct wlr_output *output = wlr_output_layout_output_at(
         view->server->outputLayout, view->server->cursor->x,
         view->server->cursor->y);
@@ -1924,6 +2143,8 @@ static void handleViewForeignActivate(struct wl_listener *listener, void *data)
 {
     (void)data;
     struct View *view = wl_container_of(listener, view, foreignActivate);
+    if (!view->mapped)
+        return;
     if (view->minimized)
         viewSetMinimized(view, false);
     focusView(view, NULL);
@@ -1959,6 +2180,14 @@ static void handleViewForeignFullscreen(struct wl_listener *listener, void *data
 
 static void ensureForeignToplevel(struct View *view)
 {
+    if (!view->extHandle && !view->overrideRedirect && view->server->extToplevels) {
+        const struct wlr_ext_foreign_toplevel_handle_v1_state state = {
+            .title = viewTitle(view),
+            .app_id = viewAppId(view),
+        };
+        view->extHandle = wlr_ext_foreign_toplevel_handle_v1_create(view->server->extToplevels,
+                                                                    &state);
+    }
     if (view->handle || view->overrideRedirect || !view->server->foreignToplevels)
         return;
 
@@ -1978,6 +2207,26 @@ static void ensureForeignToplevel(struct View *view)
     updateForeignToplevel(view);
 }
 
+// The window leaves the window lists (the dock, portals) when it is
+// unmapped, not only when it is destroyed: applications that "close to
+// the tray" hide their window and would otherwise stay on the dock.
+static void destroyForeignToplevel(struct View *view)
+{
+    if (view->handle) {
+        wl_list_remove(&view->foreignActivate.link);
+        wl_list_remove(&view->foreignClose.link);
+        wl_list_remove(&view->foreignMinimize.link);
+        wl_list_remove(&view->foreignMaximize.link);
+        wl_list_remove(&view->foreignFullscreen.link);
+        wlr_foreign_toplevel_handle_v1_destroy(view->handle);
+        view->handle = NULL;
+    }
+    if (view->extHandle) {
+        wlr_ext_foreign_toplevel_handle_v1_destroy(view->extHandle);
+        view->extHandle = NULL;
+    }
+}
+
 static void destroyView(struct View *view)
 {
     if (!view)
@@ -1994,9 +2243,12 @@ static void destroyView(struct View *view)
         server->fullscreenView = NULL;
         wlr_scene_node_set_enabled(&server->topTree->node, true);
         wlr_scene_node_set_enabled(&server->overlayTree->node, true);
+        broadcastFullscreen(server, false);
     }
-    if (server->grabbedView == view)
+    if (server->grabbedView == view) {
         server->grabbedView = NULL;
+        updateSnapPreview(server, false);
+    }
     if (server->switchTarget == view)
         server->switchTarget = NULL;
     if (server->hoverView == view)
@@ -2019,15 +2271,7 @@ static void destroyView(struct View *view)
         view->xdgDecoration = NULL;
     }
 
-    if (view->handle) {
-        wl_list_remove(&view->foreignActivate.link);
-        wl_list_remove(&view->foreignClose.link);
-        wl_list_remove(&view->foreignMinimize.link);
-        wl_list_remove(&view->foreignMaximize.link);
-        wl_list_remove(&view->foreignFullscreen.link);
-        wlr_foreign_toplevel_handle_v1_destroy(view->handle);
-        view->handle = NULL;
-    }
+    destroyForeignToplevel(view);
 
     if (view->tree)
         wlr_scene_node_destroy(&view->tree->node);
@@ -2127,10 +2371,35 @@ static void scheduleArrange(struct Server *server)
     }
 }
 
+static struct wlr_scene_tree *treeForLayer(struct Server *server,
+                                           enum zwlr_layer_shell_v1_layer which)
+{
+    switch (which) {
+    case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
+        return server->backgroundTree;
+    case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM:
+        return server->bottomTree;
+    case ZWLR_LAYER_SHELL_V1_LAYER_TOP:
+        return server->topTree;
+    case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY:
+        return server->overlayTree;
+    }
+    return NULL;
+}
+
 static void layerHandleCommit(struct wl_listener *listener, void *data)
 {
     (void)data;
     struct Layer *layer = wl_container_of(listener, layer, commit);
+    // set_layer moves a surface to another layer (an urgent notification
+    // goes above a fullscreen window): its scene node follows, or it would
+    // be drawn in the old layer while the pointer finds it in the new one.
+    struct wlr_scene_tree *wanted = treeForLayer(layer->server, layer->layer->current.layer);
+    if (layer->scene && wanted && layer->scene->tree->node.parent != wanted) {
+        wlr_scene_node_reparent(&layer->scene->tree->node, wanted);
+        layer->arrangePending = true;
+        scheduleArrange(layer->server);
+    }
     if (!layer->hasLastState
         || layerStateChanged(&layer->lastState, &layer->layer->current)) {
         layer->arrangePending = true;
@@ -2224,21 +2493,7 @@ static void handleNewLayerSurface(struct wl_listener *listener, void *data)
     layer->layer = layerSurface;
     layer->output = output;
 
-    struct wlr_scene_tree *parent = NULL;
-    switch (layerSurface->current.layer) {
-    case ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND:
-        parent = server->backgroundTree;
-        break;
-    case ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM:
-        parent = server->bottomTree;
-        break;
-    case ZWLR_LAYER_SHELL_V1_LAYER_TOP:
-        parent = server->topTree;
-        break;
-    case ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY:
-        parent = server->overlayTree;
-        break;
-    }
+    struct wlr_scene_tree *parent = treeForLayer(server, layerSurface->current.layer);
     layer->scene = wlr_scene_layer_surface_v1_create(parent, layerSurface);
     if (!layer->scene) {
         free(layer);
@@ -2349,7 +2604,8 @@ static bool viewFrameAt(struct View *view, double lx, double ly, struct Hit *hit
 
 static bool layerAt(struct Layer *layer, double lx, double ly, struct Hit *hit)
 {
-    if (!layer->scene || !layer->layer || !layer->layer->surface->mapped)
+    if (!layer->scene || !layer->layer || !layer->layer->surface->mapped
+        || !layer->scene->tree->node.enabled)
         return false;
     int nodeX = layer->scene->tree->node.x;
     int nodeY = layer->scene->tree->node.y;
@@ -2429,7 +2685,13 @@ static struct Hit hitTest(struct Server *server, double lx, double ly)
         ZWLR_LAYER_SHELL_V1_LAYER_OVERLAY,
         ZWLR_LAYER_SHELL_V1_LAYER_TOP,
     };
+    // Only what is drawn takes the pointer: behind a fullscreen window the
+    // panel (top layer) is hidden and must not catch clicks meant for the
+    // game or the video.
+    const struct wlr_scene_tree *topTrees[] = {server->overlayTree, server->topTree};
     for (size_t i = 0; i < sizeof(topLayers) / sizeof(topLayers[0]); ++i) {
+        if (!topTrees[i]->node.enabled)
+            continue;
         struct Layer *layer;
         wl_list_for_each(layer, &server->layers, link) {
             if ((int)layer->layer->current.layer != topLayers[i])
@@ -2439,8 +2701,13 @@ static struct Hit hitTest(struct Server *server, double lx, double ly)
         }
     }
 
-    struct View *view;
-    wl_list_for_each(view, &server->views, link) {
+    // Top-most first, in drawing order: an always-on-top window or the
+    // Alt+Tab preview is above windows used more recently.
+    struct wlr_scene_node *child;
+    wl_list_for_each_reverse(child, &server->toplevelTree->children, link) {
+        struct View *view = child->data;
+        if (!view || !child->enabled)
+            continue;
         if (viewAt(view, lx, ly, &hit))
             return hit;
     }
@@ -2449,7 +2716,10 @@ static struct Hit hitTest(struct Server *server, double lx, double ly)
         ZWLR_LAYER_SHELL_V1_LAYER_BOTTOM,
         ZWLR_LAYER_SHELL_V1_LAYER_BACKGROUND,
     };
+    const struct wlr_scene_tree *bottomTrees[] = {server->bottomTree, server->backgroundTree};
     for (size_t i = 0; i < sizeof(bottomLayers) / sizeof(bottomLayers[0]); ++i) {
+        if (!bottomTrees[i]->node.enabled)
+            continue;
         struct Layer *layer;
         wl_list_for_each(layer, &server->layers, link) {
             if ((int)layer->layer->current.layer != bottomLayers[i])
@@ -2579,6 +2849,7 @@ static void processCursorMotion(struct Server *server, uint32_t time)
         viewSetPosition(view,
                         (int)(server->cursor->x - server->grabX),
                         (int)(server->cursor->y - server->grabY));
+        updateSnapPreview(server, true);
         return;
     }
     if (server->cursorMode == CURSOR_RESIZE && server->grabbedView) {
@@ -2661,6 +2932,8 @@ static void processCursorMotion(struct Server *server, uint32_t time)
         server->hoverView = hoverView;
     }
 
+    checkHotCorner(server);
+
     // Focus follows the mouse (without raising), when chosen.
     if (server->config.focusFollowsMouse && hit.view && !hit.view->overrideRedirect
         && hit.view != server->focusedView && !server->focusedLayer && !server->locked) {
@@ -2668,6 +2941,134 @@ static void processCursorMotion(struct Server *server, uint32_t time)
         focusView(hit.view, NULL);
         server->suppressRaise = false;
     }
+}
+
+// Where a window dropped at the pointer would snap: a side (half), a side
+// and a row (quarter, near a corner) or the top (maximise); 0 for none.
+static uint32_t dragSnapEdges(struct Server *server, struct View *view)
+{
+    const struct wlr_box area = usableBoxForView(view);
+    // Corners (the outer 10% of a side) give quarters.
+    const int cornerReach = area.height / 10 > 24 ? area.height / 10 : 24;
+    uint32_t row = 0;
+    if (server->cursor->y <= area.y + cornerReach)
+        row = WLR_EDGE_TOP;
+    else if (server->cursor->y >= area.y + area.height - cornerReach)
+        row = WLR_EDGE_BOTTOM;
+    if (server->cursor->x <= area.x + 12)
+        return WLR_EDGE_LEFT | row;
+    if (server->cursor->x >= area.x + area.width - 12)
+        return WLR_EDGE_RIGHT | row;
+    if (server->cursor->y <= area.y + 10)
+        return WLR_EDGE_TOP;
+    return 0;
+}
+
+// Shows where the dragged window will snap (while `dragging`), or hides it.
+static void updateSnapPreview(struct Server *server, bool dragging)
+{
+    struct View *view = server->grabbedView;
+    uint32_t edges = dragging && view && server->config.snapping && !server->locked
+                         ? dragSnapEdges(server, view) : 0;
+    if (!edges) {
+        if (server->snapTree->node.enabled) {
+            wlr_scene_node_set_enabled(&server->snapTree->node, false);
+            scheduleAllFrames(server);
+        }
+        return;
+    }
+    const struct wlr_box area = usableBoxForView(view);
+    struct wlr_box box = area;
+    const uint32_t side = edges & (WLR_EDGE_LEFT | WLR_EDGE_RIGHT);
+    const uint32_t row = edges & (WLR_EDGE_TOP | WLR_EDGE_BOTTOM);
+    if (side) {
+        box.width = area.width / 2;
+        if (side == WLR_EDGE_RIGHT)
+            box.x = area.x + area.width - box.width;
+        if (row) {
+            box.height = area.height / 2;
+            if (row == WLR_EDGE_BOTTOM)
+                box.y = area.y + area.height - box.height;
+        }
+    }
+    // A small inset, so the preview reads as a target, not a window.
+    const int inset = 6;
+    wlr_scene_node_set_position(&server->snapTree->node, box.x + inset, box.y + inset);
+    wlr_scene_rect_set_size(server->snapRect, box.width - 2 * inset > 1 ? box.width - 2 * inset : 1,
+                            box.height - 2 * inset > 1 ? box.height - 2 * inset : 1);
+    wlr_scene_node_set_enabled(&server->snapTree->node, true);
+    scheduleAllFrames(server);
+}
+
+// Hot corners (Settings -> Windows): pushing the pointer into a screen corner
+// opens the overview, shows the desktop, ... Never while dragging, locked,
+// in a full-screen window or a game that holds the pointer.
+static void broadcastPointerOutput(struct Server *server)
+{
+    if (!server->pointerOutput || !ipcHasWatchers(server))
+        return;
+    char line[128];
+    snprintf(line, sizeof(line), "event output %s", server->pointerOutput->name);
+    ipcBroadcast(server, line);
+}
+
+static void checkHotCorner(struct Server *server)
+{
+    struct wlr_output *output = wlr_output_layout_output_at(server->outputLayout,
+                                                            server->cursor->x, server->cursor->y);
+    if (output && output != server->pointerOutput) {
+        server->pointerOutput = output;
+        broadcastPointerOutput(server);
+    }
+    if (!output) {
+        server->hotCornerFired = -1;
+        return;
+    }
+    struct wlr_box box;
+    wlr_output_layout_get_box(server->outputLayout, output, &box);
+    const double x = server->cursor->x - box.x;
+    const double y = server->cursor->y - box.y;
+    const bool left = x < 1;
+    const bool right = x > box.width - 2;
+    const bool top = y < 1;
+    const bool bottom = y > box.height - 2;
+    int corner = -1;
+    if (top && left)
+        corner = 0;
+    else if (top && right)
+        corner = 1;
+    else if (bottom && left)
+        corner = 2;
+    else if (bottom && right)
+        corner = 3;
+    if (corner < 0) {
+        // Re-armed once the pointer is clearly away from the corner.
+        const double cx = (server->hotCornerFired == 1 || server->hotCornerFired == 3)
+                              ? box.width - x : x;
+        const double cy = (server->hotCornerFired == 2 || server->hotCornerFired == 3)
+                              ? box.height - y : y;
+        if (cx > 12 || cy > 12)
+            server->hotCornerFired = -1;
+        return;
+    }
+    if (server->hotCornerFired == corner)
+        return;
+    server->hotCornerFired = corner;
+    const char *action = server->config.hotCorners[corner];
+    if (strcmp(action, "none") == 0 || action[0] == '\0' || server->locked
+        || server->seat->drag || server->cursorMode != CURSOR_PASSTHROUGH
+        || server->fullscreenView || server->activeConstraint || shortcutsInhibited(server))
+        return;
+    if (strcmp(action, "overview") == 0)
+        shellAction("toggleTaskView");
+    else if (strcmp(action, "desktop") == 0)
+        toggleShowDesktop(server);
+    else if (strcmp(action, "startMenu") == 0)
+        shellAction("toggleStartMenu");
+    else if (strcmp(action, "notifications") == 0)
+        shellAction("toggleNotifications");
+    else if (strcmp(action, "lock") == 0)
+        spawnLocker(server);
 }
 
 // Every input event counts as activity for ext-idle-notify clients
@@ -2755,15 +3156,11 @@ static void cursorButton(struct wl_listener *listener, void *data)
     if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
         if (server->cursorMode == CURSOR_MOVE && server->grabbedView
             && server->config.snapping) {
-            struct View *view = server->grabbedView;
-            const struct wlr_box area = usableBoxForView(view);
-            if (server->cursor->x <= area.x + 12)
-                viewSnap(view, WLR_EDGE_LEFT);
-            else if (server->cursor->x >= area.x + area.width - 12)
-                viewSnap(view, WLR_EDGE_RIGHT);
-            else if (server->cursor->y <= area.y + 10)
-                viewSnap(view, WLR_EDGE_TOP);
+            uint32_t edges = dragSnapEdges(server, server->grabbedView);
+            if (edges)
+                viewSnap(server->grabbedView, edges);
         }
+        updateSnapPreview(server, false);
         if (!server->superGrab) {
             wlr_seat_pointer_notify_button(server->seat, event->time_msec,
                                            event->button, event->state);
@@ -2839,6 +3236,11 @@ static void cursorButton(struct wl_listener *listener, void *data)
         case FRAME_TITLE:
             if (event->button == BTN_MIDDLE) {
                 viewSetMinimized(view, true);
+                break;
+            }
+            if (event->button == BTN_RIGHT) {
+                // The window menu, as on every other desktop.
+                requestWindowMenu(view, (int)server->cursor->x, (int)server->cursor->y);
                 break;
             }
             if (event->button != BTN_LEFT)
@@ -3036,7 +3438,9 @@ static void seatStartDrag(struct wl_listener *listener, void *data)
 // Keyboard
 // ---------------------------------------------------------------------------
 
-static void shellAction(const char *method)
+// Calls org.newteller.Shell.<method> with one optional argument (gdbus
+// parses it as a GVariant: "3" is an int32).
+static void shellActionWith(const char *method, const char *argument)
 {
     // gdbus is part of glib2, present on every supported Debian/Ubuntu
     // desktop. The service is registered by the running NewTeller shell.
@@ -3046,9 +3450,14 @@ static void shellAction(const char *method)
         "gdbus", "call", "--session",
         "--dest", "org.newteller.Shell",
         "--object-path", "/org/newteller/Shell",
-        "--method", call, NULL,
+        "--method", call, argument, NULL,
     };
     spawnDetached(argv[0], argv);
+}
+
+static void shellAction(const char *method)
+{
+    shellActionWith(method, NULL);
 }
 
 // ---------------------------------------------------------------------------
@@ -3391,6 +3800,7 @@ static void switcherRestoreStacking(struct Server *server)
         if (view->tree)
             wlr_scene_node_raise_to_top(&view->tree->node);
     }
+    raisePinnedViews(server);
 }
 
 static void switcherStep(struct Server *server, bool backwards)
@@ -3573,6 +3983,60 @@ static void ipcField(char *out, size_t size, const char *text, bool noSpaces)
     }
 }
 
+// The state letters of a window, shared by `windows` and the window menu:
+// f focused, m minimized, x maximized, F fullscreen, t always on top,
+// s on every desktop, h not responding. "-" when none applies, so the field is never empty.
+static void viewFlags(struct View *view, char *flags, size_t size)
+{
+    size_t used = 0;
+    const struct {
+        bool on;
+        char letter;
+    } states[] = {
+        {view == view->server->focusedView, 'f'},
+        {view->minimized, 'm'},
+        {view->maximized, 'x'},
+        {view->hung, 'h'},
+        {view->fullscreen, 'F'},
+        {view->alwaysOnTop, 't'},
+        {view->sticky, 's'},
+    };
+    for (size_t i = 0; i < sizeof(states) / sizeof(states[0]) && used + 1 < size; ++i) {
+        if (states[i].on)
+            flags[used++] = states[i].letter;
+    }
+    if (used == 0 && size > 1)
+        flags[used++] = '-';
+    flags[used] = '\0';
+}
+
+// "event window-menu <id> <x> <y> <desktop> <flags> <title>": the shell
+// opens the window menu at x/y (layout coordinates). Asked for by a right
+// click on a title bar (ours or a client's), Alt+Space or `window-menu`.
+static void requestWindowMenu(struct View *view, int x, int y)
+{
+    struct Server *server = view->server;
+    if (server->locked || view->overrideRedirect || !view->mapped
+        || !ipcHasWatchers(server))
+        return;
+    char title[160];
+    ipcField(title, sizeof(title), viewTitle(view), false);
+    char flags[10];
+    viewFlags(view, flags, sizeof(flags));
+    char line[256];
+    snprintf(line, sizeof(line), "event window-menu %u %d %d %d %s %s", view->id, x, y,
+             view->workspace, flags, title);
+    ipcBroadcast(server, line);
+}
+
+// "on", "off" or "toggle" (the default) applied to the current state.
+static bool ipcToggle(const char *argument, bool current)
+{
+    if (!argument || strcmp(argument, "toggle") == 0)
+        return !current;
+    return strcmp(argument, "on") == 0 || strcmp(argument, "1") == 0;
+}
+
 // "event switcher <selected> <entries>": the shell draws the Alt+Tab
 // overlay from it. Entries are "<id>\x1e<app id>\x1e<title>" joined by
 // \x1f, most recently used first; <selected> is -1 when the switcher
@@ -3665,8 +4129,10 @@ static void handleNewShortcutsInhibitor(struct wl_listener *listener, void *data
         wlr_keyboard_shortcuts_inhibitor_v1_activate(inhibitor);
 }
 
+// `baseSym` is the key's symbol without Shift and other levels (1 for the
+// key that gives "!" with Shift), for shortcuts that use Shift on digits.
 static bool keyHandled(struct Server *server, xkb_keysym_t sym,
-                       uint32_t modifiers)
+                       uint32_t modifiers, xkb_keysym_t baseSym)
 {
     bool logo = (modifiers & WLR_MODIFIER_LOGO) != 0;
     bool alt = (modifiers & WLR_MODIFIER_ALT) != 0;
@@ -3775,6 +4241,42 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
         setLayout(server, server->layoutIndex + 1);
         return true;
     }
+    // Alt+Space: the focused window's menu (as on Windows and GNOME), at its
+    // top-left corner since the pointer may be anywhere.
+    if (alt && !logo && !ctrl && sym == XKB_KEY_space && server->focusedView
+        && ipcHasWatchers(server)) {
+        struct View *view = server->focusedView;
+        int top = view->ssd ? view->y - server->config.titleHeight / 2 : view->y + 8;
+        requestWindowMenu(view, view->x + 16, top);
+        return true;
+    }
+    // Super+Alt+R: start or stop a screen recording (as Windows' Game Bar).
+    if (logo && alt && !ctrl && (sym == XKB_KEY_r || sym == XKB_KEY_R)) {
+        shellAction("toggleScreenRecording");
+        return true;
+    }
+    // Super+Shift+1..9: the focused window to that desktop, followed.
+    if (logo && shift && !ctrl && !alt && baseSym >= XKB_KEY_1 && baseSym <= XKB_KEY_9) {
+        int index = (int)(baseSym - XKB_KEY_1);
+        if (server->focusedView && index < server->config.workspaceCount)
+            moveViewToWorkspace(server->focusedView, index, true);
+        return true;
+    }
+    // Ctrl+Super+1..9: straight to that desktop.
+    if (logo && ctrl && !alt && !shift && sym >= XKB_KEY_1 && sym <= XKB_KEY_9) {
+        int index = (int)(sym - XKB_KEY_1);
+        if (index < server->config.workspaceCount)
+            switchWorkspace(server, index);
+        return true;
+    }
+    // Super+1..9: start or bring up the Nth application on the dock (as on
+    // Windows). The shell owns the dock, so it gets the index.
+    if (logo && !alt && !ctrl && !shift && sym >= XKB_KEY_1 && sym <= XKB_KEY_9) {
+        char argument[8];
+        snprintf(argument, sizeof(argument), "%d", (int)(sym - XKB_KEY_1));
+        shellActionWith("activateDockItem", argument);
+        return true;
+    }
     if (logo)
         wlr_log(WLR_DEBUG, "logo key sym=%u shift=%d focus=%p", sym,
                 (modifiers & WLR_MODIFIER_SHIFT) != 0,
@@ -3853,14 +4355,21 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
     if (logo && (sym == XKB_KEY_Left || sym == XKB_KEY_Right
                  || sym == XKB_KEY_Up || sym == XKB_KEY_Down)) {
         if (server->focusedView) {
+            // As on Windows: a half goes to a quarter with Up/Down, a
+            // quarter back to its half; Left/Right keep a quarter's row.
+            struct View *view = server->focusedView;
+            const uint32_t side = (uint32_t)view->snapEdges & (WLR_EDGE_LEFT | WLR_EDGE_RIGHT);
+            const uint32_t row = (uint32_t)view->snapEdges & (WLR_EDGE_TOP | WLR_EDGE_BOTTOM);
             if (sym == XKB_KEY_Left)
-                viewSnap(server->focusedView, WLR_EDGE_LEFT);
+                viewSnap(view, WLR_EDGE_LEFT | row);
             else if (sym == XKB_KEY_Right)
-                viewSnap(server->focusedView, WLR_EDGE_RIGHT);
+                viewSnap(view, WLR_EDGE_RIGHT | row);
             else if (sym == XKB_KEY_Up)
-                viewSnap(server->focusedView, WLR_EDGE_TOP);
+                viewSnap(view, side == 0 ? WLR_EDGE_TOP
+                               : row == WLR_EDGE_BOTTOM ? side : side | WLR_EDGE_TOP);
             else
-                viewSnap(server->focusedView, WLR_EDGE_BOTTOM);
+                viewSnap(view, side == 0 ? WLR_EDGE_BOTTOM
+                               : row == WLR_EDGE_TOP ? side : side | WLR_EDGE_BOTTOM);
         }
         return true;
     }
@@ -3876,6 +4385,18 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
     // Print: the whole screen. Shift+Print or Super+Shift+S (the Windows
     // snipping shortcut): pick an area first.
     bool shiftHeld = (modifiers & WLR_MODIFIER_SHIFT) != 0;
+    // Alt+Print (often reported as SysRq): the focused window with its frame.
+    if (alt && !logo && (sym == XKB_KEY_Print || sym == XKB_KEY_Sys_Req)
+        && server->focusedView) {
+        struct wlr_box box = viewOuterBox(server->focusedView);
+        char geometry[64];
+        snprintf(geometry, sizeof(geometry), "%d,%d %dx%d", box.x, box.y, box.width,
+                 box.height);
+        const char *argv[] = {"newteller-screenshot", "--geometry", geometry, NULL};
+        setChildEnvironment(server);
+        spawnDetached(argv[0], argv);
+        return true;
+    }
     if ((sym == XKB_KEY_Print && shiftHeld)
         || (logo && shiftHeld && (sym == XKB_KEY_s || sym == XKB_KEY_S))) {
         const char *argv[] = {"newteller-screenshot", "--area", NULL};
@@ -3888,6 +4409,32 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
         setChildEnvironment(server);
         spawnDetached(argv[0], argv);
         return true;
+    }
+    // Alt+` (the key above Tab; Ё on a Russian layout): the next window of
+    // the same application, as on GNOME and macOS. Without another window
+    // of that application the key goes to the application.
+    if (alt && !logo && !ctrl && !server->switching && server->focusedView
+        && (sym == XKB_KEY_grave || sym == XKB_KEY_dead_grave
+            || sym == XKB_KEY_Cyrillic_io || sym == XKB_KEY_Cyrillic_IO)) {
+        struct View *current = server->focusedView;
+        const char *app = viewAppId(current);
+        struct View *target = NULL;
+        struct View *view;
+        // Least recently used first, so repeated presses visit them all.
+        wl_list_for_each_reverse(view, &server->views, link) {
+            if (view != current && view->mapped && !view->overrideRedirect
+                && viewOnWorkspace(view) && viewSurface(view) && app[0] != '\0'
+                && strcmp(viewAppId(view), app) == 0) {
+                target = view;
+                break;
+            }
+        }
+        if (target) {
+            if (target->minimized)
+                viewSetMinimized(target, false);
+            focusView(target, NULL);
+            return true;
+        }
     }
     if (alt && (sym == XKB_KEY_Tab || sym == XKB_KEY_ISO_Left_Tab)) {
         bool backwards = sym == XKB_KEY_ISO_Left_Tab
@@ -3921,6 +4468,26 @@ static void keyboardModifiers(struct wl_listener *listener, void *data)
                 server->focusedView->layoutIndex = group;
             broadcastLayout(server);
         }
+    }
+    // Caps Lock / Num Lock went on or off: "event key caps-on" and so on,
+    // for the on-screen indicator (many laptops have no LED for them). The
+    // first state seen (Num Lock switched on at start) is not announced.
+    if (!keyboard->ownKeymap && keyboard->keyboard->xkb_state) {
+        struct xkb_state *state = keyboard->keyboard->xkb_state;
+        int locks = (xkb_state_mod_name_is_active(state, XKB_MOD_NAME_CAPS,
+                                                  XKB_STATE_MODS_LOCKED) > 0 ? 1 : 0)
+                    | (xkb_state_mod_name_is_active(state, XKB_MOD_NAME_NUM,
+                                                    XKB_STATE_MODS_LOCKED) > 0 ? 2 : 0);
+        if (keyboard->lockKeysKnown && locks != keyboard->lockKeys && !server->locked
+            && ipcHasWatchers(server)) {
+            int changed = locks ^ keyboard->lockKeys;
+            if (changed & 1)
+                ipcBroadcast(server, (locks & 1) ? "event key caps-on" : "event key caps-off");
+            if (changed & 2)
+                ipcBroadcast(server, (locks & 2) ? "event key num-on" : "event key num-off");
+        }
+        keyboard->lockKeys = locks;
+        keyboard->lockKeysKnown = true;
     }
     struct wlr_input_method_keyboard_grab_v2 *grab = keyboardImGrab(keyboard);
     if (grab) {
@@ -3970,7 +4537,18 @@ static void keyboardKey(struct wl_listener *listener, void *data)
         server->logoTap = isLogo && !shortcutsInhibited(server)
             && !(modifiers & (WLR_MODIFIER_SHIFT | WLR_MODIFIER_CTRL
                               | WLR_MODIFIER_ALT));
-        if (keyHandled(server, sym, modifiers))
+        // The key's first-level symbol in the active layout.
+        xkb_keysym_t baseSym = XKB_KEY_NoSymbol;
+        struct xkb_state *xkb = keyboard->keyboard->xkb_state;
+        if (xkb) {
+            const xkb_keysym_t *syms = NULL;
+            xkb_layout_index_t layout = xkb_state_key_get_layout(xkb, event->keycode + 8);
+            if (layout != XKB_LAYOUT_INVALID
+                && xkb_keymap_key_get_syms_by_level(keyboard->keyboard->keymap, event->keycode + 8,
+                                                    layout, 0, &syms) > 0)
+                baseSym = syms[0];
+        }
+        if (keyHandled(server, sym, modifiers, baseSym))
             return;
     } else if (isLogo && server->logoTap) {
         server->logoTap = false;
@@ -4333,6 +4911,7 @@ static void handleXdgMap(struct wl_listener *listener, void *data)
     // A newly opened application or dialog takes focus. This also deactivates
     // an open menu layer, which closes itself when it loses focus.
     focusView(view, NULL);
+    applyWindowRules(view);
     updateForeignToplevel(view);
 }
 
@@ -4354,8 +4933,8 @@ static void handleXdgUnmap(struct wl_listener *listener, void *data)
         restoreFocus(view->server);
     }
     broadcastWorkspaces(view->server);
-    if (view->handle)
-        wlr_foreign_toplevel_handle_v1_set_activated(view->handle, false);
+    destroyForeignToplevel(view);
+    broadcastFullscreen(view->server, false);
 }
 
 static void handleXdgDestroy(struct wl_listener *listener, void *data)
@@ -4371,6 +4950,7 @@ static void handleXdgDestroy(struct wl_listener *listener, void *data)
     wl_list_remove(&view->requestMaximize.link);
     wl_list_remove(&view->requestFullscreen.link);
     wl_list_remove(&view->requestMinimize.link);
+    wl_list_remove(&view->requestShowMenu.link);
     wl_list_remove(&view->setTitle.link);
     wl_list_remove(&view->setAppId.link);
     wl_list_remove(&view->pingTimeout.link);
@@ -4423,6 +5003,17 @@ static void handleXdgRequestMinimize(struct wl_listener *listener, void *data)
     (void)data;
     struct View *view = wl_container_of(listener, view, requestMinimize);
     viewSetMinimized(view, true);
+}
+
+// GTK header bars and other client-side title bars ask for the window menu
+// on a right click; x/y are relative to the surface.
+static void handleXdgRequestWindowMenu(struct wl_listener *listener, void *data)
+{
+    struct View *view = wl_container_of(listener, view, requestShowMenu);
+    struct wlr_xdg_toplevel_show_window_menu_event *event = data;
+    struct wlr_box geometry = viewGeometry(view);
+    requestWindowMenu(view, view->x - geometry.x + event->x,
+                      view->y - geometry.y + event->y);
 }
 
 static void handleXdgSetTitle(struct wl_listener *listener, void *data)
@@ -4630,6 +5221,8 @@ static void handleNewXdgToplevel(struct wl_listener *listener, void *data)
     wl_signal_add(&toplevel->events.request_fullscreen, &view->requestFullscreen);
     view->requestMinimize.notify = handleXdgRequestMinimize;
     wl_signal_add(&toplevel->events.request_minimize, &view->requestMinimize);
+    view->requestShowMenu.notify = handleXdgRequestWindowMenu;
+    wl_signal_add(&toplevel->events.request_show_window_menu, &view->requestShowMenu);
     view->setTitle.notify = handleXdgSetTitle;
     wl_signal_add(&toplevel->events.set_title, &view->setTitle);
     view->setAppId.notify = handleXdgSetAppId;
@@ -4939,19 +5532,36 @@ static void handleLayoutChange(struct wl_listener *listener, void *data)
 }
 
 // `dpms off|on`: blank the monitors without forgetting their configuration.
+static void setOutputPower(struct Output *output, bool on)
+{
+    if (output->disabled || output->poweredOff == !on)
+        return;
+    struct wlr_output_state state;
+    wlr_output_state_init(&state);
+    wlr_output_state_set_enabled(&state, on);
+    if (wlr_output_commit_state(output->output, &state))
+        output->poweredOff = !on;
+    wlr_output_state_finish(&state);
+}
+
 static void setOutputsPower(struct Server *server, bool on)
 {
     struct Output *output;
-    wl_list_for_each(output, &server->outputs, link) {
-        if (output->disabled || output->poweredOff == !on)
-            continue;
-        struct wlr_output_state state;
-        wlr_output_state_init(&state);
-        wlr_output_state_set_enabled(&state, on);
-        if (wlr_output_commit_state(output->output, &state))
-            output->poweredOff = !on;
-        wlr_output_state_finish(&state);
-    }
+    wl_list_for_each(output, &server->outputs, link)
+        setOutputPower(output, on);
+}
+
+// wlopm --off / --on (and idle tools that use the protocol). Screens that
+// Settings -> Displays switched off stay off.
+static void handleOutputPowerSetMode(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, outputPowerSetMode);
+    const struct wlr_output_power_v1_set_mode_event *event = data;
+    struct Output *output = outputFromWlr(server, event->output);
+    if (!output)
+        return;
+    setOutputPower(output, event->mode == ZWLR_OUTPUT_POWER_V1_MODE_ON);
+    scheduleAllFrames(server);
 }
 
 static void handleGammaSet(struct wl_listener *listener, void *data)
@@ -5321,7 +5931,7 @@ static void renderViews(struct Server *server, const struct RenderTarget *t, uin
             continue;
         }
         bool visible = child->enabled;
-        if (server->wsAnimating && !view->overrideRedirect && view->mapped
+        if (server->wsAnimating && !view->overrideRedirect && !view->sticky && view->mapped
             && !view->minimized) {
             double distance = t->logicalWidth * server->wsDirection;
             if (view->workspace == server->wsFrom) {
@@ -5486,6 +6096,8 @@ static void renderBelowTop(struct Server *server, const struct RenderTarget *t, 
     renderNode(server, t, &state, &server->bottomTree->node, 0, 0, false, temp);
     if (server->toplevelTree->node.enabled)
         renderViews(server, t, now, temp);
+    if (server->snapTree->node.enabled)
+        renderNode(server, t, &state, &server->snapTree->node, 0, 0, false, temp);
 }
 
 static bool anyBlurOn(struct Server *server, struct Output *output)
@@ -5659,6 +6271,10 @@ static bool renderEffectsFrame(struct Output *output)
     if (server->overlayTree->node.enabled)
         renderLayerTree(server, &target, server->overlayTree, blurred, &temp);
     struct RenderState plain = {.alpha = 1, .scale = 1};
+    // The input method's candidate list and the icon of a drag in progress
+    // sit above everything but the lock screen, as in the scene graph.
+    renderNode(server, &target, &plain, &server->inputPopupTree->node, 0, 0, false, &temp);
+    renderNode(server, &target, &plain, &server->dragIconTree->node, 0, 0, false, &temp);
     renderNode(server, &target, &plain, &server->lockTree->node, 0, 0, false, &temp);
     wlr_output_add_software_cursors_to_render_pass(o, pass, NULL);
     bool submitted = wlr_render_pass_submit(pass);
@@ -5780,6 +6396,8 @@ static void outputDestroy(struct wl_listener *listener, void *data)
     (void)data;
     struct Output *output = wl_container_of(listener, output, destroy);
     struct Server *server = output->server;
+    if (server->pointerOutput == output->output)
+        server->pointerOutput = NULL;
     struct Layer *layer;
     wl_list_for_each(layer, &server->layers, link) {
         if (layer->output == output)
@@ -5922,6 +6540,7 @@ static void handleX11Map(struct wl_listener *listener, void *data)
         ensureForeignToplevel(view);
         viewRaise(view);
         focusView(view, NULL);
+        applyWindowRules(view);
     }
     updateForeignToplevel(view);
 }
@@ -5944,6 +6563,8 @@ static void handleX11Unmap(struct wl_listener *listener, void *data)
         restoreFocus(view->server);
     }
     broadcastWorkspaces(view->server);
+    destroyForeignToplevel(view);
+    broadcastFullscreen(view->server, false);
 }
 
 static void handleX11Destroy(struct wl_listener *listener, void *data)
@@ -6278,9 +6899,8 @@ static void setDesktopVisible(struct Server *server, bool visible)
     wlr_scene_node_set_enabled(&server->backgroundTree->node, visible);
     wlr_scene_node_set_enabled(&server->bottomTree->node, visible);
     wlr_scene_node_set_enabled(&server->toplevelTree->node, visible);
-    bool overlays = visible && !server->fullscreenView;
-    wlr_scene_node_set_enabled(&server->topTree->node, overlays);
-    wlr_scene_node_set_enabled(&server->overlayTree->node, overlays);
+    wlr_scene_node_set_enabled(&server->topTree->node, visible && !server->fullscreenView);
+    wlr_scene_node_set_enabled(&server->overlayTree->node, visible);
 }
 
 static void detachLock(struct Server *server)
@@ -7147,6 +7767,8 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
         ipcSend(client, "ok");
         broadcastLayout(server);
         broadcastWorkspaces(server);
+        broadcastPointerOutput(server);
+        broadcastFullscreen(server, true);
         ipcSend(client, server->locked ? "event locked 1" : "event locked 0");
     } else if (strcmp(command, "layout") == 0) {
         if (!argument) {
@@ -7165,7 +7787,7 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
         ipcSend(client, "ok");
     } else if (strcmp(command, "windows") == 0) {
         // ok <id>\x1e<desktop>\x1e<app id>\x1e<title>\x1e<flags>\x1f...
-        // flags: f focused, m minimized, x maximized. Most recent first.
+        // flags: see viewFlags() ("-" for none). Most recent first.
         char reply[3800] = "ok ";
         size_t used = 3;
         bool first = true;
@@ -7177,17 +7799,8 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
             ipcField(title, sizeof(title), viewTitle(view), false);
             char appId[96];
             ipcField(appId, sizeof(appId), viewAppId(view), true);
-            char flags[5];
-            int f = 0;
-            if (view == server->focusedView)
-                flags[f++] = 'f';
-            if (view->minimized)
-                flags[f++] = 'm';
-            if (view->maximized)
-                flags[f++] = 'x';
-            if (view->hung)
-                flags[f++] = 'h';
-            flags[f] = '\0';
+            char flags[10];
+            viewFlags(view, flags, sizeof(flags));
             int written = snprintf(reply + used, sizeof(reply) - used,
                                    "%s%u\x1e%d\x1e%s\x1e%s\x1e%s\x1e%d", first ? "" : "\x1f",
                                    view->id, view->workspace, appId, title, flags,
@@ -7198,9 +7811,22 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
             first = false;
         }
         ipcSend(client, reply);
+    } else if (strcmp(command, "window-menu") == 0 && !argument) {
+        // The focused window's menu, at its corner (as Alt+Space).
+        struct View *view = server->focusedView;
+        if (!view) {
+            ipcSend(client, "error no focused window");
+            return;
+        }
+        requestWindowMenu(view, view->x + 16, view->y + 8);
+        ipcSend(client, "ok");
     } else if ((strcmp(command, "thumbnail") == 0 || strcmp(command, "activate") == 0
                 || strcmp(command, "close") == 0 || strcmp(command, "move-window") == 0
-                || strcmp(command, "kill") == 0)
+                || strcmp(command, "kill") == 0 || strcmp(command, "minimize") == 0
+                || strcmp(command, "maximize") == 0 || strcmp(command, "fullscreen") == 0
+                || strcmp(command, "always-on-top") == 0 || strcmp(command, "sticky") == 0
+                || strcmp(command, "move-to-output") == 0
+                || strcmp(command, "window-menu") == 0)
                && argument) {
         uint32_t id = (uint32_t)strtoul(argument, NULL, 10);
         struct View *target = NULL;
@@ -7236,6 +7862,60 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
             ipcSend(client, "ok");
         } else if (strcmp(command, "close") == 0) {
             viewClose(target);
+            ipcSend(client, "ok");
+        } else if (strcmp(command, "minimize") == 0) {
+            // minimize ID [on|off|toggle]: on by default.
+            char *state = strtok(NULL, " \t\r");
+            bool minimize = state ? ipcToggle(state, target->minimized) : true;
+            if (minimize != target->minimized) {
+                viewSetMinimized(target, minimize);
+                if (!minimize)
+                    focusView(target, NULL);
+            }
+            ipcSend(client, "ok");
+        } else if (strcmp(command, "maximize") == 0) {
+            bool maximize = ipcToggle(strtok(NULL, " \t\r"), target->maximized);
+            if (target->minimized)
+                viewSetMinimized(target, false);
+            if (maximize != target->maximized)
+                viewSetMaximized(target, maximize);
+            focusView(target, NULL);
+            ipcSend(client, "ok");
+        } else if (strcmp(command, "fullscreen") == 0) {
+            bool fullscreen = ipcToggle(strtok(NULL, " \t\r"), target->fullscreen);
+            if (target->minimized)
+                viewSetMinimized(target, false);
+            if (fullscreen != target->fullscreen)
+                viewSetFullscreen(target, fullscreen);
+            focusView(target, NULL);
+            ipcSend(client, "ok");
+        } else if (strcmp(command, "move-to-output") == 0) {
+            // move-to-output ID [next|prev]: as Super+Shift+Right/Left.
+            char *which = strtok(NULL, " \t\r");
+            if (target->minimized)
+                viewSetMinimized(target, false);
+            if (target->maximized)
+                viewSetMaximized(target, false);
+            moveViewToOutput(target, which && strcmp(which, "prev") == 0 ? -1 : 1);
+            focusView(target, NULL);
+            ipcSend(client, "ok");
+        } else if (strcmp(command, "sticky") == 0) {
+            // sticky ID [on|off|toggle]: shown on every desktop. Taken off,
+            // the window stays on the desktop being shown.
+            target->sticky = ipcToggle(strtok(NULL, " \t\r"), target->sticky);
+            if (!target->sticky)
+                target->workspace = server->workspace;
+            viewSyncVisible(target);
+            broadcastWorkspaces(server);
+            ipcSend(client, target->sticky ? "ok 1" : "ok 0");
+        } else if (strcmp(command, "always-on-top") == 0) {
+            viewSetAlwaysOnTop(target, ipcToggle(strtok(NULL, " \t\r"), target->alwaysOnTop));
+            ipcSend(client, target->alwaysOnTop ? "ok 1" : "ok 0");
+        } else if (strcmp(command, "window-menu") == 0) {
+            char *x = strtok(NULL, " \t\r");
+            char *y = strtok(NULL, " \t\r");
+            requestWindowMenu(target, x ? atoi(x) : target->x + 16,
+                              y ? atoi(y) : target->y + 8);
             ipcSend(client, "ok");
         } else if (strcmp(command, "kill") == 0) {
             // Force quit: the process behind the window, never the session.
@@ -7636,6 +8316,69 @@ static void handleActivationRequest(struct wl_listener *listener, void *data)
     }
 }
 
+// Protocols that read the screen, the clipboard or the input of every
+// application, draw over the desktop or control outputs. A sandboxed client
+// (one with a security context, e.g. a Flatpak app) never gets them.
+static bool globalFilter(const struct wl_client *client, const struct wl_global *global,
+                         void *data)
+{
+    struct Server *server = data;
+    if (!server->securityContexts
+        || !wlr_security_context_manager_v1_lookup_client(server->securityContexts, client))
+        return true;
+    static const char *const privileged[] = {
+        "zwlr_layer_shell_v1",
+        "zwlr_screencopy_manager_v1",
+        "zwlr_export_dmabuf_manager_v1",
+        "zwlr_data_control_manager_v1",
+        "ext_data_control_manager_v1",
+        "zwlr_foreign_toplevel_manager_v1",
+        "ext_foreign_toplevel_list_v1",
+        "zwlr_output_manager_v1",
+        "zwlr_output_power_manager_v1",
+        "zwlr_gamma_control_manager_v1",
+        "zwp_virtual_keyboard_manager_v1",
+        "zwlr_virtual_pointer_manager_v1",
+        "zwp_input_method_manager_v2",
+        "ext_session_lock_manager_v1",
+        "zwp_keyboard_shortcuts_inhibit_manager_v1",
+        "wp_security_context_manager_v1",
+    };
+    const struct wl_interface *interface = wl_global_get_interface(global);
+    for (size_t i = 0; interface && i < sizeof(privileged) / sizeof(privileged[0]); ++i) {
+        if (strcmp(interface->name, privileged[i]) == 0)
+            return false;
+    }
+    return true;
+}
+
+// The display tears the manager down before the last globals; the filter
+// may still run for them and must not read the freed manager.
+static void handleSecurityContextsDestroy(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct Server *server = wl_container_of(listener, server, securityContextsDestroy);
+    wl_list_remove(&server->securityContextsDestroy.link);
+    server->securityContexts = NULL;
+}
+
+#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR >= 19
+// The shell plays the bell sound ("event bell"); a burst of rings (a
+// terminal printing many BEL characters) makes one sound.
+static void handleSystemBell(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct Server *server = wl_container_of(listener, server, systemBellRing);
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    uint64_t ms = (uint64_t)now.tv_sec * 1000 + (uint64_t)now.tv_nsec / 1000000;
+    if (server->locked || ms - server->lastBell < 250)
+        return;
+    server->lastBell = ms;
+    ipcBroadcast(server, "event bell");
+}
+#endif
+
 static void setupProtocols(struct Server *server)
 {
     server->compositor = wlr_compositor_create(server->display, 6,
@@ -7655,6 +8398,11 @@ static void setupProtocols(struct Server *server)
     server->backgroundTree = wlr_scene_tree_create(&server->scene->tree);
     server->bottomTree = wlr_scene_tree_create(&server->scene->tree);
     server->toplevelTree = wlr_scene_tree_create(&server->scene->tree);
+    server->snapTree = wlr_scene_tree_create(&server->scene->tree);
+    // Premultiplied: a soft blue at 25%.
+    static const float snapColor[4] = {0.24f * 0.25f, 0.52f * 0.25f, 0.98f * 0.25f, 0.25f};
+    server->snapRect = wlr_scene_rect_create(server->snapTree, 0, 0, snapColor);
+    wlr_scene_node_set_enabled(&server->snapTree->node, false);
     server->topTree = wlr_scene_tree_create(&server->scene->tree);
     server->overlayTree = wlr_scene_tree_create(&server->scene->tree);
     server->inputPopupTree = wlr_scene_tree_create(&server->scene->tree);
@@ -7670,10 +8418,31 @@ static void setupProtocols(struct Server *server)
         wlr_scene_node_set_position(&backdrop->node, -32768, -32768);
     wlr_scene_node_set_enabled(&server->lockTree->node, false);
 
-    server->xdgShell = wlr_xdg_shell_create(server->display, 5);
+    // Version 6 adds the suspended state (see viewSyncVisible).
+    server->xdgShell = wlr_xdg_shell_create(server->display, 6);
     server->layerShell = wlr_layer_shell_v1_create(server->display, 4);
     server->foreignToplevels = wlr_foreign_toplevel_manager_v1_create(
         server->display);
+    // The read-only window list (ext-foreign-toplevel-list): screen sharing
+    // pickers and other tools list windows with it.
+    server->extToplevels = wlr_ext_foreign_toplevel_list_v1_create(server->display, 1);
+    // xdg-foreign: a portal's file chooser or print dialog (another
+    // process) becomes a child of the application window that asked.
+    struct wlr_xdg_foreign_registry *foreignRegistry =
+        wlr_xdg_foreign_registry_create(server->display);
+    if (foreignRegistry) {
+        wlr_xdg_foreign_v1_create(server->display, foreignRegistry);
+        wlr_xdg_foreign_v2_create(server->display, foreignRegistry);
+    }
+    // security-context: Flatpak tags its sandboxed connections; they do
+    // not see the privileged globals (see globalFilter).
+    server->securityContexts = wlr_security_context_manager_v1_create(server->display);
+    if (server->securityContexts) {
+        server->securityContextsDestroy.notify = handleSecurityContextsDestroy;
+        wl_signal_add(&server->securityContexts->events.destroy,
+                      &server->securityContextsDestroy);
+    }
+    wl_display_set_global_filter(server->display, globalFilter, server);
     server->activation = wlr_xdg_activation_v1_create(server->display);
     server->activationRequest.notify = handleActivationRequest;
     wl_signal_add(&server->activation->events.request_activate,
@@ -7714,6 +8483,19 @@ static void setupProtocols(struct Server *server)
     server->gammaManager = wlr_gamma_control_manager_v1_create(server->display);
     server->gammaSetGamma.notify = handleGammaSet;
     wl_signal_add(&server->gammaManager->events.set_gamma, &server->gammaSetGamma);
+#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR >= 19
+    struct wlr_xdg_system_bell_v1 *bell = wlr_xdg_system_bell_v1_create(server->display, 1);
+    wl_list_init(&server->systemBellRing.link);
+    if (bell) {
+        server->systemBellRing.notify = handleSystemBell;
+        wl_signal_add(&bell->events.ring, &server->systemBellRing);
+    }
+#else
+    wl_list_init(&server->systemBellRing.link);
+#endif
+    server->outputPowerManager = wlr_output_power_manager_v1_create(server->display);
+    server->outputPowerSetMode.notify = handleOutputPowerSetMode;
+    wl_signal_add(&server->outputPowerManager->events.set_mode, &server->outputPowerSetMode);
     server->idleNotifier = wlr_idle_notifier_v1_create(server->display);
     struct wlr_idle_inhibit_manager_v1 *idleInhibit =
         wlr_idle_inhibit_v1_create(server->display);
@@ -7880,8 +8662,9 @@ static void printUsage(void)
         "  --socket <name>            Use an explicit Wayland socket name\n"
         "  --msg <command>            Send a command to the running compositor\n"
         "                             (reload, lock, dpms on|off, layout next,\n"
-        "                             idle-inhibit on|off, outputs, exit) and\n"
-        "                             print the reply\n"
+        "                             idle-inhibit on|off, outputs, windows,\n"
+        "                             minimize|maximize|fullscreen|always-on-top ID,\n"
+        "                             window-menu, exit) and print the reply\n"
         "  --debug                    Verbose wlroots logging\n");
 }
 
@@ -7936,6 +8719,7 @@ static int run(struct Server *server)
 
     wl_list_init(&server->outputs);
     wl_list_init(&server->views);
+    server->hotCornerFired = -1;
     wl_list_init(&server->layers);
     wl_list_init(&server->keyboards);
     wl_list_init(&server->pointers);
@@ -8127,8 +8911,10 @@ static int run(struct Server *server)
     wl_list_remove(&server->outputManagerTest.link);
     wl_list_remove(&server->layoutChange.link);
     wl_list_remove(&server->gammaSetGamma.link);
+    wl_list_remove(&server->outputPowerSetMode.link);
     wl_list_remove(&server->newXdgDecoration.link);
     wl_list_remove(&server->newKdeDecoration.link);
+    wl_list_remove(&server->systemBellRing.link);
     wlr_log(WLR_DEBUG, "destroying cursor");
     if (server->cursorManager)
         wlr_xcursor_manager_destroy(server->cursorManager);

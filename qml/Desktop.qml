@@ -440,6 +440,10 @@ Window {
                     : knownLauncher && launcherApp.icon ? launcherApp.icon
                     : isLauncher ? "app-window" : "file-text"
                 readonly property string label: knownLauncher && launcherApp.name ? launcherApp.name : fileBaseName
+                // Pictures show themselves instead of a generic icon.
+                readonly property bool isPicture: !fileIsDir
+                    && /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(fileName)
+                readonly property bool showsThumbnail: isPicture && thumbnail.status === Image.Ready
                 // While dragging, x/y follow the pointer; otherwise they are
                 // the element's grid cell.
                 property real dragX: 0
@@ -471,7 +475,7 @@ Window {
                 }
 
                 Image {
-                    visible: desk.iconShadow
+                    visible: desk.iconShadow && !showsThumbnail
                     x: icon.x + 1
                     y: icon.y + 2
                     width: desk.iconSize
@@ -484,7 +488,21 @@ Window {
                 }
 
                 Image {
+                    id: thumbnail
+                    objectName: "desktopThumbnail"
+                    anchors.fill: icon
+                    visible: showsThumbnail
+                    asynchronous: true
+                    cache: false
+                    fillMode: Image.PreserveAspectFit
+                    sourceSize.width: desk.iconSize * 2
+                    sourceSize.height: desk.iconSize * 2
+                    source: isPicture ? fileUrl : ""
+                }
+
+                Image {
                     id: icon
+                    opacity: showsThumbnail ? 0 : 1
                     anchors.top: parent.top
                     anchors.horizontalCenter: parent.horizontalCenter
                     width: desk.iconSize

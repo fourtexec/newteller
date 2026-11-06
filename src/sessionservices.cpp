@@ -8,6 +8,8 @@
 #include <QDBusArgument>
 #include <QDBusConnectionInterface>
 #include <QDBusConnection>
+#include <QDBusPendingCall>
+#include <QDBusPendingCallWatcher>
 
 #include <QColor>
 #include <QCoreApplication>
@@ -16,8 +18,10 @@
 #include <QFileInfo>
 #include <QHash>
 #include <QList>
+#include <QRegularExpression>
 
 #include <algorithm>
+#include <memory>
 #include <QSet>
 #include <QSaveFile>
 #include <QStandardPaths>
@@ -408,6 +412,29 @@ void SessionServices::handleEvent(const QString &line)
     } else if (line.startsWith(QLatin1String("closed "))) {
         if (m_hung.remove(line.mid(7).trimmed().toInt()))
             emit hungWindowsChanged();
+    } else if (line.startsWith(QLatin1String("window-menu "))) {
+        // window-menu <id> <x> <y> <desktop> <flags> <title...>
+        const QStringList parts = line.mid(12).split(QLatin1Char(' '));
+        if (parts.size() >= 5) {
+            const QString flags = parts.at(4) == QLatin1String("-") ? QString() : parts.at(4);
+            emit windowMenuRequested(parts.at(0).toInt(), parts.at(1).toInt(), parts.at(2).toInt(),
+                                     parts.at(3).toInt(), flags,
+                                     parts.mid(5).join(QLatin1Char(' ')));
+        }
+    } else if (line.startsWith(QLatin1String("output "))) {
+        const QString name = line.mid(7).trimmed();
+        if (name != m_activeOutput) {
+            m_activeOutput = name;
+            emit activeOutputChanged();
+        }
+    } else if (line.startsWith(QLatin1String("fullscreen "))) {
+        const bool fullscreen = line.mid(11).trimmed() == QLatin1String("1");
+        if (fullscreen != m_fullscreen) {
+            m_fullscreen = fullscreen;
+            emit fullscreenChanged();
+        }
+    } else if (line == QLatin1String("bell")) {
+        playBell();
     } else if (line.startsWith(QLatin1String("key "))) {
         emit mediaKey(line.mid(4).trimmed());
     } else if (line.startsWith(QLatin1String("locked "))) {
@@ -575,6 +602,8 @@ void SessionServices::settingChanged(const QString &key)
         || key.startsWith(QLatin1String("lock.")) || key.startsWith(QLatin1String("effects."))
         || key == QLatin1String("windows.focusFollowsMouse")
         || key == QLatin1String("windows.placement") || key == QLatin1String("windows.snapping")
+        || key.startsWith(QLatin1String("windowRules."))
+        || key.startsWith(QLatin1String("hotCorners."))
         || key.startsWith(QLatin1String("mouse.")) || key.startsWith(QLatin1String("cursor."))
         || key == QLatin1String("desktop.wallpaper")
         || key == QLatin1String("desktop.defaultWallpaper")
@@ -684,6 +713,38 @@ QString SessionServices::compositorConfigText() const
     text += confLine(QStringLiteral("windows.placement"), value("windows.placement").toString());
     text += confLine(QStringLiteral("windows.snapping"), boolText(value("windows.snapping")));
     text += confLine(QStringLiteral("switcher.allWorkspaces"), boolText(value("switcher.allWorkspaces")));
+
+    // Window rules: a list in shell.json, or the comma separated text the
+    // settings field writes. Only characters an application id can hold.
+    const auto appIds = [&value](const char *key) {
+        const QVariant v = value(key);
+        const QStringList raw = v.typeId() == QMetaType::QString
+            ? v.toString().split(QRegularExpression(QStringLiteral("[,\\s]+")), Qt::SkipEmptyParts)
+            : v.toStringList();
+        QStringList ids;
+        for (const QString &entry : raw) {
+            QString id;
+            for (const QChar c : entry.trimmed()) {
+                if (c.isLetterOrNumber() || c == QLatin1Char('.') || c == QLatin1Char('_')
+                    || c == QLatin1Char('-'))
+                    id += c;
+            }
+            if (!id.isEmpty() && !ids.contains(id))
+                ids.append(id);
+        }
+        return ids.join(QLatin1Char(','));
+    };
+    text += confLine(QStringLiteral("rules.alwaysOnTop"), appIds("windowRules.alwaysOnTop"));
+    text += confLine(QStringLiteral("rules.maximized"), appIds("windowRules.maximized"));
+    static const QStringList cornerActions{
+        QStringLiteral("none"), QStringLiteral("overview"), QStringLiteral("desktop"),
+        QStringLiteral("startMenu"), QStringLiteral("notifications"), QStringLiteral("lock")};
+    for (const char *corner : {"hotCorners.topLeft", "hotCorners.topRight",
+                               "hotCorners.bottomLeft", "hotCorners.bottomRight"}) {
+        const QString action = value(corner).toString();
+        text += confLine(QString::fromLatin1(corner),
+                         cornerActions.contains(action) ? action : QStringLiteral("none"));
+    }
 
     // Desktop effects.
     text += confLine(QStringLiteral("effects.enabled"), boolText(value("effects.enabled")));
@@ -1049,14 +1110,6 @@ QList<QDBusObjectPath> objectPaths(const QDBusMessage &reply)
     return qdbus_cast<QList<QDBusObjectPath>>(reply.arguments().constFirst());
 }
 
-QVariantMap nmAll(const QString &path, const QString &interface)
-{
-    const QDBusMessage reply = nmCall(path, kDBusProperties, QStringLiteral("GetAll"), {interface}, 1500);
-    if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
-        return {};
-    return qdbus_cast<QVariantMap>(reply.arguments().constFirst());
-}
-
 // a{sa{sv}} from Connection.GetSettings.
 NMSettingsMap connectionSettings(const QString &path)
 {
@@ -1140,46 +1193,108 @@ void SessionServices::readAccessPoints()
 
 void SessionServices::readAccessPointsOf(const QString &device)
 {
-    m_wifiNetworks.clear();
-    if (!device.isEmpty() && m_wifiStatus.isEmpty()) {
-        const QString active = nmProperty(device, kNmWireless, QStringLiteral("ActiveAccessPoint"))
-                                   .value<QDBusObjectPath>().path();
-        QHash<QString, QVariantMap> best;
-        const QList<QDBusObjectPath> points =
-            objectPaths(nmCall(device, kNmWireless, QStringLiteral("GetAllAccessPoints")));
-        for (const QDBusObjectPath &point : points) {
-            const QVariantMap p = nmAll(point.path(), kNmAccessPoint);
-            const QString ssid = QString::fromUtf8(p.value(QStringLiteral("Ssid")).toByteArray());
-            if (ssid.isEmpty())
-                continue;
-            const uint flags = p.value(QStringLiteral("Flags")).toUInt();
-            const uint wpa = p.value(QStringLiteral("WpaFlags")).toUInt();
-            const uint rsn = p.value(QStringLiteral("RsnFlags")).toUInt();
-            QVariantMap network;
-            network.insert(QStringLiteral("ssid"), ssid);
-            network.insert(QStringLiteral("path"), point.path());
-            network.insert(QStringLiteral("signal"), p.value(QStringLiteral("Strength")).toInt());
-            network.insert(QStringLiteral("secure"), (flags & 0x1) || wpa || rsn);
-            network.insert(QStringLiteral("sae"), (rsn & 0x400) != 0);
-            network.insert(QStringLiteral("enterprise"), ((wpa | rsn) & 0x200) != 0);
-            network.insert(QStringLiteral("active"), point.path() == active);
-            const QVariantMap seen = best.value(ssid);
-            if (seen.isEmpty() || network.value(QStringLiteral("active")).toBool()
-                || (!seen.value(QStringLiteral("active")).toBool()
-                    && network.value(QStringLiteral("signal")).toInt()
-                           > seen.value(QStringLiteral("signal")).toInt()))
-                best.insert(ssid, network);
-        }
-        QList<QVariantMap> sorted = best.values();
-        std::sort(sorted.begin(), sorted.end(), [](const QVariantMap &a, const QVariantMap &b) {
-            if (a.value(QStringLiteral("active")).toBool() != b.value(QStringLiteral("active")).toBool())
-                return a.value(QStringLiteral("active")).toBool();
-            return a.value(QStringLiteral("signal")).toInt() > b.value(QStringLiteral("signal")).toInt();
-        });
-        for (const QVariantMap &network : sorted)
-            m_wifiNetworks.append(network);
+    // Asynchronous: the active access point, the list of access points, then
+    // every access point's properties at once. A read started later wins.
+    // The old list stays until the new one is complete.
+    const quint64 generation = ++m_accessPointRead;
+    if (device.isEmpty() || !m_wifiStatus.isEmpty()) {
+        m_wifiNetworks.clear();
+        emit wifiChanged();
+        return;
     }
-    emit wifiChanged();
+    QDBusMessage getActive = QDBusMessage::createMethodCall(kNm, device, kDBusProperties,
+                                                            QStringLiteral("Get"));
+    getActive << kNmWireless << QStringLiteral("ActiveAccessPoint");
+    auto *activeCall = new QDBusPendingCallWatcher(
+        QDBusConnection::systemBus().asyncCall(getActive, 1500), this);
+    connect(activeCall, &QDBusPendingCallWatcher::finished, this,
+            [this, device, generation](QDBusPendingCallWatcher *call) {
+        call->deleteLater();
+        if (generation != m_accessPointRead)
+            return;
+        QString active;
+        const QDBusMessage activeReply = call->reply();
+        if (activeReply.type() == QDBusMessage::ReplyMessage && !activeReply.arguments().isEmpty())
+            active = activeReply.arguments().constFirst().value<QDBusVariant>().variant()
+                         .value<QDBusObjectPath>().path();
+        QDBusMessage list = QDBusMessage::createMethodCall(kNm, device, kNmWireless,
+                                                           QStringLiteral("GetAllAccessPoints"));
+        auto *listCall = new QDBusPendingCallWatcher(
+            QDBusConnection::systemBus().asyncCall(list, 2000), this);
+        connect(listCall, &QDBusPendingCallWatcher::finished, this,
+                [this, active, generation](QDBusPendingCallWatcher *call) {
+            call->deleteLater();
+            if (generation != m_accessPointRead)
+                return;
+            const QList<QDBusObjectPath> points = objectPaths(call->reply());
+            struct Read {
+                int pending = 0;
+                QList<QPair<QString, QVariantMap>> points;
+            };
+            auto read = std::make_shared<Read>();
+            read->pending = points.size();
+            const auto finish = [this, active, generation, read] {
+                if (generation != m_accessPointRead)
+                    return;
+                QHash<QString, QVariantMap> best;
+                for (const auto &[path, p] : std::as_const(read->points)) {
+                    const QString ssid = QString::fromUtf8(p.value(QStringLiteral("Ssid")).toByteArray());
+                    if (ssid.isEmpty())
+                        continue;
+                    const uint flags = p.value(QStringLiteral("Flags")).toUInt();
+                    const uint wpa = p.value(QStringLiteral("WpaFlags")).toUInt();
+                    const uint rsn = p.value(QStringLiteral("RsnFlags")).toUInt();
+                    QVariantMap network;
+                    network.insert(QStringLiteral("ssid"), ssid);
+                    network.insert(QStringLiteral("path"), path);
+                    network.insert(QStringLiteral("signal"), p.value(QStringLiteral("Strength")).toInt());
+                    network.insert(QStringLiteral("secure"), (flags & 0x1) || wpa || rsn);
+                    network.insert(QStringLiteral("sae"), (rsn & 0x400) != 0);
+                    network.insert(QStringLiteral("enterprise"), ((wpa | rsn) & 0x200) != 0);
+                    network.insert(QStringLiteral("active"), path == active);
+                    const QVariantMap seen = best.value(ssid);
+                    if (seen.isEmpty() || network.value(QStringLiteral("active")).toBool()
+                        || (!seen.value(QStringLiteral("active")).toBool()
+                            && network.value(QStringLiteral("signal")).toInt()
+                                   > seen.value(QStringLiteral("signal")).toInt()))
+                        best.insert(ssid, network);
+                }
+                QList<QVariantMap> sorted = best.values();
+                std::sort(sorted.begin(), sorted.end(), [](const QVariantMap &a, const QVariantMap &b) {
+                    if (a.value(QStringLiteral("active")).toBool()
+                        != b.value(QStringLiteral("active")).toBool())
+                        return a.value(QStringLiteral("active")).toBool();
+                    return a.value(QStringLiteral("signal")).toInt()
+                           > b.value(QStringLiteral("signal")).toInt();
+                });
+                m_wifiNetworks.clear();
+                for (const QVariantMap &network : sorted)
+                    m_wifiNetworks.append(network);
+                emit wifiChanged();
+            };
+            if (points.isEmpty()) {
+                finish();
+                return;
+            }
+            for (const QDBusObjectPath &point : points) {
+                QDBusMessage getAll = QDBusMessage::createMethodCall(kNm, point.path(), kDBusProperties,
+                                                                     QStringLiteral("GetAll"));
+                getAll << kNmAccessPoint;
+                auto *pointCall = new QDBusPendingCallWatcher(
+                    QDBusConnection::systemBus().asyncCall(getAll, 1500), this);
+                const QString path = point.path();
+                connect(pointCall, &QDBusPendingCallWatcher::finished, this,
+                        [read, path, finish](QDBusPendingCallWatcher *call) {
+                    call->deleteLater();
+                    const QDBusMessage reply = call->reply();
+                    if (reply.type() == QDBusMessage::ReplyMessage && !reply.arguments().isEmpty())
+                        read->points.append({path, qdbus_cast<QVariantMap>(reply.arguments().constFirst())});
+                    if (--read->pending == 0)
+                        finish();
+                });
+            }
+        });
+    });
 }
 
 void SessionServices::scanWifi()
@@ -1220,7 +1335,10 @@ void SessionServices::connectWifi(const QString &ssid, const QString &password)
         return;
     }
     const QString accessPoint = network.value(QStringLiteral("path"), QStringLiteral("/")).toString();
-    const bool secure = network.value(QStringLiteral("secure")).toBool();
+    // A name that is not in range is a hidden network: NetworkManager has to
+    // probe for it, secured when a password was given.
+    const bool hidden = network.isEmpty();
+    const bool secure = hidden ? !password.isEmpty() : network.value(QStringLiteral("secure")).toBool();
 
     // A saved connection for this network?
     QString saved;
@@ -1238,22 +1356,24 @@ void SessionServices::connectWifi(const QString &ssid, const QString &password)
         }
     }
 
-    QDBusMessage reply;
+    // The activation (and a password update before it) is asynchronous:
+    // NetworkManager may wait for polkit or the driver, and the shell must
+    // not freeze meanwhile.
+    QDBusMessage activate;
+    QDBusMessage update;
     if (!saved.isEmpty()) {
         if (!password.isEmpty()) {
             // A new password for a saved network.
             QVariantMap security = savedSettings.value(QStringLiteral("802-11-wireless-security"));
             security.insert(QStringLiteral("psk"), password);
             savedSettings.insert(QStringLiteral("802-11-wireless-security"), security);
-            QDBusMessage update = QDBusMessage::createMethodCall(kNm, saved, kNmConnection,
-                                                                 QStringLiteral("Update"));
+            update = QDBusMessage::createMethodCall(kNm, saved, kNmConnection, QStringLiteral("Update"));
             update << QVariant::fromValue(savedSettings);
-            QDBusConnection::systemBus().call(update, QDBus::Block, 3000);
         }
-        reply = nmCall(kNmPath, kNm, QStringLiteral("ActivateConnection"),
-                       {QVariant::fromValue(QDBusObjectPath(saved)),
-                        QVariant::fromValue(QDBusObjectPath(device)),
-                        QVariant::fromValue(QDBusObjectPath(accessPoint))}, 5000);
+        activate = QDBusMessage::createMethodCall(kNm, kNmPath, kNm, QStringLiteral("ActivateConnection"));
+        activate.setArguments({QVariant::fromValue(QDBusObjectPath(saved)),
+                               QVariant::fromValue(QDBusObjectPath(device)),
+                               QVariant::fromValue(QDBusObjectPath(accessPoint))});
     } else {
         if (secure && password.isEmpty()) {
             emit wifiConnectFinished(false, ssid, tr("Enter the password for %1").arg(ssid));
@@ -1263,6 +1383,8 @@ void SessionServices::connectWifi(const QString &ssid, const QString &password)
         QVariantMap wireless;
         wireless.insert(QStringLiteral("ssid"), ssid.toUtf8());
         wireless.insert(QStringLiteral("mode"), QStringLiteral("infrastructure"));
+        if (hidden)
+            wireless.insert(QStringLiteral("hidden"), true);
         settings.insert(QStringLiteral("802-11-wireless"), wireless);
         QVariantMap connection;
         connection.insert(QStringLiteral("id"), ssid);
@@ -1276,45 +1398,96 @@ void SessionServices::connectWifi(const QString &ssid, const QString &password)
             security.insert(QStringLiteral("psk"), password);
             settings.insert(QStringLiteral("802-11-wireless-security"), security);
         }
-        reply = nmCall(kNmPath, kNm, QStringLiteral("AddAndActivateConnection"),
-                       {QVariant::fromValue(settings), QVariant::fromValue(QDBusObjectPath(device)),
-                        QVariant::fromValue(QDBusObjectPath(accessPoint))}, 5000);
-    }
-    if (reply.type() != QDBusMessage::ReplyMessage) {
-        emit wifiConnectFinished(false, ssid, reply.errorMessage());
-        return;
+        activate = QDBusMessage::createMethodCall(kNm, kNmPath, kNm,
+                                                  QStringLiteral("AddAndActivateConnection"));
+        activate.setArguments({QVariant::fromValue(settings),
+                               QVariant::fromValue(QDBusObjectPath(device)),
+                               QVariant::fromValue(QDBusObjectPath(accessPoint))});
     }
 
-    // Follow the device until it is connected or gives up.
     m_wifiBusy = true;
     emit wifiChanged();
+    const auto sendActivation = [this, activate, device, ssid] {
+        auto *watcher = new QDBusPendingCallWatcher(
+            QDBusConnection::systemBus().asyncCall(activate, 15000), this);
+        connect(watcher, &QDBusPendingCallWatcher::finished, this,
+                [this, device, ssid](QDBusPendingCallWatcher *call) {
+                    call->deleteLater();
+                    const QDBusMessage reply = call->reply();
+                    if (reply.type() != QDBusMessage::ReplyMessage) {
+                        m_wifiBusy = false;
+                        emit wifiChanged();
+                        emit wifiConnectFinished(false, ssid, reply.errorMessage());
+                        return;
+                    }
+                    followWifiActivation(device, ssid);
+                });
+    };
+    if (update.type() == QDBusMessage::MethodCallMessage) {
+        // The new password is stored first; activation follows whatever
+        // the answer (a refused update shows as a failed connection).
+        auto *watcher = new QDBusPendingCallWatcher(
+            QDBusConnection::systemBus().asyncCall(update, 10000), this);
+        connect(watcher, &QDBusPendingCallWatcher::finished, this,
+                [sendActivation](QDBusPendingCallWatcher *call) {
+                    call->deleteLater();
+                    sendActivation();
+                });
+    } else {
+        sendActivation();
+    }
+}
+
+// Follows the device until it is connected or gives up (about 30 s), reading
+// its state asynchronously twice a second.
+void SessionServices::followWifiActivation(const QString &device, const QString &ssid)
+{
     auto *poll = new QTimer(this);
     poll->setInterval(500);
-    auto *ticks = new int(0);
-    auto *started = new bool(false);
-    connect(poll, &QTimer::timeout, this, [this, poll, ticks, started, device, ssid] {
-        const uint state = nmProperty(device, kNmDevice, QStringLiteral("State")).toUInt();
-        if (state >= 40 && state < 100)
-            *started = true;
-        bool done = false;
-        bool ok = false;
-        if (state == 100) {
-            done = ok = true;
-        } else if ((state == 120 || (*started && state <= 30)) || ++*ticks > 60) {
-            done = true;
-        }
-        if (!done)
-            return;
+    auto ticks = std::make_shared<int>(0);
+    auto started = std::make_shared<bool>(false);
+    auto waiting = std::make_shared<bool>(false);
+    const auto finish = [this, poll, ssid](bool ok) {
         poll->stop();
         poll->deleteLater();
-        delete ticks;
-        delete started;
         m_wifiBusy = false;
         readAccessPoints();
         emit wifiConnectFinished(ok, ssid, ok ? QString()
                                               : tr("Could not connect to %1 - "
                                                    "wrong password or the network "
                                                    "refused it.").arg(ssid));
+    };
+    connect(poll, &QTimer::timeout, this, [this, poll, ticks, started, waiting, device, finish] {
+        if (++*ticks > 60) {
+            finish(false);
+            return;
+        }
+        if (*waiting)
+            return;
+        *waiting = true;
+        QDBusMessage get = QDBusMessage::createMethodCall(kNm, device, kDBusProperties,
+                                                          QStringLiteral("Get"));
+        get << kNmDevice << QStringLiteral("State");
+        auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(get, 1500),
+                                                    poll);
+        connect(watcher, &QDBusPendingCallWatcher::finished, this,
+                [poll, started, waiting, finish](QDBusPendingCallWatcher *call) {
+                    call->deleteLater();
+                    *waiting = false;
+                    if (!poll->isActive())
+                        return;
+                    const QDBusMessage reply = call->reply();
+                    if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
+                        return;
+                    const uint state =
+                        reply.arguments().constFirst().value<QDBusVariant>().variant().toUInt();
+                    if (state >= 40 && state < 100)
+                        *started = true;
+                    if (state == 100)
+                        finish(true);
+                    else if (state == 120 || (*started && state <= 30))
+                        finish(false);
+                });
     });
     poll->start();
 }
@@ -1322,8 +1495,11 @@ void SessionServices::connectWifi(const QString &ssid, const QString &password)
 void SessionServices::disconnectWifi()
 {
     const QString device = wifiDevice();
-    if (!device.isEmpty())
-        nmCall(device, kNmDevice, QStringLiteral("Disconnect"));
+    if (!device.isEmpty()) {
+        // Not waited for: the list is read again a moment later.
+        QDBusConnection::systemBus().asyncCall(
+            QDBusMessage::createMethodCall(kNm, device, kNmDevice, QStringLiteral("Disconnect")));
+    }
     QTimer::singleShot(800, this, &SessionServices::readAccessPoints);
 }
 
@@ -1369,6 +1545,9 @@ QVariantList SessionServices::windows() const
         window.insert(QStringLiteral("minimized"), f.at(4).contains(QLatin1Char('m')));
         window.insert(QStringLiteral("maximized"), f.at(4).contains(QLatin1Char('x')));
         window.insert(QStringLiteral("hung"), f.at(4).contains(QLatin1Char('h')));
+        window.insert(QStringLiteral("fullscreen"), f.at(4).contains(QLatin1Char('F')));
+        window.insert(QStringLiteral("alwaysOnTop"), f.at(4).contains(QLatin1Char('t')));
+        window.insert(QStringLiteral("sticky"), f.at(4).contains(QLatin1Char('s')));
         window.insert(QStringLiteral("pid"), f.value(5).toInt());
         list.append(window);
     }
@@ -1456,6 +1635,68 @@ void SessionServices::closeWindow(int id)
 void SessionServices::moveWindow(int id, int workspace)
 {
     query(QStringLiteral("move-window %1 %2").arg(id).arg(workspace));
+}
+
+// xdg-system-bell: the sound theme's bell (sounds.bell), never under
+// do-not-disturb. Started detached, so the UI never waits for a player.
+void SessionServices::playBell() const
+{
+    if (!m_settings->value(QStringLiteral("sounds.bell"), true).toBool()
+        || m_settings->value(QStringLiteral("notifications.doNotDisturb"), false).toBool())
+        return;
+    const QString canberra = QStandardPaths::findExecutable(QStringLiteral("canberra-gtk-play"));
+    if (!canberra.isEmpty()) {
+        QProcess::startDetached(canberra, {QStringLiteral("-i"), QStringLiteral("bell")});
+        return;
+    }
+    const QStringList dirs = QStandardPaths::standardLocations(QStandardPaths::GenericDataLocation);
+    for (const QString &dir : dirs) {
+        const QString file = dir + QStringLiteral("/sounds/freedesktop/stereo/bell.oga");
+        if (!QFileInfo::exists(file))
+            continue;
+        for (const QString &player : {QStringLiteral("pw-play"), QStringLiteral("paplay")}) {
+            const QString path = QStandardPaths::findExecutable(player);
+            if (!path.isEmpty() && QProcess::startDetached(path, {file}))
+                return;
+        }
+        return;
+    }
+}
+
+// The window menu's commands go over the watch connection: the reply is
+// not needed, so the UI never waits for the compositor.
+void SessionServices::minimizeWindow(int id)
+{
+    sendCommand(QStringLiteral("minimize %1").arg(id));
+}
+
+void SessionServices::toggleMaximizeWindow(int id)
+{
+    sendCommand(QStringLiteral("maximize %1").arg(id));
+}
+
+void SessionServices::toggleFullscreenWindow(int id)
+{
+    sendCommand(QStringLiteral("fullscreen %1").arg(id));
+}
+
+void SessionServices::moveWindowToNextScreen(int id)
+{
+    sendCommand(QStringLiteral("move-to-output %1 next").arg(id));
+}
+
+void SessionServices::setWindowSticky(int id, bool sticky)
+{
+    sendCommand(QStringLiteral("sticky %1 %2")
+                    .arg(id)
+                    .arg(sticky ? QStringLiteral("on") : QStringLiteral("off")));
+}
+
+void SessionServices::setWindowAlwaysOnTop(int id, bool onTop)
+{
+    sendCommand(QStringLiteral("always-on-top %1 %2")
+                    .arg(id)
+                    .arg(onTop ? QStringLiteral("on") : QStringLiteral("off")));
 }
 
 QVariantList SessionServices::outputs() const

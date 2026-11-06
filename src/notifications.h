@@ -62,6 +62,14 @@ public:
     Q_INVOKABLE void dismiss(uint id, uint reason = 2);
     // The user clicked one of the `actions` buttons of a popup.
     Q_INVOKABLE void invokeAction(uint id, const QString &actionKey);
+    // The user answered a notification that offered an "inline-reply"
+    // action (Telegram, KDE Connect, ...): NotificationReplied goes out and
+    // the popup closes.
+    Q_INVOKABLE void reply(uint id, const QString &text);
+    // A fullscreen window is shown: popups and sounds wait (the history and
+    // the bell still get them; urgent ones show anyway), see
+    // notifications.quietInFullscreen.
+    void setFullscreenQuiet(bool quiet) { m_fullscreenQuiet = quiet; }
     Q_INVOKABLE void clearHistory();
     // Removes one entry from the history (the X button in the notification
     // centre). Notifications still on screen are dismissed first.
@@ -74,6 +82,8 @@ signals:
     // org.freedesktop.Notifications signals (the only ones on D-Bus).
     Q_SCRIPTABLE void NotificationClosed(uint id, uint reason);
     Q_SCRIPTABLE void ActionInvoked(uint id, const QString &actionKey);
+    // The KDE inline-reply extension (capability "inline-reply").
+    Q_SCRIPTABLE void NotificationReplied(uint id, const QString &text);
 
     void activeChanged();
     void historyChanged();
@@ -96,7 +106,8 @@ public slots:
 private:
     uint publish(uint replacesId, const QString &appName, const QString &appIcon,
                  const QString &summary, const QString &body, const QStringList &actions,
-                 const QVariantMap &hints, int expireTimeout);
+                 const QVariantMap &hints, int expireTimeout,
+                 bool markup = false);
     void setupDBus();
     void teardownDBus();
     void setupSocket();
@@ -104,6 +115,7 @@ private:
     void trimHistory();
     void playSound(const QVariantMap &hints);
     bool scheduledQuiet() const;
+    bool m_fullscreenQuiet = false;
 
     Settings *m_settings;
     QVariantList m_active;

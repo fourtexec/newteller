@@ -11,6 +11,8 @@
 #include <QDBusVariant>
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
+#include <QFile>
+#include <QFileInfo>
 #include <QIcon>
 #include <QQuickImageProvider>
 #include <QtDebug>
@@ -611,7 +613,83 @@ void TrayWatcher::activate(const QString &id) const
                                                        QString::fromLatin1(kItemInterface),
                                                        QStringLiteral("Activate"));
     call << 0 << 0;
-    QDBusConnection::sessionBus().asyncCall(call);
+    // A click on an item that cannot be activated used to do nothing at
+    // all; the reply says whether it worked.
+    auto *self = const_cast<TrayWatcher *>(this);
+    auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(call, 5000),
+                                                self);
+    const QString service = item->service;
+    const QStringList names{item->itemId, item->title};
+    connect(watcher, &QDBusPendingCallWatcher::finished, self,
+            [self, id, service, names](QDBusPendingCallWatcher *pending) {
+                pending->deleteLater();
+                if (!pending->isError())
+                    return;
+                // A busy application that answers late is not started a
+                // second time.
+                const QDBusError::ErrorType type = pending->error().type();
+                if (type == QDBusError::NoReply || type == QDBusError::Timeout)
+                    return;
+                self->activateFallback(id, service, names);
+            });
+}
+
+void TrayWatcher::activateFallback(const QString &id, const QString &service,
+                                   const QStringList &names)
+{
+    QDBusMessage pidCall = QDBusMessage::createMethodCall(
+        QStringLiteral("org.freedesktop.DBus"), QStringLiteral("/org/freedesktop/DBus"),
+        QStringLiteral("org.freedesktop.DBus"), QStringLiteral("GetConnectionUnixProcessID"));
+    pidCall << service;
+    auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::sessionBus().asyncCall(pidCall, 2000),
+                                                this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this,
+            [this, id, names](QDBusPendingCallWatcher *pending) {
+                pending->deleteLater();
+                QStringList candidates;
+                const QDBusPendingReply<uint> reply = *pending;
+                if (reply.isValid())
+                    candidates += processNames(reply.value());
+                candidates += names;
+                for (QString &candidate : candidates)
+                    candidate = candidate.trimmed();
+                candidates.removeAll(QString());
+                candidates.removeDuplicates();
+                emit activateFailed(id, candidates);
+            });
+}
+
+// The names a process goes by: its Flatpak application id, the executable
+// and the command name (all small /proc reads).
+QStringList TrayWatcher::processNames(uint pid)
+{
+    QStringList names;
+    if (pid == 0)
+        return names;
+    const QString proc = QStringLiteral("/proc/%1").arg(pid);
+    QFile info(proc + QStringLiteral("/root/.flatpak-info"));
+    if (info.open(QIODevice::ReadOnly)) {
+        const QList<QByteArray> lines = info.read(16384).split('\n');
+        for (const QByteArray &line : lines) {
+            if (line.startsWith("name=")) {
+                names << QString::fromUtf8(line.mid(5)).trimmed();
+                break;
+            }
+        }
+    }
+    const QString exe = QFileInfo(proc + QStringLiteral("/exe")).symLinkTarget();
+    if (!exe.isEmpty())
+        names << QFileInfo(exe).fileName();
+    QFile cmdline(proc + QStringLiteral("/cmdline"));
+    if (cmdline.open(QIODevice::ReadOnly)) {
+        const QByteArray argv0 = cmdline.read(4096).split('\0').value(0);
+        if (!argv0.isEmpty())
+            names << QFileInfo(QString::fromUtf8(argv0)).fileName();
+    }
+    QFile comm(proc + QStringLiteral("/comm"));
+    if (comm.open(QIODevice::ReadOnly))
+        names << QString::fromUtf8(comm.readAll()).trimmed();
+    return names;
 }
 
 void TrayWatcher::secondaryActivate(const QString &id) const

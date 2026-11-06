@@ -302,6 +302,26 @@ Window {
         }
     }
 
+    // The buttons of the bar that is shown (horizontal or vertical), for
+    // cards opened from the keyboard.
+    property Item startButtonRef: null
+    property Item bellButtonRef: null
+    property Item indicatorsButtonRef: null
+
+    // A card asked for from the keyboard (Super, Super+A, Super+N, Super+V)
+    // opens on this panel's screen, from its own button when it has one.
+    function openFromKeyboard(dropdown, kind) {
+        const button = kind === "start" ? panel.startButtonRef
+                     : kind === "bell" ? panel.bellButtonRef
+                     : kind === "indicators" ? panel.indicatorsButtonRef : null;
+        const usable = button && button.visible ? button : null;
+        if (!usable)
+            dropdown.anchor = Qt.rect(0, 0, 0, 0);
+        if (kind === "start")
+            panel.menuWanted = true;
+        panel.toggleDropdown(dropdown, usable);
+    }
+
     // Open the dropdown next to `item`, or close it when it is already open.
     function toggleDropdown(dropdown, item) {
         if (!dropdown)
@@ -547,6 +567,31 @@ Window {
         activateEntry(entry);
     }
 
+    // Super+1..9: the Nth button of the dock, in the order shown (background
+    // entries last). Like a click, but an application with several windows
+    // cycles through them instead of minimising.
+    function activateDockIndex(index) {
+        const entries = panel.dockEntries;
+        if (index < 0 || index >= entries.length)
+            return;
+        const entry = entries[index];
+        if (entry.windows.length > 1) {
+            var current = -1;
+            for (var i = 0; i < entry.windows.length; ++i) {
+                if (entry.windows[i].active)
+                    current = i;
+            }
+            if (current >= 0) {
+                const next = entry.windows[(current + 1) % entry.windows.length];
+                if (!next.readOnly) {
+                    Windows.activate(next.id);
+                    return;
+                }
+            }
+        }
+        dockClicked(entry);
+    }
+
     function closeEntry(entry) {
         for (const w of entry.windows)
             Windows.closeWindow(w.id);
@@ -658,6 +703,7 @@ Window {
     component StartButton: TaskButton {
         id: startButton
         objectName: "startButton"
+        Component.onCompleted: panel.startButtonRef = startButton
         Layout.alignment: Qt.AlignVCenter | Qt.AlignHCenter
         iconName: "layout-grid"
         label: panel.vertical ? "" : qsTr("Start")
@@ -1034,8 +1080,8 @@ Window {
             id: layoutHover
             onHoveredChanged: {
                 if (hovered)
-                    panel.showToolTip(layoutButton, Session.keyboardLayoutName
-                                      + " - Super+Space switches");
+                    panel.showToolTip(layoutButton, qsTr("%1 - Super+Space switches")
+                                                        .arg(Session.keyboardLayoutName));
                 else
                     panel.hideToolTip();
             }
@@ -1060,9 +1106,71 @@ Window {
     }
 
     // --- bell: the notification centre --------------------------------------
+    // --- screen recording: a red pill with the time; a click stops it ------
+    component RecordingButton: Rectangle {
+        id: recordingButton
+        objectName: "recordingButton"
+
+        Layout.alignment: Qt.AlignVCenter | Qt.AlignHCenter
+        visible: Recorder.recording
+        implicitWidth: panel.vertical ? 30 : recordingRow.implicitWidth + 16
+        height: Math.min(panel.barThickness - 10, 30)
+        radius: height / 2
+        color: Qt.rgba(0.9, 0.28, 0.3, recordingHover.hovered ? 0.32 : 0.2)
+
+        HoverHandler {
+            id: recordingHover
+            onHoveredChanged: {
+                if (hovered)
+                    panel.showToolTip(recordingButton, qsTr("Stop recording (Super+Alt+R)"));
+                else
+                    panel.hideToolTip();
+            }
+        }
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                panel.hideToolTip();
+                Recorder.stop();
+            }
+        }
+        Row {
+            id: recordingRow
+            anchors.centerIn: parent
+            spacing: 6
+
+            Rectangle {
+                anchors.verticalCenter: parent.verticalCenter
+                width: 10
+                height: 10
+                radius: 5
+                color: "#e5484d"
+                SequentialAnimation on opacity {
+                    running: Recorder.recording
+                    loops: Animation.Infinite
+                    NumberAnimation { to: 0.35; duration: 700 }
+                    NumberAnimation { to: 1; duration: 700 }
+                }
+            }
+            Text {
+                visible: !panel.vertical
+                anchors.verticalCenter: parent.verticalCenter
+                text: {
+                    const s = Recorder.elapsed;
+                    return Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+                }
+                color: panel.panelTextColor
+                font.family: Theme.fontFamily
+                font.pointSize: Theme.fontSize - 1
+            }
+        }
+    }
+
     component BellButton: Rectangle {
         id: bellButton
         objectName: "bellButton"
+        Component.onCompleted: panel.bellButtonRef = bellButton
         readonly property bool dnd: Settings.values["notifications.doNotDisturb"] === true
         readonly property int unread: panel.notificationCenter
                                       ? panel.notificationCenter.unreadCount : 0
@@ -1153,6 +1261,7 @@ Window {
     component IndicatorsButton: Rectangle {
         id: indicatorsButton
         objectName: "indicatorsButton"
+        Component.onCompleted: panel.indicatorsButtonRef = indicatorsButton
         readonly property bool playing: Quick.mediaAvailable && Quick.mediaPlaying
         readonly property string glyph: Quick.volumeMuted ? "volume-x"
                                         : System.batteryCharging ? "battery-charging"
@@ -1432,6 +1541,7 @@ Window {
                     PluginSlot {}
 
                     TrayBox {}
+                    RecordingButton {}
                     LayoutButton {
                         visible: panel.showKeyboardLayout
                     }
@@ -1498,6 +1608,7 @@ Window {
                     PluginSlot {}
 
                     TrayBox {}
+                    RecordingButton {}
                     LayoutButton {
                         visible: panel.showKeyboardLayout
                     }

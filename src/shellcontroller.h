@@ -66,6 +66,8 @@ public:
     // Opens the built-in settings application. The QML lives in the executable's
     // resources, so it is always available and cannot be deleted like a plugin.
     Q_INVOKABLE void openSettings();
+    // Opens Settings on a page ("display", "keyboard", ... as in SettingsApp).
+    Q_INVOKABLE void openSettingsPage(const QString &page);
     // Session-level entry points used by newteller-compositor keybindings and
     // by `gdbus call` from scripts. The QML root listens to the signals.
     Q_INVOKABLE void showStartMenu();
@@ -81,6 +83,10 @@ public:
     Q_INVOKABLE void toggleTaskView();
     // Ctrl+Shift+Esc / Ctrl+Alt+Esc: the force-quit dialog.
     Q_INVOKABLE void showForceQuit();
+    // Super+1..9 (from the compositor): the dock application at `index`.
+    Q_INVOKABLE void activateDockItem(int index);
+    // Super+Alt+R: start or stop recording the screen.
+    Q_INVOKABLE void toggleScreenRecording();
     Q_INVOKABLE void openConfig() const;
     // Opens the path in the file manager (or its handler for directories).
     Q_INVOKABLE void openPath(const QString &path) const;
@@ -130,6 +136,10 @@ public:
     // What a typed path is: "dir", "exec" (an executable file), "file", or
     // "" when nothing is there. "~/" and file:// URLs are understood.
     Q_INVOKABLE QString pathKind(const QString &path) const;
+    // Recently used files (~/.local/share/recently-used.xbel, written by GTK
+    // and Qt applications), newest first, only those that still exist:
+    // [{ path, name, folder, image }]. Re-read only when the file changed.
+    Q_INVOKABLE QVariantList recentFiles(int limit = 200) const;
 
     Q_INVOKABLE void lock() const;
     Q_INVOKABLE void logout() const;
@@ -141,6 +151,7 @@ signals:
     void nowChanged();
     // Emitted by openSettings(); Main.qml shows the embedded settings window.
     void settingsRequested();
+    void settingsPageRequested(const QString &page);
     void startMenuRequested();
     void startMenuToggleRequested();
     void runDialogRequested();
@@ -149,6 +160,8 @@ signals:
     void clipboardToggleRequested();
     void taskViewToggleRequested();
     void forceQuitRequested();
+    void dockItemRequested(int index);
+    void screenRecordingToggleRequested();
 
 private:
     void openOrSay(const QUrl &url) const;
@@ -166,4 +179,7 @@ private:
     mutable QHash<QString, QString> m_tintCache;
     // "Moved to the trash" notifications with Undo: id -> {trashed, original}.
     mutable QHash<uint, QPair<QString, QString>> m_trashUndo;
+    // recentFiles() cache, keyed by the file's modification time.
+    mutable QDateTime m_recentStamp;
+    mutable QVariantList m_recent;
 };

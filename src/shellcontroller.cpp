@@ -20,6 +20,8 @@
 #include <QStandardPaths>
 #include <QSysInfo>
 #include <QUrl>
+#include <QXmlStreamReader>
+#include <algorithm>
 
 namespace {
 // "name.txt" -> "name 2.txt" (then 3, 4...) while the name is taken.
@@ -176,6 +178,59 @@ QString ShellController::pathKind(const QString &path) const
     if (info.isFile())
         return info.isExecutable() ? QStringLiteral("exec") : QStringLiteral("file");
     return QString();
+}
+
+QVariantList ShellController::recentFiles(int limit) const
+{
+    const QString path = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation)
+                         + QStringLiteral("/recently-used.xbel");
+    const QFileInfo info(path);
+    if (!info.exists())
+        return {};
+    if (info.lastModified() != m_recentStamp) {
+        m_recentStamp = info.lastModified();
+        struct Entry {
+            QString path;
+            QString stamp;
+        };
+        QList<Entry> entries;
+        QFile file(path);
+        if (file.open(QIODevice::ReadOnly) && file.size() < 16 * 1024 * 1024) {
+            QXmlStreamReader xml(&file);
+            while (!xml.atEnd()) {
+                if (xml.readNext() != QXmlStreamReader::StartElement
+                    || xml.name() != QLatin1String("bookmark"))
+                    continue;
+                const QXmlStreamAttributes attributes = xml.attributes();
+                const QUrl url(attributes.value(QLatin1String("href")).toString());
+                if (!url.isLocalFile())
+                    continue;
+                // ISO timestamps sort as text; the newest use wins.
+                QString stamp = attributes.value(QLatin1String("visited")).toString();
+                const QString modified = attributes.value(QLatin1String("modified")).toString();
+                if (modified > stamp)
+                    stamp = modified;
+                entries.append({url.toLocalFile(), stamp});
+            }
+        }
+        std::sort(entries.begin(), entries.end(),
+                  [](const Entry &a, const Entry &b) { return a.stamp > b.stamp; });
+        m_recent.clear();
+        for (const Entry &entry : std::as_const(entries)) {
+            if (m_recent.size() >= 500)
+                break;
+            const QFileInfo target(entry.path);
+            if (!target.exists())
+                continue;
+            QVariantMap item;
+            item.insert(QStringLiteral("path"), entry.path);
+            item.insert(QStringLiteral("name"), target.fileName());
+            item.insert(QStringLiteral("folder"), target.isDir());
+            item.insert(QStringLiteral("image"), isImageFile(entry.path));
+            m_recent.append(item);
+        }
+    }
+    return limit > 0 ? m_recent.mid(0, limit) : m_recent;
 }
 
 bool ShellController::fileExists(const QString &path) const
@@ -452,6 +507,22 @@ void ShellController::toggleTaskView()
 void ShellController::showForceQuit()
 {
     emit forceQuitRequested();
+}
+
+void ShellController::toggleScreenRecording()
+{
+    emit screenRecordingToggleRequested();
+}
+
+void ShellController::openSettingsPage(const QString &page)
+{
+    emit settingsPageRequested(page);
+}
+
+void ShellController::activateDockItem(int index)
+{
+    if (index >= 0)
+        emit dockItemRequested(index);
 }
 
 void ShellController::showRunDialog()
