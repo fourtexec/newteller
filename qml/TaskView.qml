@@ -9,6 +9,13 @@ import org.kde.layershell 1.0 as LayerShell
 // click on the background closes the overview.
 Window {
     id: view
+
+    // workspaces.names: "Work, Web, Chat"; unnamed desktops are numbered.
+    function desktopName(index) {
+        const names = String(Settings.values["workspaces.names"] || "").split(",");
+        const name = index < names.length ? names[index].trim() : "";
+        return name.length > 0 ? name : qsTr("Desktop %1").arg(index + 1);
+    }
     objectName: "taskView"
 
     property var windowsList: []
@@ -139,7 +146,7 @@ Window {
                     spacing: 2
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: qsTr("Desktop %1").arg(index + 1)
+                        text: view.desktopName(index)
                         color: Theme.foreground
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSize
@@ -147,7 +154,8 @@ Window {
                     }
                     Text {
                         anchors.horizontalCenter: parent.horizontalCenter
-                        text: count === 0 ? "empty" : count === 1 ? "1 window" : count + " windows"
+                        text: count === 0 ? qsTr("empty") : count === 1 ? qsTr("1 window")
+                              : qsTr("%1 windows").arg(count)
                         color: Theme.muted
                         font.family: Theme.fontFamily
                         font.pointSize: Theme.fontSize - 2
@@ -322,6 +330,7 @@ Window {
                         delegate: TaskButton {
                             required property int index
                             visible: index !== card.modelData.workspace
+                            tooltipText: view.desktopName(index)
                             width: 26
                             height: 22
                             label: String(index + 1)

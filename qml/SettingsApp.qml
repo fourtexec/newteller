@@ -3669,6 +3669,32 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                visible: Settings.values["workspaces.showOnPanel"] !== false
+                                title: qsTr("Desktop indicator")
+                                settingKey: "workspaces.indicator"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "dots", label: qsTr("Dots") },
+                                        { value: "numbers", label: qsTr("Numbers") },
+                                        { value: "names", label: qsTr("Names") }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Desktop names")
+                                subtitle: qsTr("Separated by commas, e.g. Work, Web, Chat; unnamed desktops are numbered.")
+                                settingKey: "workspaces.names"
+                                SettingsTextField { width: 240; placeholder: qsTr("Work, Web, Chat") }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Show the desktop name when switching")
+                                settingKey: "workspaces.osd"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Show the window list during Alt+Tab")
                                 settingKey: "switcher.showOverlay"
                                 SettingsSwitch { settingKey: "switcher.showOverlay" }

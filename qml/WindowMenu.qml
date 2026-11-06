@@ -8,6 +8,13 @@ import QtQuick.Window
 DropdownWindow {
     id: menu
 
+    // workspaces.names: "Work, Web, Chat"; unnamed desktops are numbered.
+    function desktopName(index) {
+        const names = String(Settings.values["workspaces.names"] || "").split(",");
+        const name = index < names.length ? names[index].trim() : "";
+        return name.length > 0 ? name : qsTr("Desktop %1").arg(index + 1);
+    }
+
     property int windowId: -1
     property int windowDesktop: 0
     property string windowFlags: ""
@@ -193,6 +200,7 @@ DropdownWindow {
                         height: 30
                         active: index === menu.windowDesktop
                         label: String(index + 1)
+                        tooltipText: menu.desktopName(index)
                         onClicked: {
                             if (index !== menu.windowDesktop)
                                 menu.run("desktop", index);

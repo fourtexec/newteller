@@ -10,6 +10,13 @@ import QtQuick
 QtObject {
     id: root
 
+    // workspaces.names: "Work, Web, Chat"; unnamed desktops are numbered.
+    function desktopName(index) {
+        const names = String(Settings.values["workspaces.names"] || "").split(",");
+        const name = index < names.length ? names[index].trim() : "";
+        return name.length > 0 ? name : qsTr("Desktop %1").arg(index + 1);
+    }
+
     readonly property StartMenu startMenu: StartMenu {
         screen: Qt.application.screens[0]
     }
@@ -145,6 +152,20 @@ QtObject {
                 || Settings.values["keyboard.layoutPerWindow"] === true)
                 return;
             root.osd.show("keyboard", -1, Session.keyboardLayoutName);
+        }
+    }
+
+    // workspaces.osd: the desktop's name on screen when switching.
+    property int shownWorkspace: -1
+    readonly property Connections workspaceHint: Connections {
+        target: Session
+        function onWorkspacesChanged() {
+            const index = Session.workspace;
+            const previous = root.shownWorkspace;
+            root.shownWorkspace = index;
+            if (previous < 0 || previous === index || Settings.values["workspaces.osd"] !== true)
+                return;
+            root.osd.show("layout-grid", -1, root.desktopName(index));
         }
     }
 

@@ -339,6 +339,9 @@ Settings::Settings(QObject *parent)
     // Virtual desktops (Ctrl+Super+Left/Right) and their panel indicator.
     m_defaults.insert(QStringLiteral("workspaces.count"), 4);
     m_defaults.insert(QStringLiteral("workspaces.showOnPanel"), true);
+    m_defaults.insert(QStringLiteral("workspaces.names"), QString());
+    m_defaults.insert(QStringLiteral("workspaces.indicator"), QStringLiteral("dots"));
+    m_defaults.insert(QStringLiteral("workspaces.osd"), false);
     // The Alt+Tab overlay with the windows and their titles.
     m_defaults.insert(QStringLiteral("switcher.showOverlay"), true);
     m_defaults.insert(QStringLiteral("switcher.allWorkspaces"), false);

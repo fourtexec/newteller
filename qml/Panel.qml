@@ -17,6 +17,13 @@ import "Anchoring.js" as Anchoring
 Window {
     id: panel
 
+    // workspaces.names: "Work, Web, Chat"; unnamed desktops are numbered.
+    function desktopName(index) {
+        const names = String(Settings.values["workspaces.names"] || "").split(",");
+        const name = index < names.length ? names[index].trim() : "";
+        return name.length > 0 ? name : qsTr("Desktop %1").arg(index + 1);
+    }
+
     property var startMenu
     // The single notification centre and quick settings card on the primary
     // screen; assigned by Main.qml. The bell and the indicators button live
@@ -1044,7 +1051,8 @@ Window {
             id: stripHover
             onHoveredChanged: {
                 if (hovered)
-                    panel.showToolTip(strip, qsTr("Desktop %1 of %2 - Ctrl+Super+Left/Right")
+                    panel.showToolTip(strip, qsTr("%1 (%2 of %3) - Ctrl+Super+Left/Right")
+                                      .arg(panel.desktopName(Session.workspace))
                                       .arg(Session.workspace + 1).arg(Session.workspaceCount));
                 else
                     panel.hideToolTip();
@@ -1058,23 +1066,33 @@ Window {
             }
         }
 
+        // workspaces.indicator: "dots", "numbers" or "names" (names only
+        // on a horizontal bar; a vertical one shows numbers instead).
+        readonly property string style: {
+            const value = Settings.values["workspaces.indicator"] || "dots";
+            return value === "names" && panel.vertical ? "numbers" : value;
+        }
+        readonly property bool labelled: style === "numbers" || style === "names"
+
         Grid {
             id: dots
             anchors.centerIn: parent
             columns: panel.vertical ? 1 : Session.workspaceCount
-            spacing: 6
+            spacing: strip.labelled ? 3 : 6
 
             Repeater {
                 model: Session.workspaceCount
 
                 delegate: Rectangle {
+                    id: dot
                     required property int index
                     readonly property bool current: index === Session.workspace
                     readonly property bool occupied: (Session.workspaceOccupied & (1 << index)) !== 0
 
-                    width: panel.vertical ? 8 : (current ? 18 : 8)
-                    height: panel.vertical ? (current ? 18 : 8) : 8
-                    radius: 4
+                    width: strip.labelled ? Math.max(20, dotLabel.implicitWidth + 10)
+                                          : panel.vertical ? 8 : (current ? 18 : 8)
+                    height: strip.labelled ? 20 : panel.vertical ? (current ? 18 : 8) : 8
+                    radius: strip.labelled ? Math.min(6, Theme.radius) : 4
                     color: current ? Theme.accent
                                    : occupied ? Qt.rgba(panel.panelTextColor.r, panel.panelTextColor.g,
                                                         panel.panelTextColor.b, 0.75)
@@ -1084,6 +1102,17 @@ Window {
                                           panel.panelTextColor.b, 0.6)
                     Behavior on width { NumberAnimation { duration: motion.fast } }
                     Behavior on height { NumberAnimation { duration: motion.fast } }
+
+                    Text {
+                        id: dotLabel
+                        anchors.centerIn: parent
+                        visible: strip.labelled
+                        text: strip.style === "names" ? panel.desktopName(dot.index) : String(dot.index + 1)
+                        color: dot.current ? "white" : panel.panelTextColor
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSize - 1
+                        font.bold: dot.current
+                    }
 
                     MouseArea {
                         anchors.fill: parent
