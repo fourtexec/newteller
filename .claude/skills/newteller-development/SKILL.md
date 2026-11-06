@@ -36,6 +36,9 @@ and the checks that will fail if one is broken.
   sentence with `+`) and add the Russian text to `i18n/ru.json`
   (`src/translator.cpp` reads it; the QML smoke test rejects stale entries
   and lost `%1` placeholders). `shell.language` picks the language.
+  A `qsTr("... %1").arg(x)` string missing from ru.json shows up in the
+  smoke test as `QString::arg: Argument missing: "", ""` once the test
+  switches to Russian: add the translation.
 - Commit with clear messages; never skip or weaken a test to get green.
 
 ## Layout

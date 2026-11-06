@@ -50,6 +50,14 @@ Window {
         results = hits;
     }
 
+    // Return and the keypad's Enter run; with Ctrl, in a terminal.
+    function enterPressed(event) {
+        if (event.modifiers & Qt.ControlModifier)
+            runInTerminal();
+        else
+            runCurrent();
+    }
+
     function runCurrent() {
         const q = input.text.trim();
         if (q.length === 0)
@@ -70,6 +78,17 @@ Window {
             Shell.runShell(q);
             rememberCommand(q);
         }
+        hide();
+    }
+
+    // Ctrl+Enter: the command in a terminal (htop, ssh, a script that asks
+    // something), through apps.terminalCommand.
+    function runInTerminal() {
+        const q = input.text.trim();
+        if (q.length === 0)
+            return;
+        Shell.terminal(q);
+        rememberCommand(q);
         hide();
     }
 
@@ -149,7 +168,8 @@ Window {
                         dialog.refresh();
                     }
                     Keys.onEscapePressed: dialog.hide()
-                    Keys.onReturnPressed: dialog.runCurrent()
+                    Keys.onReturnPressed: (event) => dialog.enterPressed(event)
+                    Keys.onEnterPressed: (event) => dialog.enterPressed(event)
                     Keys.onUpPressed: dialog.historyStep(1)
                     Keys.onDownPressed: dialog.historyStep(-1)
 
@@ -164,11 +184,12 @@ Window {
                 }
             }
 
-            // History hint, only when there is history to walk.
+            // Key hints (the history only when there is some to walk).
             Text {
                 Layout.fillWidth: true
-                visible: (Settings.values["run.history"] || []).length > 0
-                text: qsTr("Up/Down walks the command history")
+                text: (Settings.values["run.history"] || []).length > 0
+                      ? qsTr("Up/Down walks the command history, Ctrl+Enter runs in a terminal")
+                      : qsTr("Ctrl+Enter runs the command in a terminal")
                 horizontalAlignment: Text.AlignHCenter
                 color: Qt.rgba(Theme.muted.r, Theme.muted.g, Theme.muted.b, 0.7)
                 font.family: Theme.fontFamily

@@ -2250,6 +2250,26 @@ def main():
                 QTest.qWait(300)
                 check(expected in shell.calls and not any(c[0] == "runShell" for c in shell.calls),
                       f"{typed!r} in the run dialog opens it ({shell.calls})")
+            # Ctrl+Enter runs the command in a terminal; the keypad's Enter
+            # runs it like Return.
+            QMetaObject.invokeMethod(dialog, "show")
+            QTest.qWait(50)
+            rq.setProperty("text", "htop")
+            QTest.qWait(20)
+            shell.calls.clear()
+            QTest.keyClick(dialog, Qt.Key_Return, Qt.ControlModifier)
+            QTest.qWait(300)
+            check(("terminal", "htop") in shell.calls and not dialog.isVisible(),
+                  f"Ctrl+Enter runs the command in a terminal ({shell.calls})")
+            QMetaObject.invokeMethod(dialog, "show")
+            QTest.qWait(50)
+            rq.setProperty("text", "nload -u K")
+            QTest.qWait(20)
+            shell.calls.clear()
+            QTest.keyClick(dialog, Qt.Key_Enter, Qt.KeypadModifier)
+            QTest.qWait(300)
+            check(("runShell", "nload -u K") in shell.calls,
+                  f"the keypad's Enter runs the command ({shell.calls})")
 
     # Desktop right-click menu.
     if desktops:

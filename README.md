@@ -139,7 +139,8 @@ inside VirtualBox. The implemented pieces are:
 - Run dialog (`Alt+F2`): run a shell command or search applications; a web
   address (`https://…`, `mailto:`) or a folder / document path (`~/Документы`,
   `/etc/fstab`) opens instead; bare commands are remembered (`run.history`,
-  capped by `run.historyLimit`) and Up/Down walks the history
+  capped by `run.historyLimit`) and Up/Down walks the history; Ctrl+Enter
+  runs the command in a terminal (htop, ssh, scripts that ask something)
 - **Dropdowns linked to their buttons.** Every floating surface — start menu,
   quick settings, notification centre, clock, dock menu and tray menu — opens
   anchored to the widget that toggled it: centred on the button, clamped into
