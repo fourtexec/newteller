@@ -1555,6 +1555,19 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("Middle-click on a dock button")
+                                settingKey: "dock.middleClick"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "close", label: qsTr("Close its windows") },
+                                        { value: "new", label: qsTr("Open a new one") },
+                                        { value: "minimize", label: qsTr("Minimise") },
+                                        { value: "none", label: qsTr("Nothing") }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Window previews")
                                 subtitle: qsTr("Show a live thumbnail of every window in the dock menu. Built from X11/XWayland windows; native Wayland windows show their application icon instead.")
                                 settingKey: "dock.thumbnails"

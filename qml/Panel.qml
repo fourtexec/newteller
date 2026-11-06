@@ -658,6 +658,21 @@ Window {
             Windows.closeWindow(w.id);
     }
 
+    // dock.middleClick: "close" its windows, start a "new" instance,
+    // "minimize" them, or "none".
+    function middleClickEntry(entry) {
+        const action = Settings.values["dock.middleClick"] || "close";
+        if (action === "new") {
+            if (entry.appId && entry.appId.length > 0)
+                Apps.launch(entry.appId);
+        } else if (action === "minimize") {
+            for (const w of entry.windows)
+                Windows.minimize(w.id);
+        } else if (action === "close") {
+            panel.closeEntry(entry);
+        }
+    }
+
     function openDockMenu(entry, button) {
         panel.closeDropdowns(dockMenu);
         dockMenu.openFor(entry, panel.anchorRect(button));
@@ -830,7 +845,7 @@ Window {
             dimmed: entry.background === true
             badge: entry.badge
             onClicked: panel.dockClicked(entry)
-            onMiddleClicked: panel.closeEntry(entry)
+            onMiddleClicked: panel.middleClickEntry(entry)
             onReorderStarted: panel.dockReorderStarted(entry)
             onReorderMoved: (x, y) => panel.dockReorderMoved(entry, x, y, dockAppsRepeater)
             onReorderFinished: (x, y) => panel.dockReorderFinished(entry, x, y, dockAppsRepeater)

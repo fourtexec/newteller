@@ -1786,6 +1786,25 @@ def main():
         QTest.qWait(40)
         check(panel.width() == g.width(), "back to a full-width panel")
 
+        # dock.middleClick: close (the default) or start a new instance.
+        entry = {"appId": "org.gnome.Terminal", "windows": [{"id": "0x42"}]}
+        window_list.calls.clear()
+        QMetaObject.invokeMethod(panel, "middleClickEntry", Q_ARG("QVariant", entry))
+        check(("close", "0x42") in window_list.calls, f"middle click closes by default ({window_list.calls})")
+        settings.setValue("dock.middleClick", "new")
+        window_list.calls.clear()
+        launched = len(apps.launched)
+        was_running = "org.gnome.Terminal" in apps.running
+        QMetaObject.invokeMethod(panel, "middleClickEntry", Q_ARG("QVariant", entry))
+        check(len(apps.launched) == launched + 1 and not window_list.calls,
+              f"middle click can open a new window instead ({apps.launched[-1:]}, {window_list.calls})")
+        settings.reset("dock.middleClick")
+        # Leave the launch log as it was for the start menu checks below.
+        del apps.launched[launched:]
+        if was_running is False:
+            apps.running.discard("org.gnome.Terminal")
+        apps.runningChanged.emit()
+
         # Auto-hide over maximized windows only: the bar stays while nothing
         # is maximized and goes when the compositor reports one.
         settings.setValue("panel.autoHide", True)

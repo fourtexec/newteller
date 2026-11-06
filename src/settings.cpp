@@ -207,6 +207,7 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("dock.scrollable"), true);
     m_defaults.insert(QStringLiteral("dock.iconSpacing"), 4);
     m_defaults.insert(QStringLiteral("dock.thumbnails"), true);
+    m_defaults.insert(QStringLiteral("dock.middleClick"), QStringLiteral("close"));
     m_defaults.insert(QStringLiteral("panel.zoneSpacing"), 8);
 
     // ===== Desktop Enhancements =====
