@@ -912,7 +912,14 @@ cd rust && cargo test --workspace # the Rust core and CLI
 pip install PySide6-Essentials
 python3 tests/qml_smoke.py        # loads the QML offscreen, no compositor needed
 bash tests/session_smoke.sh       # starts a real headless compositor and captures a frame
+build/newteller-unit-tests        # the C++ services without a display (built with the shell)
 ```
+
+`newteller-unit-tests` (`tests/unit/unit_tests.cpp`) checks the shell's
+services in a private home: desktop files read by the spec, default
+applications in `mimeapps.list`, settings profiles, the day and night theme
+schedule, muted applications and urgency levels, and the `compositor.conf`
+text. `scripts/build-release.sh` runs it after every build.
 
 `tests/session_smoke.sh` starts `newteller-compositor --headless`, waits for the shell's
 desktop and panel layers, opens the start menu with a virtual pointer (`wlrctl`), launches
