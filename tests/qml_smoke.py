@@ -1949,6 +1949,47 @@ def main():
         settings.setValue("startmenu.layout", "list")
         QTest.qWait(20)
 
+    # Wallpaper slideshow: the next picture of the folder, in name order; with
+    # per-monitor wallpapers the screen keeps its own.
+    if desktops:
+        desk = desktops[0]
+        slides = os.path.join(work, "Slides")
+        os.makedirs(slides, exist_ok=True)
+        for name, colour in (("a.png", "#aa3333"), ("b.png", "#33aa33")):
+            picture = QImage(8, 8, QImage.Format_RGB32)
+            picture.fill(QColor(colour))
+            picture.save(os.path.join(slides, name), "PNG")
+        settings.setValue("desktop.slideshowFolder", slides)
+        settings.setValue("desktop.wallpaperSlideshow", True)
+        timer = desk.findChild(QObject, "slideshowTimer")
+        for _ in range(40):
+            QTest.qWait(25)
+            if timer is not None and timer.property("running"):
+                break
+        check(timer is not None and timer.property("running"),
+              "the slideshow runs once its folder has pictures")
+        QMetaObject.invokeMethod(desk, "nextSlide")
+        QTest.qWait(20)
+        first = settings._values.get("desktop.wallpaper", "")
+        QMetaObject.invokeMethod(desk, "nextSlide")
+        QTest.qWait(20)
+        second = settings._values.get("desktop.wallpaper", "")
+        check(first.endswith("a.png") and second.endswith("b.png"),
+              f"the slideshow walks the folder ({first!r}, {second!r})")
+        settings.setValue("desktop.perMonitorWallpaper", True)
+        QMetaObject.invokeMethod(desk, "nextSlide")
+        QTest.qWait(20)
+        own = (settings._values.get("desktop.screenWallpapers") or {})
+        own = own.toVariant() if hasattr(own, "toVariant") else own
+        check(isinstance(own, dict) and str(own.get(desk.screen().name(), "")).endswith(".png")
+              and settings._values.get("desktop.wallpaper") == second,
+              f"per-monitor wallpapers change one screen only ({own})")
+        for key in ("desktop.perMonitorWallpaper", "desktop.wallpaperSlideshow",
+                    "desktop.slideshowFolder", "desktop.screenWallpapers"):
+            settings.reset(key)
+        settings.setValue("desktop.wallpaper", "")
+        QTest.qWait(20)
+
     # Run dialog (Alt+F2).
     dialogs = windows("RunDialog")
     check(len(dialogs) == 1, f"one run dialog (got {len(dialogs)})")

@@ -306,6 +306,10 @@ inside VirtualBox. The implemented pieces are:
 - **Quick settings rows**: take any row (media, volume, brightness, network,
   Bluetooth, do not disturb, night light, recording, power profile,
   battery) out of the quick settings card (`quick.hidden`, Settings → System).
+- **Wallpaper slideshow and per-monitor wallpapers**: turn through a folder
+  of pictures at a set interval (`desktop.wallpaperSlideshow`,
+  `desktop.slideshowFolder`), and give each screen its own picture
+  (`desktop.perMonitorWallpaper`).
 - **Named desktops**: give desktops names (`workspaces.names`), show them on
   the panel as dots, numbers or names, and on screen when switching.
 - **Profiles**: save every setting under a name (Settings → Appearance →

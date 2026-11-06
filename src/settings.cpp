@@ -215,6 +215,8 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("desktop.perMonitorWallpaper"), false);
     m_defaults.insert(QStringLiteral("desktop.wallpaperSlideshow"), false);
     m_defaults.insert(QStringLiteral("desktop.wallpaperSlideshowInterval"), 60);
+    m_defaults.insert(QStringLiteral("desktop.slideshowFolder"), QString());
+    m_defaults.insert(QStringLiteral("desktop.screenWallpapers"), QVariantMap());
     m_defaults.insert(QStringLiteral("desktop.autoArrangeIcons"), true);
     m_defaults.insert(QStringLiteral("desktop.sortBy"), QStringLiteral("name"));
     m_defaults.insert(QStringLiteral("desktop.foldersFirst"), true);

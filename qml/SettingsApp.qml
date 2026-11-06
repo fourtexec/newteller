@@ -1742,6 +1742,7 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Per-monitor wallpapers")
+                                subtitle: qsTr("Each screen keeps its own picture: right-click its desktop -> Change wallpaper, or let the slideshow turn each one.")
                                 settingKey: "desktop.perMonitorWallpaper"
                                 SettingsSwitch {}
                             }
@@ -1753,9 +1754,18 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                visible: Settings.values["desktop.wallpaperSlideshow"] === true
                                 title: qsTr("Slideshow interval")
                                 settingKey: "desktop.wallpaperSlideshowInterval"
                                 SettingsStepper { from: 10; to: 3600; step: 10; suffix: qsTr(" s") }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                visible: Settings.values["desktop.wallpaperSlideshow"] === true
+                                title: qsTr("Slideshow folder")
+                                subtitle: qsTr("The pictures are shown in name order; empty uses Pictures.")
+                                settingKey: "desktop.slideshowFolder"
+                                SettingsTextField { width: 220; placeholder: Shell.picturesPath }
                             }
                         }
 

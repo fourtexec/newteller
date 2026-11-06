@@ -9,7 +9,23 @@ import NewTeller 1.0
 Window {
     id: desk
 
-    readonly property string wallpaper: Settings.values["desktop.wallpaper"] || ""
+    // desktop.perMonitorWallpaper: each screen keeps its own picture in
+    // desktop.screenWallpapers ({ screen name: path }); without one it shows
+    // the common desktop.wallpaper.
+    readonly property string screenName: desk.screen ? desk.screen.name : ""
+    readonly property string wallpaper: {
+        const own = perMonitorWallpaper ? (Settings.values["desktop.screenWallpapers"] || ({}))[screenName] : "";
+        return own ? String(own) : (Settings.values["desktop.wallpaper"] || "");
+    }
+    function setWallpaper(path) {
+        if (perMonitorWallpaper && screenName.length > 0) {
+            const map = Object.assign({}, Settings.values["desktop.screenWallpapers"] || ({}));
+            map[screenName] = path;
+            Settings.setValue("desktop.screenWallpapers", map);
+        } else {
+            Settings.setValue("desktop.wallpaper", path);
+        }
+    }
     readonly property string wallpaperMode: Settings.values["desktop.wallpaperMode"] || "fill"
     readonly property int wallpaperBlur: Settings.values["desktop.wallpaperBlur"] || 0
     readonly property int wallpaperDarken: Settings.values["desktop.wallpaperDarken"] || 0
@@ -149,10 +165,58 @@ Window {
         showDirsFirst: Settings.values["desktop.foldersFirst"] !== false
     }
 
+    // desktop.wallpaperSlideshow: the next picture of the slideshow folder
+    // (desktop.slideshowFolder, ~/Pictures when empty) every interval. One
+    // desktop drives the common wallpaper; with per-monitor wallpapers every
+    // screen turns its own.
+    readonly property string slideshowFolder: {
+        const folder = String(Settings.values["desktop.slideshowFolder"] || "").trim();
+        if (folder.length === 0)
+            return Shell.picturesPath;
+        if (folder.startsWith("~/"))
+            return Shell.home + folder.substring(1);
+        return folder;
+    }
+    readonly property bool drivesSlideshow: perMonitorWallpaper
+                                            || (Qt.application.screens.length > 0
+                                                && screenName === Qt.application.screens[0].name)
+    FolderListModel {
+        id: slideshowFiles
+        // A plain path is not a folder URL to the model: make it file://.
+        folder: desk.wallpaperSlideshow && desk.drivesSlideshow
+                ? (desk.slideshowFolder.indexOf("://") > 0 ? desk.slideshowFolder
+                                                            : "file://" + desk.slideshowFolder) : ""
+        nameFilters: ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp", "*.svg", "*.avif", "*.jxl"]
+        showDirs: false
+        showDotAndDotDot: false
+        sortField: FolderListModel.Name
+    }
+    Timer {
+        id: slideshowTimer
+        objectName: "slideshowTimer"
+        interval: Math.max(10, desk.wallpaperSlideshowInterval) * 1000
+        repeat: true
+        running: desk.wallpaperSlideshow && desk.drivesSlideshow && slideshowFiles.count > 1
+        onTriggered: desk.nextSlide()
+    }
+    function nextSlide() {
+        const count = slideshowFiles.count;
+        if (count === 0)
+            return;
+        var at = -1;
+        for (var i = 0; i < count; ++i) {
+            if (String(slideshowFiles.get(i, "filePath")) === desk.wallpaper) {
+                at = i;
+                break;
+            }
+        }
+        desk.setWallpaper(String(slideshowFiles.get((at + 1) % count, "filePath")));
+    }
+
     // Images in ~/Pictures, used by "Change wallpaper".
     FolderListModel {
         id: wallpaperFiles
-        folder: Shell.picturesPath
+        folder: "file://" + Shell.picturesPath
         nameFilters: ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp", "*.gif", "*.svg", "*.xpm",
                       "*.tif", "*.tiff", "*.avif", "*.heic", "*.jxl"]
         showDirs: false
@@ -762,7 +826,7 @@ Window {
                     contextMenu.visible = false;
                     if (wallpaperFiles.count > 0) {
                         const next = Math.floor(Math.random() * wallpaperFiles.count);
-                        Settings.setValue("desktop.wallpaper", wallpaperFiles.get(next).filePath);
+                        desk.setWallpaper(wallpaperFiles.get(next, "filePath"));
                     } else {
                         Shell.openPath(Shell.picturesPath);
                     }
