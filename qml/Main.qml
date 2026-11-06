@@ -43,7 +43,9 @@ QtObject {
             if (name === "volume-up" || name === "volume-down") {
                 if (!Quick.volumeAvailable)
                     return;
-                const step = name === "volume-up" ? 5 : -5;
+                // keyboard.volumeStep: percent per key press.
+                const amount = Math.max(1, Math.min(25, Number(Settings.values["keyboard.volumeStep"] ?? 5)));
+                const step = name === "volume-up" ? amount : -amount;
                 const next = Math.max(0, Math.min(100, Math.round(Quick.volume) + step));
                 if (Quick.volumeMuted && step > 0)
                     Quick.toggleMuted();
@@ -62,7 +64,8 @@ QtObject {
             } else if (name === "brightness-up" || name === "brightness-down") {
                 if (!Quick.brightnessAvailable)
                     return;
-                const delta = name === "brightness-up" ? 5 : -5;
+                const amount = Math.max(1, Math.min(25, Number(Settings.values["keyboard.brightnessStep"] ?? 5)));
+                const delta = name === "brightness-up" ? amount : -amount;
                 const level = Math.max(1, Math.min(100, Math.round(Quick.brightness) + delta));
                 Quick.setBrightness(level);
                 root.osd.show("sun", level);

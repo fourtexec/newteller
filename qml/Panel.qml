@@ -1434,7 +1434,8 @@ Window {
                     return;
                 wheel.accepted = true;
                 const notches = wheel.angleDelta.y / 120;
-                const value = Math.round(Quick.volume) + Math.round(notches * 5);
+                const step = Math.max(1, Math.min(25, Number(Settings.values["keyboard.volumeStep"] ?? 5)));
+                const value = Math.round(Quick.volume) + Math.round(notches * step);
                 Quick.setVolume(Math.max(0, Math.min(100, value)));
                 panel.showToolTip(indicatorsButton,
                                   Quick.volumeMuted ? qsTr("Muted") : qsTr("Volume %1%").arg(Quick.volume));

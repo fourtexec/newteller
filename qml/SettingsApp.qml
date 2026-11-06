@@ -3780,6 +3780,19 @@ Window {
                                 settingKey: "keyboard.layoutOsd"
                                 SettingsSwitch { settingKey: "keyboard.layoutOsd" }
                             }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Volume step")
+                                subtitle: qsTr("Per volume key press and per wheel notch over the indicators.")
+                                settingKey: "keyboard.volumeStep"
+                                SettingsStepper { from: 1; to: 25; suffix: " %" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Brightness step")
+                                settingKey: "keyboard.brightnessStep"
+                                SettingsStepper { from: 1; to: 25; suffix: " %" }
+                            }
                         }
 
                         SettingsSection {

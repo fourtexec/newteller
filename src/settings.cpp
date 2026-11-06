@@ -341,6 +341,9 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("keyboard.lockKeysOsd"), true);
     // Show the new keyboard layout on screen when it changes.
     m_defaults.insert(QStringLiteral("keyboard.layoutOsd"), true);
+    // Percent per volume / brightness key press (and wheel notch).
+    m_defaults.insert(QStringLiteral("keyboard.volumeStep"), 5);
+    m_defaults.insert(QStringLiteral("keyboard.brightnessStep"), 5);
     m_defaults.insert(QStringLiteral("keyboard.showIndicator"), true);
     // Pointer devices (libinput, applied by the compositor).
     m_defaults.insert(QStringLiteral("touchpad.tapToClick"), true);
