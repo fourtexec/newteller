@@ -2068,6 +2068,13 @@ def main():
         settings.reset("startmenu.showPinned")
         QTest.qWait(20)
 
+    # Label outline off: the labels switch to the plain style (Text.Plain
+    # does not exist; it used to leave the outline on with a warning).
+    settings.setValue("desktop.iconTextShadow", False)
+    QTest.qWait(40)
+    settings.reset("desktop.iconTextShadow")
+    QTest.qWait(20)
+
     # desktop.doubleClick on the empty desktop.
     if desktops:
         desk = desktops[0]

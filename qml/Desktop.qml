@@ -611,7 +611,7 @@ Window {
                     color: desk.labelColor
                     font.family: Theme.fontFamily
                     font.pointSize: desk.labelSize > 0 ? desk.labelSize : Theme.fontSize
-                    style: desk.labelShadow ? Text.Outline : Text.Plain
+                    style: desk.labelShadow ? Text.Outline : Text.Normal
                     styleColor: "#80000000"
                 }
 
