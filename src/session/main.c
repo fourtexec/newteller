@@ -1401,6 +1401,9 @@ static void viewSetActivated(struct View *view, bool activated)
     if (view->handle)
         wlr_foreign_toplevel_handle_v1_set_activated(view->handle, activated);
     viewUpdateDecoration(view);
+    // Unfocused windows may be drawn see-through (effects.inactiveOpacity).
+    if (view->server->config.inactiveOpacity < 100)
+        scheduleAllFrames(view->server);
 }
 
 // The window a dialog belongs to (xdg parent, X11 transient-for), if it is
@@ -5840,6 +5843,22 @@ static void viewAnimate(struct View *view, float fromScale, float fromAlpha, int
     scheduleAllFrames(view->server);
 }
 
+// windowRules.opacity for the application, times effects.inactiveOpacity
+// when the window does not have the focus (full screen stays opaque).
+static double viewOpacity(struct View *view)
+{
+    const struct CompositorConfig *config = &view->server->config;
+    double opacity = 1.0;
+    if (config->rulesOpacity[0] != '\0') {
+        int percent = ntConfigListNumber(config->rulesOpacity, viewAppId(view));
+        if (percent >= 10 && percent <= 100)
+            opacity = percent / 100.0;
+    }
+    if (config->inactiveOpacity < 100 && view != view->server->focusedView && !view->fullscreen)
+        opacity *= config->inactiveOpacity / 100.0;
+    return opacity;
+}
+
 static void viewAnimationState(struct View *view, uint64_t now, double *scale, double *alpha,
                                double *shiftY)
 {
@@ -6150,7 +6169,7 @@ static void renderViews(struct Server *server, const struct RenderTarget *t, uin
         double scale, alpha, rise;
         viewAnimationState(view, now, &scale, &alpha, &rise);
         struct wlr_box outer = viewOuterBox(view);
-        state.alpha = alpha;
+        state.alpha = alpha * viewOpacity(view);
         state.scale = scale;
         state.shiftY += rise;
         state.cx = outer.x + outer.width / 2.0;

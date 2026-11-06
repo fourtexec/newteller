@@ -140,6 +140,7 @@ void ntConfigDefaults(struct CompositorConfig *config)
     config->animations = true;
     config->animationSpeed = 1.0;
     snprintf(config->animationStyle, sizeof(config->animationStyle), "%s", "zoom");
+    config->inactiveOpacity = 100;
 }
 
 bool ntConfigParseColor(const char *text, float out[4])
@@ -293,6 +294,10 @@ bool ntConfigLoadFile(struct CompositorConfig *config, const char *path)
             config->blurStrength = parseInt(value, config->blurStrength, 1, 4);
         else if (strcmp(key, "effects.animations") == 0)
             config->animations = parseBool(value, config->animations);
+        else if (strcmp(key, "effects.inactiveOpacity") == 0)
+            config->inactiveOpacity = parseInt(value, config->inactiveOpacity, 30, 100);
+        else if (strcmp(key, "rules.opacity") == 0)
+            copyText(config->rulesOpacity, sizeof(config->rulesOpacity), value);
         else if (strcmp(key, "effects.animationStyle") == 0)
             copyText(config->animationStyle, sizeof(config->animationStyle), value);
         else if (strcmp(key, "effects.animationSpeed") == 0)

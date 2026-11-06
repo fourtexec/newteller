@@ -3178,6 +3178,14 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 visible: Settings.values["effects.enabled"] !== false
+                                title: qsTr("Inactive windows")
+                                subtitle: qsTr("Opacity of the windows without the focus; 100% keeps them solid.")
+                                settingKey: "effects.inactiveOpacity"
+                                SettingsSlider { from: 30; to: 100; step: 5; suffix: " %" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                visible: Settings.values["effects.enabled"] !== false
                                          && Settings.values["effects.animations"] !== false
                                 title: qsTr("Windows open and close")
                                 settingKey: "effects.animationStyle"
@@ -3544,6 +3552,17 @@ Window {
                                     width: 240
                                     settingKey: "windowRules.workspaces"
                                     placeholder: "firefox=2"
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Window opacity")
+                                subtitle: qsTr("Application id = percent, e.g. kitty=85. Needs the desktop effects (Animations page).")
+                                settingKey: "windowRules.opacity"
+                                SettingsTextField {
+                                    width: 240
+                                    settingKey: "windowRules.opacity"
+                                    placeholder: "kitty=85"
                                 }
                             }
                         }

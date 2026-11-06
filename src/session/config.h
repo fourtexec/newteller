@@ -112,6 +112,8 @@ struct CompositorConfig {
     char rulesMaximized[NT_CONFIG_TEXT];
     char rulesFullscreen[NT_CONFIG_TEXT];
     char rulesMinimized[NT_CONFIG_TEXT];
+    // "kitty=85,code=95": window opacity in percent (effects renderer).
+    char rulesOpacity[NT_CONFIG_TEXT];
     // "firefox=2,telegram-desktop=3": the desktop (1-based) an application
     // opens on.
     char rulesWorkspace[NT_CONFIG_TEXT * 2];
@@ -135,6 +137,7 @@ struct CompositorConfig {
     bool animations;
     double animationSpeed;                 // 0.25 .. 4, 1 = normal
     char animationStyle[16];               // zoom | fade | slide (open and close)
+    int inactiveOpacity;                   // percent for unfocused windows, 100 = opaque
 };
 
 void ntConfigDefaults(struct CompositorConfig *config);

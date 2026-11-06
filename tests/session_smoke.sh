@@ -50,7 +50,7 @@ chmod 700 "$runtime"
 export XDG_CONFIG_HOME="$runtime/config"
 mkdir -p "$XDG_CONFIG_HOME/newteller"
 # A moved built-in shortcut checks the hotkey lines of compositor.conf.
-printf '{\n    "desktop.defaultWallpaper": false,\n    "hotkeys.lockScreen": "Super+Shift+K",\n    "windowRules.workspaces": "org.example.Nothing = 2, broken",\n    "windows.gaps": 16,\n    "lock.dim": 40,\n    "lock.clockFormat": "h:mm AP"\n}\n' \
+printf '{\n    "desktop.defaultWallpaper": false,\n    "hotkeys.lockScreen": "Super+Shift+K",\n    "windowRules.workspaces": "org.example.Nothing = 2, broken",\n    "windows.gaps": 16,\n    "windowRules.opacity": "org.example.Nothing=80, too.clear=5",\n    "lock.dim": 40,\n    "lock.clockFormat": "h:mm AP"\n}\n' \
     > "$XDG_CONFIG_HOME/newteller/shell.json"
 socket=newteller-smoke
 log="$runtime/compositor.log"
@@ -154,7 +154,8 @@ msg reload >/dev/null
 conf="$XDG_CONFIG_HOME/newteller/compositor.conf"
 if ! grep -q '^hotkey.lockScreen = Super+Shift+K$' "$conf" 2>/dev/null \
     || ! grep -q '^hotkeys.enabled = true$' "$conf" \
-    || ! grep -q '^rules.workspace = org.example.Nothing=2$' "$conf"; then
+    || ! grep -q '^rules.workspace = org.example.Nothing=2$' "$conf" \
+    || ! grep -q '^rules.opacity = org.example.Nothing=80$' "$conf"; then
     echo "compositor.conf lacks the moved shortcut:" >&2
     cat "$conf" >&2 || true
     exit 1

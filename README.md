@@ -313,6 +313,9 @@ inside VirtualBox. The implemented pieces are:
 - **Hide the panel over maximised windows**: with auto-hide on, the bar can
   stay until a maximised or full-screen window is shown on the desktop
   (`panel.autoHideMode`; the compositor reports `event maximized 1|0`).
+- **Window opacity**: per application (`windowRules.opacity`, e.g.
+  `kitty=85`) and for every window without the focus
+  (`effects.inactiveOpacity`), drawn by the effects renderer.
 - **Named desktops**: give desktops names (`workspaces.names`), show them on
   the panel as dots, numbers or names, and on screen when switching.
 - **Settings search**: type in the field above the settings pages to find any

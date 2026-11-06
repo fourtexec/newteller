@@ -757,10 +757,11 @@ QString SessionServices::compositorConfigText() const
     text += confLine(QStringLiteral("rules.maximized"), appIds("windowRules.maximized"));
     text += confLine(QStringLiteral("rules.fullscreen"), appIds("windowRules.fullscreen"));
     text += confLine(QStringLiteral("rules.minimized"), appIds("windowRules.minimized"));
-    // "firefox=2, telegram-desktop=3": application id = desktop number.
-    {
+    // "firefox=2, telegram-desktop=3": application id = a number (the
+    // desktop, the opacity in percent), kept when it is in range.
+    auto appNumbers = [&value](const char *key, int low, int high) {
         QStringList pairs;
-        const QStringList entries = value("windowRules.workspaces").toString()
+        const QStringList entries = value(key).toString()
                                         .split(QRegularExpression(QStringLiteral("[,;\\n]+")), Qt::SkipEmptyParts);
         for (const QString &entry : entries) {
             const int equals = entry.indexOf(QLatin1Char('='));
@@ -773,12 +774,14 @@ QString SessionServices::compositorConfigText() const
                     id += c;
             }
             bool ok = false;
-            const int desktop = entry.mid(equals + 1).trimmed().toInt(&ok);
-            if (!id.isEmpty() && ok && desktop >= 1 && desktop <= 9)
-                pairs.append(id + QLatin1Char('=') + QString::number(desktop));
+            const int number = entry.mid(equals + 1).trimmed().toInt(&ok);
+            if (!id.isEmpty() && ok && number >= low && number <= high)
+                pairs.append(id + QLatin1Char('=') + QString::number(number));
         }
-        text += confLine(QStringLiteral("rules.workspace"), pairs.join(QLatin1Char(',')));
-    }
+        return pairs.join(QLatin1Char(','));
+    };
+    text += confLine(QStringLiteral("rules.workspace"), appNumbers("windowRules.workspaces", 1, 9));
+    text += confLine(QStringLiteral("rules.opacity"), appNumbers("windowRules.opacity", 10, 100));
     static const QStringList cornerActions{
         QStringLiteral("none"), QStringLiteral("overview"), QStringLiteral("desktop"),
         QStringLiteral("startMenu"), QStringLiteral("notifications"), QStringLiteral("lock")};
@@ -797,6 +800,8 @@ QString SessionServices::compositorConfigText() const
     text += confLine(QStringLiteral("effects.blurStrength"),
                      QString::number(qBound(1, value("effects.blurStrength").toInt(), 4)));
     text += confLine(QStringLiteral("effects.animations"), boolText(value("effects.animations")));
+    text += confLine(QStringLiteral("effects.inactiveOpacity"),
+                     QString::number(qBound(30, value("effects.inactiveOpacity").toInt(), 100)));
     {
         const QString style = value("effects.animationStyle").toString();
         text += confLine(QStringLiteral("effects.animationStyle"),

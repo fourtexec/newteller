@@ -300,6 +300,7 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("windowRules.fullscreen"), QStringList());
     m_defaults.insert(QStringLiteral("windowRules.minimized"), QStringList());
     m_defaults.insert(QStringLiteral("windowRules.workspaces"), QString());
+    m_defaults.insert(QStringLiteral("windowRules.opacity"), QString());
     // The start menu search also lists recently used files.
     m_defaults.insert(QStringLiteral("startmenu.recentFiles"), true);
     // Hot corners: none | overview | desktop | startMenu | notifications | lock.
@@ -411,6 +412,7 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("effects.animations"), true);
     m_defaults.insert(QStringLiteral("effects.animationSpeed"), 1.0);
     m_defaults.insert(QStringLiteral("effects.animationStyle"), QStringLiteral("zoom"));
+    m_defaults.insert(QStringLiteral("effects.inactiveOpacity"), 100);
     // Lock screen.
     m_defaults.insert(QStringLiteral("lock.color"), QStringLiteral("#1e1e2e"));
     m_defaults.insert(QStringLiteral("lock.useWallpaper"), true);
