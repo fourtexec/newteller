@@ -100,17 +100,20 @@ void ThemeManager::checkSchedule()
 
 void ThemeManager::reload()
 {
-    const bool wasNight = m_night;
     const QString name = scheduledName();
     // Applications follow along (GTK / libadwaita dark preference) when
-    // the schedule asks for it.
+    // the schedule asks for it: when it is turned on and at every switch
+    // between day and night, so a scheme chosen by hand in between stays.
     const QString mode = m_settings->value(QStringLiteral("theme.schedule")).toString();
-    if ((mode == QLatin1String("times") || mode == QLatin1String("nightLight"))
-        && m_settings->value(QStringLiteral("theme.scheduleApps"), true).toBool()
-        && (m_night != wasNight || m_name.isEmpty())) {
-        const QString scheme = m_night ? QStringLiteral("dark") : QStringLiteral("light");
-        if (m_settings->value(QStringLiteral("apps.colorScheme")).toString() != scheme)
-            m_settings->setValue(QStringLiteral("apps.colorScheme"), scheme);
+    const bool scheduled = mode == QLatin1String("times") || mode == QLatin1String("nightLight");
+    const QString phase = scheduled ? (m_night ? QStringLiteral("night") : QStringLiteral("day")) : QString();
+    if (phase != m_appliedPhase) {
+        m_appliedPhase = phase;
+        if (scheduled && m_settings->value(QStringLiteral("theme.scheduleApps"), true).toBool()) {
+            const QString scheme = m_night ? QStringLiteral("dark") : QStringLiteral("light");
+            if (m_settings->value(QStringLiteral("apps.colorScheme")).toString() != scheme)
+                m_settings->setValue(QStringLiteral("apps.colorScheme"), scheme);
+        }
     }
 
     // Base is always the built-in default, so a partial theme still looks complete.

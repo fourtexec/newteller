@@ -86,5 +86,8 @@ private:
     QString m_name;
     QString m_filePath; // the file the current theme came from, for watching
     bool m_night = false;
+    // "day" / "night" once the schedule has set the applications' scheme
+    // for that part of the day; "" while there is no schedule.
+    QString m_appliedPhase;
     QTimer m_scheduleTimer;
 };
