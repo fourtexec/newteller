@@ -528,6 +528,7 @@ Example:
 | `desktop.screenWallpapers` | object | `{}` | Per-monitor wallpapers: { screen name: path } | Desktop |
 | `desktop.doubleClick` | string | `"none"` | Double click on the empty desktop: none, startMenu, overview, terminal, files, settings | Desktop |
 | `windows.gaps` | integer | `0` | Pixels around and between snapped halves and quarters | Windows |
+| `windows.dragModifier` | string | `"super"` | Key held to move (left button) or resize (right button) a window from inside it: super, alt or none | Windows |
 | `decorations.doubleClick / decorations.middleClick` | string | "maximize" / "minimize" | Title bar clicks: maximize, minimize, alwaysOnTop, none (GTK header bars follow) | Windows |
 | `windowRules.opacity` | string | `""` | `kitty=85`: window opacity in percent per application | Windows |
 | `effects.animationStyle` | string | `"zoom"` | Windows open and close with a zoom, fade or slide | Animations |

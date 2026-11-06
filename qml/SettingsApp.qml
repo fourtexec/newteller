@@ -3634,6 +3634,20 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("Drag windows from anywhere with")
+                                subtitle: qsTr("Hold the key, then drag with the left button to move a window or with the right button to resize it.")
+                                settingKey: "windows.dragModifier"
+                                SettingsChoice {
+                                    objectName: "dragModifierChoice"
+                                    model: [
+                                        { value: "super", label: qsTr("Super") },
+                                        { value: "alt", label: qsTr("Alt") },
+                                        { value: "none", label: qsTr("Off") }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Snap windows dragged to a screen edge")
                                 settingKey: "windows.snapping"
                                 SettingsSwitch { settingKey: "windows.snapping" }

@@ -608,7 +608,7 @@ void SessionServices::settingChanged(const QString &key)
         || key.startsWith(QLatin1String("lock.")) || key.startsWith(QLatin1String("effects."))
         || key == QLatin1String("windows.focusFollowsMouse")
         || key == QLatin1String("windows.placement") || key == QLatin1String("windows.snapping")
-        || key == QLatin1String("windows.gaps")
+        || key == QLatin1String("windows.gaps") || key == QLatin1String("windows.dragModifier")
         || key.startsWith(QLatin1String("windowRules."))
         || key.startsWith(QLatin1String("hotCorners.")) || key.startsWith(QLatin1String("hotkeys."))
         || key.startsWith(QLatin1String("mouse.")) || key.startsWith(QLatin1String("cursor."))
@@ -730,6 +730,12 @@ QString SessionServices::compositorConfigText() const
                      boolText(value("windows.focusFollowsMouse")));
     text += confLine(QStringLiteral("windows.placement"), value("windows.placement").toString());
     text += confLine(QStringLiteral("windows.snapping"), boolText(value("windows.snapping")));
+    // The key held to move (left button) or resize (right button) a window
+    // from anywhere inside it.
+    const QString dragModifier = value("windows.dragModifier").toString();
+    text += confLine(QStringLiteral("windows.dragModifier"),
+                     QStringList{QStringLiteral("super"), QStringLiteral("alt"), QStringLiteral("none")}
+                             .contains(dragModifier) ? dragModifier : QStringLiteral("super"));
     text += confLine(QStringLiteral("windows.gaps"), QString::number(qBound(0, value("windows.gaps").toInt(), 64)));
     text += confLine(QStringLiteral("switcher.allWorkspaces"), boolText(value("switcher.allWorkspaces")));
 

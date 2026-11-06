@@ -411,6 +411,7 @@ Settings::Settings(QObject *parent)
     // Window behaviour (compositor).
     m_defaults.insert(QStringLiteral("windows.focusFollowsMouse"), false);
     m_defaults.insert(QStringLiteral("windows.placement"), QStringLiteral("cascade"));
+    m_defaults.insert(QStringLiteral("windows.dragModifier"), QStringLiteral("super"));
     m_defaults.insert(QStringLiteral("windows.snapping"), true);
     m_defaults.insert(QStringLiteral("windows.gaps"), 0);
     // The user's own shortcuts: [{ "keys": "Super+T", "command": "..." }].

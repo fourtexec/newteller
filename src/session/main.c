@@ -3302,9 +3302,12 @@ static void cursorButton(struct wl_listener *listener, void *data)
 
     // Super + left drag moves a window from anywhere inside it, Super +
     // right drag resizes it from the nearest corner (as on GNOME and KDE).
+    // windows.dragModifier picks Alt instead, or turns it off.
     struct wlr_keyboard *keyboard = wlr_seat_get_keyboard(server->seat);
-    bool superHeld = keyboard
-                     && (wlr_keyboard_get_modifiers(keyboard) & WLR_MODIFIER_LOGO);
+    uint32_t dragModifier = server->config.dragModifier == NT_DRAG_ALT ? WLR_MODIFIER_ALT
+                            : server->config.dragModifier == NT_DRAG_SUPER ? WLR_MODIFIER_LOGO : 0;
+    bool superHeld = keyboard && dragModifier != 0
+                     && (wlr_keyboard_get_modifiers(keyboard) & dragModifier) == dragModifier;
     if (superHeld && (event->button == BTN_LEFT || event->button == BTN_RIGHT)) {
         struct Hit grab = hitTest(server, server->cursor->x, server->cursor->y);
         struct View *view = grab.view;

@@ -207,6 +207,7 @@ void testCompositorConfig()
     settings.setValue(QStringLiteral("hotCorners.topRight"), QStringLiteral("rm -rf /"));
     settings.setValue(QStringLiteral("decorations.middleClick"), QStringLiteral("bogus"));
     settings.setValue(QStringLiteral("windows.gaps"), 200);
+    settings.setValue(QStringLiteral("windows.dragModifier"), QStringLiteral("ctrl"));
     SessionServices session(&settings);
     const QStringList lines = session.compositorConfigText().split(QLatin1Char('\n'));
     check(lines.contains(QStringLiteral("hotkey.lockScreen = Super+Shift+K"))
@@ -221,6 +222,11 @@ void testCompositorConfig()
     check(lines.filter(QStringLiteral("decorations.middleClick")).isEmpty()
               && lines.contains(QStringLiteral("windows.gaps = 64")),
           QStringLiteral("bad title bar actions are dropped and gaps clamped"));
+    check(lines.contains(QStringLiteral("windows.dragModifier = super")),
+          QStringLiteral("an unknown drag key falls back to Super"));
+    settings.setValue(QStringLiteral("windows.dragModifier"), QStringLiteral("alt"));
+    check(session.compositorConfigText().split(QLatin1Char('\n')).contains(QStringLiteral("windows.dragModifier = alt")),
+          QStringLiteral("Alt as the drag key reaches compositor.conf"));
 }
 
 } // namespace

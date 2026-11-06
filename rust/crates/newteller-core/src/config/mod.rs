@@ -632,6 +632,7 @@ pub const SCHEMA: &[KeySchema] = &[
     KeySchema { key: "decorations.closeHover", kind: "string", default_json: "\"#e5484d\"", doc: "Shell setting, changed in the settings application." },
     KeySchema { key: "windows.focusFollowsMouse", kind: "bool", default_json: "false", doc: "Shell setting, changed in the settings application." },
     KeySchema { key: "windows.placement", kind: "string", default_json: "\"cascade\"", doc: "Shell setting, changed in the settings application." },
+    KeySchema { key: "windows.dragModifier", kind: "string", default_json: "\"super\"", doc: "Key held to move or resize a window from inside it: super, alt or none" },
     KeySchema { key: "windows.snapping", kind: "bool", default_json: "true", doc: "Shell setting, changed in the settings application." },
     KeySchema { key: "windows.gaps", kind: "int", default_json: "0", doc: "Pixels around and between snapped halves and quarters" },
     KeySchema { key: "shortcuts.custom", kind: "list", default_json: "[]", doc: "Shell setting, changed in the settings application." },

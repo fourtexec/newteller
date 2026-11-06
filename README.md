@@ -178,7 +178,8 @@ inside VirtualBox. The implemented pieces are:
   maximise with `Super+Up`, restore with `Super+Down`, drag a window to an edge to snap it,
   move it between outputs with `Super+Shift+Left`/`Super+Shift+Right`, and show/hide the
   desktop with `Super+D`, and move or resize a window from anywhere inside it with
-  `Super`+left or right mouse drag
+  `Super`+left or right mouse drag (`windows.dragModifier` switches it to
+  `Alt` or turns it off)
 - **Lock screen.** `Super+L`, the start menu, quick settings, the idle timer and
   suspend lock the session over `ext-session-lock-v1`: while locked the
   compositor draws and focuses nothing but the locker, and a crashed locker

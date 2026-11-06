@@ -126,6 +126,7 @@ void ntConfigDefaults(struct CompositorConfig *config)
     config->gaps = 0;
     config->switcherAllWorkspaces = false;
     snprintf(config->placement, sizeof(config->placement), "%s", "center");
+    config->dragModifier = NT_DRAG_SUPER;
     config->rulesAlwaysOnTop[0] = '\0';
     config->rulesMaximized[0] = '\0';
     for (int i = 0; i < 4; ++i)
@@ -305,6 +306,14 @@ bool ntConfigLoadFile(struct CompositorConfig *config, const char *path)
             config->animationSpeed = parseDouble(value, config->animationSpeed, 0.25, 4.0);
         else if (strcmp(key, "windows.placement") == 0)
             copyText(config->placement, sizeof(config->placement), value);
+        else if (strcmp(key, "windows.dragModifier") == 0) {
+            if (strcmp(value, "alt") == 0)
+                config->dragModifier = NT_DRAG_ALT;
+            else if (strcmp(value, "none") == 0)
+                config->dragModifier = NT_DRAG_NONE;
+            else
+                config->dragModifier = NT_DRAG_SUPER;
+        }
         else if (strcmp(key, "rules.alwaysOnTop") == 0)
             copyText(config->rulesAlwaysOnTop, sizeof(config->rulesAlwaysOnTop), value);
         else if (strcmp(key, "rules.maximized") == 0)

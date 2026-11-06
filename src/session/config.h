@@ -107,6 +107,9 @@ struct CompositorConfig {
     int gaps;                              // px around and between snapped windows
     bool switcherAllWorkspaces;            // Alt+Tab over every desktop
     char placement[16];                    // center | cascade | mouse
+    // Held while dragging inside a window: left button moves it, right
+    // button resizes it.
+    enum { NT_DRAG_NONE, NT_DRAG_SUPER, NT_DRAG_ALT } dragModifier;
     // Window rules: comma separated app ids (or X11 classes), any case.
     char rulesAlwaysOnTop[NT_CONFIG_TEXT];
     char rulesMaximized[NT_CONFIG_TEXT];
