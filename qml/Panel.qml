@@ -794,9 +794,18 @@ Window {
                         && panel.dockDraggingAppId === entry.appId
             iconName: entry.app && entry.app.icon ? entry.app.icon
                     : (entry.appId.length > 0 ? "square" : "app-window")
-            label: panel.showDockLabels && entry.title && entry.title.length > 0
-                   ? entry.title : ""
-            dockLabel: panel.dockShowAppLabels ? dockButton.appName : ""
+            // dock.labelPosition: an application name on the left or right
+            // is the label next to the icon (a window title wins when
+            // ungrouped windows show their titles); top and bottom lay it
+            // over the button.
+            readonly property bool sideLabel: panel.dockShowAppLabels && !panel.vertical
+                                              && (panel.dockLabelPosition === "left"
+                                                  || panel.dockLabelPosition === "right")
+            label: panel.showDockLabels && entry.title && entry.title.length > 0 ? entry.title
+                   : sideLabel ? dockButton.appName : ""
+            labelBefore: sideLabel && panel.dockLabelPosition === "left"
+            dockLabelPosition: panel.dockLabelPosition
+            dockLabel: panel.dockShowAppLabels && !sideLabel ? dockButton.appName : ""
             iconSize: Math.max(14, Math.min(panel.effectiveIconSize,
                                             Math.round(dockAppsRepeater.extent) - 4))
             showDockLabels: panel.dockShowAppLabels

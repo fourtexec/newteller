@@ -30,6 +30,11 @@ Rectangle {
     // Label for dock buttons
     property string dockLabel: ""
     property bool showDockLabels: false
+    // Where the dock label sits on the button: "bottom" or "top" (the side
+    // ones are drawn as the ordinary label next to the icon).
+    property string dockLabelPosition: "bottom"
+    // The label before the icon instead of after it.
+    property bool labelBefore: false
     property string dockIconColorMode: "theme"
     property string dockCustomIconColor: ""
     property color foregroundColor: Theme.foreground
@@ -101,6 +106,7 @@ Rectangle {
     Row {
         id: row
         spacing: 8
+        layoutDirection: btn.labelBefore ? Qt.RightToLeft : Qt.LeftToRight
         anchors.verticalCenter: parent.verticalCenter
         anchors.left: btn.fillWidth ? parent.left : undefined
         anchors.leftMargin: 8
@@ -190,8 +196,10 @@ Rectangle {
         font.pointSize: Theme.fontSize - 2
         elide: Text.ElideRight
         horizontalAlignment: Text.AlignHCenter
-        anchors.bottom: parent.bottom
+        anchors.bottom: btn.dockLabelPosition === "top" ? undefined : parent.bottom
+        anchors.top: btn.dockLabelPosition === "top" ? parent.top : undefined
         anchors.bottomMargin: 2
+        anchors.topMargin: 2
         anchors.horizontalCenter: parent.horizontalCenter
     }
 
