@@ -880,10 +880,11 @@ Window {
     }
 
     component ClockText: Text {
-        // A vertical bar is too narrow for "HH:mm" on one line: hours above
-        // minutes.
+        // A vertical bar is too narrow for "HH:mm" on one line: the parts of
+        // the chosen format (12-hour ones included) go on lines of their own.
         text: panel.vertical
-              ? Qt.formatDateTime(Shell.now, "HH") + "\n" + Qt.formatDateTime(Shell.now, "mm")
+              ? Qt.formatDateTime(Shell.now, String(Settings.values["panel.clockFormat"] || "HH:mm")
+                                                 .replace(/[:.]/g, "\n").replace(/ +/g, "\n"))
               : (Settings.values["panel.showDate"]
                ? Qt.formatDateTime(Shell.now, Settings.values["panel.dateFormat"] || "ddd d MMM") + "  "
                : "")
