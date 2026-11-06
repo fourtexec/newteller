@@ -1761,6 +1761,11 @@ def main():
                                                    "src", "config", "mod.rs"),
                                       encoding="utf-8").read()))
     known_keys = cpp_defaults | rust_schema
+    # Validation and newteller-ctl read the Rust schema: a key missing there
+    # shows up as "unknown key" in About -> Configuration problems.
+    missing_schema = sorted(cpp_defaults - rust_schema)
+    check(not missing_schema,
+          f"every shell setting is in the Rust schema (rust/crates/newteller-core/src/config/mod.rs): {missing_schema}")
     used_keys = set()
     for qml in glob.glob(os.path.join(ROOT, "qml", "*.qml")) + \
                glob.glob(os.path.join(ROOT, "plugins", "*", "Widget.qml")):

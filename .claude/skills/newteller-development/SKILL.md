@@ -97,6 +97,9 @@ and the checks that will fail if one is broken.
 **New setting shown in the settings app**
 1. Default in `src/settings.cpp` (`m_defaults.insert`). The QML smoke test
    fails if QML reads a key without a default.
+   Add it to the Rust schema too (`SCHEMA` in
+   `rust/crates/newteller-core/src/config/mod.rs`, same default and kind);
+   the smoke test fails otherwise, and validation would call it unknown.
 2. A `SettingsRow { settingKey: ...; SettingsSwitch/Slider/... { settingKey: ... } }`
    in the right page of `qml/SettingsApp.qml`.
 3. If the compositor needs it: the three places above.
