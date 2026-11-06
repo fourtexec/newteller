@@ -2106,6 +2106,13 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("Pinned applications row")
+                                subtitle: qsTr("The applications pinned to the dock, above the recent ones.")
+                                settingKey: "startmenu.showPinned"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Search recently used files")
                                 subtitle: qsTr("Documents opened in other applications show up when their name is typed.")
                                 settingKey: "startmenu.recentFiles"

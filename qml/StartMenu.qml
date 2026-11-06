@@ -755,12 +755,56 @@ DropdownWindow {
             Layout.row: menu.searchAtBottom ? 2 : 3
             Layout.fillWidth: true
             spacing: 6
-            visible: Settings.values["startmenu.showRecent"] !== false
-                     && search.text.length === 0 && recentModel.length > 0
+            readonly property bool showRecent: Settings.values["startmenu.showRecent"] !== false
+                                               && recentModel.length > 0
+            // startmenu.showPinned: the dock's pinned applications as a row
+            // of favourites.
+            readonly property var pinnedModel: {
+                if (Settings.values["startmenu.showPinned"] !== true)
+                    return [];
+                const pinned = Settings.values["panel.pinned"] || [];
+                const out = [];
+                for (let i = 0; i < pinned.length; ++i) {
+                    const app = Apps.byId(pinned[i]);
+                    if (app && app.id !== undefined)
+                        out.push(app);
+                }
+                return out;
+            }
+            visible: search.text.length === 0 && (showRecent || pinnedModel.length > 0)
 
             property var recentModel: []
 
             Text {
+                visible: recentSection.pinnedModel.length > 0
+                text: qsTr("Pinned")
+                color: menu.menuMuted
+                font.family: Theme.fontFamily
+                font.pointSize: Theme.fontSize - 1
+            }
+
+            Flow {
+                visible: recentSection.pinnedModel.length > 0
+                width: recentSection.width
+                spacing: 6
+
+                Repeater {
+                    model: recentSection.pinnedModel
+
+                    delegate: TaskButton {
+                        foregroundColor: menu.menuForeground
+                        activeTint: menu.menuAccent
+                        required property var modelData
+                        objectName: "startPinnedApp"
+                        iconName: modelData.icon || ""
+                        tooltipText: modelData.name || ""
+                        onClicked: menu.launch(modelData)
+                    }
+                }
+            }
+
+            Text {
+                visible: recentSection.showRecent
                 text: qsTr("Recently used")
                 color: menu.menuMuted
                 font.family: Theme.fontFamily
@@ -768,6 +812,7 @@ DropdownWindow {
             }
 
             Flow {
+                visible: recentSection.showRecent
                 width: recentSection.width
                 spacing: 6
 

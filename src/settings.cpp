@@ -110,6 +110,7 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("startmenu.fuzzy"), true);
     m_defaults.insert(QStringLiteral("startmenu.highlight"), QString());
     m_defaults.insert(QStringLiteral("startmenu.showRecent"), true);
+    m_defaults.insert(QStringLiteral("startmenu.showPinned"), false);
     m_defaults.insert(QStringLiteral("theme.name"), QStringLiteral("default"));
     m_defaults.insert(QStringLiteral("theme.autoReload"), true);
     m_defaults.insert(QStringLiteral("desktop.wallpaper"), QString());

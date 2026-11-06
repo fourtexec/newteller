@@ -2001,6 +2001,22 @@ def main():
         settings.setValue("startmenu.layout", "list")
         QTest.qWait(20)
 
+        # startmenu.showPinned: the dock's pinned applications as favourites
+        # (the uninstalled one is left out).
+        settings.setValue("startmenu.showPinned", True)
+        QTest.qWait(30)
+        pinned_items = []
+
+        def walk_pinned(item):
+            if item.objectName() == "startPinnedApp":
+                pinned_items.append(item)
+            for child in item.childItems():
+                walk_pinned(child)
+        walk_pinned(menu.contentItem())
+        check(len(pinned_items) == 2, f"the start menu shows the pinned applications ({len(pinned_items)})")
+        settings.reset("startmenu.showPinned")
+        QTest.qWait(20)
+
     # Wallpaper slideshow: the next picture of the folder, in name order; with
     # per-monitor wallpapers the screen keeps its own.
     if desktops:
