@@ -14,17 +14,21 @@ Window {
     readonly property bool wanted: selected >= 0 && entries.length > 1
                                    && Settings.values["switcher.showOverlay"] !== false
 
-    // switcher.style: "thumbnails" (the windows as they look) or "icons"
-    // (compact tiles with the application icon).
-    readonly property bool iconsOnly: Settings.values["switcher.style"] === "icons"
-    readonly property int tileWidth: iconsOnly ? 108 : 200
-    readonly property int tileHeight: iconsOnly ? 104 : 168
-    readonly property int columns: Math.max(1, Math.min(entries.length,
-                                                        Math.floor((Screen.width - 120) / (tileWidth + 6))))
+    // switcher.style: "thumbnails" (the windows as they look), "icons"
+    // (compact tiles with the application icon) or "list" (one row per
+    // window with its icon and full title).
+    readonly property bool listStyle: Settings.values["switcher.style"] === "list"
+    readonly property bool iconsOnly: Settings.values["switcher.style"] === "icons" || listStyle
+    readonly property int tileWidth: listStyle ? Math.min(560, Screen.width - 120) : iconsOnly ? 108 : 200
+    readonly property int tileHeight: listStyle ? 40 : iconsOnly ? 104 : 168
+    readonly property int columns: listStyle ? 1
+                                             : Math.max(1, Math.min(entries.length,
+                                                                    Math.floor((Screen.width - 120) / (tileWidth + 6))))
     readonly property int rows: Math.ceil(entries.length / columns)
 
     width: columns * (tileWidth + 6) + 26
-    height: rows * (tileHeight + 6) + 56
+    height: Math.min(rows * (tileHeight + 6) + (listStyle ? 20 : 56),
+                     Math.max(200, Screen.height - 80))
     visible: wanted
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.Tool | Qt.WindowStaysOnTopHint | Qt.WindowDoesNotAcceptFocus
@@ -68,10 +72,14 @@ Window {
         border.width: 1
         border.color: Qt.rgba(Theme.border.r, Theme.border.g, Theme.border.b, 0.9)
 
+        clip: true
+
         Grid {
             id: grid
             x: 13
-            y: 13
+            // A long list scrolls so the selected row stays on screen.
+            y: 13 - Math.max(0, Math.min(height - (card.height - 26),
+                                         (overlay.selected + 1) * (overlay.tileHeight + 6) - (card.height - 26)))
             columns: overlay.columns
             spacing: 6
 
@@ -106,6 +114,35 @@ Window {
                                 ? Session.cachedThumbnail(modelData.id) : ""
                     }
                     Image {
+                        visible: overlay.listStyle
+                        x: 10
+                        anchors.verticalCenter: parent.verticalCenter
+                        width: 24
+                        height: 24
+                        sourceSize.width: 48
+                        sourceSize.height: 48
+                        fillMode: Image.PreserveAspectFit
+                        source: overlay.listStyle ? overlay.iconFor(modelData) : ""
+                    }
+                    Text {
+                        objectName: "switcherListTitle"
+                        visible: overlay.listStyle
+                        x: 44
+                        width: parent.width - 54
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: {
+                            const name = overlay.nameFor(modelData);
+                            const title = modelData.title || "";
+                            return title.length > 0 && title !== name ? name + " \u2014 " + title : name;
+                        }
+                        color: Theme.foreground
+                        font.family: Theme.fontFamily
+                        font.pointSize: Theme.fontSize
+                        font.bold: parent.current
+                        elide: Text.ElideRight
+                    }
+                    Image {
+                        visible: !overlay.listStyle
                         x: thumb.status === Image.Ready ? 14 : (parent.width - width) / 2
                         y: thumb.status === Image.Ready ? thumb.y + thumb.height - height - 4
                                                         : thumb.y + (thumb.height - height) / 2
@@ -117,6 +154,7 @@ Window {
                         source: overlay.iconFor(modelData)
                     }
                     Text {
+                        visible: !overlay.listStyle
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
@@ -132,8 +170,9 @@ Window {
             }
         }
 
-        // The full title of the selected window.
+        // The full title of the selected window (the list already shows it).
         Text {
+            visible: !overlay.listStyle
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.bottom: parent.bottom

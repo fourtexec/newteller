@@ -611,7 +611,7 @@ pub const SCHEMA: &[KeySchema] = &[
     KeySchema { key: "osd.screen", kind: "string", default_json: "\"active\"", doc: "The screen of the pill: active (pointer) or primary" },
     KeySchema { key: "switcher.showOverlay", kind: "bool", default_json: "true", doc: "Shell setting, changed in the settings application." },
     KeySchema { key: "switcher.allWorkspaces", kind: "bool", default_json: "false", doc: "Shell setting, changed in the settings application." },
-    KeySchema { key: "switcher.style", kind: "string", default_json: "\"thumbnails\"", doc: "Alt+Tab list: thumbnails or icons" },
+    KeySchema { key: "switcher.style", kind: "string", default_json: "\"thumbnails\"", doc: "Alt+Tab list: thumbnails, icons or list" },
     KeySchema { key: "overview.cardSize", kind: "int", default_json: "100", doc: "Overview preview size in percent" },
     KeySchema { key: "workspaces.wrap", kind: "bool", default_json: "false", doc: "Shell setting, changed in the settings application." },
     KeySchema { key: "decorations.server", kind: "bool", default_json: "true", doc: "Shell setting, changed in the settings application." },

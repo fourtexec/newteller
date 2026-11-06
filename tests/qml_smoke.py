@@ -1014,8 +1014,14 @@ class Session(QObject):
     workspace = Property(int, lambda self: 0, notify=workspacesChanged)
     workspaceCount = Property(int, lambda self: 4, notify=workspacesChanged)
     workspaceOccupied = Property(int, lambda self: 0b101, notify=workspacesChanged)
-    switcherEntries = Property("QVariantList", lambda self: [], notify=switcherChanged)
-    switcherIndex = Property(int, lambda self: -1, notify=switcherChanged)
+    switcherEntries = Property("QVariantList", lambda self: getattr(self, "_switcher_entries", []),
+                               notify=switcherChanged)
+    switcherIndex = Property(int, lambda self: getattr(self, "_switcher_index", -1), notify=switcherChanged)
+
+    def show_switcher(self, entries, index):
+        self._switcher_entries = entries
+        self._switcher_index = index
+        self.switcherChanged.emit()
     powerProfileChanged = Signal()
     powerProfile = Property(str, lambda self: "balanced", notify=powerProfileChanged)
     powerProfiles = Property("QVariantList", lambda self: ["power-saver", "balanced", "performance"],
@@ -3047,6 +3053,37 @@ def main():
             QTest.qWait(50)
             check(bool(osds) and osds[0].property("text") == "Caps Lock on",
                   f"Caps Lock shows on screen ({osds[0].property('text') if osds else None})")
+            # Alt+Tab: the compositor sends the list, the overlay draws it.
+            switchers = windows_of_kind("SwitcherOverlay")
+            if switchers:
+                switcher = switchers[0]
+                entries = [{"id": 1, "appId": "firefox", "title": "Mozilla Firefox"},
+                           {"id": 2, "appId": "org.example.Editor", "title": "notes.txt"},
+                           {"id": 3, "appId": "", "title": "Terminal"}]
+                for style in ("thumbnails", "icons", "list"):
+                    settings.setValue("switcher.style", style)
+                    session.show_switcher(entries, 1)
+                    QTest.qWait(50)
+                    check(switcher.isVisible(), f"Alt+Tab shows the {style} switcher")
+                    if style == "list":
+                        titles = []
+                        stack = [switcher.property("contentItem")]
+                        while stack:
+                            item = stack.pop()
+                            if item is None:
+                                continue
+                            if item.objectName() == "switcherListTitle" and item.isVisible():
+                                titles.append(item.property("text"))
+                            stack.extend(item.childItems())
+                        check(len(titles) == 3 and any("notes.txt" in t for t in titles),
+                              f"the list switcher shows one row per window with its title ({titles})")
+                        check(switcher.height() < 300,
+                              f"the list switcher is compact ({switcher.height()})")
+                    session.show_switcher([], -1)
+                    QTest.qWait(30)
+                    check(not switcher.isVisible(), "the switcher hides when Alt is released")
+                settings.setValue("switcher.style", "thumbnails")
+
             if osds:
                 osd = osds[0]
                 settings.setValue("osd.timeout", 3000)

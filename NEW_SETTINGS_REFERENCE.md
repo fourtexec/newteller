@@ -532,7 +532,7 @@ Example:
 | `windowRules.opacity` | string | `""` | `kitty=85`: window opacity in percent per application | Windows |
 | `effects.animationStyle` | string | `"zoom"` | Windows open and close with a zoom, fade or slide | Animations |
 | `effects.inactiveOpacity` | integer | `100` | Opacity of windows without the focus | Animations |
-| `switcher.style` | string | `"thumbnails"` | Alt+Tab list: thumbnails or icons | Displays |
+| `switcher.style` | string | `"thumbnails"` | Alt+Tab list: thumbnails, icons or list | Displays |
 | `overview.cardSize` | integer | `100` | Overview preview size in percent | Displays |
 | `lock.dim / lock.clockFormat` | integer / string | 0 / "" | Lock screen wallpaper veil (percent) and clock format (gtklock) | Power & lock |
 | `keyboard.volumeStep / keyboard.brightnessStep` | integer | 5 | Percent per volume / brightness key press | Keyboard |

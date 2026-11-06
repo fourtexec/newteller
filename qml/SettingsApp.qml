@@ -4589,7 +4589,8 @@ Window {
                                 SettingsChoice {
                                     model: [
                                         { value: "thumbnails", label: qsTr("Previews") },
-                                        { value: "icons", label: qsTr("Icons") }
+                                        { value: "icons", label: qsTr("Icons") },
+                                        { value: "list", label: qsTr("List") }
                                     ]
                                 }
                             }
