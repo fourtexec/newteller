@@ -14,7 +14,8 @@ class Settings;
 // wlr-screencopy protocol the NewTeller compositor serves. Exposed to QML as
 // `Recorder`: quick settings start it, a pill on the panel shows the time and
 // stops it, Super+Alt+R toggles it. Videos go to Screencasts in the videos
-// folder (~/Videos, or its localized name).
+// folder (~/Videos, or its localized name) unless recorder.folder names
+// another, as recorder.format (mp4 or mkv).
 class ScreenRecorder : public QObject {
     Q_OBJECT
     // wf-recorder is installed.
@@ -45,6 +46,10 @@ public:
     // Super+Alt+R: the whole primary screen, or stop.
     Q_INVOKABLE void toggle();
 
+    // Where the next video goes (the folder is created); empty when the
+    // folder cannot be made.
+    QString outputFile() const;
+
 signals:
     void stateChanged();
     void elapsedChanged();
@@ -52,7 +57,6 @@ signals:
 private:
     void begin(const QString &geometry, const QString &screen);
     void recorderFinished(int exitCode, QProcess::ExitStatus status);
-    QString outputFile() const;
     void say(const QString &title, const QString &body) const;
 
     Settings *m_settings;

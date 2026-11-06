@@ -4,6 +4,7 @@
 // Built with the shell (not installed) and run by scripts/build-release.sh.
 #include "appmodel.h"
 #include "notifications.h"
+#include "screenrecorder.h"
 #include "sessionservices.h"
 #include "settings.h"
 #include "theme.h"
@@ -108,6 +109,26 @@ void testBrokenSettings()
     settings.reload();
     check(settings.loadError().isEmpty() && settings.value(QStringLiteral("panel.height")).toInt() == 64,
           QStringLiteral("a fixed file clears the error and applies"));
+}
+
+// Where screen recordings go: recorder.folder (with ~) and recorder.format.
+void testRecorder()
+{
+    Settings settings;
+    ScreenRecorder recorder(&settings, nullptr);
+    check(recorder.outputFile().contains(QLatin1String("/Screencasts/Screencast_"))
+              && recorder.outputFile().endsWith(QLatin1String(".mp4")),
+          QStringLiteral("recordings go to Screencasts as MP4 by default (%1)").arg(recorder.outputFile()));
+    settings.setValue(QStringLiteral("recorder.folder"), QStringLiteral("~/Clips"));
+    settings.setValue(QStringLiteral("recorder.format"), QStringLiteral("mkv"));
+    const QString file = recorder.outputFile();
+    check(file.startsWith(QDir::homePath() + QStringLiteral("/Clips/Screencast_")) && file.endsWith(QLatin1String(".mkv"))
+              && QFileInfo(QDir::homePath() + QStringLiteral("/Clips")).isDir(),
+          QStringLiteral("recorder.folder and recorder.format choose the file (%1)").arg(file));
+    settings.setValue(QStringLiteral("recorder.format"), QStringLiteral("avi"));
+    check(recorder.outputFile().endsWith(QLatin1String(".mp4")), QStringLiteral("an unknown format records MP4"));
+    settings.reset(QStringLiteral("recorder.folder"));
+    settings.reset(QStringLiteral("recorder.format"));
 }
 
 void testProfiles(const QString &root)
@@ -250,6 +271,7 @@ int main(int argc, char **argv)
 
     testApplications(root);
     testBrokenSettings();
+    testRecorder();
     testProfiles(root);
     testThemeSchedule();
     testNotifications();

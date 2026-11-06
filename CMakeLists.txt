@@ -154,6 +154,7 @@ qt_add_executable(newteller-unit-tests
     src/appmodel.cpp
     src/notifications.cpp
     src/sessionservices.cpp
+    src/screenrecorder.cpp
     src/rustbridge.cpp
 )
 target_include_directories(newteller-unit-tests PRIVATE ${CMAKE_SOURCE_DIR}/src)

@@ -560,6 +560,8 @@ pub const SCHEMA: &[KeySchema] = &[
     KeySchema { key: "hotCorners.bottomRight", kind: "string", default_json: "\"none\"", doc: "Shell setting, changed in the settings application." },
     KeySchema { key: "hotCorners.delay", kind: "int", default_json: "0", doc: "Shell setting, changed in the settings application." },
     KeySchema { key: "recorder.audio", kind: "bool", default_json: "false", doc: "Shell setting, changed in the settings application." },
+    KeySchema { key: "recorder.folder", kind: "string", default_json: "\"\"", doc: "Folder for screen recordings; empty: Screencasts in the videos folder" },
+    KeySchema { key: "recorder.format", kind: "string", default_json: "\"mp4\"", doc: "Screen recording container: mp4 or mkv" },
     KeySchema { key: "screenshot.folder", kind: "string", default_json: "\"\"", doc: "Folder for screenshots; empty: Screenshots in the pictures folder" },
     KeySchema { key: "screenshot.fileName", kind: "string", default_json: "\"Screenshot_%Y%m%d-%H%M%S\"", doc: "date(1) pattern of a screenshot's file name" },
     KeySchema { key: "screenshot.saveFile", kind: "bool", default_json: "true", doc: "Keep screenshots as files (false: clipboard only)" },

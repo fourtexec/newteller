@@ -2715,6 +2715,39 @@ Window {
                         }
 
                         SettingsSection {
+                            title: qsTr("Screen recording")
+                            subtitle: Recorder.available
+                                      ? qsTr("Started from quick settings or with Super+Alt+R.")
+                                      : qsTr("Install wf-recorder to record the screen.")
+
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Recording folder")
+                                subtitle: qsTr("Empty: Screencasts in the videos folder.")
+                                settingKey: "recorder.folder"
+                                SettingsTextField { width: 220; placeholder: "~/Videos/Screencasts" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Video format")
+                                subtitle: qsTr("MKV keeps what was recorded even if the recording is cut off.")
+                                settingKey: "recorder.format"
+                                SettingsChoice {
+                                    model: [
+                                        { value: "mp4", label: "MP4" },
+                                        { value: "mkv", label: "MKV" }
+                                    ]
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Record the microphone")
+                                settingKey: "recorder.audio"
+                                SettingsSwitch { settingKey: "recorder.audio" }
+                            }
+                        }
+
+                        SettingsSection {
                             title: qsTr("Clipboard")
                             subtitle: qsTr("Clipboard history and management.")
 

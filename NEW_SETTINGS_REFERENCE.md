@@ -251,6 +251,8 @@ Each setting is documented with:
 | `screenshot.clipboard` | boolean | `true` | Copy screenshots to the clipboard | System |
 | `screenshot.cursor` | boolean | `false` | Draw the pointer in screenshots | System |
 | `screenshot.delay` | integer | `0` | Seconds to wait before a screenshot (0-10) | System |
+| `recorder.folder` | string | `""` | Folder for screen recordings; empty: Screencasts in the videos folder (`~` works) | System |
+| `recorder.format` | string | `"mp4"` | Screen recording container: mp4 or mkv | System |
 | `clipboard.persistHistory` | boolean | `true` | Persist clipboard history across restarts | System |
 
 ---

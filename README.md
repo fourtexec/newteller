@@ -395,9 +395,9 @@ inside VirtualBox. The implemented pieces are:
 - **Screen recording** (wf-recorder): quick settings records the whole screen
   or an area picked with the mouse (slurp), optionally with the microphone
   (`recorder.audio`); `Super+Alt+R` starts and stops it. A red pill on the
-  panel shows the time and stops the recording; the MP4 lands in
-  `Screencasts` inside the videos folder and a notification offers Play and
-  Show in folder.
+  panel shows the time and stops the recording; the MP4 (or MKV,
+  `recorder.format`) lands in `Screencasts` inside the videos folder (or
+  `recorder.folder`) and a notification offers Play and Show in folder.
 - Multi-monitor: one desktop and one panel per screen; cards opened from the
   keyboard (`Super`, `Super+A`, `Super+N`, `Super+V`) open on the screen the
   pointer is on (`event output NAME` on the control socket)

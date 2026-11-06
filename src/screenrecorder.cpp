@@ -213,17 +213,30 @@ void ScreenRecorder::recorderFinished(int exitCode, QProcess::ExitStatus status)
 
 QString ScreenRecorder::outputFile() const
 {
-    QString videos = QStandardPaths::writableLocation(QStandardPaths::MoviesLocation);
-    if (videos.isEmpty())
-        videos = QDir::homePath() + QStringLiteral("/Videos");
-    const QString folder = videos + QStringLiteral("/Screencasts");
+    QString folder = m_settings->value(QStringLiteral("recorder.folder")).toString().trimmed();
+    if (folder == QLatin1String("~"))
+        folder = QDir::homePath();
+    else if (folder.startsWith(QLatin1String("~/")))
+        folder = QDir::homePath() + folder.mid(1);
+    else if (!folder.isEmpty() && QDir::isRelativePath(folder))
+        folder = QDir::homePath() + QLatin1Char('/') + folder;
+    if (folder.isEmpty()) {
+        QString videos = QStandardPaths::writableLocation(QStandardPaths::MoviesLocation);
+        if (videos.isEmpty())
+            videos = QDir::homePath() + QStringLiteral("/Videos");
+        folder = videos + QStringLiteral("/Screencasts");
+    }
     if (!QDir().mkpath(folder))
         return QString();
+    // wf-recorder picks the container from the extension; Matroska survives
+    // a recording that is cut off (a crash, a full disk).
+    const QString format = m_settings->value(QStringLiteral("recorder.format")).toString() == QLatin1String("mkv")
+                               ? QStringLiteral("mkv") : QStringLiteral("mp4");
     const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-HHmmss"));
-    QString file = QStringLiteral("%1/Screencast_%2.mp4").arg(folder, stamp);
+    QString file = QStringLiteral("%1/Screencast_%2.%3").arg(folder, stamp, format);
     // wf-recorder asks before overwriting; never let it.
     for (int n = 2; QFileInfo::exists(file); ++n)
-        file = QStringLiteral("%1/Screencast_%2-%3.mp4").arg(folder, stamp).arg(n);
+        file = QStringLiteral("%1/Screencast_%2-%3.%4").arg(folder, stamp).arg(n).arg(format);
     return file;
 }
 
