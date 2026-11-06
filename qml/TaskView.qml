@@ -25,8 +25,10 @@ Window {
     property int selected: 0
     readonly property var shown: windowsList.filter(function (w) { return w.workspace === view.desktop; })
 
-    readonly property int cardWidth: 340
-    readonly property int cardHeight: 250
+    // overview.cardSize (percent): bigger or smaller window previews.
+    readonly property real cardScale: Math.max(0.5, Math.min(1.6, Number(Settings.values["overview.cardSize"] ?? 100) / 100))
+    readonly property int cardWidth: Math.round(340 * cardScale)
+    readonly property int cardHeight: Math.round(250 * cardScale)
     readonly property int columns: Math.max(1, Math.min(shown.length,
                                                         Math.floor((width - 80) / (cardWidth + 24))))
 

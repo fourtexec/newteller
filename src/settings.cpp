@@ -376,6 +376,7 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("switcher.showOverlay"), true);
     m_defaults.insert(QStringLiteral("switcher.allWorkspaces"), false);
     m_defaults.insert(QStringLiteral("switcher.style"), QStringLiteral("thumbnails"));
+    m_defaults.insert(QStringLiteral("overview.cardSize"), 100);
     m_defaults.insert(QStringLiteral("workspaces.wrap"), false);
     // Title bars drawn by the compositor for windows that want them.
     m_defaults.insert(QStringLiteral("decorations.server"), true);

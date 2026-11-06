@@ -4365,6 +4365,13 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("Overview preview size")
+                                subtitle: qsTr("The window previews of the overview (Super+Tab).")
+                                settingKey: "overview.cardSize"
+                                SettingsSlider { from: 50; to: 160; step: 10; suffix: " %" }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 visible: Settings.values["switcher.showOverlay"] !== false
                                 title: qsTr("Window list style")
                                 settingKey: "switcher.style"
