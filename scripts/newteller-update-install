@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# The root half of the updater (Settings, Updates): installs a release
+# archive the shell has downloaded.
+#
+#   pkexec newteller-update-install ARCHIVE.zip SHA256
+#
+# The shell runs as the user and cannot write to /usr; this script runs as
+# root and trusts nothing it is handed: it takes its own copy of the archive,
+# checks that copy against the SHA-256 from the update data, unpacks it in a
+# directory only root can touch and runs the archive's own install.sh (which
+# refuses an archive built for another distribution).
+set -euo pipefail
+
+if [[ $# -ne 2 ]]; then
+    echo 'usage: newteller-update-install ARCHIVE.zip SHA256' >&2
+    exit 2
+fi
+if [[ $EUID -ne 0 ]]; then
+    echo 'newteller-update-install must run as root (pkexec newteller-update-install ...).' >&2
+    exit 1
+fi
+archive=$1
+expected=$2
+if [[ ! $expected =~ ^[0-9a-f]{64}$ ]]; then
+    echo 'The checksum is not a SHA-256.' >&2
+    exit 2
+fi
+if [[ ! -f $archive || -L $archive ]]; then
+    echo "No such archive: $archive" >&2
+    exit 1
+fi
+
+work=$(mktemp -d /tmp/newteller-update.XXXXXX)
+trap 'rm -rf -- "$work"' EXIT
+# Copy first, then check the copy: the original lies in the user's cache and
+# could change between the check and the installation.
+cp -- "$archive" "$work/update.zip"
+actual=$(sha256sum "$work/update.zip" | cut -d' ' -f1)
+if [[ $actual != "$expected" ]]; then
+    echo 'The archive does not match its checksum; nothing was installed.' >&2
+    exit 1
+fi
+
+mkdir "$work/tree"
+if command -v unzip > /dev/null 2>&1; then
+    unzip -q "$work/update.zip" -d "$work/tree"
+elif command -v bsdtar > /dev/null 2>&1; then
+    bsdtar -xf "$work/update.zip" -C "$work/tree"
+elif command -v python3 > /dev/null 2>&1; then
+    python3 -m zipfile -e "$work/update.zip" "$work/tree"
+else
+    echo 'Install unzip to unpack the update.' >&2
+    exit 1
+fi
+
+# newteller-commit-<sha>-<target>/install.sh
+installer=$(find "$work/tree" -mindepth 2 -maxdepth 2 -type f -name install.sh | head -n 1)
+if [[ -z $installer ]]; then
+    echo 'The archive is not a NewTeller release (no install.sh).' >&2
+    exit 1
+fi
+# No terminal here: package managers must not stop to ask.
+export DEBIAN_FRONTEND=noninteractive
+bash "$installer"

@@ -7,7 +7,7 @@ set(CMAKE_AUTOMOC ON)
 
 include(GNUInstallDirs)
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Qml Quick Svg DBus)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Qml Quick Svg DBus Network)
 
 # The compositor is what turns NewTeller from a panel that runs inside somebody
 # else's desktop into a real Wayland session. It only needs C libraries, not Qt.
@@ -101,6 +101,7 @@ qt_add_executable(newteller
     src/sessionservices.cpp
     src/clipboardhistory.cpp
     src/screenrecorder.cpp
+    src/updater.cpp
     src/audiodevices.cpp
     src/bluetooth.cpp
     src/polkitagent.cpp
@@ -119,6 +120,7 @@ target_link_libraries(newteller PRIVATE
     Qt6::Quick
     Qt6::Svg
     Qt6::DBus
+    Qt6::Network
     LayerShellQt::Interface
     ${WAYLAND_CLIENT_LIBRARY}
     ${XCB_LIBRARY}
@@ -225,7 +227,8 @@ target_link_libraries(newteller-compositor PRIVATE
 
 install(TARGETS newteller newteller-compositor RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(PROGRAMS scripts/newteller-session scripts/newteller-screenshot scripts/newteller-lock
-                 scripts/newteller-run-as-root scripts/newteller-terminal DESTINATION ${CMAKE_INSTALL_BINDIR})
+                 scripts/newteller-run-as-root scripts/newteller-terminal
+                 scripts/newteller-update-install DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(DIRECTORY plugins/ DESTINATION ${CMAKE_INSTALL_DATADIR}/newteller/plugins)
 install(FILES data/org.newteller.Shell.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
 install(FILES data/newteller-session.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/wayland-sessions RENAME newteller.desktop)

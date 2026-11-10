@@ -50,6 +50,40 @@ chmod 700 "$runtime"
 export XDG_CONFIG_HOME="$runtime/config"
 mkdir -p "$XDG_CONFIG_HOME/newteller"
 printf '{\n    "desktop.defaultWallpaper": false\n}\n' > "$XDG_CONFIG_HOME/newteller/shell.json"
+
+# The updater, with a local file standing in for fourtexec.site: a newer
+# build is offered, the installed one is not, a system without a build and
+# broken update data are reported as errors. Needs no display.
+mkdir -p "$runtime/update"
+old_build=$(printf '1%.0s' {1..40})
+new_build=$(printf '2%.0s' {1..40})
+write_update_data() {
+    printf '{"schema":1,"targets":{"%s":{"commit":"%s","date":%s,"url":"https://fourtexec.site/newteller.zip","sha256":"%s"}}}\n' \
+        "$1" "$2" "$3" "$(printf 'a%.0s' {1..64})" > "$runtime/update/update.json"
+}
+check_update() {
+    local status=0
+    update_reply=$(NEWTELLER_BUILDINFO="$runtime/update/BUILDINFO" \
+        NEWTELLER_UPDATE_URL="file://$runtime/update/update.json" "$shell" --check-update) || status=$?
+    if [[ $status -ne $1 || $update_reply != *"$2"* ]]; then
+        echo "newteller --check-update: expected exit $1 and '$2', got exit $status: $update_reply" >&2
+        exit 1
+    fi
+}
+printf 'commit=%s\ntarget=smoke-x86_64\ndate=1000\n' "$old_build" > "$runtime/update/BUILDINFO"
+write_update_data smoke-x86_64 "$new_build" 2000
+check_update 10 'update: available'
+write_update_data smoke-x86_64 "$old_build" 1000
+check_update 0 'update: none'
+# The site lagging behind a newer local build is not an update.
+write_update_data smoke-x86_64 "$new_build" 500
+check_update 0 'update: none'
+write_update_data other-x86_64 "$new_build" 2000
+check_update 1 'error:'
+write_update_data smoke-x86_64 not-a-commit 2000
+check_update 1 'error:'
+echo 'session smoke: the updater reads update data and compares builds'
+
 socket=newteller-smoke
 log="$runtime/compositor.log"
 before="$runtime/before.png"

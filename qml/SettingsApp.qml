@@ -34,9 +34,23 @@ Window {
         { id: "mouse", label: qsTr("Mouse & touchpad"), icon: "mouse" },
         { id: "display", label: qsTr("Displays"), icon: "monitor" },
         { id: "power", label: qsTr("Power & lock"), icon: "power" },
+        { id: "updates", label: qsTr("Updates"), icon: "download" },
         { id: "about", label: qsTr("About"), icon: "info" }
     ]
     property string currentPage: "appearance"
+
+    // The one-line state of the updater (Updates page).
+    function updateStatus() {
+        switch (Updater.state) {
+        case "checking": return qsTr("Checking for updates...")
+        case "current": return qsTr("NewTeller is up to date")
+        case "available": return qsTr("An update is available")
+        case "downloading": return qsTr("Downloading the update: %1%").arg(Math.round(Updater.progress * 100))
+        case "installing": return qsTr("Installing the update...")
+        case "installed": return qsTr("The update is installed")
+        }
+        return qsTr("Updates have not been checked yet")
+    }
 
     readonly property var wallpaperFolders: [Shell.picturesPath, "/usr/share/backgrounds"]
     property int wallpaperFolderIndex: 0
@@ -3598,6 +3612,125 @@ Window {
                             subtitle: Session.polkitAgent.length > 0
                                       ? qsTr("Authentication agent: %1").arg(Session.polkitAgent)
                                       : qsTr("No polkit agent found; install lxpolkit so programs can ask for the administrator password.")
+                        }
+                    }
+                }
+            }
+
+            // ---- Updates --------------------------------------------------
+            Item {
+                Flickable {
+                    id: updatesScroll
+                    anchors.fill: parent
+                    contentHeight: updatesColumn.implicitHeight + 24
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Column {
+                        id: updatesColumn
+                        x: 16
+                        y: 12
+                        width: updatesScroll.width - 32
+                        spacing: 16
+
+                        SettingsSection {
+                            title: qsTr("NewTeller updates")
+                            subtitle: qsTr("The list of builds comes from %1. The build itself is downloaded from the link in that list and checked against its SHA-256 before it is installed.").arg(Updater.source)
+
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Installed build")
+                                subtitle: Updater.target
+                                Text {
+                                    text: Updater.installedCommit.length > 0
+                                          ? Updater.installedCommit.substring(0, 10)
+                                            + (Updater.installedDate.length > 0 ? " · " + Updater.installedDate : "")
+                                          : qsTr("Built from source")
+                                    color: Theme.foreground
+                                    font.family: Theme.fontFamily
+                                    font.pointSize: Theme.fontSize
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                visible: Updater.latestCommit.length > 0
+                                title: qsTr("Latest build")
+                                subtitle: Updater.notes
+                                Text {
+                                    text: Updater.latestCommit.substring(0, 10)
+                                          + (Updater.latestDate.length > 0 ? " · " + Updater.latestDate : "")
+                                    color: Theme.foreground
+                                    font.family: Theme.fontFamily
+                                    font.pointSize: Theme.fontSize
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: settingsWindow.updateStatus()
+                                subtitle: Updater.error.length > 0 ? Updater.error
+                                          : Updater.state === "installed" ? qsTr("Log out and back in to start the new version.")
+                                          : Updater.lastChecked.length > 0 ? qsTr("Last checked: %1").arg(Updater.lastChecked)
+                                          : ""
+
+                                Row {
+                                    spacing: 8
+                                    TaskButton {
+                                        visible: !Updater.busy && Updater.state !== "installed"
+                                        iconName: "rotate-cw"
+                                        label: qsTr("Check now")
+                                        onClicked: Updater.check()
+                                    }
+                                    TaskButton {
+                                        visible: Updater.state === "available"
+                                        iconName: "download"
+                                        label: qsTr("Download and install")
+                                        onClicked: Updater.install()
+                                    }
+                                    TaskButton {
+                                        visible: Updater.state === "downloading"
+                                        iconName: "x"
+                                        label: qsTr("Cancel")
+                                        onClicked: Updater.cancel()
+                                    }
+                                    TaskButton {
+                                        visible: Updater.state === "installed"
+                                        iconName: "log-out"
+                                        label: qsTr("Log out")
+                                        onClicked: Shell.logout()
+                                    }
+                                }
+                            }
+                            Item {
+                                width: parent.width
+                                height: 6
+                                visible: Updater.state === "downloading"
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: 3
+                                    color: Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.12)
+                                }
+                                Rectangle {
+                                    width: Math.round(parent.width * Updater.progress)
+                                    height: parent.height
+                                    radius: 3
+                                    color: Theme.accent
+                                }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: qsTr("Automatic checks")
+
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Check for updates automatically")
+                                subtitle: qsTr("Shortly after login and twice a day; a notification offers the new build. Nothing is installed without you.")
+                                settingKey: "updates.autoCheck"
+                                SettingsSwitch {}
+                            }
                         }
                     }
                 }

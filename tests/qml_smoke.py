@@ -1327,6 +1327,59 @@ class RecorderStub(QObject):
             self.start(False, "")
 
 
+class UpdaterStub(QObject):
+    """Stand-in for the Updater context property (src/updater.h)."""
+
+    changed = Signal()
+    progressChanged = Signal()
+    checked = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self.calls = []
+        self._state = "idle"
+
+    state = Property(str, lambda self: self._state, notify=changed)
+    error = Property(str, lambda self: "", notify=changed)
+    busy = Property(bool, lambda self: self._state in ("checking", "downloading", "installing"),
+                    notify=changed)
+    source = Property(str, lambda self: "fourtexec.site", constant=True)
+    installedCommit = Property(str, lambda self: "1" * 40, constant=True)
+    installedDate = Property(str, lambda self: "01.10.2026", constant=True)
+    target = Property(str, lambda self: "debian13-x86_64", constant=True)
+    latestCommit = Property(str, lambda self: "" if self._state == "idle" else "2" * 40,
+                            notify=changed)
+    latestDate = Property(str, lambda self: "" if self._state == "idle" else "09.11.2026",
+                          notify=changed)
+    notes = Property(str, lambda self: "" if self._state == "idle" else "A newer build",
+                     notify=changed)
+    lastChecked = Property(str, lambda self: "" if self._state == "idle" else "10.11.2026 07:00",
+                           notify=changed)
+    progress = Property(float, lambda self: 0.4 if self._state == "downloading" else 0.0,
+                        notify=progressChanged)
+
+    def _set(self, state):
+        self._state = state
+        self.changed.emit()
+        self.progressChanged.emit()
+
+    @Slot()
+    def check(self):
+        self.calls.append(("check",))
+        self._set("available")
+        self.checked.emit()
+
+    @Slot()
+    def install(self):
+        self.calls.append(("install",))
+        self._set("downloading")
+
+    @Slot()
+    def cancel(self):
+        self.calls.append(("cancel",))
+        self._set("available")
+
+
 class Quick(QObject):
     """Stand-in for the QuickSettings context property (src/quicksettings.h)."""
 
@@ -1485,6 +1538,7 @@ def main():
     tray, quick, session = Tray(), Quick(), Session()
     clipboard = ClipboardStub()
     recorder = RecorderStub()
+    updater = UpdaterStub()
     audio = AudioStub()
     bluetooth = BluetoothStub()
     polkit = PolkitStub()
@@ -1494,7 +1548,7 @@ def main():
                       ("Notifications", notifications), ("FilePortal", file_portal),
                       ("Tray", tray), ("Quick", quick), ("Session", session),
                       ("Clipboard", clipboard), ("Bluetooth", bluetooth), ("Polkit", polkit),
-                      ("Recorder", recorder), ("Audio", audio)):
+                      ("Recorder", recorder), ("Audio", audio), ("Updater", updater)):
         engine.rootContext().setContextProperty(name, obj)
 
     failures = []

@@ -253,6 +253,8 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("hotCorners.bottomRight"), QStringLiteral("none"));
     // Screen recordings (wf-recorder) also record the default microphone.
     m_defaults.insert(QStringLiteral("recorder.audio"), false);
+    // Ask fourtexec.site for a newer build now and then (Settings, Updates).
+    m_defaults.insert(QStringLiteral("updates.autoCheck"), true);
     // Power management
     m_defaults.insert(QStringLiteral("power.sleepAction"), QStringLiteral("suspend"));
     m_defaults.insert(QStringLiteral("power.lockOnSleep"), true);

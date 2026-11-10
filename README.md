@@ -469,6 +469,38 @@ Arch Linux or Fedora with NewTeller and a graphical installer that starts on
 its own and installs the system with NewTeller as the only desktop:
 `sudo iso/build-iso.sh debian|ubuntu|arch|fedora`. See [iso/README.md](iso/README.md).
 
+## Updates
+
+NewTeller updates itself from **Settings → Updates** (`newteller --check-update`
+does the check from a terminal).
+
+- **Update data** is one small file, <https://fourtexec.site/newteller/update.json>
+  (kept in the `fourtexec/fourtexec.github.io` repository and regenerated there
+  from the commit releases). It contains no builds, only where they are: per
+  target the commit, its date, the **link** to the release archive and the
+  archive's SHA-256.
+
+  ```json
+  { "schema": 1,
+    "targets": {
+      "debian13-x86_64": {
+        "commit": "<40 hex>", "date": 1762750000, "notes": "first line of the commit",
+        "url": "https://github.com/fourtexec/newteller/releases/download/commit-<sha>/newteller-commit-<sha>-debian13-x86_64.zip",
+        "sha256": "<64 hex>", "size": 12345678 } } }
+  ```
+- **The update itself** is downloaded from that link (https only), compared
+  with the SHA-256 and handed to `pkexec newteller-update-install ARCHIVE SHA256`,
+  which checks its own copy again as root and runs the archive's `install.sh`.
+  The new version starts at the next login.
+- The installed build is described by `/usr/share/newteller/BUILDINFO`
+  (`commit`, `target`, `date`). A newer build is offered when the commit
+  differs and the offer is not older than what is installed.
+- `updates.autoCheck` (default `true`): a check two minutes after login and
+  every twelve hours, with a notification that has an **Install** button.
+  Nothing is ever installed without the administrator password.
+- `NEWTELLER_UPDATE_URL` points the updater at other update data (a mirror,
+  or a `file://` URL in tests).
+
 ## Automated builds and commit releases
 
 `.github/workflows/build-release.yml` builds separate native x86_64 archives on
@@ -757,8 +789,9 @@ Groups: `paths`, `schema`, `list`, `get`, `set`, `unset`, `validate`, `init`,
 `doctor`. `--json` gives machine-readable output everywhere; `newteller-ctl
 --help` documents every flag. The `newteller` shell itself also accepts
 `--help`, `--version`, `--print-config`, `--diagnostics`, `--theme <name>`,
-`--settings` (opens the built-in settings window on startup) and
-`--reset`.
+`--settings` (opens the built-in settings window on startup),
+`--check-update` (asks fourtexec.site for a newer build and exits: 0 = up to
+date, 10 = an update is available, 1 = the check failed) and `--reset`.
 
 ## Themes
 

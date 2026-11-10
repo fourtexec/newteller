@@ -14,6 +14,7 @@
 #include "sessionservices.h"
 #include "screensaver.h"
 #include "translator.h"
+#include "updater.h"
 #include "clipboardhistory.h"
 #include "screenrecorder.h"
 #include "audiodevices.h"
@@ -107,6 +108,7 @@ struct CliOptions {
     bool diagnostics = false;
     bool reset = false;
     bool settings = false;
+    bool checkUpdate = false;
     bool ok = true;
     QString theme;
     QStringList files;
@@ -125,6 +127,7 @@ void printUsage()
         "  --theme <name>       Select the theme (for example: default, light, nord)\n"
         "  --reset              Reset the configuration to defaults before starting\n"
         "  --settings           Open the built-in settings window after starting\n"
+        "  --check-update       Ask fourtexec.site for a newer build, print the answer and exit\n"
         "\n"
         "Files and URLs are opened with their default applications.\n");
 }
@@ -148,6 +151,8 @@ CliOptions scanArguments(int argc, char **argv)
             options.reset = true;
         } else if (arg == "--settings") {
             options.settings = true;
+        } else if (arg == "--check-update") {
+            options.checkUpdate = true;
         } else if (arg == "--theme") {
             if (i + 1 < argc)
                 options.theme = QString::fromLocal8Bit(argv[++i]);
@@ -173,6 +178,34 @@ QString printJson(const QVariant &value)
     return QString::fromUtf8(doc.toJson(QJsonDocument::Indented));
 }
 
+// newteller --check-update: the same check as Settings, Updates, without a
+// session. Exit code 0 = up to date, 10 = an update is available, 1 = the
+// check failed.
+int checkUpdate(int argc, char **argv)
+{
+    QCoreApplication app(argc, argv);
+    Updater updater;
+    int result = 1;
+    QObject::connect(&updater, &Updater::checked, &app, [&] {
+        std::printf("installed: %s (%s)\n",
+                    updater.installedCommit().isEmpty() ? "unknown" : qPrintable(updater.installedCommit()),
+                    updater.target().isEmpty() ? "unknown system" : qPrintable(updater.target()));
+        if (!updater.latestCommit().isEmpty())
+            std::printf("latest: %s\n", qPrintable(updater.latestCommit()));
+        if (!updater.error().isEmpty()) {
+            std::printf("error: %s\n", qPrintable(updater.error()));
+        } else {
+            const bool available = updater.state() == QLatin1String("available");
+            std::printf("update: %s\n", available ? "available" : "none");
+            result = available ? 10 : 0;
+        }
+        app.quit();
+    }, Qt::QueuedConnection);
+    updater.check();
+    app.exec();
+    return result;
+}
+
 } // namespace
 
 int main(int argc, char *argv[])
@@ -180,6 +213,8 @@ int main(int argc, char *argv[])
     const CliOptions cli = scanArguments(argc, argv);
     if (!cli.ok)
         return cli.printConfig || cli.diagnostics ? 1 : 0;
+    if (cli.checkUpdate)
+        return checkUpdate(argc, argv);
 
     // Must run before QGuiApplication is created: native Wayland when the
     // compositor supports wlr-layer-shell, XWayland when it does not.
@@ -265,6 +300,7 @@ int main(int argc, char *argv[])
                      });
     ClipboardHistory clipboard(&settings);
     ScreenRecorder recorder(&settings, &notifications);
+    Updater updater(&settings, &notifications);
     AudioDevices audio;
     Bluetooth bluetooth;
     // Pairing codes and confirmations (org.bluez.Agent1), only in the
@@ -341,6 +377,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("Session"), &session);
     engine.rootContext()->setContextProperty(QStringLiteral("Clipboard"), &clipboard);
     engine.rootContext()->setContextProperty(QStringLiteral("Recorder"), &recorder);
+    engine.rootContext()->setContextProperty(QStringLiteral("Updater"), &updater);
     engine.rootContext()->setContextProperty(QStringLiteral("Audio"), &audio);
     engine.rootContext()->setContextProperty(QStringLiteral("Bluetooth"), &bluetooth);
     engine.rootContext()->setContextProperty(QStringLiteral("Polkit"), &polkit);
