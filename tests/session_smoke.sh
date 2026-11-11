@@ -558,6 +558,38 @@ PY
         exit 1
     fi
     echo 'session smoke: org.freedesktop.ScreenSaver inhibits idle and lets go'
+
+    # Settings, Updates in the real shell. The page binds to the C++ Updater,
+    # which the QML smoke test only knows as a stand-in: a property the real
+    # one lacks, or of another type, shows only here, as a QML error in the
+    # shell's output.
+    if XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" \
+        gdbus call --session --dest org.newteller.Shell \
+            --object-path /org/newteller/Shell \
+            --method org.newteller.Shell.openSettingsPage updates >/dev/null 2>&1; then
+        settings_id=''
+        for _ in $(seq 1 30); do
+            settings_id=$( (msg windows || true) | sed 's/^ok //' | tr '\037' '\n' \
+                | awk -F $'\x1e' '$0 ~ /NewTeller Settings/ { print $1; exit }')
+            [[ -n $settings_id ]] && break
+            sleep 0.3
+        done
+        if [[ -z $settings_id ]]; then
+            echo "the settings window did not open on the Updates page ($(msg windows || true))" >&2
+            exit 1
+        fi
+        sleep 1
+        if grep -E 'SettingsApp\.qml:[0-9]+' "$log" | grep -E 'Error|undefined|Unable to assign'; then
+            echo 'the settings window reports QML errors' >&2
+            exit 1
+        fi
+        msg close "$settings_id" >/dev/null || true
+        sleep 1
+        echo 'session smoke: Settings opens on the Updates page without QML errors'
+    else
+        echo 'the shell did not open the settings over D-Bus' >&2
+        exit 1
+    fi
 else
     echo 'session smoke: no session bus or gdbus, skipping the start menu check' >&2
 fi
