@@ -1343,6 +1343,7 @@ class UpdaterStub(QObject):
         self.calls = []
         self._state = "idle"
         self._skipped = False
+        self._rolled_back = False
 
     state = Property(str, lambda self: self._state, notify=changed)
     error = Property(str, lambda self: "", notify=changed)
@@ -1366,6 +1367,9 @@ class UpdaterStub(QObject):
         {"title": "Faster dock", "commit": "2222222222", "date": "09.11.2026"},
         {"title": "Fix the clock", "commit": "3333333333", "date": ""}], notify=changed)
     skipped = Property(bool, lambda self: self._skipped, notify=changed)
+    latestSize = Property(str, lambda self: "" if self._state == "idle" else "9.4 MB", notify=changed)
+    canRollback = Property(bool, lambda self: True, notify=changed)
+    rolledBack = Property(bool, lambda self: self._rolled_back, notify=changed)
 
     def _set(self, state):
         self._state = state
@@ -1387,6 +1391,12 @@ class UpdaterStub(QObject):
     def cancel(self):
         self.calls.append(("cancel",))
         self._set("available")
+
+    @Slot()
+    def rollback(self):
+        self.calls.append(("rollback",))
+        self._rolled_back = True
+        self._set("installed")
 
     @Slot()
     def skip(self):

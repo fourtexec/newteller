@@ -42,6 +42,12 @@ class Updater : public QObject {
     Q_PROPERTY(QString latestCommit READ latestCommit NOTIFY changed)
     Q_PROPERTY(QString latestDate READ latestDate NOTIFY changed)
     Q_PROPERTY(QString notes READ notes NOTIFY changed)
+    // The size of the download ("9.4 MB"); empty when the site does not say.
+    Q_PROPERTY(QString latestSize READ latestSize NOTIFY changed)
+    // The build an update replaced is kept and can be installed again.
+    Q_PROPERTY(bool canRollback READ canRollback NOTIFY changed)
+    // "installed" was reached by going back, not by an update.
+    Q_PROPERTY(bool rolledBack READ rolledBack NOTIFY changed)
     Q_PROPERTY(QString lastChecked READ lastChecked NOTIFY changed)
     // What the offered build brings: the commits after the installed one,
     // newest first ({ title, commit, date }).
@@ -68,6 +74,9 @@ public:
     QString latestCommit() const { return m_latestCommit; }
     QString latestDate() const { return formatDate(m_latestDate); }
     QString notes() const { return m_notes; }
+    QString latestSize() const;
+    bool canRollback() const { return m_canRollback; }
+    bool rolledBack() const { return m_rollingBack && m_state == QLatin1String("installed"); }
     QString lastChecked() const { return m_lastChecked; }
     QVariantList changes() const { return m_changes; }
     bool skipped() const;
@@ -83,6 +92,9 @@ public:
     // No more notifications about the offered build (it can still be
     // installed from the settings); the next build is announced again.
     Q_INVOKABLE void skip();
+    // Installs the build the last update replaced (asks for the
+    // administrator password).
+    Q_INVOKABLE void rollback();
 
 signals:
     void changed();
@@ -101,6 +113,8 @@ private:
     void downloadFinished(QNetworkReply *reply);
     void failInstall(const QString &message);
     void runInstaller();
+    bool installerReady();
+    void refreshRollback();
     void installerFinished(int exitCode, QProcess::ExitStatus status);
     void setState(const QString &state, const QString &error = QString());
     void announce();
@@ -125,6 +139,10 @@ private:
     qint64 m_archiveSize = 0;
     double m_progress = 0;
     bool m_cancelled = false;
+    bool m_canRollback = false;
+    bool m_rollingBack = false;
+    // Where a failed installation or rollback returns to.
+    QString m_returnState = QStringLiteral("available");
     QPointer<QNetworkReply> m_download;
     QFile m_file;
     QCryptographicHash m_hash{QCryptographicHash::Sha256};

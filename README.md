@@ -515,8 +515,11 @@ does the check from a terminal).
   `/var/lib/newteller` (the current one and the one before it).
   `sudo newteller-update-install --rollback` installs the earlier build
   again, also from a text console (`Ctrl+Alt+F3`) when the new build does
-  not start; running it twice returns to the newer one. Use **Skip this
-  build** afterwards to stop the reminders about the build you left.
+  not start; running it twice returns to the newer one. The Updates page
+  has the same as **Go back**, which also stops the reminders about the
+  build you leave (from a console, use **Skip this build** afterwards).
+- Before a download the free disk space is checked, and the page shows the
+  size of the build.
 - `NEWTELLER_UPDATE_URL` points the updater at other update data (a mirror,
   or a `file://` URL in tests).
 

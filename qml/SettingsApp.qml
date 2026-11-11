@@ -47,7 +47,8 @@ Window {
         case "available": return qsTr("An update is available")
         case "downloading": return qsTr("Downloading the update: %1%").arg(Math.round(Updater.progress * 100))
         case "installing": return qsTr("Installing the update...")
-        case "installed": return qsTr("The update is installed")
+        case "installed": return Updater.rolledBack ? qsTr("The previous build is installed again")
+                                                    : qsTr("The update is installed")
         }
         return qsTr("Updates have not been checked yet")
     }
@@ -3660,6 +3661,7 @@ Window {
                                 Text {
                                     text: Updater.latestCommit.substring(0, 10)
                                           + (Updater.latestDate.length > 0 ? " · " + Updater.latestDate : "")
+                                          + (Updater.latestSize.length > 0 ? " · " + Updater.latestSize : "")
                                     color: Theme.foreground
                                     font.family: Theme.fontFamily
                                     font.pointSize: Theme.fontSize
@@ -3670,6 +3672,7 @@ Window {
                                 width: parent.width
                                 title: settingsWindow.updateStatus()
                                 subtitle: Updater.error.length > 0 ? Updater.error
+                                          : Updater.rolledBack ? qsTr("Log out and back in to start it.")
                                           : Updater.state === "installed" ? qsTr("Log out and back in to start the new version.")
                                           : Updater.lastChecked.length > 0 ? qsTr("Last checked: %1").arg(Updater.lastChecked)
                                           : ""
@@ -3742,6 +3745,23 @@ Window {
                                     width: parent.width
                                     title: modelData.title
                                     subtitle: modelData.commit + (modelData.date.length > 0 ? " · " + modelData.date : "")
+                                }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: qsTr("Previous build")
+                            visible: Updater.canRollback
+
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Go back to the build before the last update")
+                                subtitle: qsTr("The replaced build is kept on this computer. Going back asks for the administrator password and stops the reminders about the build you leave.")
+                                TaskButton {
+                                    visible: !Updater.busy
+                                    iconName: "rotate-ccw"
+                                    label: qsTr("Go back")
+                                    onClicked: Updater.rollback()
                                 }
                             }
                         }

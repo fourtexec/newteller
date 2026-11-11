@@ -15,6 +15,7 @@
 #include <QNetworkRequest>
 #include <QRegularExpression>
 #include <QStandardPaths>
+#include <QStorageInfo>
 
 #include <unistd.h>
 
@@ -28,6 +29,8 @@ const int kNetworkTimeoutMs = 30000;
 // The format of the update data this build understands ("schema").
 const int kSchema = 1;
 const int kMaxChanges = 15;
+// Where newteller-update-install keeps the build an update replaced.
+const char kPreviousBuild[] = "/var/lib/newteller/previous.zip";
 
 bool isHex(const QString &text, int length)
 {
@@ -70,6 +73,7 @@ Updater::Updater(Settings *settings, NotificationDaemon *notifications, QObject 
     if (!otherUrl.isEmpty())
         m_manifestUrl = QUrl::fromUserInput(otherUrl);
     readBuildInfo();
+    refreshRollback();
 
     m_installer->setProcessChannelMode(QProcess::MergedChannels);
     connect(m_installer, &QProcess::readyRead, this, [this] {
@@ -335,18 +339,67 @@ void Updater::skip()
     emit changed();
 }
 
+QString Updater::latestSize() const
+{
+    return m_archiveSize > 0 ? QLocale().formattedDataSize(m_archiveSize, 1, QLocale::DataSizeSIFormat)
+                             : QString();
+}
+
+void Updater::refreshRollback()
+{
+    QString path = qEnvironmentVariable("NEWTELLER_UPDATE_STORE");
+    path = path.isEmpty() ? QString::fromLatin1(kPreviousBuild) : path + QStringLiteral("/previous.zip");
+    m_canRollback = QFile::exists(path);
+}
+
+// pkexec and the root helper are there; says so when they are not.
+bool Updater::installerReady()
+{
+    if (::geteuid() != 0 && QStandardPaths::findExecutable(QStringLiteral("pkexec")).isEmpty()) {
+        failInstall(tr("pkexec is not installed, so the update cannot ask for the administrator password."));
+        return false;
+    }
+    if (QStandardPaths::findExecutable(QStringLiteral("newteller-update-install")).isEmpty()) {
+        failInstall(tr("newteller-update-install is missing; reinstall NewTeller from a release archive."));
+        return false;
+    }
+    return true;
+}
+
+void Updater::rollback()
+{
+    if (busy() || !m_canRollback)
+        return;
+    // The build that is left behind would be offered again right away;
+    // going back is a decision against it, so its reminders stop.
+    const QString left = m_state == QLatin1String("installed") && !m_rollingBack ? m_latestCommit
+                                                                                : m_installedCommit;
+    m_returnState = m_state;
+    m_rollingBack = true;
+    if (!installerReady()) {
+        m_rollingBack = false;
+        return;
+    }
+    if (m_settings && !left.isEmpty())
+        m_settings->setValue(QStringLiteral("updates.skippedBuild"), left);
+    m_installerOutput.clear();
+    setState(QStringLiteral("installing"));
+    const QString helper = QStandardPaths::findExecutable(QStringLiteral("newteller-update-install"));
+    if (::geteuid() == 0)
+        m_installer->start(helper, {QStringLiteral("--rollback")});
+    else
+        m_installer->start(QStandardPaths::findExecutable(QStringLiteral("pkexec")),
+                           {helper, QStringLiteral("--rollback")});
+}
+
 void Updater::install()
 {
     if (m_state != QLatin1String("available"))
         return;
-    if (::geteuid() != 0 && QStandardPaths::findExecutable(QStringLiteral("pkexec")).isEmpty()) {
-        failInstall(tr("pkexec is not installed, so the update cannot ask for the administrator password."));
+    m_rollingBack = false;
+    m_returnState = QStringLiteral("available");
+    if (!installerReady())
         return;
-    }
-    if (QStandardPaths::findExecutable(QStringLiteral("newteller-update-install")).isEmpty()) {
-        failInstall(tr("newteller-update-install is missing; reinstall NewTeller from a release archive."));
-        return;
-    }
     const QString folder = QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation)
                            + QStringLiteral("/newteller/updates");
     // Old downloads are not kept.
@@ -356,6 +409,12 @@ void Updater::install()
         return;
     }
     m_file.setFileName(folder + QStringLiteral("/newteller-%1.zip").arg(m_latestCommit));
+    // The archive, its copy for the root helper and the unpacked tree.
+    const QStorageInfo disk(folder);
+    if (disk.isValid() && m_archiveSize > 0 && disk.bytesAvailable() < m_archiveSize * 2) {
+        failInstall(tr("There is not enough free disk space to download the update."));
+        return;
+    }
     if (!m_file.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
         failInstall(tr("The folder for the download could not be created."));
         return;
@@ -448,15 +507,21 @@ void Updater::runInstaller()
 
 void Updater::installerFinished(int exitCode, QProcess::ExitStatus status)
 {
-    m_file.remove();
+    if (!m_rollingBack)
+        m_file.remove();
+    refreshRollback();
     if (status == QProcess::NormalExit && exitCode == 0) {
         setState(QStringLiteral("installed"));
-        say(tr("NewTeller was updated"), tr("Log out and back in to start the new version."));
+        if (m_rollingBack)
+            say(tr("The previous build of NewTeller is installed again"),
+                tr("Log out and back in to start it."));
+        else
+            say(tr("NewTeller was updated"), tr("Log out and back in to start the new version."));
         return;
     }
     // pkexec: 126 = the prompt was dismissed, 127 = not authorized.
     if (status == QProcess::NormalExit && (exitCode == 126 || exitCode == 127)) {
-        failInstall(tr("The update was not installed: the administrator password was not given."));
+        failInstall(tr("Nothing was installed: the administrator password was not given."));
         return;
     }
     QString reason;
@@ -469,8 +534,10 @@ void Updater::installerFinished(int exitCode, QProcess::ExitStatus status)
 
 void Updater::failInstall(const QString &message)
 {
-    setState(QStringLiteral("available"), message);
-    say(tr("The NewTeller update failed"), message);
+    const bool goingBack = m_rollingBack;
+    m_rollingBack = false;
+    setState(m_returnState, message);
+    say(goingBack ? tr("Going back to the previous build failed") : tr("The NewTeller update failed"), message);
 }
 
 void Updater::say(const QString &title, const QString &body) const
