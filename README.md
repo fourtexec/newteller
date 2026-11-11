@@ -507,6 +507,12 @@ does the check from a terminal).
 - While a newer build is on offer the panel shows an arrow next to the bell
   (`updates.panelIndicator`); a click opens the Updates page.
 - `newteller --install-update` does the same from a terminal or over ssh.
+- **Going back.** The archive of every installed update is kept in
+  `/var/lib/newteller` (the current one and the one before it).
+  `sudo newteller-update-install --rollback` installs the earlier build
+  again, also from a text console (`Ctrl+Alt+F3`) when the new build does
+  not start; running it twice returns to the newer one. Use **Skip this
+  build** afterwards to stop the reminders about the build you left.
 - `NEWTELLER_UPDATE_URL` points the updater at other update data (a mirror,
   or a `file://` URL in tests).
 

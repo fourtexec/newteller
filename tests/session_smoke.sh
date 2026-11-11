@@ -98,6 +98,7 @@ if [[ $EUID -eq 0 ]] && command -v zip >/dev/null 2>&1; then
     install_update() {
         local status=0
         update_reply=$(PATH="$root/scripts:$PATH" XDG_CACHE_HOME="$runtime/cache" \
+            NEWTELLER_UPDATE_STORE="$runtime/store" \
             NEWTELLER_BUILDINFO="$runtime/update/BUILDINFO" \
             NEWTELLER_UPDATE_URL="file://$runtime/update/update.json" "$shell" --install-update) || status=$?
         if [[ $status -ne $1 || $update_reply != *"$2"* ]]; then
@@ -124,6 +125,13 @@ if [[ $EUID -eq 0 ]] && command -v zip >/dev/null 2>&1; then
     fi
     if compgen -G "$runtime/cache/newteller/updates/*" >/dev/null; then
         echo 'the downloaded archive was left behind' >&2
+        exit 1
+    fi
+    # The installed archive is kept, and with nothing before it there is
+    # nothing to roll back to.
+    if [[ $(cat "$runtime/store/current.sha256") != "$fake_sum" ]] \
+        || NEWTELLER_UPDATE_STORE="$runtime/store" bash "$root/scripts/newteller-update-install" --rollback 2>/dev/null; then
+        echo 'the installed archive was not kept, or a rollback ran without an earlier build' >&2
         exit 1
     fi
     echo 'session smoke: an update is downloaded, verified and installed; a wrong checksum is refused'
