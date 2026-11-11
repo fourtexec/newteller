@@ -1364,8 +1364,10 @@ class UpdaterStub(QObject):
     progress = Property(float, lambda self: 0.4 if self._state == "downloading" else 0.0,
                         notify=progressChanged)
     changes = Property("QVariantList", lambda self: [] if self._state == "idle" else [
-        {"title": "Faster dock", "commit": "2222222222", "date": "09.11.2026"},
-        {"title": "Fix the clock", "commit": "3333333333", "date": ""}], notify=changed)
+        {"title": "Faster dock", "commit": "2222222222", "date": "09.11.2026",
+         "url": "https://github.com/fourtexec/newteller/commit/" + "2" * 40},
+        {"title": "Fix the clock", "commit": "3333333333", "date": "",
+         "url": "https://github.com/fourtexec/newteller/commit/" + "3" * 40}], notify=changed)
     skipped = Property(bool, lambda self: self._skipped, notify=changed)
     latestSize = Property(str, lambda self: "" if self._state == "idle" else "9.4 MB", notify=changed)
     canRollback = Property(bool, lambda self: True, notify=changed)

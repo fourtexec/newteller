@@ -50,7 +50,7 @@ class Updater : public QObject {
     Q_PROPERTY(bool rolledBack READ rolledBack NOTIFY changed)
     Q_PROPERTY(QString lastChecked READ lastChecked NOTIFY changed)
     // What the offered build brings: the commits after the installed one,
-    // newest first ({ title, commit, date }).
+    // newest first ({ title, commit, date, url }).
     Q_PROPERTY(QVariantList changes READ changes NOTIFY changed)
     // The offered build is the one the user chose not to be reminded of.
     Q_PROPERTY(bool skipped READ skipped NOTIFY changed)

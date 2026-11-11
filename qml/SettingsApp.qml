@@ -3760,6 +3760,11 @@ Window {
                                     width: parent.width
                                     title: modelData.title
                                     subtitle: modelData.commit + (modelData.date.length > 0 ? " · " + modelData.date : "")
+                                    TaskButton {
+                                        iconName: "globe"
+                                        tooltipText: qsTr("Read this change on GitHub")
+                                        onClicked: Shell.openUrl(modelData.url)
+                                    }
                                 }
                             }
                         }

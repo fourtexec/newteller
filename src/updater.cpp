@@ -358,6 +358,9 @@ bool Updater::applyUpdateData(const QByteArray &data, QString *problem)
             continue;
         m_changes.append(QVariantMap{{QStringLiteral("title"), title},
                                      {QStringLiteral("commit"), changeCommit.left(10)},
+                                     // Where the change can be read in full.
+                                     {QStringLiteral("url"), QStringLiteral("https://github.com/fourtexec/newteller/commit/")
+                                                                 + changeCommit},
                                      {QStringLiteral("date"), formatDate(changeDate)}});
         if (m_changes.size() >= kMaxChanges)
             break;
