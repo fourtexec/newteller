@@ -95,6 +95,11 @@ Updater::Updater(Settings *settings, NotificationDaemon *notifications, QObject 
     m_autoTimer.setInterval(12 * 60 * 60 * 1000);
     connect(&m_autoTimer, &QTimer::timeout, this, automatic);
     m_autoTimer.start();
+    // Switching the checks on is a request for one.
+    connect(m_settings, &Settings::changed, this, [this, automatic](const QString &key) {
+        if (key == QLatin1String("updates.autoCheck") && m_state == QLatin1String("idle"))
+            automatic();
+    });
 
     if (m_notifications) {
         connect(m_notifications, &NotificationDaemon::ActionInvoked, this,

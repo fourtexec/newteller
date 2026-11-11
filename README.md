@@ -491,7 +491,11 @@ does the check from a terminal).
 - **The update itself** is downloaded from that link (https only), compared
   with the SHA-256 and handed to `pkexec newteller-update-install ARCHIVE SHA256`,
   which checks its own copy again as root and runs the archive's `install.sh`.
-  The new version starts at the next login.
+  The new version starts at the next login. `install.sh` also brings the
+  runtime packages up to what the build needs, exactly as a first
+  installation does (`apt-get install` on Debian and Ubuntu, `dnf install`
+  on Fedora, `pacman -Syu` on Arch, where a partial upgrade is not
+  supported — so an update there upgrades the system's packages too).
 - The installed build is described by `/usr/share/newteller/BUILDINFO`
   (`commit`, `target`, `date`). A newer build is offered when the commit
   differs and the offer is not older than what is installed.
