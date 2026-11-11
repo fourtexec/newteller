@@ -3756,6 +3756,13 @@ Window {
                                 settingKey: "updates.autoCheck"
                                 SettingsSwitch {}
                             }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Show available updates on the panel")
+                                subtitle: qsTr("An arrow next to the bell while a newer build is on offer; a click opens this page.")
+                                settingKey: "updates.panelIndicator"
+                                SettingsSwitch {}
+                            }
                         }
                     }
                 }
@@ -3785,6 +3792,8 @@ Window {
                                 title: qsTr("Version")
                                 Text {
                                     text: "NewTeller " + Shell.version
+                                          + (Updater.installedCommit.length > 0
+                                             ? " · " + Updater.installedCommit.substring(0, 10) : "")
                                     color: Theme.foreground
                                     font.family: Theme.fontFamily
                                     font.pointSize: Theme.fontSize

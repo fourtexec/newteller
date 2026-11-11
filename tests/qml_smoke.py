@@ -2684,6 +2684,22 @@ def main():
                 check(pill is None or not pill.property("visible"),
                       "the recording pill goes away when the recording stops")
 
+        # A newer build on offer puts an arrow on the panel; skipping the
+        # build takes it away again.
+        arrow = panel.findChild(QObject, "updateButton")
+        check(arrow is not None and not arrow.property("visible"),
+              "no update arrow on the panel before a check")
+        updater.check()
+        QTest.qWait(50)
+        check(arrow is not None and arrow.property("visible"),
+              "the panel shows an arrow while an update is on offer")
+        updater.skip()
+        QTest.qWait(50)
+        check(arrow is None or not arrow.property("visible"),
+              "a skipped build takes the arrow away")
+        updater._skipped = False
+        updater.changed.emit()
+
         # Panel shortcuts that never open a card: the middle click mutes, the
         # bell's right click flips do-not-disturb.
         if quicks and centres:

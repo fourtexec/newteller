@@ -504,6 +504,8 @@ does the check from a terminal).
 - **Skip this build** (on the page and in the notification) stops the
   reminders about one build (`updates.skippedBuild`); the next build is
   announced again, and a skipped one can still be installed from the page.
+- While a newer build is on offer the panel shows an arrow next to the bell
+  (`updates.panelIndicator`); a click opens the Updates page.
 - `newteller --install-update` does the same from a terminal or over ssh.
 - `NEWTELLER_UPDATE_URL` points the updater at other update data (a mirror,
   or a `file://` URL in tests).

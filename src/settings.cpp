@@ -255,6 +255,8 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("recorder.audio"), false);
     // Ask fourtexec.site for a newer build now and then (Settings, Updates).
     m_defaults.insert(QStringLiteral("updates.autoCheck"), true);
+    // An arrow on the panel while a newer build is on offer.
+    m_defaults.insert(QStringLiteral("updates.panelIndicator"), true);
     // The build (commit) the user does not want to be reminded of.
     m_defaults.insert(QStringLiteral("updates.skippedBuild"), QString());
     // Power management
