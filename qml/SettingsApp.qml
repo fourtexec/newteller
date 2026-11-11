@@ -3640,6 +3640,16 @@ Window {
 
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("All builds")
+                                subtitle: "https://fourtexec.site/newteller/"
+                                TaskButton {
+                                    iconName: "globe"
+                                    label: qsTr("Open the download page")
+                                    onClicked: Shell.openUrl("https://fourtexec.site/newteller/")
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Installed build")
                                 subtitle: Updater.target
                                 Text {
