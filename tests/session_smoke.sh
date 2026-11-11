@@ -73,6 +73,12 @@ check_update() {
 printf 'commit=%s\ntarget=smoke-x86_64\ndate=1000\n' "$old_build" > "$runtime/update/BUILDINFO"
 write_update_data smoke-x86_64 "$new_build" 2000
 check_update 10 'update: available'
+# --version names the installed build.
+version_reply=$(NEWTELLER_BUILDINFO="$runtime/update/BUILDINFO" "$shell" --version)
+if [[ $version_reply != *"build ${old_build:0:10}, smoke-x86_64"* ]]; then
+    echo "newteller --version does not name the installed build: $version_reply" >&2
+    exit 1
+fi
 write_update_data smoke-x86_64 "$old_build" 1000
 check_update 0 'update: none'
 # The site lagging behind a newer local build is not an update.
