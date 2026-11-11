@@ -102,6 +102,7 @@ test -f "$stage/usr/share/applications/org.newteller.Shell.desktop"
 test -f "$stage/usr/share/wayland-sessions/newteller.desktop"
 test -f "$stage/usr/share/newteller/newteller-autostart.desktop"
 test -f "$stage/usr/share/xdg-desktop-portal/newteller-portals.conf"
+test -f "$stage/usr/share/polkit-1/actions/org.newteller.update.policy"
 archive="$root/dist/$name.zip"
 rm -f -- "$archive"
 (cd "$(dirname "$stage")" && zip -qr "$archive" "$name")

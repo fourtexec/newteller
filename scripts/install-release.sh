@@ -44,6 +44,12 @@ install -m 644 "$root/usr/share/backgrounds/newteller/default.jpg" \
     /usr/share/backgrounds/newteller/default.jpg
 install -m 644 "$root/usr/share/xdg-desktop-portal/newteller-portals.conf" \
     /usr/share/xdg-desktop-portal/newteller-portals.conf
+# Optional in the archive: builds older than the updater do not carry it.
+if [[ -f "$root/usr/share/polkit-1/actions/org.newteller.update.policy" ]]; then
+    install -d /usr/share/polkit-1/actions
+    install -m 644 "$root/usr/share/polkit-1/actions/org.newteller.update.policy" \
+        /usr/share/polkit-1/actions/org.newteller.update.policy
+fi
 cp -a "$root/usr/share/newteller/." /usr/share/newteller/
 install -m 644 "$root/usr/share/applications/org.newteller.Shell.desktop" \
     /usr/share/applications/org.newteller.Shell.desktop

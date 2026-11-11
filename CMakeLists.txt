@@ -234,4 +234,7 @@ install(FILES data/org.newteller.Shell.desktop DESTINATION ${CMAKE_INSTALL_DATAD
 install(FILES data/newteller-session.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/wayland-sessions RENAME newteller.desktop)
 install(FILES data/newteller-autostart.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/newteller)
 install(FILES data/newteller-portals.conf DESTINATION ${CMAKE_INSTALL_DATADIR}/xdg-desktop-portal)
+# The text of the administrator prompt for newteller-update-install. polkit
+# reads actions from /usr/share only, wherever the rest is installed.
+install(FILES data/org.newteller.update.policy DESTINATION ${CMAKE_INSTALL_DATADIR}/polkit-1/actions)
 install(FILES data/wallpapers/default.jpg DESTINATION ${CMAKE_INSTALL_DATADIR}/backgrounds/newteller)
