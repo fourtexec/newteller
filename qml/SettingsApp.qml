@@ -3702,15 +3702,6 @@ Window {
                                         onClicked: Updater.install()
                                     }
                                     TaskButton {
-                                        visible: Updater.state === "available" && !Updater.skipped
-                                                 && Updater.installedCommit.length > 0
-                                                 && Settings.values["updates.autoCheck"] === true
-                                        iconName: "bell-off"
-                                        label: qsTr("Skip this build")
-                                        tooltipText: qsTr("No more reminders about this build; the next one is announced again.")
-                                        onClicked: Updater.skip()
-                                    }
-                                    TaskButton {
                                         visible: Updater.state === "downloading"
                                         iconName: "x"
                                         label: qsTr("Cancel")
@@ -3722,6 +3713,20 @@ Window {
                                         label: qsTr("Log out")
                                         onClicked: Shell.logout()
                                     }
+                                }
+                            }
+                            // Its own row: three buttons side by side do not fit
+                            // a narrow settings window.
+                            SettingsRow {
+                                width: parent.width
+                                visible: Updater.state === "available" && !Updater.skipped
+                                         && Updater.installedCommit.length > 0
+                                title: qsTr("Not this one")
+                                subtitle: qsTr("No more reminders about this build; the next one is announced again.")
+                                TaskButton {
+                                    iconName: "bell-off"
+                                    label: qsTr("Skip this build")
+                                    onClicked: Updater.skip()
                                 }
                             }
                             Item {
