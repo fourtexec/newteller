@@ -226,6 +226,10 @@ class Settings(QObject):
             "notifications.material": "theme",
             "notifications.opacityPercent": 0,
             "notifications.cornerRadius": -1,
+            # Updates: the defaults of src/settings.cpp.
+            "updates.autoCheck": True,
+            "updates.panelIndicator": True,
+            "updates.skippedBuild": "",
         }
 
     @Property("QVariantMap", notify=valuesChanged)
