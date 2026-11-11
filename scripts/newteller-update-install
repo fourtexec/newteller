@@ -52,6 +52,16 @@ if [[ ! -f $archive || -L $archive ]]; then
     exit 1
 fi
 
+# One installation at a time: the settings page and a terminal could both
+# start one, and two installers writing /usr together leave a mix.
+if command -v flock > /dev/null 2>&1; then
+    exec 9> /run/newteller-update.lock
+    if ! flock -n 9; then
+        echo 'Another NewTeller update is being installed right now.' >&2
+        exit 1
+    fi
+fi
+
 work=$(mktemp -d /tmp/newteller-update.XXXXXX)
 trap 'rm -rf -- "$work"' EXIT
 # Copy first, then check the copy: the original lies in the user's cache and
