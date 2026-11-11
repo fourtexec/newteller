@@ -253,6 +253,18 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("hotCorners.bottomRight"), QStringLiteral("none"));
     // Screen recordings (wf-recorder) also record the default microphone.
     m_defaults.insert(QStringLiteral("recorder.audio"), false);
+    // Ask fourtexec.site for a newer build now and then (Settings, Updates).
+    m_defaults.insert(QStringLiteral("updates.autoCheck"), true);
+    // Download a newer build in the background, so that installing it only
+    // takes the administrator password. Off: nothing large is fetched unasked.
+    m_defaults.insert(QStringLiteral("updates.autoDownload"), false);
+    // An arrow on the panel while a newer build is on offer.
+    m_defaults.insert(QStringLiteral("updates.panelIndicator"), true);
+    // The build the last login ran; a different one now means an update
+    // took effect.
+    m_defaults.insert(QStringLiteral("updates.lastRunBuild"), QString());
+    // The build (commit) the user does not want to be reminded of.
+    m_defaults.insert(QStringLiteral("updates.skippedBuild"), QString());
     // Power management
     m_defaults.insert(QStringLiteral("power.sleepAction"), QStringLiteral("suspend"));
     m_defaults.insert(QStringLiteral("power.lockOnSleep"), true);

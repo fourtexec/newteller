@@ -95,6 +95,8 @@ install_debian() {
         libxkbcommon0 libseat1 libinput10 libdrm2 libgbm1 libegl1 libgles2
         libcairo2 libpangocairo-1.0-0
         grim
+        # The updater unpacks release archives and checks TLS certificates.
+        unzip ca-certificates
         # The administrator prompt (polkit agent) is linked into the shell.
         libpolkit-agent-1-0
     )
@@ -152,7 +154,7 @@ install_arch() {
     pacman -Syu --noconfirm --needed \
         qt6-base qt6-declarative qt6-svg qt6-wayland qt6-imageformats layer-shell-qt \
         "$wlroots" xorg-xwayland dbus glib2 libxkbcommon seatd libinput libdrm mesa \
-        cairo pango grim polkit
+        cairo pango grim polkit unzip
 
     local optional=(
         gtklock swaylock swayidle wlsunset
@@ -191,7 +193,7 @@ install_fedora() {
         qt6-qtbase qt6-qtbase-gui qt6-qtdeclarative qt6-qtsvg qt6-qtwayland \
         qt6-qtimageformats layer-shell-qt \
         "$wlroots" xorg-x11-server-Xwayland dbus-daemon glib2 libxkbcommon libseat \
-        libinput libdrm mesa-libgbm mesa-libEGL mesa-libGLES cairo pango grim polkit polkit-libs
+        libinput libdrm mesa-libgbm mesa-libEGL mesa-libGLES cairo pango grim polkit polkit-libs unzip
 
     local optional=(
         gtklock swaylock swayidle wlsunset

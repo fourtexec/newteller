@@ -226,6 +226,11 @@ class Settings(QObject):
             "notifications.material": "theme",
             "notifications.opacityPercent": 0,
             "notifications.cornerRadius": -1,
+            # Updates: the defaults of src/settings.cpp.
+            "updates.autoCheck": True,
+            "updates.autoDownload": False,
+            "updates.panelIndicator": True,
+            "updates.skippedBuild": "",
         }
 
     @Property("QVariantMap", notify=valuesChanged)
@@ -1327,6 +1332,82 @@ class RecorderStub(QObject):
             self.start(False, "")
 
 
+class UpdaterStub(QObject):
+    """Stand-in for the Updater context property (src/updater.h)."""
+
+    changed = Signal()
+    progressChanged = Signal()
+    checked = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self.calls = []
+        self._state = "idle"
+        self._skipped = False
+        self._rolled_back = False
+
+    state = Property(str, lambda self: self._state, notify=changed)
+    error = Property(str, lambda self: "", notify=changed)
+    busy = Property(bool, lambda self: self._state in ("checking", "downloading", "installing"),
+                    notify=changed)
+    source = Property(str, lambda self: "fourtexec.site", constant=True)
+    installedCommit = Property(str, lambda self: "1" * 40, constant=True)
+    installedDate = Property(str, lambda self: "01.10.2026", constant=True)
+    target = Property(str, lambda self: "debian13-x86_64", constant=True)
+    latestCommit = Property(str, lambda self: "" if self._state == "idle" else "2" * 40,
+                            notify=changed)
+    latestDate = Property(str, lambda self: "" if self._state == "idle" else "09.11.2026",
+                          notify=changed)
+    notes = Property(str, lambda self: "" if self._state == "idle" else "A newer build",
+                     notify=changed)
+    lastChecked = Property(str, lambda self: "" if self._state == "idle" else "10.11.2026 07:00",
+                           notify=changed)
+    progress = Property(float, lambda self: 0.4 if self._state == "downloading" else 0.0,
+                        notify=progressChanged)
+    changes = Property("QVariantList", lambda self: [] if self._state == "idle" else [
+        {"title": "Faster dock", "commit": "2222222222", "date": "09.11.2026",
+         "url": "https://github.com/fourtexec/newteller/commit/" + "2" * 40},
+        {"title": "Fix the clock", "commit": "3333333333", "date": "",
+         "url": "https://github.com/fourtexec/newteller/commit/" + "3" * 40}], notify=changed)
+    skipped = Property(bool, lambda self: self._skipped, notify=changed)
+    latestSize = Property(str, lambda self: "" if self._state == "idle" else "9.4 MB", notify=changed)
+    canRollback = Property(bool, lambda self: True, notify=changed)
+    rolledBack = Property(bool, lambda self: self._rolled_back, notify=changed)
+
+    def _set(self, state):
+        self._state = state
+        self.changed.emit()
+        self.progressChanged.emit()
+
+    @Slot()
+    def check(self):
+        self.calls.append(("check",))
+        self._set("available")
+        self.checked.emit()
+
+    @Slot()
+    def install(self):
+        self.calls.append(("install",))
+        self._set("downloading")
+
+    @Slot()
+    def cancel(self):
+        self.calls.append(("cancel",))
+        self._set("available")
+
+    @Slot()
+    def rollback(self):
+        self.calls.append(("rollback",))
+        self._rolled_back = True
+        self._set("installed")
+
+    @Slot()
+    def skip(self):
+        self.calls.append(("skip",))
+        self._skipped = True
+        self.changed.emit()
+
+
 class Quick(QObject):
     """Stand-in for the QuickSettings context property (src/quicksettings.h)."""
 
@@ -1485,6 +1566,7 @@ def main():
     tray, quick, session = Tray(), Quick(), Session()
     clipboard = ClipboardStub()
     recorder = RecorderStub()
+    updater = UpdaterStub()
     audio = AudioStub()
     bluetooth = BluetoothStub()
     polkit = PolkitStub()
@@ -1494,7 +1576,7 @@ def main():
                       ("Notifications", notifications), ("FilePortal", file_portal),
                       ("Tray", tray), ("Quick", quick), ("Session", session),
                       ("Clipboard", clipboard), ("Bluetooth", bluetooth), ("Polkit", polkit),
-                      ("Recorder", recorder), ("Audio", audio)):
+                      ("Recorder", recorder), ("Audio", audio), ("Updater", updater)):
         engine.rootContext().setContextProperty(name, obj)
 
     failures = []
@@ -2618,6 +2700,28 @@ def main():
                 check(("stop",) in recorder.calls, "Super+Alt+R stops the recording")
                 check(pill is None or not pill.property("visible"),
                       "the recording pill goes away when the recording stops")
+
+        # A newer build on offer puts an arrow on the panel; skipping the
+        # build takes it away again.
+        arrow = panel.findChild(QObject, "updateButton")
+        check(arrow is not None and not arrow.property("visible"),
+              "no update arrow on the panel before a check")
+        updater.check()
+        QTest.qWait(50)
+        check(arrow is not None and arrow.property("visible"),
+              "the panel shows an arrow while an update is on offer")
+        updater.skip()
+        QTest.qWait(50)
+        check(arrow is None or not arrow.property("visible"),
+              "a skipped build takes the arrow away")
+        updater._skipped = False
+        updater._set("ready")
+        QTest.qWait(50)
+        check(arrow is not None and arrow.property("visible"),
+              "a build downloaded in the background keeps the arrow")
+        updater._set("available")
+        updater._skipped = False
+        updater.changed.emit()
 
         # Panel shortcuts that never open a card: the middle click mutes, the
         # bell's right click flips do-not-disturb.

@@ -1167,6 +1167,56 @@ Window {
         }
     }
 
+    // --- updates: an arrow when a newer build is on offer -------------------
+    component UpdateButton: Rectangle {
+        id: updateButton
+        objectName: "updateButton"
+        // A finished update waits for the next login; that is worth a mark too.
+        readonly property bool done: Updater.state === "installed"
+
+        Layout.alignment: Qt.AlignVCenter | Qt.AlignHCenter
+        visible: Settings.values["updates.panelIndicator"] === true
+                 && (done || ((Updater.state === "available" || Updater.state === "ready") && !Updater.skipped
+                              && Updater.installedCommit.length > 0))
+        width: 34
+        height: Math.min(panel.barThickness - 10, 34)
+        radius: Theme.radius
+        color: updateHover.hovered
+               ? Qt.rgba(panel.panelTextColor.r, panel.panelTextColor.g, panel.panelTextColor.b, 0.08)
+               : "transparent"
+
+        HoverHandler {
+            id: updateHover
+            onHoveredChanged: {
+                if (hovered)
+                    panel.showToolTip(updateButton, updateButton.done
+                                      ? qsTr("NewTeller was updated: log out to start the new version")
+                                      : Updater.state === "ready"
+                                        ? qsTr("A NewTeller update is downloaded and ready to install")
+                                        : qsTr("A NewTeller update is available"));
+                else
+                    panel.hideToolTip();
+            }
+        }
+        MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                panel.hideToolTip();
+                Shell.openSettingsPage("updates");
+            }
+        }
+        Image {
+            anchors.centerIn: parent
+            width: 18
+            height: 18
+            sourceSize.width: 36
+            sourceSize.height: 36
+            fillMode: Image.PreserveAspectFit
+            source: Shell.tintedIcon(updateButton.done ? "check" : "download", Theme.accent)
+        }
+    }
+
     component BellButton: Rectangle {
         id: bellButton
         objectName: "bellButton"
@@ -1542,6 +1592,7 @@ Window {
 
                     TrayBox {}
                     RecordingButton {}
+                    UpdateButton {}
                     LayoutButton {
                         visible: panel.showKeyboardLayout
                     }
@@ -1609,6 +1660,7 @@ Window {
 
                     TrayBox {}
                     RecordingButton {}
+                    UpdateButton {}
                     LayoutButton {
                         visible: panel.showKeyboardLayout
                     }
