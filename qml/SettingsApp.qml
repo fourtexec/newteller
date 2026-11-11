@@ -39,12 +39,16 @@ Window {
     ]
     property string currentPage: "appearance"
 
+    // A newer build is on offer, downloaded already or not.
+    readonly property bool updateOffered: Updater.state === "available" || Updater.state === "ready"
+
     // The one-line state of the updater (Updates page).
     function updateStatus() {
         switch (Updater.state) {
         case "checking": return qsTr("Checking for updates...")
         case "current": return qsTr("NewTeller is up to date")
         case "available": return qsTr("An update is available")
+        case "ready": return qsTr("An update is downloaded and ready to install")
         case "downloading": return qsTr("Downloading the update: %1%").arg(Math.round(Updater.progress * 100))
         case "installing": return qsTr("Installing the update...")
         case "installed": return Updater.rolledBack ? qsTr("The previous build is installed again")
@@ -3696,9 +3700,10 @@ Window {
                                         onClicked: Updater.check()
                                     }
                                     TaskButton {
-                                        visible: Updater.state === "available"
+                                        visible: settingsWindow.updateOffered
                                         iconName: "download"
-                                        label: qsTr("Download and install")
+                                        label: Updater.state === "ready" ? qsTr("Install")
+                                                                         : qsTr("Download and install")
                                         onClicked: Updater.install()
                                     }
                                     TaskButton {
@@ -3719,7 +3724,7 @@ Window {
                             // a narrow settings window.
                             SettingsRow {
                                 width: parent.width
-                                visible: Updater.state === "available" && !Updater.skipped
+                                visible: settingsWindow.updateOffered && !Updater.skipped
                                          && Updater.installedCommit.length > 0
                                 title: qsTr("Not this one")
                                 subtitle: qsTr("No more reminders about this build; the next one is announced again.")
@@ -3750,7 +3755,7 @@ Window {
 
                         SettingsSection {
                             title: qsTr("What is new")
-                            visible: Updater.state === "available" && Updater.changes.length > 0
+                            visible: settingsWindow.updateOffered && Updater.changes.length > 0
 
                             Repeater {
                                 model: Updater.changes
@@ -3794,6 +3799,13 @@ Window {
                                 title: qsTr("Check for updates automatically")
                                 subtitle: qsTr("Shortly after login and twice a day; a notification offers the new build. Nothing is installed without you.")
                                 settingKey: "updates.autoCheck"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Download updates in the background")
+                                subtitle: qsTr("A newer build is fetched and verified as soon as it is found; installing it then only asks for the administrator password.")
+                                settingKey: "updates.autoDownload"
                                 SettingsSwitch {}
                             }
                             SettingsRow {

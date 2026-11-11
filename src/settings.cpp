@@ -255,6 +255,9 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("recorder.audio"), false);
     // Ask fourtexec.site for a newer build now and then (Settings, Updates).
     m_defaults.insert(QStringLiteral("updates.autoCheck"), true);
+    // Download a newer build in the background, so that installing it only
+    // takes the administrator password. Off: nothing large is fetched unasked.
+    m_defaults.insert(QStringLiteral("updates.autoDownload"), false);
     // An arrow on the panel while a newer build is on offer.
     m_defaults.insert(QStringLiteral("updates.panelIndicator"), true);
     // The build the last login ran; a different one now means an update

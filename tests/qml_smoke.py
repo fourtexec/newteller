@@ -228,6 +228,7 @@ class Settings(QObject):
             "notifications.cornerRadius": -1,
             # Updates: the defaults of src/settings.cpp.
             "updates.autoCheck": True,
+            "updates.autoDownload": False,
             "updates.panelIndicator": True,
             "updates.skippedBuild": "",
         }
@@ -2713,6 +2714,12 @@ def main():
         QTest.qWait(50)
         check(arrow is None or not arrow.property("visible"),
               "a skipped build takes the arrow away")
+        updater._skipped = False
+        updater._set("ready")
+        QTest.qWait(50)
+        check(arrow is not None and arrow.property("visible"),
+              "a build downloaded in the background keeps the arrow")
+        updater._set("available")
         updater._skipped = False
         updater.changed.emit()
 

@@ -1176,7 +1176,7 @@ Window {
 
         Layout.alignment: Qt.AlignVCenter | Qt.AlignHCenter
         visible: Settings.values["updates.panelIndicator"] === true
-                 && (done || (Updater.state === "available" && !Updater.skipped
+                 && (done || ((Updater.state === "available" || Updater.state === "ready") && !Updater.skipped
                               && Updater.installedCommit.length > 0))
         width: 34
         height: Math.min(panel.barThickness - 10, 34)
@@ -1191,7 +1191,9 @@ Window {
                 if (hovered)
                     panel.showToolTip(updateButton, updateButton.done
                                       ? qsTr("NewTeller was updated: log out to start the new version")
-                                      : qsTr("A NewTeller update is available"));
+                                      : Updater.state === "ready"
+                                        ? qsTr("A NewTeller update is downloaded and ready to install")
+                                        : qsTr("A NewTeller update is available"));
                 else
                     panel.hideToolTip();
             }

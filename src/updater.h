@@ -26,7 +26,8 @@ class Settings;
 // the archive's own install.sh.
 class Updater : public QObject {
     Q_OBJECT
-    // idle, checking, current, available, downloading, installing, installed
+    // idle, checking, current, available, downloading, ready (downloaded in
+    // the background, waiting for the user), installing, installed
     Q_PROPERTY(QString state READ state NOTIFY changed)
     // Why the last check or installation failed; empty when it did not.
     Q_PROPERTY(QString error READ error NOTIFY changed)
@@ -130,6 +131,7 @@ private:
     void saveDownloaded(QNetworkReply *reply);
     void downloadFinished(QNetworkReply *reply);
     void failInstall(const QString &message);
+    void download(bool background);
     void runInstaller();
     bool installerReady();
     void refreshRollback();
@@ -159,6 +161,10 @@ private:
     bool m_cancelled = false;
     int m_retriesLeft = 3;
     bool m_canRollback = false;
+    // The running download was started by an automatic check.
+    bool m_background = false;
+    // The build whose verified archive is waiting in the cache.
+    QString m_readyCommit;
     bool m_rollingBack = false;
     // Where a failed installation or rollback returns to.
     QString m_returnState = QStringLiteral("available");

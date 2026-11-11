@@ -254,8 +254,9 @@ void Updater::startCheck(bool automatic)
 void Updater::failCheck(const QString &message)
 {
     // What an earlier check found stays on offer.
-    setState(m_archiveUrl.isValid() && m_latestCommit != m_installedCommit
-                 ? QStringLiteral("available") : QStringLiteral("idle"),
+    const bool offered = m_archiveUrl.isValid() && m_latestCommit != m_installedCommit;
+    setState(offered && m_readyCommit == m_latestCommit ? QStringLiteral("ready")
+                 : offered ? QStringLiteral("available") : QStringLiteral("idle"),
              message);
     emit checked();
 }
@@ -286,7 +287,11 @@ void Updater::manifestReceived(QNetworkReply *reply, bool automatic)
     emit checked();
     // A build from source has no commit to compare with: the offer is shown
     // in the settings, but nobody is nagged about it.
-    if (m_state == QLatin1String("available") && automatic && !m_installedCommit.isEmpty())
+    if (m_state != QLatin1String("available") || !automatic || m_installedCommit.isEmpty())
+        return;
+    if (!skipped() && m_settings->value(QStringLiteral("updates.autoDownload"), false).toBool())
+        download(true);
+    else
         announce();
 }
 
@@ -365,7 +370,10 @@ bool Updater::applyUpdateData(const QByteArray &data, QString *problem)
         if (m_changes.size() >= kMaxChanges)
             break;
     }
-    setState(available ? QStringLiteral("available") : QStringLiteral("current"));
+    // A build that was downloaded in the background stays ready across checks.
+    const bool ready = available && m_readyCommit == commit && QFile::exists(m_file.fileName());
+    setState(ready ? QStringLiteral("ready")
+                   : available ? QStringLiteral("available") : QStringLiteral("current"));
     return true;
 }
 
@@ -424,7 +432,10 @@ void Updater::announce()
                              ? tr("Build %1 can be installed from Settings, Updates.").arg(m_latestCommit.left(10))
                              : m_notes;
     m_announcement = m_notifications->sendWithActions(
-        QStringLiteral("NewTeller"), tr("A NewTeller update is available"), body,
+        QStringLiteral("NewTeller"),
+        m_state == QLatin1String("ready") ? tr("A NewTeller update is downloaded and ready to install")
+                                          : tr("A NewTeller update is available"),
+        body,
         QStringLiteral("download"),
         {QStringLiteral("install"), tr("Install"), QStringLiteral("skip"), tr("Skip this build")}, false);
 }
@@ -498,9 +509,32 @@ void Updater::rollback()
 
 void Updater::install()
 {
+    if (m_state == QLatin1String("ready")) {
+        // Downloaded and verified in the background already.
+        m_rollingBack = false;
+        m_background = false;
+        m_returnState = QStringLiteral("available");
+        if (!installerReady())
+            return;
+        if (m_readyCommit == m_latestCommit && QFile::exists(m_file.fileName())) {
+            runInstaller();
+            return;
+        }
+        // The download is gone (the cache was cleaned): fetch it again.
+        m_state = QStringLiteral("available");
+    }
     if (m_state != QLatin1String("available"))
         return;
+    download(false);
+}
+
+// Fetches the offered archive and checks it; `background` stops there and
+// offers the installation, otherwise the installer follows at once.
+void Updater::download(bool background)
+{
     m_rollingBack = false;
+    m_background = background;
+    m_readyCommit.clear();
     m_returnState = QStringLiteral("available");
     if (!installerReady())
         return;
@@ -575,6 +609,7 @@ void Updater::downloadFinished(QNetworkReply *reply)
     m_file.close();
     if (m_cancelled) {
         m_file.remove();
+        m_background = false;
         setState(QStringLiteral("available"));
         return;
     }
@@ -589,7 +624,14 @@ void Updater::downloadFinished(QNetworkReply *reply)
         failInstall(tr("The downloaded file does not match its checksum and was deleted."));
         return;
     }
-    runInstaller();
+    if (!m_background) {
+        runInstaller();
+        return;
+    }
+    m_background = false;
+    m_readyCommit = m_latestCommit;
+    setState(QStringLiteral("ready"));
+    announce();
 }
 
 void Updater::runInstaller()
@@ -639,8 +681,16 @@ void Updater::installerFinished(int exitCode, QProcess::ExitStatus status)
 void Updater::failInstall(const QString &message)
 {
     const bool goingBack = m_rollingBack;
+    const bool quiet = m_background;
     m_rollingBack = false;
+    m_background = false;
     setState(m_returnState, message);
+    // Nobody asked for a background download: its failure is on the
+    // settings page, and the update is still announced as available.
+    if (quiet) {
+        announce();
+        return;
+    }
     say(goingBack ? tr("Going back to the previous build failed") : tr("The NewTeller update failed"), message);
 }
 

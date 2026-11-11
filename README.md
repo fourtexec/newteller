@@ -502,6 +502,10 @@ does the check from a terminal).
 - `updates.autoCheck` (default `true`): a check two minutes after login and
   every twelve hours, with a notification that has an **Install** button.
   Nothing is ever installed without the administrator password.
+- `updates.autoDownload` (default `false`): a newer build found by an
+  automatic check is downloaded and verified in the background; the
+  notification and the page then offer **Install**, which only asks for
+  the password.
 - **What is new**: the update data also lists the project's newest commits
   (`"changes": [{ "commit", "date", "title" }]`); the page shows the ones
   between the installed build and the offered one.
