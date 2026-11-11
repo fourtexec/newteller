@@ -518,6 +518,9 @@ does the check from a terminal).
   not start; running it twice returns to the newer one. The Updates page
   has the same as **Go back**, which also stops the reminders about the
   build you leave (from a console, use **Skip this build** afterwards).
+- The administrator prompt names its purpose (the polkit action
+  `org.newteller.update.install`, English and Russian), and every entry of
+  **What is new** links to its commit.
 - Before a download the free disk space is checked, and the page shows the
   size of the build.
 - The answer of the last check is kept in `~/.cache/newteller/update.json`:
