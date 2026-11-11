@@ -3839,7 +3839,7 @@ Window {
                                 width: parent.width
                                 title: qsTr("Computer")
                                 Text {
-                                    text: Shell.hostname + " · " + Shell.distro + " · kernel " + Shell.kernelVersion
+                                    text: qsTr("%1 · %2 · kernel %3").arg(Shell.hostname).arg(Shell.distro).arg(Shell.kernelVersion)
                                     color: Theme.foreground
                                     font.family: Theme.fontFamily
                                     font.pointSize: Theme.fontSize
@@ -3863,7 +3863,7 @@ Window {
                                 Text {
                                     text: Windows.backend === "x11" ? "EWMH (X11)"
                                           : Windows.backend === "wayland" ? "wlr-foreign-toplevel (Wayland)"
-                                          : "unavailable — the dock uses the process list"
+                                          : qsTr("unavailable — the dock uses the process list")
                                     color: Theme.foreground
                                     font.family: Theme.fontFamily
                                     font.pointSize: Theme.fontSize
@@ -3874,7 +3874,7 @@ Window {
                                 width: parent.width
                                 title: qsTr("Applications")
                                 Text {
-                                    text: Apps.count + " in the catalogue"
+                                    text: qsTr("%1 in the catalogue").arg(Apps.count)
                                     color: Theme.foreground
                                     font.family: Theme.fontFamily
                                     font.pointSize: Theme.fontSize
@@ -3885,7 +3885,7 @@ Window {
                                 width: parent.width
                                 title: qsTr("Memory and uptime")
                                 Text {
-                                    text: System.memoryText + " · up " + System.uptimeText
+                                    text: qsTr("%1 · up %2").arg(System.memoryText).arg(System.uptimeText)
                                     color: Theme.foreground
                                     font.family: Theme.fontFamily
                                     font.pointSize: Theme.fontSize
