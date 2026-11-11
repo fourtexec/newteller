@@ -382,6 +382,8 @@ int main(int argc, char *argv[])
         std::printf("%s", qUtf8Printable(printJson(out)));
         return 0;
     }
+    // Not in the read-only modes above: this writes to the settings.
+    updater.greetNewBuild();
 
     // import NewTeller 1.0 -> ShellWindow.role (X11 window types and struts).
     qmlRegisterUncreatableType<ShellWindow>("NewTeller", 1, 0, "ShellWindow",

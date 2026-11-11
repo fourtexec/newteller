@@ -142,6 +142,23 @@ Updater::~Updater()
         delete m_installer;
 }
 
+void Updater::greetNewBuild()
+{
+    if (!m_settings || m_installedCommit.isEmpty())
+        return;
+    const QString last = m_settings->value(QStringLiteral("updates.lastRunBuild")).toString();
+    if (last == m_installedCommit)
+        return;
+    m_settings->setValue(QStringLiteral("updates.lastRunBuild"), m_installedCommit);
+    // The first login with a build is not an update.
+    if (last.isEmpty())
+        return;
+    // After the panel and the notification popups are on screen.
+    QTimer::singleShot(6000, this, [this] {
+        say(tr("NewTeller was updated"), tr("Build %1 is running now.").arg(m_installedCommit.left(10)));
+    });
+}
+
 bool Updater::busy() const
 {
     return m_state == QLatin1String("checking") || m_state == QLatin1String("downloading")

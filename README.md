@@ -524,7 +524,9 @@ does the check from a terminal).
   a waiting update is known right after login, and the site is not asked
   again within six hours. An automatic check that finds no network tries
   again after a quarter of an hour, three times.
-- `newteller --version` and `--diagnostics` name the installed build.
+- `newteller --version`, `--diagnostics` and `newteller-ctl doctor` name the
+  installed build, and the first login after an update says which build is
+  running now.
 - `NEWTELLER_UPDATE_URL` points the updater at other update data (a mirror,
   or a `file://` URL in tests).
 

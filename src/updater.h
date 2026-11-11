@@ -91,6 +91,10 @@ public:
     bool skipped() const;
     double progress() const { return m_progress; }
 
+    // Called once the session is up: says so when this login runs another
+    // build than the last one did (an update took effect).
+    void greetNewBuild();
+
     // Asks the site for the update data.
     Q_INVOKABLE void check();
     // Downloads the offered build and installs it (asks for the

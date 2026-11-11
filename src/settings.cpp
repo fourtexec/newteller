@@ -257,6 +257,9 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("updates.autoCheck"), true);
     // An arrow on the panel while a newer build is on offer.
     m_defaults.insert(QStringLiteral("updates.panelIndicator"), true);
+    // The build the last login ran; a different one now means an update
+    // took effect.
+    m_defaults.insert(QStringLiteral("updates.lastRunBuild"), QString());
     // The build (commit) the user does not want to be reminded of.
     m_defaults.insert(QStringLiteral("updates.skippedBuild"), QString());
     // Power management
