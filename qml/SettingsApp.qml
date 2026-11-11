@@ -3689,6 +3689,15 @@ Window {
                                         onClicked: Updater.install()
                                     }
                                     TaskButton {
+                                        visible: Updater.state === "available" && !Updater.skipped
+                                                 && Updater.installedCommit.length > 0
+                                                 && Settings.values["updates.autoCheck"] === true
+                                        iconName: "bell-off"
+                                        label: qsTr("Skip this build")
+                                        tooltipText: qsTr("No more reminders about this build; the next one is announced again.")
+                                        onClicked: Updater.skip()
+                                    }
+                                    TaskButton {
                                         visible: Updater.state === "downloading"
                                         iconName: "x"
                                         label: qsTr("Cancel")
@@ -3717,6 +3726,22 @@ Window {
                                     height: parent.height
                                     radius: 3
                                     color: Theme.accent
+                                }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: qsTr("What is new")
+                            visible: Updater.state === "available" && Updater.changes.length > 0
+
+                            Repeater {
+                                model: Updater.changes
+
+                                delegate: SettingsRow {
+                                    required property var modelData
+                                    width: parent.width
+                                    title: modelData.title
+                                    subtitle: modelData.commit + (modelData.date.length > 0 ? " · " + modelData.date : "")
                                 }
                             }
                         }

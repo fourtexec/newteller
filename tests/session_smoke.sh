@@ -84,6 +84,53 @@ write_update_data smoke-x86_64 not-a-commit 2000
 check_update 1 'error:'
 echo 'session smoke: the updater reads update data and compares builds'
 
+# The whole way of an update: the data names a link, the archive behind the
+# link is downloaded, checked against its SHA-256 and handed to
+# newteller-update-install, which runs the archive's install.sh. The archive
+# here is a stand-in whose installer only leaves a mark. Root only (CI): a
+# user would be asked for the administrator password.
+if [[ $EUID -eq 0 ]] && command -v zip >/dev/null 2>&1; then
+    fake="$runtime/update/newteller-commit-$new_build-smoke-x86_64"
+    mkdir -p "$fake"
+    printf '#!/bin/bash\necho installed > "%s/update/installed-mark"\n' "$runtime" > "$fake/install.sh"
+    (cd "$runtime/update" && zip -qr fake.zip "$(basename "$fake")")
+    fake_sum=$(sha256sum "$runtime/update/fake.zip" | cut -d' ' -f1)
+    install_update() {
+        local status=0
+        update_reply=$(PATH="$root/scripts:$PATH" XDG_CACHE_HOME="$runtime/cache" \
+            NEWTELLER_BUILDINFO="$runtime/update/BUILDINFO" \
+            NEWTELLER_UPDATE_URL="file://$runtime/update/update.json" "$shell" --install-update) || status=$?
+        if [[ $status -ne $1 || $update_reply != *"$2"* ]]; then
+            echo "newteller --install-update: expected exit $1 and '$2', got exit $status: $update_reply" >&2
+            exit 1
+        fi
+    }
+    write_fake_update() {
+        printf '{"schema":1,"targets":{"smoke-x86_64":{"commit":"%s","date":2000,"url":"file://%s/update/fake.zip","sha256":"%s"}},"changes":[{"commit":"%s","date":2000,"title":"A smoke test change"},{"commit":"%s","date":1000,"title":"Already installed"}]}\n' \
+            "$new_build" "$runtime" "$1" "$new_build" "$old_build" > "$runtime/update/update.json"
+    }
+    # A wrong checksum: nothing may run.
+    write_fake_update "$(printf 'b%.0s' {1..64})"
+    install_update 1 'error:'
+    if [[ -e "$runtime/update/installed-mark" ]]; then
+        echo 'an archive with a wrong checksum was installed' >&2
+        exit 1
+    fi
+    write_fake_update "$fake_sum"
+    install_update 0 'A smoke test change'
+    if [[ $update_reply == *'Already installed'* || ! -s "$runtime/update/installed-mark" ]]; then
+        echo "the update was not installed, or lists changes it does not bring: $update_reply" >&2
+        exit 1
+    fi
+    if compgen -G "$runtime/cache/newteller/updates/*" >/dev/null; then
+        echo 'the downloaded archive was left behind' >&2
+        exit 1
+    fi
+    echo 'session smoke: an update is downloaded, verified and installed; a wrong checksum is refused'
+else
+    echo 'session smoke: not root or no zip, skipping the update installation check' >&2
+fi
+
 socket=newteller-smoke
 log="$runtime/compositor.log"
 before="$runtime/before.png"

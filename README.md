@@ -498,6 +498,13 @@ does the check from a terminal).
 - `updates.autoCheck` (default `true`): a check two minutes after login and
   every twelve hours, with a notification that has an **Install** button.
   Nothing is ever installed without the administrator password.
+- **What is new**: the update data also lists the project's newest commits
+  (`"changes": [{ "commit", "date", "title" }]`); the page shows the ones
+  between the installed build and the offered one.
+- **Skip this build** (on the page and in the notification) stops the
+  reminders about one build (`updates.skippedBuild`); the next build is
+  announced again, and a skipped one can still be installed from the page.
+- `newteller --install-update` does the same from a terminal or over ssh.
 - `NEWTELLER_UPDATE_URL` points the updater at other update data (a mirror,
   or a `file://` URL in tests).
 
@@ -791,7 +798,9 @@ Groups: `paths`, `schema`, `list`, `get`, `set`, `unset`, `validate`, `init`,
 `--help`, `--version`, `--print-config`, `--diagnostics`, `--theme <name>`,
 `--settings` (opens the built-in settings window on startup),
 `--check-update` (asks fourtexec.site for a newer build and exits: 0 = up to
-date, 10 = an update is available, 1 = the check failed) and `--reset`.
+date, 10 = an update is available, 1 = the check failed), `--install-update`
+(downloads and installs the newer build from a terminal; asks for the
+administrator password, or run it with `sudo`) and `--reset`.
 
 ## Themes
 

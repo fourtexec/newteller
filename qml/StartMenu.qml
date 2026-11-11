@@ -40,6 +40,8 @@ DropdownWindow {
           keywords: "display screen monitor resolution refresh scale rotation night light " + qsTr("display screen monitor resolution refresh scale rotation night light") },
         { page: "power", title: qsTr("Power & lock"),
           keywords: "power battery sleep suspend lock idle screen off saver " + qsTr("power battery sleep suspend lock idle screen off saver") },
+        { page: "updates", title: qsTr("Updates"),
+          keywords: "update updates upgrade new version build download " + qsTr("update updates upgrade new version build download") },
         { page: "about", title: qsTr("About"),
           keywords: "about version system information diagnostics " + qsTr("about version system information diagnostics") }
     ]

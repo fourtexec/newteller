@@ -10,6 +10,7 @@
 #include <QString>
 #include <QTimer>
 #include <QUrl>
+#include <QVariantList>
 
 class NotificationDaemon;
 class Settings;
@@ -42,6 +43,11 @@ class Updater : public QObject {
     Q_PROPERTY(QString latestDate READ latestDate NOTIFY changed)
     Q_PROPERTY(QString notes READ notes NOTIFY changed)
     Q_PROPERTY(QString lastChecked READ lastChecked NOTIFY changed)
+    // What the offered build brings: the commits after the installed one,
+    // newest first ({ title, commit, date }).
+    Q_PROPERTY(QVariantList changes READ changes NOTIFY changed)
+    // The offered build is the one the user chose not to be reminded of.
+    Q_PROPERTY(bool skipped READ skipped NOTIFY changed)
     // 0..1 while downloading.
     Q_PROPERTY(double progress READ progress NOTIFY progressChanged)
 
@@ -63,6 +69,8 @@ public:
     QString latestDate() const { return formatDate(m_latestDate); }
     QString notes() const { return m_notes; }
     QString lastChecked() const { return m_lastChecked; }
+    QVariantList changes() const { return m_changes; }
+    bool skipped() const;
     double progress() const { return m_progress; }
 
     // Asks the site for the update data.
@@ -72,6 +80,9 @@ public:
     Q_INVOKABLE void install();
     // Stops a download.
     Q_INVOKABLE void cancel();
+    // No more notifications about the offered build (it can still be
+    // installed from the settings); the next build is announced again.
+    Q_INVOKABLE void skip();
 
 signals:
     void changed();
@@ -86,6 +97,7 @@ private:
     void startCheck(bool automatic);
     void manifestReceived(QNetworkReply *reply, bool automatic);
     void failCheck(const QString &message);
+    void saveDownloaded(QNetworkReply *reply);
     void downloadFinished(QNetworkReply *reply);
     void failInstall(const QString &message);
     void runInstaller();
@@ -107,6 +119,7 @@ private:
     qint64 m_latestDate = 0;
     QString m_notes;
     QString m_lastChecked;
+    QVariantList m_changes;
     QUrl m_archiveUrl;
     QString m_archiveHash;
     qint64 m_archiveSize = 0;

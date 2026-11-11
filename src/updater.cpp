@@ -7,6 +7,7 @@
 #include <QDir>
 #include <QFileInfo>
 #include <QHash>
+#include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLocale>
@@ -15,6 +16,8 @@
 #include <QRegularExpression>
 #include <QStandardPaths>
 
+#include <unistd.h>
+
 namespace {
 
 const char kManifestUrl[] = "https://fourtexec.site/newteller/update.json";
@@ -22,6 +25,9 @@ const char kBuildInfo[] = "/usr/share/newteller/BUILDINFO";
 // Release archives are tens of megabytes; anything far beyond that is not one.
 const qint64 kMaxArchiveBytes = 1024LL * 1024 * 1024;
 const int kNetworkTimeoutMs = 30000;
+// The format of the update data this build understands ("schema").
+const int kSchema = 1;
+const int kMaxChanges = 15;
 
 bool isHex(const QString &text, int length)
 {
@@ -98,6 +104,8 @@ Updater::Updater(Settings *settings, NotificationDaemon *notifications, QObject 
                     m_announcement = 0;
                     if (key == QLatin1String("install"))
                         install();
+                    else if (key == QLatin1String("skip"))
+                        skip();
                 });
         connect(m_notifications, &NotificationDaemon::NotificationClosed, this,
                 [this](uint id, uint) {
@@ -216,6 +224,13 @@ void Updater::manifestReceived(QNetworkReply *reply, bool automatic)
         return;
     }
     const QJsonObject manifest = QJsonDocument::fromJson(reply->read(1024 * 1024)).object();
+    // A site that moved on to a format this build cannot read says so,
+    // instead of being misread.
+    if (manifest.value(QLatin1String("schema")).toInt(kSchema) > kSchema) {
+        failCheck(tr("This build of NewTeller is too old for the update data of %1. "
+                     "Install the newest build by hand once.").arg(source()));
+        return;
+    }
     const QJsonObject targets = manifest.value(QLatin1String("targets")).toObject();
     if (targets.isEmpty()) {
         failCheck(tr("The update data from %1 could not be understood.").arg(source()));
@@ -250,6 +265,32 @@ void Updater::manifestReceived(QNetworkReply *reply, bool automatic)
     // older than what runs here is not an update.
     const bool older = m_installedDate > 0 && m_latestDate > 0 && m_latestDate <= m_installedDate;
     const bool available = commit != m_installedCommit && !older;
+
+    // "changes" lists the newest commits of the project, newest first; the
+    // ones between the installed build and the offered one are what the
+    // update brings.
+    m_changes.clear();
+    const QJsonArray changes = manifest.value(QLatin1String("changes")).toArray();
+    bool inRange = false;
+    for (const QJsonValue &value : changes) {
+        const QJsonObject change = value.toObject();
+        const QString changeCommit = change.value(QLatin1String("commit")).toString();
+        const qint64 changeDate = static_cast<qint64>(change.value(QLatin1String("date")).toDouble());
+        if (changeCommit == commit)
+            inRange = true;
+        if (!m_installedCommit.isEmpty() && changeCommit == m_installedCommit)
+            break;
+        if (m_installedDate > 0 && changeDate > 0 && changeDate <= m_installedDate)
+            break;
+        const QString title = change.value(QLatin1String("title")).toString().left(200);
+        if (!available || !inRange || title.isEmpty() || !isHex(changeCommit, 40))
+            continue;
+        m_changes.append(QVariantMap{{QStringLiteral("title"), title},
+                                     {QStringLiteral("commit"), changeCommit.left(10)},
+                                     {QStringLiteral("date"), formatDate(changeDate)}});
+        if (m_changes.size() >= kMaxChanges)
+            break;
+    }
     setState(available ? QStringLiteral("available") : QStringLiteral("current"));
     emit checked();
     // A build from source has no commit to compare with: the offer is shown
@@ -260,7 +301,7 @@ void Updater::manifestReceived(QNetworkReply *reply, bool automatic)
 
 void Updater::announce()
 {
-    if (m_announcedCommit == m_latestCommit || !m_notifications || !m_settings
+    if (m_announcedCommit == m_latestCommit || skipped() || !m_notifications || !m_settings
         || !m_settings->value(QStringLiteral("notifications.enabled"), true).toBool())
         return;
     m_announcedCommit = m_latestCommit;
@@ -269,14 +310,29 @@ void Updater::announce()
                              : m_notes;
     m_announcement = m_notifications->sendWithActions(
         QStringLiteral("NewTeller"), tr("A NewTeller update is available"), body,
-        QStringLiteral("download"), {QStringLiteral("install"), tr("Install")}, false);
+        QStringLiteral("download"),
+        {QStringLiteral("install"), tr("Install"), QStringLiteral("skip"), tr("Skip this build")}, false);
+}
+
+bool Updater::skipped() const
+{
+    return m_settings && !m_latestCommit.isEmpty()
+           && m_settings->value(QStringLiteral("updates.skippedBuild")).toString() == m_latestCommit;
+}
+
+void Updater::skip()
+{
+    if (!m_settings || m_latestCommit.isEmpty())
+        return;
+    m_settings->setValue(QStringLiteral("updates.skippedBuild"), m_latestCommit);
+    emit changed();
 }
 
 void Updater::install()
 {
     if (m_state != QLatin1String("available"))
         return;
-    if (QStandardPaths::findExecutable(QStringLiteral("pkexec")).isEmpty()) {
+    if (::geteuid() != 0 && QStandardPaths::findExecutable(QStringLiteral("pkexec")).isEmpty()) {
         failInstall(tr("pkexec is not installed, so the update cannot ask for the administrator password."));
         return;
     }
@@ -310,18 +366,24 @@ void Updater::install()
     request.setHeader(QNetworkRequest::UserAgentHeader, QByteArrayLiteral("NewTeller-Updater"));
     QNetworkReply *reply = m_network.get(request);
     m_download = reply;
-    connect(reply, &QNetworkReply::readyRead, this, [this, reply] {
-        const QByteArray chunk = reply->readAll();
-        m_hash.addData(chunk);
-        if (m_file.write(chunk) != chunk.size() || m_file.size() > kMaxArchiveBytes)
-            reply->abort();
-    });
+    connect(reply, &QNetworkReply::readyRead, this, [this, reply] { saveDownloaded(reply); });
     connect(reply, &QNetworkReply::downloadProgress, this, [this](qint64 received, qint64 total) {
         const qint64 expected = total > 0 ? total : m_archiveSize;
         m_progress = expected > 0 ? qBound(0.0, double(received) / double(expected), 1.0) : 0;
         emit progressChanged();
     });
     connect(reply, &QNetworkReply::finished, this, [this, reply] { downloadFinished(reply); });
+}
+
+// Moves what has arrived into the file and the running hash.
+void Updater::saveDownloaded(QNetworkReply *reply)
+{
+    const QByteArray chunk = reply->readAll();
+    if (chunk.isEmpty() || !m_file.isOpen())
+        return;
+    m_hash.addData(chunk);
+    if (m_file.write(chunk) != chunk.size() || m_file.size() > kMaxArchiveBytes)
+        reply->abort();
 }
 
 void Updater::cancel()
@@ -335,6 +397,10 @@ void Updater::cancel()
 void Updater::downloadFinished(QNetworkReply *reply)
 {
     reply->deleteLater();
+    // Whatever arrived together with the end of the reply.
+    if (reply->error() == QNetworkReply::NoError)
+        saveDownloaded(reply);
+    const bool tooLarge = m_file.size() > kMaxArchiveBytes;
     const bool writeFailed = m_file.error() != QFileDevice::NoError;
     m_file.close();
     if (m_cancelled) {
@@ -342,7 +408,7 @@ void Updater::downloadFinished(QNetworkReply *reply)
         setState(QStringLiteral("available"));
         return;
     }
-    if (reply->error() != QNetworkReply::NoError || writeFailed) {
+    if (reply->error() != QNetworkReply::NoError || writeFailed || tooLarge) {
         m_file.remove();
         failInstall(writeFailed ? tr("The download could not be saved (is the disk full?).")
                                 : tr("The download failed: %1").arg(reply->errorString()));
@@ -363,9 +429,14 @@ void Updater::runInstaller()
     // pkexec asks for the administrator password through the shell's own
     // polkit agent. The helper checks the hash again as root, on its own
     // copy, so the file cannot be swapped between the check and the run.
+    const QString helper = QStandardPaths::findExecutable(QStringLiteral("newteller-update-install"));
+    if (::geteuid() == 0) {
+        // Already root (newteller --install-update under sudo): nobody to ask.
+        m_installer->start(helper, {m_file.fileName(), m_archiveHash});
+        return;
+    }
     m_installer->start(QStandardPaths::findExecutable(QStringLiteral("pkexec")),
-                      {QStandardPaths::findExecutable(QStringLiteral("newteller-update-install")),
-                       m_file.fileName(), m_archiveHash});
+                       {helper, m_file.fileName(), m_archiveHash});
 }
 
 void Updater::installerFinished(int exitCode, QProcess::ExitStatus status)

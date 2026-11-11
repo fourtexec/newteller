@@ -1338,6 +1338,7 @@ class UpdaterStub(QObject):
         super().__init__()
         self.calls = []
         self._state = "idle"
+        self._skipped = False
 
     state = Property(str, lambda self: self._state, notify=changed)
     error = Property(str, lambda self: "", notify=changed)
@@ -1357,6 +1358,10 @@ class UpdaterStub(QObject):
                            notify=changed)
     progress = Property(float, lambda self: 0.4 if self._state == "downloading" else 0.0,
                         notify=progressChanged)
+    changes = Property("QVariantList", lambda self: [] if self._state == "idle" else [
+        {"title": "Faster dock", "commit": "2222222222", "date": "09.11.2026"},
+        {"title": "Fix the clock", "commit": "3333333333", "date": ""}], notify=changed)
+    skipped = Property(bool, lambda self: self._skipped, notify=changed)
 
     def _set(self, state):
         self._state = state
@@ -1378,6 +1383,12 @@ class UpdaterStub(QObject):
     def cancel(self):
         self.calls.append(("cancel",))
         self._set("available")
+
+    @Slot()
+    def skip(self):
+        self.calls.append(("skip",))
+        self._skipped = True
+        self.changed.emit()
 
 
 class Quick(QObject):
