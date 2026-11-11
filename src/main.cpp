@@ -143,7 +143,12 @@ CliOptions scanArguments(int argc, char **argv)
             printUsage();
             options.ok = false;
         } else if (arg == "--version" || arg == "-v") {
-            std::printf("NewTeller %s\n", NEWTELLER_VERSION);
+            const Updater::Build build = Updater::installedBuild();
+            if (build.commit.isEmpty())
+                std::printf("NewTeller %s\n", NEWTELLER_VERSION);
+            else
+                std::printf("NewTeller %s (build %s, %s)\n", NEWTELLER_VERSION,
+                            qPrintable(build.commit.left(10)), qPrintable(build.target));
             options.ok = false;
         } else if (arg == "--print-config") {
             options.printConfig = true;
@@ -367,6 +372,10 @@ int main(int argc, char *argv[])
     if (cli.diagnostics) {
         QVariantMap out = shell.diagnostics();
         out.insert(QStringLiteral("settingsPath"), settings.configPath());
+        const Updater::Build build = Updater::installedBuild();
+        out.insert(QStringLiteral("build"), QVariantMap{{QStringLiteral("commit"), build.commit},
+                                                        {QStringLiteral("target"), build.target},
+                                                        {QStringLiteral("date"), build.date}});
         out.insert(QStringLiteral("configProblems"), settings.validate());
         out.insert(QStringLiteral("apps"), apps.stats());
         out.insert(QStringLiteral("systemAvailable"), system.available());

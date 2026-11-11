@@ -58,6 +58,15 @@ class Updater : public QObject {
     Q_PROPERTY(double progress READ progress NOTIFY progressChanged)
 
 public:
+    // What BUILDINFO says about the installed build; the commit is empty
+    // for a build from source.
+    struct Build {
+        QString commit;
+        qint64 date = 0;
+        QString target;
+    };
+    static Build installedBuild();
+
     // Both may be null (newteller --check-update runs without a session).
     explicit Updater(Settings *settings = nullptr, NotificationDaemon *notifications = nullptr,
                      QObject *parent = nullptr);
@@ -108,6 +117,11 @@ private:
     static QString formatDate(qint64 seconds);
     void startCheck(bool automatic);
     void manifestReceived(QNetworkReply *reply, bool automatic);
+    bool applyUpdateData(const QByteArray &data, QString *problem);
+    QString updateDataCopy() const;
+    void saveUpdateData(const QByteArray &data) const;
+    qint64 loadUpdateData();
+    void automaticCheck();
     void failCheck(const QString &message);
     void saveDownloaded(QNetworkReply *reply);
     void downloadFinished(QNetworkReply *reply);
@@ -139,6 +153,7 @@ private:
     qint64 m_archiveSize = 0;
     double m_progress = 0;
     bool m_cancelled = false;
+    int m_retriesLeft = 3;
     bool m_canRollback = false;
     bool m_rollingBack = false;
     // Where a failed installation or rollback returns to.

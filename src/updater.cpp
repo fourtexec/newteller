@@ -31,6 +31,13 @@ const int kSchema = 1;
 const int kMaxChanges = 15;
 // Where newteller-update-install keeps the build an update replaced.
 const char kPreviousBuild[] = "/var/lib/newteller/previous.zip";
+// An automatic check that found no network: how often and how soon again.
+const int kRetries = 3;
+const int kRetryMs = 15 * 60 * 1000;
+// The copy of the last answer: how long it spares a new question, and when
+// it is too old to say anything.
+const qint64 kRecheckSeconds = 6 * 60 * 60;
+const qint64 kCopyMaxAgeSeconds = 14 * 24 * 60 * 60;
 
 bool isHex(const QString &text, int length)
 {
@@ -88,21 +95,20 @@ Updater::Updater(Settings *settings, NotificationDaemon *notifications, QObject 
 
     if (!m_settings)
         return;
-    auto automatic = [this] {
-        if (busy() || m_state == QLatin1String("installed"))
-            return;
-        if (m_settings->value(QStringLiteral("updates.autoCheck"), true).toBool())
-            startCheck(true);
-    };
-    // Not at login, when the network is often still coming up.
-    QTimer::singleShot(2 * 60 * 1000, this, automatic);
+    // What the last check found, then a fresh look: not at login, when the
+    // network is often still coming up, and not again when the last check
+    // was a short while ago (logging in ten times a day is ten logins, not
+    // ten questions to the site).
+    const qint64 age = loadUpdateData();
+    const qint64 wait = age >= 0 && age < kRecheckSeconds ? (kRecheckSeconds - age) * 1000 : 0;
+    QTimer::singleShot(int(qMax<qint64>(2 * 60 * 1000, wait)), this, &Updater::automaticCheck);
     m_autoTimer.setInterval(12 * 60 * 60 * 1000);
-    connect(&m_autoTimer, &QTimer::timeout, this, automatic);
+    connect(&m_autoTimer, &QTimer::timeout, this, &Updater::automaticCheck);
     m_autoTimer.start();
     // Switching the checks on is a request for one.
-    connect(m_settings, &Settings::changed, this, [this, automatic](const QString &key) {
+    connect(m_settings, &Settings::changed, this, [this](const QString &key) {
         if (key == QLatin1String("updates.autoCheck") && m_state == QLatin1String("idle"))
-            automatic();
+            automaticCheck();
     });
 
     if (m_notifications) {
@@ -142,21 +148,31 @@ bool Updater::busy() const
            || m_state == QLatin1String("installing");
 }
 
-void Updater::readBuildInfo()
+Updater::Build Updater::installedBuild()
 {
     QString path = qEnvironmentVariable("NEWTELLER_BUILDINFO");
     if (path.isEmpty())
         path = QString::fromLatin1(kBuildInfo);
     const QHash<QString, QString> info = readKeyValues(path);
+    Build build;
     const QString commit = info.value(QStringLiteral("commit"));
     if (isHex(commit, 40))
-        m_installedCommit = commit;
-    m_installedDate = info.value(QStringLiteral("date")).toLongLong();
-    m_target = info.value(QStringLiteral("target"));
+        build.commit = commit;
+    build.date = info.value(QStringLiteral("date")).toLongLong();
+    build.target = info.value(QStringLiteral("target"));
     // A build from source (the installation images build that way) has no
     // target written down; the system says which archive fits.
-    if (m_target.isEmpty())
-        m_target = detectTarget();
+    if (build.target.isEmpty())
+        build.target = detectTarget();
+    return build;
+}
+
+void Updater::readBuildInfo()
+{
+    const Build build = installedBuild();
+    m_installedCommit = build.commit;
+    m_installedDate = build.date;
+    m_target = build.target;
 }
 
 // The same table as scripts/platform.sh.
@@ -231,27 +247,54 @@ void Updater::manifestReceived(QNetworkReply *reply, bool automatic)
 {
     reply->deleteLater();
     if (reply->error() != QNetworkReply::NoError) {
+        // Right after login or a resume the network is often not there yet:
+        // an automatic check tries again a few times before it waits for
+        // the next regular one.
+        if (automatic && m_retriesLeft > 0) {
+            --m_retriesLeft;
+            QTimer::singleShot(kRetryMs, this, &Updater::automaticCheck);
+        }
         failCheck(tr("Could not read the update data from %1: %2").arg(source(), reply->errorString()));
         return;
     }
-    const QJsonObject manifest = QJsonDocument::fromJson(reply->read(1024 * 1024)).object();
+    m_retriesLeft = kRetries;
+    const QByteArray data = reply->read(1024 * 1024);
+    m_lastChecked = QLocale().toString(QDateTime::currentDateTime(), QLocale::ShortFormat);
+    QString problem;
+    if (!applyUpdateData(data, &problem)) {
+        failCheck(problem);
+        return;
+    }
+    saveUpdateData(data);
+    emit checked();
+    // A build from source has no commit to compare with: the offer is shown
+    // in the settings, but nobody is nagged about it.
+    if (m_state == QLatin1String("available") && automatic && !m_installedCommit.isEmpty())
+        announce();
+}
+
+// Reads update data (from the site, or the copy of the last check) and
+// moves to "available" or "current". False, with the reason, when the data
+// cannot be used; nothing is changed then.
+bool Updater::applyUpdateData(const QByteArray &data, QString *problem)
+{
+    const QJsonObject manifest = QJsonDocument::fromJson(data).object();
     // A site that moved on to a format this build cannot read says so,
     // instead of being misread.
     if (manifest.value(QLatin1String("schema")).toInt(kSchema) > kSchema) {
-        failCheck(tr("This build of NewTeller is too old for the update data of %1. "
-                     "Install the newest build by hand once.").arg(source()));
-        return;
+        *problem = tr("This build of NewTeller is too old for the update data of %1. "
+                     "Install the newest build by hand once.").arg(source());
+        return false;
     }
     const QJsonObject targets = manifest.value(QLatin1String("targets")).toObject();
     if (targets.isEmpty()) {
-        failCheck(tr("The update data from %1 could not be understood.").arg(source()));
-        return;
+        *problem = tr("The update data from %1 could not be understood.").arg(source());
+        return false;
     }
-    m_lastChecked = QLocale().toString(QDateTime::currentDateTime(), QLocale::ShortFormat);
     if (m_target.isEmpty() || !targets.contains(m_target)) {
-        failCheck(tr("There is no build for this system (%1) yet.")
-                      .arg(m_target.isEmpty() ? tr("unknown") : m_target));
-        return;
+        *problem = tr("There is no build for this system (%1) yet.")
+                      .arg(m_target.isEmpty() ? tr("unknown") : m_target);
+        return false;
     }
     const QJsonObject entry = targets.value(m_target).toObject();
     const QString commit = entry.value(QLatin1String("commit")).toString();
@@ -262,8 +305,8 @@ void Updater::manifestReceived(QNetworkReply *reply, bool automatic)
     const bool schemeAllowed = url.scheme() == QLatin1String("https")
                                || m_manifestUrl.scheme() != QLatin1String("https");
     if (!isHex(commit, 40) || !isHex(hash, 64) || !url.isValid() || !schemeAllowed) {
-        failCheck(tr("The update data from %1 could not be understood.").arg(source()));
-        return;
+        *problem = tr("The update data from %1 could not be understood.").arg(source());
+        return false;
     }
     m_latestCommit = commit;
     m_latestDate = static_cast<qint64>(entry.value(QLatin1String("date")).toDouble());
@@ -303,11 +346,52 @@ void Updater::manifestReceived(QNetworkReply *reply, bool automatic)
             break;
     }
     setState(available ? QStringLiteral("available") : QStringLiteral("current"));
-    emit checked();
-    // A build from source has no commit to compare with: the offer is shown
-    // in the settings, but nobody is nagged about it.
-    if (available && automatic && !m_installedCommit.isEmpty())
-        announce();
+    return true;
+}
+
+// The last answer of the site is kept, so the next login knows about a
+// waiting update at once (the arrow on the panel, the settings page)
+// instead of after the first check.
+QString Updater::updateDataCopy() const
+{
+    return QStandardPaths::writableLocation(QStandardPaths::GenericCacheLocation)
+           + QStringLiteral("/newteller/update.json");
+}
+
+void Updater::saveUpdateData(const QByteArray &data) const
+{
+    if (!m_settings)
+        return;
+    const QString path = updateDataCopy();
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    QFile file(path);
+    if (file.open(QIODevice::WriteOnly | QIODevice::Truncate))
+        file.write(data);
+}
+
+// The age of the copy in seconds, or -1 when there is none worth using.
+qint64 Updater::loadUpdateData()
+{
+    const QFileInfo info(updateDataCopy());
+    QFile file(info.absoluteFilePath());
+    if (!info.exists() || !file.open(QIODevice::ReadOnly))
+        return -1;
+    const qint64 age = info.lastModified().secsTo(QDateTime::currentDateTime());
+    if (age < 0 || age > kCopyMaxAgeSeconds)
+        return -1;
+    QString problem;
+    if (!applyUpdateData(file.read(1024 * 1024), &problem))
+        return -1;
+    m_lastChecked = QLocale().toString(info.lastModified(), QLocale::ShortFormat);
+    return age;
+}
+
+void Updater::automaticCheck()
+{
+    if (busy() || m_state == QLatin1String("installed") || !m_settings)
+        return;
+    if (m_settings->value(QStringLiteral("updates.autoCheck"), true).toBool())
+        startCheck(true);
 }
 
 void Updater::announce()

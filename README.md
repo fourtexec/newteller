@@ -520,6 +520,11 @@ does the check from a terminal).
   build you leave (from a console, use **Skip this build** afterwards).
 - Before a download the free disk space is checked, and the page shows the
   size of the build.
+- The answer of the last check is kept in `~/.cache/newteller/update.json`:
+  a waiting update is known right after login, and the site is not asked
+  again within six hours. An automatic check that finds no network tries
+  again after a quarter of an hour, three times.
+- `newteller --version` and `--diagnostics` name the installed build.
 - `NEWTELLER_UPDATE_URL` points the updater at other update data (a mirror,
   or a `file://` URL in tests).
 
