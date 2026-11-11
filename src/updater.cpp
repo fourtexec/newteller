@@ -191,7 +191,9 @@ void Updater::check()
 
 void Updater::startCheck(bool automatic)
 {
-    if (busy())
+    // After an installation the files on disk are ahead of this process;
+    // what it knows about itself is stale until the next login.
+    if (busy() || m_state == QLatin1String("installed"))
         return;
     if (!m_manifestUrl.isValid()) {
         failCheck(tr("The address of the update data is not valid."));
