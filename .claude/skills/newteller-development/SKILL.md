@@ -16,6 +16,11 @@ and the checks that will fail if one is broken.
 - **Do not build locally.** The environment usually lacks the Debian/Ubuntu
   packages (Qt 6.8+, wlroots 0.18/0.19, LayerShellQt). Write code that is
   correct by inspection and verify it on GitHub Actions (see "Verifying").
+  Two things do run locally and save CI rounds: the QML smoke test
+  (`pip install PySide6-Essentials` in a venv, plus `libegl1`) and
+  `cargo test --workspace` in `rust/`. For wlroots APIs, read the real
+  headers: the release tarballs of 0.18, 0.19 and 0.20 from
+  gitlab.freedesktop.org/wlroots/wlroots show what each version offers.
 - Support **wlroots 0.18 (Debian 13), 0.19 (Ubuntu 26.04, Fedora) and 0.20
   (Arch)**. Their APIs differ (see "wlroots pitfalls"); guard with
   `#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR >= 19` (0.20 takes the
@@ -95,7 +100,9 @@ and the checks that will fail if one is broken.
 
 **New setting shown in the settings app**
 1. Default in `src/settings.cpp` (`m_defaults.insert`). The QML smoke test
-   fails if QML reads a key without a default.
+   fails if QML reads a key without a default, and if a key has a default
+   that nothing reads (a `settingKey:` in `SettingsApp.qml` does not count):
+   a setting ships together with the code that obeys it, or not at all.
 2. A `SettingsRow { settingKey: ...; SettingsSwitch/Slider/... { settingKey: ... } }`
    in the right page of `qml/SettingsApp.qml`.
 3. If the compositor needs it: the three places above.
@@ -207,6 +214,12 @@ line").
   new scene tree must be added there too.
 - The shell: NetworkManager calls go through async `QDBusPendingCallWatcher`
   chains (join, list, disconnect); keep new ones asynchronous.
+- Graphics tablets: over a surface that accepts tablet-v2 the pen is sent as
+  a pen (`handleTabletAxis/Tip/Button/Proximity`, one `TabletTool` per
+  `wlr_tablet_tool`), everywhere else it goes through the pointer path
+  (`tabletEmulateButton` -> `cursorButton`). A press on a surface runs
+  `pressFocus()`, shared with mouse clicks. `wlr_surface_accepts_tablet_v2`
+  swapped its arguments in 0.19.
 - Pointers stored on `Server` that refer to a `View` (`focusedView`,
   `previousView`, `grabbedView`, `switchTarget`, `hoverView`,
   `lastTitleView`) must be cleared in `destroyView()`.
@@ -272,7 +285,9 @@ loops, window opacity changes); literal `iconName`/`icon:` values need an
 (no newer syntax). Avoid simulating hover in tests (tooltips fade a window's
 opacity).
 
-Session smoke test: runs `newteller-compositor --headless=1280x800` with the
+Session smoke test: `tests/wayland_globals.py` lists the advertised globals
+(add a new protocol's interface name to the list in `session_smoke.sh`).
+It runs `newteller-compositor --headless=1280x800` with the
 shell, a PySide test window, `grim` screenshots, `wlr-randr`, `swaylock`,
 and the `msg` helper for the control socket. Add a check there for every
 compositor behaviour you add.

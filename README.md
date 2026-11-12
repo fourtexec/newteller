@@ -558,8 +558,6 @@ All keys, with their defaults:
 | `panel.height` | `48` | panel thickness in pixels |
 | `panel.position` | `"bottom"` | `bottom`, `top`, `left` or `right` |
 | `panel.margin` | `0` | gap between the panel and the screen edge |
-| `panel.centered` | `false` | reserved |
-| `panel.width` | `0` | reserved (0 = full edge) |
 | `panel.autoHide` | `false` | collapse the panel to a hover strip at the edge |
 | `panel.autoHideDelay` | `400` | delay in ms before an auto-hidden panel slides away |
 | `panel.clockFormat` | `"HH:mm"` | `Qt.formatDateTime` time format |

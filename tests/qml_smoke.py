@@ -1597,6 +1597,29 @@ def main():
                             bare.append(f"{os.path.basename(path)}:{number} {match.group(1)!r}")
     check(not bare, f"interface text in QML goes through qsTr() (bare: {bare})")
 
+    # Every setting does something: a key with a default in src/settings.cpp
+    # is read somewhere (QML, a plugin or the C++ services). A switch in the
+    # Settings application alone does not count - three of them once changed
+    # a key nothing looked at.
+    with open(os.path.join(ROOT, "src", "settings.cpp"), encoding="utf-8") as handle:
+        settings_source = handle.read()
+    default_keys = set(re.findall(r'm_defaults\.insert\(QStringLiteral\("([^"]+)"\)', settings_source))
+    readers = [re.sub(r'm_defaults\.insert\([^\n]*\n', '', settings_source)]
+    for pattern in (("qml", "*.qml"), ("qml", "*.js"), ("plugins", "*", "*.qml"),
+                    ("src", "*.cpp"), ("src", "*.h")):
+        for path in glob.glob(os.path.join(ROOT, *pattern)):
+            if os.path.basename(path) == "settings.cpp":
+                continue
+            with open(path, encoding="utf-8") as handle:
+                text = handle.read()
+            if os.path.basename(path) == "SettingsApp.qml":
+                # Its controls name the key they edit; only real reads count.
+                text = re.sub(r'settingKey:\s*"[^"]*"', "", text)
+            readers.append(text)
+    unread = sorted(k for k in default_keys if not any(f'"{k}"' in text for text in readers))
+    check(len(default_keys) > 150 and not unread,
+          f"every setting with a default is read somewhere (unread: {unread})")
+
     # Translations (i18n/<language>.json, read by src/translator.cpp): every
     # entry translates a real qsTr() text, keeps its %1 placeholders, and the
     # file is compiled in.
