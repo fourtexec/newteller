@@ -807,9 +807,7 @@ Window {
                                 SettingsChoice {
                                     model: [
                                         { value: "bottom", label: qsTr("Bottom") },
-                                        { value: "right", label: qsTr("Right") },
-                                        { value: "top", label: qsTr("Top") },
-                                        { value: "left", label: qsTr("Left") }
+                                        { value: "top", label: qsTr("Top") }
                                     ]
                                 }
                             }
@@ -1325,6 +1323,8 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Current wallpaper")
+                                subtitle: settingsWindow.wallpaperScreen.length > 0
+                                          ? qsTr("Screen %1").arg(settingsWindow.wallpaperScreen) : ""
                                 settingKey: "desktop.wallpaper"
 
                                 Row {
@@ -1351,7 +1351,7 @@ Window {
                                             // fallback instead of an empty frame.
                                             visible: status === Image.Ready
                                             source: {
-                                                const wp = Settings.value("desktop.wallpaper", "");
+                                                const wp = settingsWindow.currentWallpaper;
                                                 if (!wp || wp.length === 0)
                                                     return "";
                                                 if (wp.indexOf("://") > 0)
@@ -1361,7 +1361,7 @@ Window {
                                         }
                                         Text {
                                             anchors.centerIn: parent
-                                            visible: !Settings.value("desktop.wallpaper", "")
+                                            visible: settingsWindow.currentWallpaper.length === 0
                                                      || wallpaperPreview.status === Image.Error
                                             text: qsTr("Solid colour")
                                             color: Theme.muted
@@ -1393,7 +1393,7 @@ Window {
                                         TaskButton {
                                             iconName: "x"
                                             label: qsTr("No wallpaper")
-                                            onClicked: Settings.setValue("desktop.wallpaper", "")
+                                            onClicked: settingsWindow.setWallpaper("")
                                         }
                                     }
                                 }
@@ -1439,12 +1439,14 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Per-monitor wallpapers")
+                                subtitle: qsTr("Every screen keeps its own picture; this window chooses for the screen it is on.")
                                 settingKey: "desktop.perMonitorWallpaper"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Wallpaper slideshow")
+                                subtitle: qsTr("Walks through the pictures in the folder of the current wallpaper.")
                                 settingKey: "desktop.wallpaperSlideshow"
                                 SettingsSwitch {}
                             }
@@ -2051,6 +2053,13 @@ Window {
                                 title: qsTr("Enable notification sounds")
                                 settingKey: "notifications.soundEnabled"
                                 SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Group the history by application")
+                                subtitle: qsTr("Off: one list, newest first.")
+                                settingKey: "notifications.groupByApp"
+                                SettingsSwitch { settingKey: "notifications.groupByApp" }
                             }
                             SettingsRow {
                                 width: parent.width
@@ -3809,8 +3818,33 @@ Window {
     // The folder the file-manager dialog should start in. Always a real
     // directory: the wallpaper may be a URL, a path in a folder that was
     // deleted since, or empty (solid colour).
+    // With "Per-monitor wallpapers" the pickers of this window choose the
+    // picture of the screen the window is on; otherwise the one of every
+    // screen.
+    readonly property bool perMonitorWallpaper: Settings.values["desktop.perMonitorWallpaper"] === true
+    readonly property string wallpaperScreen: perMonitorWallpaper && settingsWindow.screen
+                                              ? settingsWindow.screen.name : ""
+    readonly property string currentWallpaper: {
+        const own = wallpaperScreen.length > 0
+                  ? (Settings.values["multiMonitor.wallpapers"] || ({}))[wallpaperScreen] : "";
+        return own || Settings.values["desktop.wallpaper"] || "";
+    }
+
+    function setWallpaper(path) {
+        if (wallpaperScreen.length === 0) {
+            Settings.setValue("desktop.wallpaper", path);
+            return;
+        }
+        const saved = Settings.values["multiMonitor.wallpapers"] || ({});
+        const copy = {};
+        for (const name in saved)
+            copy[name] = saved[name];
+        copy[wallpaperScreen] = path;
+        Settings.setValue("multiMonitor.wallpapers", copy);
+    }
+
     function wallpaperFolder() {
-        const wp = Settings.value("desktop.wallpaper", "") || "";
+        const wp = settingsWindow.currentWallpaper;
         let dir = "";
         if (typeof wp === "string" && wp.length > 0) {
             let path = wp;
@@ -3835,7 +3869,7 @@ Window {
             return false;                 // dismissed: keep the current one
         if (!Shell.isImageFile(file))
             return false;
-        Settings.setValue("desktop.wallpaper", file);
+        setWallpaper(file);
         return true;
     }
 
@@ -3899,7 +3933,7 @@ Window {
             const model = wallpaperFolderIndex === 0 ? picturesModel : backgroundsModel;
             if (model.count > 0) {
                 const next = Math.floor(Math.random() * model.count);
-                Settings.setValue("desktop.wallpaper", model.get(next, "filePath"));
+                settingsWindow.setWallpaper(model.get(next, "filePath"));
             } else {
                 Shell.openPath(wallpaperFolders[wallpaperFolderIndex]);
             }
@@ -3976,7 +4010,7 @@ Window {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                Settings.setValue("desktop.wallpaper", filePath);
+                                settingsWindow.setWallpaper(filePath);
                                 wallpaperOverlay.visible = false;
                             }
                         }

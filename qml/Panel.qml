@@ -743,6 +743,7 @@ Window {
             iconSize: Math.max(14, Math.min(panel.effectiveIconSize,
                                             Math.round(dockAppsRepeater.extent) - 4))
             showDockLabels: panel.dockShowAppLabels
+            dockLabelPosition: panel.dockLabelPosition
             dockIconColorMode: panel.dockIconColorMode
             dockCustomIconColor: panel.dockCustomIconColor
             foregroundColor: panel.panelTextColor

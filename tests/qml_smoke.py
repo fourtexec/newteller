@@ -2247,6 +2247,16 @@ def main():
         check([(e.get("app"), bool(e.get("groupStart"))) for e in (grouped or [])]
               == [("Mail", True), ("Mail", False), ("Chat", True)],
               f"the notification centre groups by application ({grouped})")
+        # Without the grouping it is one list by time.
+        settings.setValue("notifications.groupByApp", False)
+        QTest.qWait(100)
+        flat = center.property("entries")
+        flat = flat.toVariant() if hasattr(flat, "toVariant") else flat
+        check([(e.get("app"), bool(e.get("groupStart"))) for e in (flat or [])]
+              == [("Mail", True), ("Chat", True), ("Mail", True)],
+              f"notifications.groupByApp off lists by time ({flat})")
+        settings.setValue("notifications.groupByApp", True)
+        QTest.qWait(50)
         notifications._history.pop()
         notifications.historyChanged.emit()
         QTest.qWait(50)
@@ -3162,6 +3172,59 @@ def main():
         QTest.qWait(400)
         check(not picker.isVisible(), "hide() closes the picker")
 
+        settings._values["desktop.wallpaper"] = ""
+        settings.valuesChanged.emit()
+        QTest.qWait(20)
+
+        # Wallpaper slideshow: the next picture of the current one's folder.
+        slides = os.path.join(work, "Slides")
+        os.makedirs(slides, exist_ok=True)
+        slide_files = [os.path.join(slides, name) for name in ("a.png", "b.png", "c.png")]
+        for path in slide_files:
+            check(image.save(path), f"slideshow picture {os.path.basename(path)}")
+        left = next(d for d in desktops if d.screen() is screens[0])
+        right = next(d for d in desktops if d.screen() is screens[1])
+        settings.setValue("desktop.wallpaper", slide_files[0])
+        settings.setValue("desktop.wallpaperSlideshow", True)
+        QTest.qWait(600)  # the folder model reads asynchronously
+        QMetaObject.invokeMethod(left, "nextWallpaper")
+        QTest.qWait(50)
+        check(settings._values.get("desktop.wallpaper") == slide_files[1],
+              f"the slideshow shows the next picture ({settings._values.get('desktop.wallpaper')!r})")
+        settings.setValue("desktop.wallpaper", slide_files[2])
+        QTest.qWait(50)
+        QMetaObject.invokeMethod(left, "nextWallpaper")
+        QTest.qWait(50)
+        check(settings._values.get("desktop.wallpaper") == slide_files[0],
+              f"the slideshow wraps around ({settings._values.get('desktop.wallpaper')!r})")
+        settings.setValue("desktop.wallpaperSlideshow", False)
+
+        # Per-monitor wallpapers: a screen keeps its own picture, the others
+        # the shared one.
+        settings.setValue("desktop.perMonitorWallpaper", True)
+        QTest.qWait(50)
+        QMetaObject.invokeMethod(right, "setWallpaper", Q_ARG("QVariant", slide_files[2]))
+        QTest.qWait(50)
+        check(settings._values.get("multiMonitor.wallpapers") == {"Right": slide_files[2]},
+              f"a screen's wallpaper is saved under its name ({settings._values.get('multiMonitor.wallpapers')!r})")
+        check(right.property("wallpaper") == slide_files[2]
+              and left.property("wallpaper") == slide_files[0],
+              f"each screen shows its own wallpaper ({left.property('wallpaper')!r}, {right.property('wallpaper')!r})")
+        check(settings._values.get("desktop.wallpaper") == slide_files[0],
+              "a per-monitor choice leaves the shared wallpaper alone")
+        # The settings window chooses for the screen it is on.
+        target = settings_app.screen().name()
+        check(settings_app.property("wallpaperScreen") == target,
+              f"the settings name their screen ({settings_app.property('wallpaperScreen')!r})")
+        call(settings_app, "applyWallpaper", slide_files[1])
+        QTest.qWait(50)
+        check((settings._values.get("multiMonitor.wallpapers") or {}).get(target) == slide_files[1],
+              f"the settings picker sets its screen's wallpaper ({settings._values.get('multiMonitor.wallpapers')!r})")
+        settings.setValue("desktop.perMonitorWallpaper", False)
+        QTest.qWait(50)
+        check(right.property("wallpaper") == slide_files[0],
+              "without per-monitor wallpapers every screen shows the shared one")
+        settings._values["multiMonitor.wallpapers"] = {}
         settings._values["desktop.wallpaper"] = ""
         settings.valuesChanged.emit()
         QTest.qWait(20)

@@ -9,7 +9,15 @@ import NewTeller 1.0
 Window {
     id: desk
 
-    readonly property string wallpaper: Settings.values["desktop.wallpaper"] || ""
+    // With "Per-monitor wallpapers" every screen keeps its own picture in
+    // multiMonitor.wallpapers (screen name -> path); a screen without one,
+    // and every screen otherwise, shows desktop.wallpaper.
+    readonly property string screenName: desk.screen ? desk.screen.name : ""
+    readonly property var screenWallpapers: Settings.values["multiMonitor.wallpapers"] || ({})
+    readonly property string ownWallpaper: perMonitorWallpaper && screenName.length > 0
+                                           ? (screenWallpapers[screenName] || "") : ""
+    readonly property string wallpaper: ownWallpaper.length > 0
+                                        ? ownWallpaper : (Settings.values["desktop.wallpaper"] || "")
     readonly property string wallpaperMode: Settings.values["desktop.wallpaperMode"] || "fill"
     readonly property int wallpaperBlur: Settings.values["desktop.wallpaperBlur"] || 0
     readonly property int wallpaperDarken: Settings.values["desktop.wallpaperDarken"] || 0
@@ -31,6 +39,58 @@ Window {
     readonly property bool autoArrangeIcons: Settings.values["desktop.autoArrangeIcons"] !== false
     // Exposed for the smoke test and for plugins.
     property alias contextMenuVisible: contextMenu.visible
+
+    // Sets the picture of this screen (per-monitor wallpapers) or of every
+    // screen.
+    function setWallpaper(path) {
+        if (perMonitorWallpaper && screenName.length > 0) {
+            const copy = {};
+            for (const name in screenWallpapers)
+                copy[name] = screenWallpapers[name];
+            copy[screenName] = path;
+            Settings.setValue("multiMonitor.wallpapers", copy);
+        } else {
+            Settings.setValue("desktop.wallpaper", path);
+        }
+    }
+
+    // The folder the slideshow walks through: where the current picture
+    // lives, or the pictures folder while none is chosen.
+    readonly property string slideshowFolder: {
+        const wp = desk.wallpaper;
+        const slash = wp.lastIndexOf("/");
+        if (wp.length === 0 || wp.indexOf("://") > 0 || slash <= 0)
+            return String(Shell.picturesPath);
+        return wp.substring(0, slash);
+    }
+
+    // Shows the next picture of the slideshow folder (by name, wrapping).
+    function nextWallpaper() {
+        if (slideshowFiles.count === 0)
+            return false;
+        let next = 0;
+        for (let i = 0; i < slideshowFiles.count; ++i) {
+            if (slideshowFiles.get(i, "filePath") === desk.wallpaper) {
+                next = (i + 1) % slideshowFiles.count;
+                break;
+            }
+        }
+        const path = slideshowFiles.get(next, "filePath");
+        if (!path || path === desk.wallpaper)
+            return false;
+        setWallpaper(path);
+        return true;
+    }
+
+    // Wallpaper slideshow. One desktop drives a shared wallpaper (the first
+    // screen's); with per-monitor wallpapers every screen changes its own.
+    Timer {
+        interval: Math.max(10, desk.wallpaperSlideshowInterval) * 1000
+        repeat: true
+        running: desk.wallpaperSlideshow
+                 && (desk.perMonitorWallpaper || desk.screen === Qt.application.screens[0])
+        onTriggered: desk.nextWallpaper()
+    }
 
     visible: true
     color: "#101418"
@@ -142,6 +202,19 @@ Window {
                       "*.tif", "*.tiff", "*.avif", "*.heic", "*.jxl"]
         showDirs: false
         showDotAndDotDot: false
+    }
+
+    // Pictures next to the current wallpaper, for the slideshow. Only read
+    // while the slideshow is on.
+    FolderListModel {
+        id: slideshowFiles
+        folder: desk.wallpaperSlideshow
+                ? "file://" + desk.slideshowFolder.split("/").map(p => encodeURIComponent(p)).join("/")
+                : ""
+        nameFilters: wallpaperFiles.nameFilters
+        showDirs: false
+        showDotAndDotDot: false
+        sortField: FolderListModel.Name
     }
 
     // --- the desktop grid -----------------------------------------------------
@@ -747,7 +820,7 @@ Window {
                     contextMenu.visible = false;
                     if (wallpaperFiles.count > 0) {
                         const next = Math.floor(Math.random() * wallpaperFiles.count);
-                        Settings.setValue("desktop.wallpaper", wallpaperFiles.get(next).filePath);
+                        desk.setWallpaper(wallpaperFiles.get(next, "filePath"));
                     } else {
                         Shell.openPath(Shell.picturesPath);
                     }

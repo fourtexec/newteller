@@ -156,6 +156,10 @@ inside VirtualBox. The implemented pieces are:
   describe themselves in a small layer surface above the hovered button; buttons
   inside the menus (start menu session actions, quick settings, notification
   centre) use an in-window bubble.
+- **Wallpapers**: one picture for every screen or one per screen
+  (`desktop.perMonitorWallpaper`; the wallpaper pickers choose for the screen
+  they are on), and a slideshow through the folder of the current picture
+  (`desktop.wallpaperSlideshow`).
 - Desktop: wallpaper, icons from `~/Desktop` (double-click to open), desktop
   plugins, right-click menu (change wallpaper, paste to a file, new folder, open
   a terminal, settings); right-clicking an icon opens its own menu: Open,
@@ -573,10 +577,12 @@ All keys, with their defaults:
 | `dock.multiRow` / `dock.rows` | `false` / `1` | wrap the dock into up to three rows (horizontal panels) |
 | `dock.scrollable` | `true` | let the dock scroll when its buttons do not fit |
 | `dock.iconSpacing` | `4` | gap between dock buttons in pixels |
+| `dock.showLabels` / `dock.labelPosition` | `false` / `"bottom"` | application names on the dock buttons, at the `bottom` or the `top` of the button |
 | `dock.position` / `panel.centerDock` | `"left"` / `false` | align the dock at the start, centre or end of the bar |
 | `panel.spacing` / `panel.leftSpacing` / `panel.rightSpacing` / `panel.zoneSpacing` | `8` | bar padding and gaps between the panel zones |
 | `windows.material` | `"theme"` | surface for shell popups: `theme`, `opaque`, `translucent`, `frosted` or `liquid` |
 | `panel.indicators` | `true` | bell (notification centre) and quick settings button at the end of the bar |
+| `notifications.groupByApp` | `true` | group the notification centre by application (off: one list, newest first) |
 | `notifications.material` | `"theme"` | notification popup and centre surface material |
 | `notifications.opacityPercent` | `0` | notification surface opacity; `0` uses the material preset |
 | `notifications.cornerRadius` | `-1` | notification card radius; `-1` follows the window radius |
@@ -590,6 +596,8 @@ All keys, with their defaults:
 | `theme.name` | `"default"` | theme file name |
 | `theme.autoReload` | `true` | re-apply when the theme file changes |
 | `desktop.wallpaper` | `""` | image path (empty = solid colour) |
+| `desktop.perMonitorWallpaper` / `multiMonitor.wallpapers` | `false` / `{}` | every screen keeps its own picture (screen name -> image path); a screen without one shows `desktop.wallpaper` |
+| `desktop.wallpaperSlideshow` / `desktop.wallpaperSlideshowInterval` | `false` / `60` | walk through the pictures in the folder of the current wallpaper, every so many seconds |
 | `desktop.showIcons` | `true` | show `~/Desktop` icons |
 | `desktop.iconSize` | `48` | icon size in pixels |
 | `desktop.cellWidth` / `desktop.cellHeight` | `96` / `110` | icon grid cell |
@@ -867,13 +875,21 @@ test the C++ code; the C++ and QML together are built by CI on every push.
 ## Layout
 
 ```
-src/            C++ core (settings, theme, appmodel, shellcontroller, plugins, systemmonitor,
-                windowlist, rustbridge, windowsystem, shellwindow, main)
-src/session/    newteller-compositor: wlroots session, outputs, layer-shell, xdg-shell,
-                XWayland, input, and screencopy
-protocols/      wlr-layer-shell and xdg-shell XML used to generate compositor headers
-qml/            Main.qml, Panel.qml, DockMenu.qml, StartMenu.qml, Desktop.qml, TaskButton.qml,
-                RunDialog.qml, SettingsApp.qml and the Settings* row controls
+src/            the shell's C++ services: settings, theme, application catalogue, session
+                services (compositor control socket, Wi-Fi, idle, autostart), notifications,
+                tray, quick settings, Bluetooth, clipboard history, polkit agent, window
+                list, system monitor, plugins, the Rust bridge, main
+src/session/    newteller-compositor: the wlroots session (windows, layer-shell, XWayland,
+                input, workspaces, lock, outputs, decorations, effects renderer, control
+                socket) and its configuration parser
+protocols/      Wayland protocol XML used to generate the compositor's headers
+qml/            the interface: Main.qml (root), Panel, StartMenu, Desktop, the popup cards
+                (quick settings, Wi-Fi, Bluetooth, sound, clipboard, notifications, ...),
+                TaskView, SettingsApp and the Settings* row controls
+i18n/           translations (English text -> translation, JSON)
+icons/          bundled icons (compiled into the binary)
+scripts/        dependency installers, release build, session/lock/screenshot helpers
+iso/            installation image builder and the installer
 rust/           Rust workspace: newteller-core (static lib + C ABI) and newteller-ctl
 tests/          QML, shell and headless compositor smoke tests
 themes/         built-in theme JSON files (compiled into the binary)

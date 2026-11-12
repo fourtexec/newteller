@@ -149,24 +149,12 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("dock.labelPosition"), QStringLiteral("bottom"));
     m_defaults.insert(QStringLiteral("dock.iconColorMode"), QStringLiteral("theme"));
     m_defaults.insert(QStringLiteral("dock.customIconColor"), QStringLiteral("#ffffff"));
-    // Start menu styling
-    m_defaults.insert(QStringLiteral("startmenu.backgroundColor"), QString());
-    m_defaults.insert(QStringLiteral("startmenu.backgroundOpacity"), -1);
-    m_defaults.insert(QStringLiteral("startmenu.foregroundColor"), QString());
-    m_defaults.insert(QStringLiteral("startmenu.accentColor"), QString());
-    m_defaults.insert(QStringLiteral("startmenu.highlightColor"), QStringLiteral("#ffffff"));
     // Desktop styling
     m_defaults.insert(QStringLiteral("desktop.backgroundColor"), QString());
     m_defaults.insert(QStringLiteral("desktop.backgroundGradient"), true);
     m_defaults.insert(QStringLiteral("desktop.iconColor"), QStringLiteral("#ffffff"));
     m_defaults.insert(QStringLiteral("desktop.iconShadow"), true);
     m_defaults.insert(QStringLiteral("desktop.iconGlow"), false);
-    // Window styling
-    m_defaults.insert(QStringLiteral("windows.enableAnimations"), true);
-    m_defaults.insert(QStringLiteral("windows.animationSpeed"), 1.0);
-    // Theme variants
-    m_defaults.insert(QStringLiteral("theme.followSystem"), false);
-    m_defaults.insert(QStringLiteral("theme.systemTheme"), QStringLiteral("auto"));
 
     // ===== Panel & Dock Improvements =====
     m_defaults.insert(QStringLiteral("panel.spacing"), 8);
@@ -189,10 +177,7 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("desktop.wallpaperSlideshow"), false);
     m_defaults.insert(QStringLiteral("desktop.wallpaperSlideshowInterval"), 60);
     m_defaults.insert(QStringLiteral("desktop.autoArrangeIcons"), true);
-    m_defaults.insert(QStringLiteral("desktop.iconTextColor"), QStringLiteral("#ffffff"));
-    m_defaults.insert(QStringLiteral("desktop.iconTextShadow"), true);
     m_defaults.insert(QStringLiteral("desktop.showHiddenFiles"), false);
-    m_defaults.insert(QStringLiteral("desktop.doubleClickSpeed"), 500);
     // Pixel positions from before the desktop grid (desktop.gridPositions):
     // { "notes.txt": { "x": 120, "y": 48 }, ... } and plugin id -> {x, y}.
     // Read once to keep an old layout; the next drag or reset clears them.
@@ -220,24 +205,8 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("notifications.doNotDisturbSchedule"), false);
     m_defaults.insert(QStringLiteral("notifications.dndStartTime"), QStringLiteral("22:00"));
     m_defaults.insert(QStringLiteral("notifications.dndEndTime"), QStringLiteral("08:00"));
-    m_defaults.insert(QStringLiteral("notifications.urgencyLevel"), 2);
 
     // ===== System & Behavior =====
-    // Hotkeys
-    m_defaults.insert(QStringLiteral("hotkeys.enabled"), true);
-    m_defaults.insert(QStringLiteral("hotkeys.startMenu"), QStringLiteral("Meta"));
-    m_defaults.insert(QStringLiteral("hotkeys.runDialog"), QStringLiteral("Alt+F2"));
-    m_defaults.insert(QStringLiteral("hotkeys.settings"), QStringLiteral("Meta+,Meta+S"));
-    m_defaults.insert(QStringLiteral("hotkeys.notificationCenter"), QStringLiteral("Meta+N"));
-    m_defaults.insert(QStringLiteral("hotkeys.quickSettings"), QStringLiteral("Meta+Q"));
-    m_defaults.insert(QStringLiteral("hotkeys.lockScreen"), QStringLiteral("Meta+L"));
-    m_defaults.insert(QStringLiteral("hotkeys.logout"), QStringLiteral("Meta+Shift+Q"));
-    m_defaults.insert(QStringLiteral("hotkeys.sleep"), QStringLiteral("Meta+Shift+S"));
-    m_defaults.insert(QStringLiteral("hotkeys.reboot"), QStringLiteral("Meta+Shift+R"));
-    m_defaults.insert(QStringLiteral("hotkeys.shutdown"), QStringLiteral("Meta+Shift+P"));
-    m_defaults.insert(QStringLiteral("hotkeys.terminal"), QStringLiteral("Meta+T"));
-    m_defaults.insert(QStringLiteral("hotkeys.fileManager"), QStringLiteral("Meta+E"));
-    m_defaults.insert(QStringLiteral("hotkeys.switcher"), QStringLiteral("Alt+Tab"));
     // Startup apps
     m_defaults.insert(QStringLiteral("startup.apps"), QStringList());
     m_defaults.insert(QStringLiteral("startup.delay"), 0);
@@ -254,7 +223,6 @@ Settings::Settings(QObject *parent)
     // Screen recordings (wf-recorder) also record the default microphone.
     m_defaults.insert(QStringLiteral("recorder.audio"), false);
     // Power management
-    m_defaults.insert(QStringLiteral("power.sleepAction"), QStringLiteral("suspend"));
     m_defaults.insert(QStringLiteral("power.lockOnSleep"), true);
     // Power saver profile from 20% on battery until plugged in.
     m_defaults.insert(QStringLiteral("power.batterySaver"), true);
@@ -355,29 +323,14 @@ Settings::Settings(QObject *parent)
     // Animations
     m_defaults.insert(QStringLiteral("animations.enabled"), true);
     m_defaults.insert(QStringLiteral("animations.speed"), 1.0);
-    m_defaults.insert(QStringLiteral("animations.panelHide"), true);
-    // Caching
-    m_defaults.insert(QStringLiteral("cache.iconCache"), true);
-    m_defaults.insert(QStringLiteral("cache.searchCache"), true);
-    m_defaults.insert(QStringLiteral("cache.maxIconCacheSize"), 1000);
-    m_defaults.insert(QStringLiteral("cache.maxSearchCacheSize"), 500);
-    // Metrics
-    m_defaults.insert(QStringLiteral("system.showCpuTemp"), false);
-    m_defaults.insert(QStringLiteral("system.showGpu"), false);
-    m_defaults.insert(QStringLiteral("system.showFanSpeed"), false);
     // Search
-    m_defaults.insert(QStringLiteral("search.maxResults"), 50);
     m_defaults.insert(QStringLiteral("search.showCategories"), true);
-    m_defaults.insert(QStringLiteral("search.categoryIcons"), true);
 
     // ===== Multi-monitor =====
-    m_defaults.insert(QStringLiteral("multiMonitor.perMonitorSettings"), false);
-    m_defaults.insert(QStringLiteral("multiMonitor.panelPositions"), QVariantMap());
     m_defaults.insert(QStringLiteral("multiMonitor.wallpapers"), QVariantMap());
 
     // ===== Plugin System Improvements =====
     m_defaults.insert(QStringLiteral("plugins.onlineEnabled"), true);
-    m_defaults.insert(QStringLiteral("plugins.autoUpdate"), false);
     m_defaults.insert(QStringLiteral("plugins.showDescriptions"), true);
 
     // The Rust schema knows the same keys; merge its defaults on top so a new
