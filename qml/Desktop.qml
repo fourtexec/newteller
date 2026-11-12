@@ -40,6 +40,11 @@ Window {
     // Exposed for the smoke test and for plugins.
     property alias contextMenuVisible: contextMenu.visible
 
+    // What counts as a picture for "Change wallpaper" and the slideshow.
+    readonly property var imageFilters: ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp", "*.gif",
+                                         "*.svg", "*.xpm", "*.tif", "*.tiff", "*.avif", "*.heic",
+                                         "*.jxl"]
+
     // Sets the picture of this screen (per-monitor wallpapers) or of every
     // screen.
     function setWallpaper(path) {
@@ -202,8 +207,7 @@ Window {
     FolderListModel {
         id: wallpaperFiles
         folder: Shell.picturesPath
-        nameFilters: ["*.png", "*.jpg", "*.jpeg", "*.webp", "*.bmp", "*.gif", "*.svg", "*.xpm",
-                      "*.tif", "*.tiff", "*.avif", "*.heic", "*.jxl"]
+        nameFilters: desk.imageFilters
         showDirs: false
         showDotAndDotDot: false
     }
@@ -215,7 +219,7 @@ Window {
         folder: desk.wallpaperSlideshow
                 ? "file://" + desk.slideshowFolder.split("/").map(p => encodeURIComponent(p)).join("/")
                 : ""
-        nameFilters: wallpaperFiles.nameFilters
+        nameFilters: desk.imageFilters
         showDirs: false
         showDotAndDotDot: false
         sortField: FolderListModel.Name
