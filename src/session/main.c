@@ -26,6 +26,7 @@
 #include <wlr/render/wlr_renderer.h>
 #include <wlr/types/wlr_compositor.h>
 #include <wlr/types/wlr_cursor.h>
+#include <wlr/types/wlr_alpha_modifier_v1.h>
 #include <wlr/types/wlr_data_control_v1.h>
 #include <wlr/types/wlr_data_device.h>
 #include <wlr/types/wlr_export_dmabuf_v1.h>
@@ -65,6 +66,7 @@
 #include <wlr/types/wlr_viewporter.h>
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
 #include <wlr/types/wlr_tablet_tool.h>
+#include <wlr/types/wlr_tablet_v2.h>
 #include <wlr/types/wlr_touch.h>
 #include <wlr/types/wlr_virtual_pointer_v1.h>
 #include <wlr/types/wlr_xcursor_manager.h>
@@ -82,6 +84,7 @@
 // Version-dependent headers go after wlr/version.h, which defines the macros.
 #if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR >= 19
 #include <wlr/types/wlr_xdg_system_bell_v1.h>
+#include <wlr/types/wlr_ext_data_control_v1.h>
 #endif
 #include <wlr/xwayland/xwayland.h>
 
@@ -189,6 +192,7 @@ static void ipcBroadcast(struct Server *server, const char *line);
 static bool ipcHasWatchers(struct Server *server);
 static void broadcastLayout(struct Server *server);
 static void lockFocusSurface(struct Server *server, struct wlr_surface *surface);
+static void cursorButton(struct wl_listener *listener, void *data);
 static void spawnLocker(struct Server *server);
 static void setLayout(struct Server *server, int index);
 static void switchWorkspace(struct Server *server, int index);
@@ -732,9 +736,14 @@ struct Server {
     struct wl_listener touchUp;
     struct wl_listener touchMotion;
     struct wl_listener touchFrame;
-    // Graphics tablets: the pen moves the pointer and its tip clicks.
+    // Graphics tablets: applications that draw (tablet-v2) get the pen
+    // itself, with pressure and tilt; everything else sees a mouse.
+    struct wlr_tablet_manager_v2 *tabletManager;
+    struct wl_list tablets; // struct Tablet
     struct wl_listener tabletAxis;
     struct wl_listener tabletTip;
+    struct wl_listener tabletProximity;
+    struct wl_listener tabletButton;
     struct wl_listener newXdgToplevel;
     struct wl_listener newXdgPopup;
     struct wl_listener newLayerSurface;
@@ -3124,6 +3133,34 @@ static void cursorMotionAbsolute(struct wl_listener *listener, void *data)
     processCursorMotion(server, event->time_msec);
 }
 
+// What a press (mouse button, pen tip) on `hit` does to the keyboard focus
+// and the stacking, before the press itself is delivered.
+static void pressFocus(struct Server *server, const struct Hit *hit)
+{
+    // Clicking outside an exclusive layer (a menu, for example) has to
+    // deactivate it even when the surface under the pointer cannot take
+    // keyboard focus itself.
+    if (server->focusedLayer && hit->layer != server->focusedLayer) {
+        server->focusedLayer = NULL;
+        wlr_seat_keyboard_notify_clear_focus(server->seat);
+    }
+
+    if (hit->view) {
+        if (!hit->view->overrideRedirect)
+            focusView(hit->view, hit->surface);
+        viewRaise(hit->view);
+    } else if (hit->layer) {
+        enum zwlr_layer_surface_v1_keyboard_interactivity interactivity =
+            hit->layer->layer->current.keyboard_interactive;
+        if (interactivity == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE
+            || interactivity == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND) {
+            focusLayer(hit->layer);
+        }
+    } else if (server->focusedView) {
+        clearKeyboardFocus(server);
+    }
+}
+
 static void cursorButton(struct wl_listener *listener, void *data)
 {
     struct Server *server = wl_container_of(listener, server, cursorButton);
@@ -3297,28 +3334,7 @@ static void cursorButton(struct wl_listener *listener, void *data)
             hit.layer && hit.layer->layer->namespace
                 ? hit.layer->layer->namespace : "(none)",
             (void *)server->seat->pointer_state.focused_surface);
-    // Clicking outside an exclusive layer (a menu, for example) has to
-    // deactivate it even when the surface under the pointer cannot take
-    // keyboard focus itself.
-    if (server->focusedLayer && hit.layer != server->focusedLayer) {
-        server->focusedLayer = NULL;
-        wlr_seat_keyboard_notify_clear_focus(server->seat);
-    }
-
-    if (hit.view) {
-        if (!hit.view->overrideRedirect)
-            focusView(hit.view, hit.surface);
-        viewRaise(hit.view);
-    } else if (hit.layer) {
-        enum zwlr_layer_surface_v1_keyboard_interactivity interactivity =
-            hit.layer->layer->current.keyboard_interactive;
-        if (interactivity == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_EXCLUSIVE
-            || interactivity == ZWLR_LAYER_SURFACE_V1_KEYBOARD_INTERACTIVITY_ON_DEMAND) {
-            focusLayer(hit.layer);
-        }
-    } else if (server->focusedView) {
-        clearKeyboardFocus(server);
-    }
+    pressFocus(server, &hit);
 
     pointerFocus(server, &hit);
     wlr_seat_pointer_notify_frame(server->seat);
@@ -3362,9 +3378,15 @@ static void handleCursorShape(struct wl_listener *listener, void *data)
 {
     struct Server *server = wl_container_of(listener, server, cursorShape);
     struct wlr_cursor_shape_manager_v1_request_set_shape_event *event = data;
-    if (event->device_type != WLR_CURSOR_SHAPE_MANAGER_V1_DEVICE_TYPE_POINTER
-        || server->seat->pointer_state.focused_client != event->seat_client)
+    if (event->device_type == WLR_CURSOR_SHAPE_MANAGER_V1_DEVICE_TYPE_TABLET_TOOL) {
+        // A pen: only the client the pen is over.
+        struct wlr_surface *under = event->tablet_tool ? event->tablet_tool->focused_surface : NULL;
+        if (!under || wl_resource_get_client(under->resource) != event->seat_client->client)
+            return;
+    } else if (event->device_type != WLR_CURSOR_SHAPE_MANAGER_V1_DEVICE_TYPE_POINTER
+               || server->seat->pointer_state.focused_client != event->seat_client) {
         return;
+    }
     wlr_cursor_set_xcursor(server->cursor, server->cursorManager,
                            wlr_cursor_shape_v1_name(event->shape));
 }
@@ -4720,37 +4742,314 @@ static void handleTouchFrame(struct wl_listener *listener, void *data)
     wlr_seat_touch_notify_frame(server->seat);
 }
 
-// A pen on a graphics tablet acts as a mouse: it moves the pointer to the
-// point it hovers over, and touching the surface is a left click through
-// the same path as a real click (focus, title bars, shell cards).
-// Pressure and tilt need tablet-v2, which is not offered yet.
+// ---- Graphics tablets ------------------------------------------------------
+//
+// Drawing programs (Krita, GIMP, Inkscape, Xournal++, MyPaint) speak
+// tablet-v2: over their surfaces the pen is delivered as a pen, with
+// pressure, tilt, rotation and its side buttons. Everywhere else - title
+// bars, the panel, applications that know only mice, XWayland - the pen is a
+// mouse: it moves the pointer, the tip is a left click, the lower side button
+// a right click and the upper one a middle click.
+
+struct Tablet {
+    struct Server *server;
+    struct wlr_tablet_v2_tablet *v2;
+    struct wl_listener destroy;
+    struct wl_list link; // Server.tablets
+};
+
+struct TabletTool {
+    struct Server *server;
+    struct wlr_tablet_tool *tool;
+    struct wlr_tablet_v2_tablet_tool *v2;
+    double tiltX;
+    double tiltY;
+    // The tip is down on a tablet-aware surface: the stroke stays with that
+    // surface, whose top-left corner is at originX/Y in the layout.
+    bool down;
+    bool downLocked; // whether the session was locked when the stroke began
+    double originX;
+    double originY;
+    // The tip (or a side button) is held as a mouse button.
+    uint32_t emulated[3];
+    struct wl_listener setCursor;
+    struct wl_listener destroy;
+};
+
+static void tabletDestroy(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct Tablet *tablet = wl_container_of(listener, tablet, destroy);
+    wl_list_remove(&tablet->destroy.link);
+    wl_list_remove(&tablet->link);
+    free(tablet);
+}
+
+static void tabletToolDestroy(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct TabletTool *tool = wl_container_of(listener, tool, destroy);
+    wl_list_remove(&tool->setCursor.link);
+    wl_list_remove(&tool->destroy.link);
+    tool->tool->data = NULL;
+    free(tool);
+}
+
+// The application under the pen picks the cursor, as with the mouse.
+static void tabletToolSetCursor(struct wl_listener *listener, void *data)
+{
+    struct TabletTool *tool = wl_container_of(listener, tool, setCursor);
+    struct wlr_tablet_v2_event_cursor *event = data;
+    struct wlr_surface *under = tool->v2->focused_surface;
+    if (!under || !event->seat_client
+        || wl_resource_get_client(under->resource) != event->seat_client->client)
+        return;
+    wlr_cursor_set_surface(tool->server->cursor, event->surface, event->hotspot_x,
+                           event->hotspot_y);
+    tool->server->cursorImage = NULL;
+}
+
+static struct TabletTool *tabletToolFor(struct Server *server, struct wlr_tablet_tool *wlrTool)
+{
+    if (!wlrTool || !server->tabletManager)
+        return NULL;
+    if (wlrTool->data)
+        return wlrTool->data;
+    struct TabletTool *tool = xcalloc(1, sizeof(*tool));
+    tool->server = server;
+    tool->tool = wlrTool;
+    // Before the v2 tool exists: its own destroy handler then runs after
+    // ours, when our listener on it is already gone.
+    tool->destroy.notify = tabletToolDestroy;
+    wl_signal_add(&wlrTool->events.destroy, &tool->destroy);
+    tool->v2 = wlr_tablet_tool_create(server->tabletManager, server->seat, wlrTool);
+    if (!tool->v2) {
+        wl_list_remove(&tool->destroy.link);
+        free(tool);
+        return NULL;
+    }
+    tool->setCursor.notify = tabletToolSetCursor;
+    wl_signal_add(&tool->v2->events.set_cursor, &tool->setCursor);
+    wlrTool->data = tool;
+    return tool;
+}
+
+static bool surfaceTakesTablet(struct Tablet *tablet, struct wlr_surface *surface)
+{
+#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR >= 19
+    return wlr_surface_accepts_tablet_v2(surface, tablet->v2);
+#else
+    return wlr_surface_accepts_tablet_v2(tablet->v2, surface);
+#endif
+}
+
+// The surface under the pointer when it should get the pen as a pen.
+static struct wlr_surface *tabletSurfaceAt(struct Server *server, struct Tablet *tablet,
+                                           struct Hit *hit)
+{
+    *hit = hitTest(server, server->cursor->x, server->cursor->y);
+    if (!tablet || !hit->surface || server->cursorMode != CURSOR_PASSTHROUGH
+        || server->seat->drag || !surfaceTakesTablet(tablet, hit->surface))
+        return NULL;
+    return hit->surface;
+}
+
+static void tabletToolLeave(struct TabletTool *tool)
+{
+    if (!tool)
+        return;
+    if (tool->down) {
+        wlr_tablet_v2_tablet_tool_notify_up(tool->v2);
+        tool->down = false;
+    }
+    if (tool->v2->focused_surface)
+        wlr_tablet_v2_tablet_tool_notify_proximity_out(tool->v2);
+}
+
+// The pen as a mouse button; `slot` remembers which button went down, so
+// the release matches it wherever the pen is by then.
+static void tabletEmulateButton(struct Server *server, struct TabletTool *tool, int slot,
+                                uint32_t button, bool pressed, uint32_t time)
+{
+    if (tool) {
+        if (pressed) {
+            tool->emulated[slot] = button;
+        } else {
+            if (!tool->emulated[slot])
+                return;
+            button = tool->emulated[slot];
+            tool->emulated[slot] = 0;
+        }
+    }
+    struct wlr_pointer_button_event click = {0};
+    click.time_msec = time;
+    click.button = button;
+    click.state = pressed ? WL_POINTER_BUTTON_STATE_PRESSED : WL_POINTER_BUTTON_STATE_RELEASED;
+    cursorButton(&server->cursorButton, &click);
+    wlr_seat_pointer_notify_frame(server->seat);
+}
+
 static void handleTabletAxis(struct wl_listener *listener, void *data)
 {
     struct Server *server = wl_container_of(listener, server, tabletAxis);
     struct wlr_tablet_tool_axis_event *event = data;
-    const double x = (event->updated_axes & WLR_TABLET_TOOL_AXIS_X) ? event->x : NAN;
-    const double y = (event->updated_axes & WLR_TABLET_TOOL_AXIS_Y) ? event->y : NAN;
-    if (isnan(x) && isnan(y))
-        return;
+    struct Tablet *tablet = event->tablet->data;
+    struct TabletTool *tool = tabletToolFor(server, event->tool);
+    const bool moved = event->updated_axes & (WLR_TABLET_TOOL_AXIS_X | WLR_TABLET_TOOL_AXIS_Y);
     notifyActivity(server);
-    wlr_cursor_warp_absolute(server->cursor, &event->tablet->base, x, y);
-    processCursorMotion(server, event->time_msec);
-    wlr_seat_pointer_notify_frame(server->seat);
+    if (moved) {
+        const double x = (event->updated_axes & WLR_TABLET_TOOL_AXIS_X) ? event->x : NAN;
+        const double y = (event->updated_axes & WLR_TABLET_TOOL_AXIS_Y) ? event->y : NAN;
+        wlr_cursor_warp_absolute(server->cursor, &event->tablet->base, x, y);
+    }
+
+    // Locking ends a stroke: nothing but the locker gets input after it.
+    if (tool && tool->down && tool->downLocked != server->locked)
+        tabletToolLeave(tool);
+
+    bool pen = false;
+    if (tool && tool->down && tool->v2->focused_surface) {
+        // A stroke stays with the surface it began on.
+        pen = true;
+        if (moved)
+            wlr_tablet_v2_tablet_tool_notify_motion(tool->v2,
+                                                    server->cursor->x - tool->originX,
+                                                    server->cursor->y - tool->originY);
+    } else if (tool && tablet) {
+        struct Hit hit;
+        struct wlr_surface *surface = tabletSurfaceAt(server, tablet, &hit);
+        if (surface) {
+            pen = true;
+            wlr_tablet_v2_tablet_tool_notify_proximity_in(tool->v2, tablet->v2, surface);
+            if (moved)
+                wlr_tablet_v2_tablet_tool_notify_motion(tool->v2, hit.sx, hit.sy);
+        } else {
+            tabletToolLeave(tool);
+        }
+    }
+
+    if (!pen) {
+        if (moved) {
+            processCursorMotion(server, event->time_msec);
+            wlr_seat_pointer_notify_frame(server->seat);
+        }
+        return;
+    }
+    if (event->updated_axes & WLR_TABLET_TOOL_AXIS_PRESSURE)
+        wlr_tablet_v2_tablet_tool_notify_pressure(tool->v2, event->pressure);
+    if (event->updated_axes & WLR_TABLET_TOOL_AXIS_DISTANCE)
+        wlr_tablet_v2_tablet_tool_notify_distance(tool->v2, event->distance);
+    if (event->updated_axes & WLR_TABLET_TOOL_AXIS_TILT_X)
+        tool->tiltX = event->tilt_x;
+    if (event->updated_axes & WLR_TABLET_TOOL_AXIS_TILT_Y)
+        tool->tiltY = event->tilt_y;
+    if (event->updated_axes & (WLR_TABLET_TOOL_AXIS_TILT_X | WLR_TABLET_TOOL_AXIS_TILT_Y))
+        wlr_tablet_v2_tablet_tool_notify_tilt(tool->v2, tool->tiltX, tool->tiltY);
+    if (event->updated_axes & WLR_TABLET_TOOL_AXIS_ROTATION)
+        wlr_tablet_v2_tablet_tool_notify_rotation(tool->v2, event->rotation);
+    if (event->updated_axes & WLR_TABLET_TOOL_AXIS_SLIDER)
+        wlr_tablet_v2_tablet_tool_notify_slider(tool->v2, event->slider);
+    if (event->updated_axes & WLR_TABLET_TOOL_AXIS_WHEEL)
+        wlr_tablet_v2_tablet_tool_notify_wheel(tool->v2, event->wheel_delta, 0);
+}
+
+static void handleTabletProximity(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, tabletProximity);
+    struct wlr_tablet_tool_proximity_event *event = data;
+    struct Tablet *tablet = event->tablet->data;
+    struct TabletTool *tool = tabletToolFor(server, event->tool);
+    notifyActivity(server);
+    if (event->state == WLR_TABLET_TOOL_PROXIMITY_OUT) {
+        tabletToolLeave(tool);
+        // A pen lifted away while it held a mouse button lets go of it.
+        for (int slot = 0; tool && slot < 3; ++slot)
+            tabletEmulateButton(server, tool, slot, 0, false, event->time_msec);
+        return;
+    }
+    wlr_cursor_warp_absolute(server->cursor, &event->tablet->base, event->x, event->y);
+    struct Hit hit;
+    struct wlr_surface *surface = tool ? tabletSurfaceAt(server, tablet, &hit) : NULL;
+    if (surface) {
+        wlr_tablet_v2_tablet_tool_notify_proximity_in(tool->v2, tablet->v2, surface);
+        wlr_tablet_v2_tablet_tool_notify_motion(tool->v2, hit.sx, hit.sy);
+    } else {
+        processCursorMotion(server, event->time_msec);
+        wlr_seat_pointer_notify_frame(server->seat);
+    }
 }
 
 static void handleTabletTip(struct wl_listener *listener, void *data)
 {
     struct Server *server = wl_container_of(listener, server, tabletTip);
     struct wlr_tablet_tool_tip_event *event = data;
+    struct Tablet *tablet = event->tablet->data;
+    struct TabletTool *tool = tabletToolFor(server, event->tool);
+    notifyActivity(server);
+
+    if (event->state == WLR_TABLET_TOOL_TIP_UP) {
+        if (tool && tool->down) {
+            wlr_tablet_v2_tablet_tool_notify_up(tool->v2);
+            tool->down = false;
+        } else {
+            tabletEmulateButton(server, tool, 0, BTN_LEFT, false, event->time_msec);
+        }
+        return;
+    }
+
     wlr_cursor_warp_absolute(server->cursor, &event->tablet->base, event->x, event->y);
-    processCursorMotion(server, event->time_msec);
-    struct wlr_pointer_button_event click = {0};
-    click.time_msec = event->time_msec;
-    click.button = BTN_LEFT;
-    click.state = event->state == WLR_TABLET_TOOL_TIP_DOWN ? WL_POINTER_BUTTON_STATE_PRESSED
-                                                           : WL_POINTER_BUTTON_STATE_RELEASED;
-    cursorButton(&server->cursorButton, &click);
-    wlr_seat_pointer_notify_frame(server->seat);
+    struct Hit hit;
+    struct wlr_surface *surface = tool ? tabletSurfaceAt(server, tablet, &hit) : NULL;
+    if (!surface) {
+        tabletToolLeave(tool);
+        processCursorMotion(server, event->time_msec);
+        tabletEmulateButton(server, tool, 0, BTN_LEFT, true, event->time_msec);
+        return;
+    }
+
+    // Touching a window with the pen is a click on it: it takes the
+    // keyboard and comes to the front, and open shell cards close.
+    server->logoTap = false;
+    if (server->locked) {
+        lockFocusSurface(server, wlr_surface_get_root_surface(surface));
+    } else {
+        if (ipcHasWatchers(server)) {
+            char line[64];
+            snprintf(line, sizeof(line), "event click %d %d", (int)server->cursor->x,
+                     (int)server->cursor->y);
+            ipcBroadcast(server, line);
+        }
+        pressFocus(server, &hit);
+    }
+    wlr_tablet_v2_tablet_tool_notify_proximity_in(tool->v2, tablet->v2, surface);
+    wlr_tablet_v2_tablet_tool_notify_motion(tool->v2, hit.sx, hit.sy);
+    wlr_tablet_v2_tablet_tool_notify_down(tool->v2);
+    wlr_tablet_tool_v2_start_implicit_grab(tool->v2);
+    tool->down = true;
+    tool->downLocked = server->locked;
+    tool->originX = server->cursor->x - hit.sx;
+    tool->originY = server->cursor->y - hit.sy;
+}
+
+static void handleTabletButton(struct wl_listener *listener, void *data)
+{
+    struct Server *server = wl_container_of(listener, server, tabletButton);
+    struct wlr_tablet_tool_button_event *event = data;
+    struct TabletTool *tool = tabletToolFor(server, event->tool);
+    const bool pressed = event->state == WLR_BUTTON_PRESSED;
+    notifyActivity(server);
+    const int slot = event->button == BTN_STYLUS ? 1 : 2;
+    if (tool && tool->v2->focused_surface && !(tool->emulated[slot] && !pressed)) {
+        wlr_tablet_v2_tablet_tool_notify_button(
+            tool->v2, event->button,
+            pressed ? ZWP_TABLET_PAD_V2_BUTTON_STATE_PRESSED
+                    : ZWP_TABLET_PAD_V2_BUTTON_STATE_RELEASED);
+        return;
+    }
+    if (event->button != BTN_STYLUS && event->button != BTN_STYLUS2)
+        return;
+    tabletEmulateButton(server, tool, slot, event->button == BTN_STYLUS ? BTN_RIGHT : BTN_MIDDLE,
+                        pressed, event->time_msec);
 }
 
 static void newInput(struct wl_listener *listener, void *data)
@@ -4782,6 +5081,13 @@ static void newInput(struct wl_listener *listener, void *data)
         wlr_log(WLR_INFO, "touchscreen connected: %s", device->name ? device->name : "?");
     } else if (device->type == WLR_INPUT_DEVICE_TABLET) {
         wlr_cursor_attach_input_device(server->cursor, device);
+        struct Tablet *tablet = xcalloc(1, sizeof(*tablet));
+        tablet->server = server;
+        tablet->v2 = wlr_tablet_create(server->tabletManager, server->seat, device);
+        tablet->destroy.notify = tabletDestroy;
+        wl_signal_add(&device->events.destroy, &tablet->destroy);
+        wl_list_insert(&server->tablets, &tablet->link);
+        wlr_tablet_from_input_device(device)->data = tablet->v2 ? tablet : NULL;
         wlr_log(WLR_INFO, "graphics tablet connected: %s", device->name ? device->name : "?");
     }
 }
@@ -8389,6 +8695,13 @@ static void setupProtocols(struct Server *server)
     // wlr-data-control: clipboard managers and wl-copy/wl-paste work without
     // a focused window (clipboard history, screenshots to the clipboard).
     wlr_data_control_manager_v1_create(server->display);
+#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR >= 19
+    // The same under its standard name, which newer clipboard tools ask for.
+    wlr_ext_data_control_manager_v1_create(server->display, 1);
+#endif
+    // Applications may fade a surface themselves (alpha-modifier); the scene
+    // carries the opacity and both renderers honour it.
+    wlr_alpha_modifier_v1_create(server->display);
 
     server->outputLayout = wlr_output_layout_create(server->display);
     server->scene = wlr_scene_create();
@@ -8505,6 +8818,7 @@ static void setupProtocols(struct Server *server)
     server->lockManager = wlr_session_lock_manager_v1_create(server->display);
     server->newLock.notify = handleNewLock;
     wl_signal_add(&server->lockManager->events.new_lock, &server->newLock);
+    server->tabletManager = wlr_tablet_v2_create(server->display);
     server->relativePointers = wlr_relative_pointer_manager_v1_create(server->display);
     server->pointerConstraints = wlr_pointer_constraints_v1_create(server->display);
     struct wlr_cursor_shape_manager_v1 *cursorShapes =
@@ -8596,6 +8910,10 @@ static void setupInput(struct Server *server)
     wl_signal_add(&server->cursor->events.tablet_tool_axis, &server->tabletAxis);
     server->tabletTip.notify = handleTabletTip;
     wl_signal_add(&server->cursor->events.tablet_tool_tip, &server->tabletTip);
+    server->tabletProximity.notify = handleTabletProximity;
+    wl_signal_add(&server->cursor->events.tablet_tool_proximity, &server->tabletProximity);
+    server->tabletButton.notify = handleTabletButton;
+    wl_signal_add(&server->cursor->events.tablet_tool_button, &server->tabletButton);
 
     server->pointerGestures = wlr_pointer_gestures_v1_create(server->display);
     server->swipeBegin.notify = handleSwipeBegin;
@@ -8724,6 +9042,7 @@ static int run(struct Server *server)
     wl_list_init(&server->keyboards);
     wl_list_init(&server->pointers);
     wl_list_init(&server->touchDevices);
+    wl_list_init(&server->tablets);
     wl_list_init(&server->lockSurfaces);
     wl_list_init(&server->ipcClients);
     wl_list_init(&server->ghosts);
@@ -8888,6 +9207,8 @@ static int run(struct Server *server)
     wl_list_remove(&server->touchFrame.link);
     wl_list_remove(&server->tabletAxis.link);
     wl_list_remove(&server->tabletTip.link);
+    wl_list_remove(&server->tabletProximity.link);
+    wl_list_remove(&server->tabletButton.link);
     wl_list_remove(&server->swipeBegin.link);
     wl_list_remove(&server->swipeUpdate.link);
     wl_list_remove(&server->swipeEnd.link);

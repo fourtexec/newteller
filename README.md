@@ -198,8 +198,11 @@ inside VirtualBox. The implemented pieces are:
   polkit refuses the built-in agent (no login session, no polkit daemon) no
   external one is started either - it would fail the same way and only show
   an "Error" window. The Security settings page shows the reason.
-- **Graphics tablets**: the pen moves the pointer and touching the
-  tablet clicks (no pressure yet).
+- **Graphics tablets** (tablet-v2): drawing programs (Krita, GIMP,
+  Inkscape, Xournal++) get the pen with pressure, tilt, rotation and its
+  side buttons. Everywhere else the pen is a mouse: it moves the pointer,
+  the tip is a left click, the lower side button a right click and the
+  upper one a middle click.
 - **Touchscreens**: a touch goes to the surface under the finger and
   focuses its window like a click; shell cards close on a touch outside.
 - **Virtual machines and remote desktops** can take every key

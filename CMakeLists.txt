@@ -154,6 +154,15 @@ set(NEWTELLER_POINTER_CONSTRAINTS_HEADER ${CMAKE_BINARY_DIR}/pointer-constraints
 set(NEWTELLER_CURSOR_SHAPE_HEADER ${CMAKE_BINARY_DIR}/cursor-shape-v1-protocol.h)
 # Likewise wlr_output_power_management_v1.h.
 set(NEWTELLER_OUTPUT_POWER_HEADER ${CMAKE_BINARY_DIR}/wlr-output-power-management-unstable-v1-protocol.h)
+# Likewise wlr_tablet_v2.h (wlroots 0.18 and 0.19).
+set(NEWTELLER_TABLET_HEADER ${CMAKE_BINARY_DIR}/tablet-v2-protocol.h)
+add_custom_command(
+    OUTPUT ${NEWTELLER_TABLET_HEADER}
+    COMMAND ${WAYLAND_SCANNER_EXECUTABLE} server-header
+            ${CMAKE_SOURCE_DIR}/protocols/tablet-v2.xml
+            ${NEWTELLER_TABLET_HEADER}
+    DEPENDS ${CMAKE_SOURCE_DIR}/protocols/tablet-v2.xml
+    COMMENT "Generating tablet-v2 protocol header")
 add_custom_command(
     OUTPUT ${NEWTELLER_LAYER_SHELL_HEADER}
     COMMAND ${WAYLAND_SCANNER_EXECUTABLE} server-header
@@ -198,6 +207,7 @@ add_executable(newteller-compositor
     ${NEWTELLER_POINTER_CONSTRAINTS_HEADER}
     ${NEWTELLER_CURSOR_SHAPE_HEADER}
     ${NEWTELLER_OUTPUT_POWER_HEADER}
+    ${NEWTELLER_TABLET_HEADER}
 )
 target_compile_definitions(newteller-compositor PRIVATE
     WLR_USE_UNSTABLE
