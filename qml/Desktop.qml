@@ -84,11 +84,15 @@ Window {
 
     // Wallpaper slideshow. One desktop drives a shared wallpaper (the first
     // screen's); with per-monitor wallpapers every screen changes its own.
+    // Screens are compared by name: reading Window.screen hands out a new
+    // object every time, so the objects themselves never compare equal.
+    readonly property bool slideshowDriver: wallpaperSlideshow
+        && (perMonitorWallpaper || (Qt.application.screens.length > 0
+                                    && screenName === Qt.application.screens[0].name))
     Timer {
         interval: Math.max(10, desk.wallpaperSlideshowInterval) * 1000
         repeat: true
-        running: desk.wallpaperSlideshow
-                 && (desk.perMonitorWallpaper || desk.screen === Qt.application.screens[0])
+        running: desk.slideshowDriver
         onTriggered: desk.nextWallpaper()
     }
 

@@ -3214,6 +3214,9 @@ def main():
         settings.setValue("desktop.wallpaper", slide_files[0])
         settings.setValue("desktop.wallpaperSlideshow", True)
         QTest.qWait(600)  # the folder model reads asynchronously
+        check(left.property("slideshowDriver") is True
+              and right.property("slideshowDriver") is False,
+              "one desktop drives the slideshow of a shared wallpaper")
         QMetaObject.invokeMethod(left, "nextWallpaper")
         QTest.qWait(50)
         check(settings._values.get("desktop.wallpaper") == slide_files[1],
@@ -3230,6 +3233,7 @@ def main():
         # the shared one.
         settings.setValue("desktop.perMonitorWallpaper", True)
         QTest.qWait(50)
+        check(right.property("slideshowDriver") is False, "no slideshow while it is switched off")
         QMetaObject.invokeMethod(right, "setWallpaper", Q_ARG("QVariant", slide_files[2]))
         QTest.qWait(50)
         check(settings._values.get("multiMonitor.wallpapers") == {"Right": slide_files[2]},
