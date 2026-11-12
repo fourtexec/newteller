@@ -65,6 +65,7 @@
 #include <wlr/types/wlr_text_input_v3.h>
 #include <wlr/types/wlr_viewporter.h>
 #include <wlr/types/wlr_virtual_keyboard_v1.h>
+#include <wlr/types/wlr_tablet_pad.h>
 #include <wlr/types/wlr_tablet_tool.h>
 #include <wlr/types/wlr_tablet_v2.h>
 #include <wlr/types/wlr_touch.h>
@@ -85,6 +86,8 @@
 #if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR >= 19
 #include <wlr/types/wlr_xdg_system_bell_v1.h>
 #include <wlr/types/wlr_ext_data_control_v1.h>
+#include <wlr/types/wlr_ext_image_capture_source_v1.h>
+#include <wlr/types/wlr_ext_image_copy_capture_v1.h>
 #endif
 #include <wlr/xwayland/xwayland.h>
 
@@ -5065,6 +5068,112 @@ static void handleTabletButton(struct wl_listener *listener, void *data)
                         pressed, event->time_msec);
 }
 
+// The buttons, rings and strips on the tablet itself (the "pad") belong to
+// the window that has the keyboard, when it understands tablets: there they
+// are the application's own shortcuts (brush size, undo, zoom).
+struct TabletPad {
+    struct Server *server;
+    struct wlr_tablet_v2_tablet_pad *v2;
+    struct wlr_surface *focus;
+    struct wl_listener focusDestroy;
+    struct wl_listener button;
+    struct wl_listener ring;
+    struct wl_listener strip;
+    struct wl_listener destroy;
+};
+
+static void tabletPadFocusDestroy(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct TabletPad *pad = wl_container_of(listener, pad, focusDestroy);
+    wl_list_remove(&pad->focusDestroy.link);
+    pad->focus = NULL;
+}
+
+// Moves the pad to the surface with the keyboard focus (to nothing while
+// the session is locked or the surface does not take tablets).
+static void tabletPadSync(struct TabletPad *pad)
+{
+    struct Server *server = pad->server;
+    struct wlr_surface *surface =
+        server->locked ? NULL : server->seat->keyboard_state.focused_surface;
+    struct Tablet *tablet = NULL;
+    struct Tablet *candidate;
+    wl_list_for_each(candidate, &server->tablets, link) {
+        if (candidate->v2) {
+            tablet = candidate;
+            break;
+        }
+    }
+    if (surface && (!tablet || !surfaceTakesTablet(tablet, surface)))
+        surface = NULL;
+    if (pad->focus == surface)
+        return;
+    if (pad->focus) {
+        wlr_tablet_v2_tablet_pad_notify_leave(pad->v2, pad->focus);
+        wl_list_remove(&pad->focusDestroy.link);
+        pad->focus = NULL;
+    }
+    if (!surface)
+        return;
+    wlr_tablet_v2_tablet_pad_notify_enter(pad->v2, tablet->v2, surface);
+    pad->focus = surface;
+    pad->focusDestroy.notify = tabletPadFocusDestroy;
+    wl_signal_add(&surface->events.destroy, &pad->focusDestroy);
+}
+
+static void tabletPadButton(struct wl_listener *listener, void *data)
+{
+    struct TabletPad *pad = wl_container_of(listener, pad, button);
+    struct wlr_tablet_pad_button_event *event = data;
+    notifyActivity(pad->server);
+    tabletPadSync(pad);
+    if (!pad->focus)
+        return;
+    wlr_tablet_v2_tablet_pad_notify_mode(pad->v2, event->group, event->mode, event->time_msec);
+    wlr_tablet_v2_tablet_pad_notify_button(
+        pad->v2, event->button, event->time_msec,
+        event->state == WLR_BUTTON_PRESSED ? ZWP_TABLET_PAD_V2_BUTTON_STATE_PRESSED
+                                           : ZWP_TABLET_PAD_V2_BUTTON_STATE_RELEASED);
+}
+
+static void tabletPadRing(struct wl_listener *listener, void *data)
+{
+    struct TabletPad *pad = wl_container_of(listener, pad, ring);
+    struct wlr_tablet_pad_ring_event *event = data;
+    notifyActivity(pad->server);
+    tabletPadSync(pad);
+    if (pad->focus)
+        wlr_tablet_v2_tablet_pad_notify_ring(pad->v2, event->ring, event->position,
+                                             event->source == WLR_TABLET_PAD_RING_SOURCE_FINGER,
+                                             event->time_msec);
+}
+
+static void tabletPadStrip(struct wl_listener *listener, void *data)
+{
+    struct TabletPad *pad = wl_container_of(listener, pad, strip);
+    struct wlr_tablet_pad_strip_event *event = data;
+    notifyActivity(pad->server);
+    tabletPadSync(pad);
+    if (pad->focus)
+        wlr_tablet_v2_tablet_pad_notify_strip(pad->v2, event->strip, event->position,
+                                              event->source == WLR_TABLET_PAD_STRIP_SOURCE_FINGER,
+                                              event->time_msec);
+}
+
+static void tabletPadDestroy(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct TabletPad *pad = wl_container_of(listener, pad, destroy);
+    if (pad->focus)
+        wl_list_remove(&pad->focusDestroy.link);
+    wl_list_remove(&pad->button.link);
+    wl_list_remove(&pad->ring.link);
+    wl_list_remove(&pad->strip.link);
+    wl_list_remove(&pad->destroy.link);
+    free(pad);
+}
+
 static void newInput(struct wl_listener *listener, void *data)
 {
     struct Server *server = wl_container_of(listener, server, newInput);
@@ -5102,6 +5211,23 @@ static void newInput(struct wl_listener *listener, void *data)
         wl_list_insert(&server->tablets, &tablet->link);
         wlr_tablet_from_input_device(device)->data = tablet->v2 ? tablet : NULL;
         wlr_log(WLR_INFO, "graphics tablet connected: %s", device->name ? device->name : "?");
+    } else if (device->type == WLR_INPUT_DEVICE_TABLET_PAD) {
+        struct wlr_tablet_v2_tablet_pad *v2 =
+            wlr_tablet_pad_create(server->tabletManager, server->seat, device);
+        if (v2) {
+            struct wlr_tablet_pad *wlrPad = wlr_tablet_pad_from_input_device(device);
+            struct TabletPad *pad = xcalloc(1, sizeof(*pad));
+            pad->server = server;
+            pad->v2 = v2;
+            pad->button.notify = tabletPadButton;
+            wl_signal_add(&wlrPad->events.button, &pad->button);
+            pad->ring.notify = tabletPadRing;
+            wl_signal_add(&wlrPad->events.ring, &pad->ring);
+            pad->strip.notify = tabletPadStrip;
+            wl_signal_add(&wlrPad->events.strip, &pad->strip);
+            pad->destroy.notify = tabletPadDestroy;
+            wl_signal_add(&device->events.destroy, &pad->destroy);
+        }
     }
 }
 
@@ -8649,6 +8775,8 @@ static bool globalFilter(const struct wl_client *client, const struct wl_global 
         "zwlr_layer_shell_v1",
         "zwlr_screencopy_manager_v1",
         "zwlr_export_dmabuf_manager_v1",
+        "ext_image_copy_capture_manager_v1",
+        "ext_output_image_capture_source_manager_v1",
         "zwlr_data_control_manager_v1",
         "ext_data_control_manager_v1",
         "zwlr_foreign_toplevel_manager_v1",
@@ -8798,6 +8926,12 @@ static void setupProtocols(struct Server *server)
 #endif
     wlr_screencopy_manager_v1_create(server->display);
     wlr_export_dmabuf_manager_v1_create(server->display);
+#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR >= 19
+    // The standard successor of wlr-screencopy, which newer screen sharing
+    // portals and recorders ask for first: whole outputs as capture sources.
+    wlr_ext_image_copy_capture_manager_v1_create(server->display, 1);
+    wlr_ext_output_image_capture_source_manager_v1_create(server->display, 1);
+#endif
     wlr_xdg_output_manager_v1_create(server->display, server->outputLayout);
     server->outputManager = wlr_output_manager_v1_create(server->display);
     server->outputManagerApply.notify = handleOutputManagerApply;

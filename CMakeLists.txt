@@ -156,6 +156,15 @@ set(NEWTELLER_CURSOR_SHAPE_HEADER ${CMAKE_BINARY_DIR}/cursor-shape-v1-protocol.h
 set(NEWTELLER_OUTPUT_POWER_HEADER ${CMAKE_BINARY_DIR}/wlr-output-power-management-unstable-v1-protocol.h)
 # Likewise wlr_tablet_v2.h (wlroots 0.18 and 0.19).
 set(NEWTELLER_TABLET_HEADER ${CMAKE_BINARY_DIR}/tablet-v2-protocol.h)
+# Likewise wlr_ext_image_copy_capture_v1.h (wlroots 0.19).
+set(NEWTELLER_IMAGE_COPY_HEADER ${CMAKE_BINARY_DIR}/ext-image-copy-capture-v1-protocol.h)
+add_custom_command(
+    OUTPUT ${NEWTELLER_IMAGE_COPY_HEADER}
+    COMMAND ${WAYLAND_SCANNER_EXECUTABLE} server-header
+            ${CMAKE_SOURCE_DIR}/protocols/ext-image-copy-capture-v1.xml
+            ${NEWTELLER_IMAGE_COPY_HEADER}
+    DEPENDS ${CMAKE_SOURCE_DIR}/protocols/ext-image-copy-capture-v1.xml
+    COMMENT "Generating ext-image-copy-capture protocol header")
 add_custom_command(
     OUTPUT ${NEWTELLER_TABLET_HEADER}
     COMMAND ${WAYLAND_SCANNER_EXECUTABLE} server-header
@@ -208,6 +217,7 @@ add_executable(newteller-compositor
     ${NEWTELLER_CURSOR_SHAPE_HEADER}
     ${NEWTELLER_OUTPUT_POWER_HEADER}
     ${NEWTELLER_TABLET_HEADER}
+    ${NEWTELLER_IMAGE_COPY_HEADER}
 )
 target_compile_definitions(newteller-compositor PRIVATE
     WLR_USE_UNSTABLE

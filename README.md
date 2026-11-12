@@ -204,7 +204,8 @@ inside VirtualBox. The implemented pieces are:
   an "Error" window. The Security settings page shows the reason.
 - **Graphics tablets** (tablet-v2): drawing programs (Krita, GIMP,
   Inkscape, Xournal++) get the pen with pressure, tilt, rotation and its
-  side buttons. Everywhere else the pen is a mouse: it moves the pointer,
+  side buttons, and the buttons, rings and strips on the tablet itself go
+  to the focused window. Everywhere else the pen is a mouse: it moves the pointer,
   the tip is a left click, the lower side button a right click and the
   upper one a middle click.
 - **Touchscreens**: a touch goes to the surface under the finger and
@@ -317,6 +318,9 @@ inside VirtualBox. The implemented pieces are:
   switches on until the machine is plugged in (`power.batterySaver`).
 - **Night light** (wlsunset) on a schedule or always, from quick settings or
   Settings → Displays.
+- **Screen capture protocols**: wlr-screencopy everywhere, and with
+  wlroots 0.19+ also its standard successor ext-image-copy-capture (whole
+  outputs), which newer portals and recorders ask for first.
 - **Desktop services.** Screen sharing and screenshots through
   xdg-desktop-portal-wlr, a polkit agent for administrator prompts, and
   `Ctrl+Alt+F1…F12` to switch virtual terminals.

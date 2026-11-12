@@ -118,6 +118,14 @@ for interface in wl_compositor xdg_wm_base zwlr_layer_shell_v1 zwp_tablet_manage
     fi
 done
 echo "session smoke: $(printf '%s\n' "$globals_list" | wc -l) globals advertised, tablet-v2 among them"
+# wlroots 0.19+: the standard capture protocol comes with its output source.
+if printf '%s\n' "$globals_list" | grep -q '^ext_image_copy_capture_manager_v1 '; then
+    if ! printf '%s\n' "$globals_list" | grep -q '^ext_output_image_capture_source_manager_v1 '; then
+        echo 'ext-image-copy-capture is offered without an output capture source' >&2
+        exit 1
+    fi
+    echo 'session smoke: ext-image-copy-capture offered with output sources'
+fi
 
 # Exercise the virtual-pointer protocol. The click is a smoke test of the
 # protocol only (it lands on empty desktop); the menu is opened over D-Bus
