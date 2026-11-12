@@ -102,6 +102,23 @@ fi
 sleep 3
 XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" grim -o HEADLESS-1 "$before"
 
+# The protocols applications look for are advertised: without tablet-v2 a
+# drawing program gets no pen pressure, without the others clipboard tools,
+# screen sharing or games quietly lose features.
+globals_list=$(XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" \
+    python3 "$(dirname "$0")/wayland_globals.py")
+for interface in wl_compositor xdg_wm_base zwlr_layer_shell_v1 zwp_tablet_manager_v2 \
+    wp_alpha_modifier_v1 zwlr_data_control_manager_v1 zwlr_screencopy_manager_v1 \
+    wp_cursor_shape_manager_v1 zwp_pointer_constraints_v1 ext_session_lock_manager_v1 \
+    wp_fractional_scale_manager_v1 xdg_activation_v1 zwp_text_input_manager_v3; do
+    if ! printf '%s\n' "$globals_list" | grep -q "^$interface "; then
+        echo "the compositor does not advertise $interface" >&2
+        printf '%s\n' "$globals_list" >&2
+        exit 1
+    fi
+done
+echo "session smoke: $(printf '%s\n' "$globals_list" | wc -l) globals advertised, tablet-v2 among them"
+
 # Exercise the virtual-pointer protocol. The click is a smoke test of the
 # protocol only (it lands on empty desktop); the menu is opened over D-Bus
 # below, where the result can be asserted.
