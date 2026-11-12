@@ -44,6 +44,13 @@ QStringList PluginManager::searchPaths() const
     return paths;
 }
 
+QString PluginManager::userFolder() const
+{
+    const QString path = Settings::configDir() + QStringLiteral("/plugins");
+    QDir().mkpath(path);
+    return path;
+}
+
 QStringList PluginManager::disabledIds() const
 {
     return m_settings->value(QStringLiteral("plugins.disabled")).toStringList();

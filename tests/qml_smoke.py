@@ -706,6 +706,10 @@ class Plugins(QObject):
     def rescan(self):
         self.pluginsChanged.emit()
 
+    @Slot(result=str)
+    def userFolder(self):
+        return os.path.join(os.environ.get("HOME", "/tmp"), ".config", "newteller", "plugins")
+
 
 class Windows(QObject):
     """Stand-in for the WindowList context property (src/windowlist.h)."""

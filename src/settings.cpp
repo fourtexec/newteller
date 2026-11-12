@@ -330,7 +330,6 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("multiMonitor.wallpapers"), QVariantMap());
 
     // ===== Plugin System Improvements =====
-    m_defaults.insert(QStringLiteral("plugins.onlineEnabled"), true);
     m_defaults.insert(QStringLiteral("plugins.showDescriptions"), true);
 
     // The Rust schema knows the same keys; merge its defaults on top so a new

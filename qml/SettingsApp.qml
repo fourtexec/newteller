@@ -2223,23 +2223,17 @@ Window {
                         }
 
                         SettingsSection {
-                            title: qsTr("Plugin marketplace")
-                            subtitle: qsTr("Online plugin discovery (experimental).")
+                            title: qsTr("Your plugins")
+                            subtitle: qsTr("A plugin is a folder with a manifest.json and a QML file; put it into the plugins folder and it shows up here.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: qsTr("Enable online plugins")
-                                settingKey: "plugins.onlineEnabled"
-                                SettingsSwitch {}
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Browse plugins")
+                                title: qsTr("Plugins folder")
                                 TaskButton {
-                                    iconName: "globe"
-                                    label: qsTr("Open plugin marketplace")
-                                    visible: Settings.values["plugins.onlineEnabled"] === true
-                                    onClicked: Shell.openUrl("https://github.com/fourtexec/newteller-plugins")
+                                    objectName: "openPluginsFolder"
+                                    iconName: "folder"
+                                    label: qsTr("Open the folder")
+                                    onClicked: Shell.openPath(Plugins.userFolder())
                                 }
                             }
                         }

@@ -4854,6 +4854,19 @@ static struct wlr_surface *tabletSurfaceAt(struct Server *server, struct Tablet 
     return hit->surface;
 }
 
+// The pen arrives over a tablet-aware surface. The pointer state follows
+// once, so the cursor image and a lit title bar button belong to where the
+// pen is; after that the surface gets pen events only.
+static void tabletToolEnter(struct Server *server, struct TabletTool *tool, struct Tablet *tablet,
+                            struct wlr_surface *surface, uint32_t time)
+{
+    if (tool->v2->focused_surface != surface) {
+        processCursorMotion(server, time);
+        wlr_seat_pointer_notify_frame(server->seat);
+    }
+    wlr_tablet_v2_tablet_tool_notify_proximity_in(tool->v2, tablet->v2, surface);
+}
+
 static void tabletToolLeave(struct TabletTool *tool)
 {
     if (!tool)
@@ -4920,7 +4933,7 @@ static void handleTabletAxis(struct wl_listener *listener, void *data)
         struct wlr_surface *surface = tabletSurfaceAt(server, tablet, &hit);
         if (surface) {
             pen = true;
-            wlr_tablet_v2_tablet_tool_notify_proximity_in(tool->v2, tablet->v2, surface);
+            tabletToolEnter(server, tool, tablet, surface, event->time_msec);
             if (moved)
                 wlr_tablet_v2_tablet_tool_notify_motion(tool->v2, hit.sx, hit.sy);
         } else {
@@ -4971,7 +4984,7 @@ static void handleTabletProximity(struct wl_listener *listener, void *data)
     struct Hit hit;
     struct wlr_surface *surface = tool ? tabletSurfaceAt(server, tablet, &hit) : NULL;
     if (surface) {
-        wlr_tablet_v2_tablet_tool_notify_proximity_in(tool->v2, tablet->v2, surface);
+        tabletToolEnter(server, tool, tablet, surface, event->time_msec);
         wlr_tablet_v2_tablet_tool_notify_motion(tool->v2, hit.sx, hit.sy);
     } else {
         processCursorMotion(server, event->time_msec);
@@ -5021,7 +5034,7 @@ static void handleTabletTip(struct wl_listener *listener, void *data)
         }
         pressFocus(server, &hit);
     }
-    wlr_tablet_v2_tablet_tool_notify_proximity_in(tool->v2, tablet->v2, surface);
+    tabletToolEnter(server, tool, tablet, surface, event->time_msec);
     wlr_tablet_v2_tablet_tool_notify_motion(tool->v2, hit.sx, hit.sy);
     wlr_tablet_v2_tablet_tool_notify_down(tool->v2);
     wlr_tablet_tool_v2_start_implicit_grab(tool->v2);
