@@ -2929,13 +2929,17 @@ static void setActiveConstraint(struct Server *server, struct wlr_pointer_constr
         wlr_pointer_constraint_v1_send_activated(constraint);
 }
 
-// The constraint of the surface under the pointer is the active one; none
-// while the session is locked.
+// The constraint of the surface under the pointer is the active one, while
+// its window also has the keyboard; none while the session is locked. A
+// game that locked the pointer used to keep it after Alt+Tab: the pointer
+// could not move at all until the game was closed.
 static void updateActiveConstraint(struct Server *server)
 {
     struct wlr_surface *surface = server->seat->pointer_state.focused_surface;
+    struct wlr_surface *keys = server->seat->keyboard_state.focused_surface;
     struct wlr_pointer_constraint_v1 *constraint = NULL;
-    if (surface && !server->locked && server->pointerConstraints)
+    if (surface && keys && !server->locked && server->pointerConstraints
+        && wlr_surface_get_root_surface(surface) == wlr_surface_get_root_surface(keys))
         constraint = wlr_pointer_constraints_v1_constraint_for_surface(server->pointerConstraints,
                                                                        surface, server->seat);
     setActiveConstraint(server, constraint);
@@ -2960,8 +2964,8 @@ static void handleNewPointerConstraint(struct wl_listener *listener, void *data)
     entry->constraint = constraint;
     entry->destroy.notify = pointerConstraintDestroy;
     wl_signal_add(&constraint->events.destroy, &entry->destroy);
-    if (!server->locked && constraint->surface == server->seat->pointer_state.focused_surface)
-        setActiveConstraint(server, constraint);
+    if (constraint->surface == server->seat->pointer_state.focused_surface)
+        updateActiveConstraint(server);
 }
 
 static void pointerFocus(struct Server *server, const struct Hit *hit)
@@ -7925,6 +7929,14 @@ static void handleKeyboardFocusChange(struct wl_listener *listener, void *data)
     struct wlr_seat_keyboard_focus_change_event *event = data;
     textInputsSetFocus(server, event->new_surface);
     updateShortcutsInhibitors(server, event->new_surface);
+    // Another window came to the front (Alt+Tab, a new window, one that
+    // closed): what is under a pointer that did not move may have changed,
+    // and a pointer lock belongs to the window with the keyboard.
+    if (!server->locked && server->cursorMode == CURSOR_PASSTHROUGH && !server->seat->drag
+        && server->seat->pointer_state.button_count == 0)
+        refreshPointerFocus(server);
+    else
+        updateActiveConstraint(server);
 }
 
 static void handleNewTextInput(struct wl_listener *listener, void *data)
