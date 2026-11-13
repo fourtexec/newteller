@@ -1681,12 +1681,26 @@ static void viewSetMinimized(struct View *view, bool minimized)
     updateForeignToplevel(view);
 }
 
+// The screen a window belongs to: the one under its centre, or the nearest
+// one when the centre was dragged past an edge. NULL only without screens.
+static struct wlr_output *viewNearestOutput(struct View *view)
+{
+    struct wlr_output_layout *layout = view->server->outputLayout;
+    double x = view->x + view->width / 2.0;
+    double y = view->y + view->height / 2.0;
+    struct wlr_output *output = wlr_output_layout_output_at(layout, x, y);
+    if (!output) {
+        double nearX = x, nearY = y;
+        wlr_output_layout_closest_point(layout, NULL, x, y, &nearX, &nearY);
+        output = wlr_output_layout_output_at(layout, nearX, nearY);
+    }
+    return output;
+}
+
 static struct wlr_box usableBoxForView(struct View *view)
 {
     struct Server *server = view->server;
-    struct wlr_output *output = wlr_output_layout_output_at(
-        server->outputLayout, view->x + view->width / 2,
-        view->y + view->height / 2);
+    struct wlr_output *output = viewNearestOutput(view);
     if (!output) {
         output = wlr_output_layout_output_at(server->outputLayout,
                                              server->cursor->x,
@@ -1998,8 +2012,9 @@ static void viewSetFullscreen(struct View *view, bool fullscreen)
         view->fullSavedY = view->y;
         view->fullSavedWidth = view->width;
         view->fullSavedHeight = view->height;
-        struct wlr_output *output = wlr_output_layout_output_at(
-            view->server->outputLayout, view->x, view->y);
+        // The screen most of the window is on, as for maximizing; its
+        // corner may well be past the edge of every screen.
+        struct wlr_output *output = viewNearestOutput(view);
         struct wlr_box box = {0, 0, 1280, 800};
         if (output)
             wlr_output_layout_get_box(view->server->outputLayout, output, &box);
