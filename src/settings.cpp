@@ -50,8 +50,6 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("panel.height"), 48);
     m_defaults.insert(QStringLiteral("panel.position"), QStringLiteral("bottom"));
     m_defaults.insert(QStringLiteral("panel.margin"), 0);
-    m_defaults.insert(QStringLiteral("panel.centered"), false);
-    m_defaults.insert(QStringLiteral("panel.width"), 0);
     m_defaults.insert(QStringLiteral("panel.autoHide"), false);
     m_defaults.insert(QStringLiteral("panel.autoHideDelay"), 400);
     m_defaults.insert(QStringLiteral("panel.clockFormat"), QStringLiteral("HH:mm"));
@@ -129,6 +127,8 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("system.thermal"), true);
     m_defaults.insert(QStringLiteral("system.disks"), true);
     m_defaults.insert(QStringLiteral("watch.debounce"), 250);
+    // The emoji picked last (Super+.), newest first.
+    m_defaults.insert(QStringLiteral("emoji.recent"), QStringList());
     m_defaults.insert(QStringLiteral("run.history"), QStringList());
     m_defaults.insert(QStringLiteral("run.historyLimit"), 25);
 
@@ -149,24 +149,12 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("dock.labelPosition"), QStringLiteral("bottom"));
     m_defaults.insert(QStringLiteral("dock.iconColorMode"), QStringLiteral("theme"));
     m_defaults.insert(QStringLiteral("dock.customIconColor"), QStringLiteral("#ffffff"));
-    // Start menu styling
-    m_defaults.insert(QStringLiteral("startmenu.backgroundColor"), QString());
-    m_defaults.insert(QStringLiteral("startmenu.backgroundOpacity"), -1);
-    m_defaults.insert(QStringLiteral("startmenu.foregroundColor"), QString());
-    m_defaults.insert(QStringLiteral("startmenu.accentColor"), QString());
-    m_defaults.insert(QStringLiteral("startmenu.highlightColor"), QStringLiteral("#ffffff"));
     // Desktop styling
     m_defaults.insert(QStringLiteral("desktop.backgroundColor"), QString());
     m_defaults.insert(QStringLiteral("desktop.backgroundGradient"), true);
     m_defaults.insert(QStringLiteral("desktop.iconColor"), QStringLiteral("#ffffff"));
     m_defaults.insert(QStringLiteral("desktop.iconShadow"), true);
     m_defaults.insert(QStringLiteral("desktop.iconGlow"), false);
-    // Window styling
-    m_defaults.insert(QStringLiteral("windows.enableAnimations"), true);
-    m_defaults.insert(QStringLiteral("windows.animationSpeed"), 1.0);
-    // Theme variants
-    m_defaults.insert(QStringLiteral("theme.followSystem"), false);
-    m_defaults.insert(QStringLiteral("theme.systemTheme"), QStringLiteral("auto"));
 
     // ===== Panel & Dock Improvements =====
     m_defaults.insert(QStringLiteral("panel.spacing"), 8);
@@ -189,10 +177,7 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("desktop.wallpaperSlideshow"), false);
     m_defaults.insert(QStringLiteral("desktop.wallpaperSlideshowInterval"), 60);
     m_defaults.insert(QStringLiteral("desktop.autoArrangeIcons"), true);
-    m_defaults.insert(QStringLiteral("desktop.iconTextColor"), QStringLiteral("#ffffff"));
-    m_defaults.insert(QStringLiteral("desktop.iconTextShadow"), true);
     m_defaults.insert(QStringLiteral("desktop.showHiddenFiles"), false);
-    m_defaults.insert(QStringLiteral("desktop.doubleClickSpeed"), 500);
     // Pixel positions from before the desktop grid (desktop.gridPositions):
     // { "notes.txt": { "x": 120, "y": 48 }, ... } and plugin id -> {x, y}.
     // Read once to keep an old layout; the next drag or reset clears them.
@@ -220,24 +205,8 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("notifications.doNotDisturbSchedule"), false);
     m_defaults.insert(QStringLiteral("notifications.dndStartTime"), QStringLiteral("22:00"));
     m_defaults.insert(QStringLiteral("notifications.dndEndTime"), QStringLiteral("08:00"));
-    m_defaults.insert(QStringLiteral("notifications.urgencyLevel"), 2);
 
     // ===== System & Behavior =====
-    // Hotkeys
-    m_defaults.insert(QStringLiteral("hotkeys.enabled"), true);
-    m_defaults.insert(QStringLiteral("hotkeys.startMenu"), QStringLiteral("Meta"));
-    m_defaults.insert(QStringLiteral("hotkeys.runDialog"), QStringLiteral("Alt+F2"));
-    m_defaults.insert(QStringLiteral("hotkeys.settings"), QStringLiteral("Meta+,Meta+S"));
-    m_defaults.insert(QStringLiteral("hotkeys.notificationCenter"), QStringLiteral("Meta+N"));
-    m_defaults.insert(QStringLiteral("hotkeys.quickSettings"), QStringLiteral("Meta+Q"));
-    m_defaults.insert(QStringLiteral("hotkeys.lockScreen"), QStringLiteral("Meta+L"));
-    m_defaults.insert(QStringLiteral("hotkeys.logout"), QStringLiteral("Meta+Shift+Q"));
-    m_defaults.insert(QStringLiteral("hotkeys.sleep"), QStringLiteral("Meta+Shift+S"));
-    m_defaults.insert(QStringLiteral("hotkeys.reboot"), QStringLiteral("Meta+Shift+R"));
-    m_defaults.insert(QStringLiteral("hotkeys.shutdown"), QStringLiteral("Meta+Shift+P"));
-    m_defaults.insert(QStringLiteral("hotkeys.terminal"), QStringLiteral("Meta+T"));
-    m_defaults.insert(QStringLiteral("hotkeys.fileManager"), QStringLiteral("Meta+E"));
-    m_defaults.insert(QStringLiteral("hotkeys.switcher"), QStringLiteral("Alt+Tab"));
     // Startup apps
     m_defaults.insert(QStringLiteral("startup.apps"), QStringList());
     m_defaults.insert(QStringLiteral("startup.delay"), 0);
@@ -246,6 +215,11 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("windowRules.maximized"), QStringList());
     // The start menu search also lists recently used files.
     m_defaults.insert(QStringLiteral("startmenu.recentFiles"), true);
+    // The last search result opens the browser with the typed words; %1 in
+    // the address is replaced by them.
+    m_defaults.insert(QStringLiteral("startmenu.webSearch"), true);
+    m_defaults.insert(QStringLiteral("startmenu.webSearchUrl"),
+                      QStringLiteral("https://duckduckgo.com/?q=%1"));
     // Hot corners: none | overview | desktop | startMenu | notifications | lock.
     m_defaults.insert(QStringLiteral("hotCorners.topLeft"), QStringLiteral("none"));
     m_defaults.insert(QStringLiteral("hotCorners.topRight"), QStringLiteral("none"));
@@ -253,8 +227,19 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("hotCorners.bottomRight"), QStringLiteral("none"));
     // Screen recordings (wf-recorder) also record the default microphone.
     m_defaults.insert(QStringLiteral("recorder.audio"), false);
+    // Ask fourtexec.site for a newer build now and then (Settings, Updates).
+    m_defaults.insert(QStringLiteral("updates.autoCheck"), true);
+    // Download a newer build in the background, so that installing it only
+    // takes the administrator password. Off: nothing large is fetched unasked.
+    m_defaults.insert(QStringLiteral("updates.autoDownload"), false);
+    // An arrow on the panel while a newer build is on offer.
+    m_defaults.insert(QStringLiteral("updates.panelIndicator"), true);
+    // The build the last login ran; a different one now means an update
+    // took effect.
+    m_defaults.insert(QStringLiteral("updates.lastRunBuild"), QString());
+    // The build (commit) the user does not want to be reminded of.
+    m_defaults.insert(QStringLiteral("updates.skippedBuild"), QString());
     // Power management
-    m_defaults.insert(QStringLiteral("power.sleepAction"), QStringLiteral("suspend"));
     m_defaults.insert(QStringLiteral("power.lockOnSleep"), true);
     // Power saver profile from 20% on battery until plugged in.
     m_defaults.insert(QStringLiteral("power.batterySaver"), true);
@@ -355,29 +340,13 @@ Settings::Settings(QObject *parent)
     // Animations
     m_defaults.insert(QStringLiteral("animations.enabled"), true);
     m_defaults.insert(QStringLiteral("animations.speed"), 1.0);
-    m_defaults.insert(QStringLiteral("animations.panelHide"), true);
-    // Caching
-    m_defaults.insert(QStringLiteral("cache.iconCache"), true);
-    m_defaults.insert(QStringLiteral("cache.searchCache"), true);
-    m_defaults.insert(QStringLiteral("cache.maxIconCacheSize"), 1000);
-    m_defaults.insert(QStringLiteral("cache.maxSearchCacheSize"), 500);
-    // Metrics
-    m_defaults.insert(QStringLiteral("system.showCpuTemp"), false);
-    m_defaults.insert(QStringLiteral("system.showGpu"), false);
-    m_defaults.insert(QStringLiteral("system.showFanSpeed"), false);
     // Search
-    m_defaults.insert(QStringLiteral("search.maxResults"), 50);
     m_defaults.insert(QStringLiteral("search.showCategories"), true);
-    m_defaults.insert(QStringLiteral("search.categoryIcons"), true);
 
     // ===== Multi-monitor =====
-    m_defaults.insert(QStringLiteral("multiMonitor.perMonitorSettings"), false);
-    m_defaults.insert(QStringLiteral("multiMonitor.panelPositions"), QVariantMap());
     m_defaults.insert(QStringLiteral("multiMonitor.wallpapers"), QVariantMap());
 
     // ===== Plugin System Improvements =====
-    m_defaults.insert(QStringLiteral("plugins.onlineEnabled"), true);
-    m_defaults.insert(QStringLiteral("plugins.autoUpdate"), false);
     m_defaults.insert(QStringLiteral("plugins.showDescriptions"), true);
 
     // The Rust schema knows the same keys; merge its defaults on top so a new

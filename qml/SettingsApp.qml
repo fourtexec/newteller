@@ -34,9 +34,28 @@ Window {
         { id: "mouse", label: qsTr("Mouse & touchpad"), icon: "mouse" },
         { id: "display", label: qsTr("Displays"), icon: "monitor" },
         { id: "power", label: qsTr("Power & lock"), icon: "power" },
+        { id: "updates", label: qsTr("Updates"), icon: "download" },
         { id: "about", label: qsTr("About"), icon: "info" }
     ]
     property string currentPage: "appearance"
+
+    // A newer build is on offer, downloaded already or not.
+    readonly property bool updateOffered: Updater.state === "available" || Updater.state === "ready"
+
+    // The one-line state of the updater (Updates page).
+    function updateStatus() {
+        switch (Updater.state) {
+        case "checking": return qsTr("Checking for updates...")
+        case "current": return qsTr("NewTeller is up to date")
+        case "available": return qsTr("An update is available")
+        case "ready": return qsTr("An update is downloaded and ready to install")
+        case "downloading": return qsTr("Downloading the update: %1%").arg(Math.round(Updater.progress * 100))
+        case "installing": return qsTr("Installing the update...")
+        case "installed": return Updater.rolledBack ? qsTr("The previous build is installed again")
+                                                    : qsTr("The update is installed")
+        }
+        return qsTr("Updates have not been checked yet")
+    }
 
     readonly property var wallpaperFolders: [Shell.picturesPath, "/usr/share/backgrounds"]
     property int wallpaperFolderIndex: 0
@@ -807,9 +826,7 @@ Window {
                                 SettingsChoice {
                                     model: [
                                         { value: "bottom", label: qsTr("Bottom") },
-                                        { value: "right", label: qsTr("Right") },
-                                        { value: "top", label: qsTr("Top") },
-                                        { value: "left", label: qsTr("Left") }
+                                        { value: "top", label: qsTr("Top") }
                                     ]
                                 }
                             }
@@ -1325,6 +1342,8 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Current wallpaper")
+                                subtitle: settingsWindow.wallpaperScreen.length > 0
+                                          ? qsTr("Screen %1").arg(settingsWindow.wallpaperScreen) : ""
                                 settingKey: "desktop.wallpaper"
 
                                 Row {
@@ -1351,7 +1370,7 @@ Window {
                                             // fallback instead of an empty frame.
                                             visible: status === Image.Ready
                                             source: {
-                                                const wp = Settings.value("desktop.wallpaper", "");
+                                                const wp = settingsWindow.currentWallpaper;
                                                 if (!wp || wp.length === 0)
                                                     return "";
                                                 if (wp.indexOf("://") > 0)
@@ -1361,7 +1380,7 @@ Window {
                                         }
                                         Text {
                                             anchors.centerIn: parent
-                                            visible: !Settings.value("desktop.wallpaper", "")
+                                            visible: settingsWindow.currentWallpaper.length === 0
                                                      || wallpaperPreview.status === Image.Error
                                             text: qsTr("Solid colour")
                                             color: Theme.muted
@@ -1393,7 +1412,7 @@ Window {
                                         TaskButton {
                                             iconName: "x"
                                             label: qsTr("No wallpaper")
-                                            onClicked: Settings.setValue("desktop.wallpaper", "")
+                                            onClicked: settingsWindow.setWallpaper("")
                                         }
                                     }
                                 }
@@ -1439,12 +1458,14 @@ Window {
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Per-monitor wallpapers")
+                                subtitle: qsTr("Every screen keeps its own picture; this window chooses for the screen it is on.")
                                 settingKey: "desktop.perMonitorWallpaper"
                                 SettingsSwitch {}
                             }
                             SettingsRow {
                                 width: parent.width
                                 title: qsTr("Wallpaper slideshow")
+                                subtitle: qsTr("Walks through the pictures in the folder of the current wallpaper.")
                                 settingKey: "desktop.wallpaperSlideshow"
                                 SettingsSwitch {}
                             }
@@ -1616,6 +1637,21 @@ Window {
                                 subtitle: qsTr("Documents opened in other applications show up when their name is typed.")
                                 settingKey: "startmenu.recentFiles"
                                 SettingsSwitch { settingKey: "startmenu.recentFiles" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Search the web")
+                                subtitle: qsTr("The last result opens the browser with the typed words. Nothing is sent before you choose it.")
+                                settingKey: "startmenu.webSearch"
+                                SettingsSwitch { settingKey: "startmenu.webSearch" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Web search address")
+                                subtitle: qsTr("%1 stands for the typed words.")
+                                visible: Settings.values["startmenu.webSearch"] !== false
+                                settingKey: "startmenu.webSearchUrl"
+                                SettingsTextField { width: 260; settingKey: "startmenu.webSearchUrl" }
                             }
                             SettingsRow {
                                 width: parent.width
@@ -2054,6 +2090,13 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("Group the history by application")
+                                subtitle: qsTr("Off: one list, newest first.")
+                                settingKey: "notifications.groupByApp"
+                                SettingsSwitch { settingKey: "notifications.groupByApp" }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Quiet while a window is full screen")
                                 subtitle: qsTr("Games, videos and presentations are not interrupted; notifications wait in the history. Urgent ones still show.")
                                 settingKey: "notifications.quietInFullscreen"
@@ -2214,23 +2257,17 @@ Window {
                         }
 
                         SettingsSection {
-                            title: qsTr("Plugin marketplace")
-                            subtitle: qsTr("Online plugin discovery (experimental).")
+                            title: qsTr("Your plugins")
+                            subtitle: qsTr("A plugin is a folder with a manifest.json and a QML file; put it into the plugins folder and it shows up here.")
 
                             SettingsRow {
                                 width: parent.width
-                                title: qsTr("Enable online plugins")
-                                settingKey: "plugins.onlineEnabled"
-                                SettingsSwitch {}
-                            }
-                            SettingsRow {
-                                width: parent.width
-                                title: qsTr("Browse plugins")
+                                title: qsTr("Plugins folder")
                                 TaskButton {
-                                    iconName: "globe"
-                                    label: qsTr("Open plugin marketplace")
-                                    visible: Settings.values["plugins.onlineEnabled"] === true
-                                    onClicked: Shell.openUrl("https://github.com/fourtexec/newteller-plugins")
+                                    objectName: "openPluginsFolder"
+                                    iconName: "folder"
+                                    label: qsTr("Open the folder")
+                                    onClicked: Shell.openPath(Plugins.userFolder())
                                 }
                             }
                         }
@@ -2297,6 +2334,11 @@ Window {
                                 width: parent.width
                                 title: qsTr("Clipboard history")
                                 subtitle: "Super+V"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Emoji")
+                                subtitle: "Super+."
                             }
                             SettingsRow {
                                 width: parent.width
@@ -3603,6 +3645,204 @@ Window {
                 }
             }
 
+            // ---- Updates --------------------------------------------------
+            Item {
+                Flickable {
+                    id: updatesScroll
+                    anchors.fill: parent
+                    contentHeight: updatesColumn.implicitHeight + 24
+                    clip: true
+                    boundsBehavior: Flickable.StopAtBounds
+
+                    Column {
+                        id: updatesColumn
+                        x: 16
+                        y: 12
+                        width: updatesScroll.width - 32
+                        spacing: 16
+
+                        SettingsSection {
+                            title: qsTr("NewTeller updates")
+                            subtitle: qsTr("The list of builds comes from %1. The build itself is downloaded from the link in that list and checked against its SHA-256 before it is installed.").arg(Updater.source)
+
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("All builds")
+                                subtitle: "https://fourtexec.site/newteller/"
+                                TaskButton {
+                                    iconName: "globe"
+                                    label: qsTr("Open the download page")
+                                    onClicked: Shell.openUrl("https://fourtexec.site/newteller/")
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Installed build")
+                                subtitle: Updater.target
+                                Text {
+                                    text: Updater.installedCommit.length > 0
+                                          ? Updater.installedCommit.substring(0, 10)
+                                            + (Updater.installedDate.length > 0 ? " · " + Updater.installedDate : "")
+                                          : qsTr("Built from source")
+                                    color: Theme.foreground
+                                    font.family: Theme.fontFamily
+                                    font.pointSize: Theme.fontSize
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                visible: Updater.latestCommit.length > 0
+                                title: qsTr("Latest build")
+                                subtitle: Updater.notes
+                                Text {
+                                    text: Updater.latestCommit.substring(0, 10)
+                                          + (Updater.latestDate.length > 0 ? " · " + Updater.latestDate : "")
+                                          + (Updater.latestSize.length > 0 ? " · " + Updater.latestSize : "")
+                                    color: Theme.foreground
+                                    font.family: Theme.fontFamily
+                                    font.pointSize: Theme.fontSize
+                                    anchors.verticalCenter: parent.verticalCenter
+                                }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: settingsWindow.updateStatus()
+                                subtitle: Updater.error.length > 0 ? Updater.error
+                                          : Updater.rolledBack ? qsTr("Log out and back in to start it.")
+                                          : Updater.state === "installed" ? qsTr("Log out and back in to start the new version.")
+                                          : Updater.lastChecked.length > 0 ? qsTr("Last checked: %1").arg(Updater.lastChecked)
+                                          : ""
+
+                                Row {
+                                    spacing: 8
+                                    TaskButton {
+                                        visible: !Updater.busy && Updater.state !== "installed"
+                                        iconName: "rotate-cw"
+                                        label: qsTr("Check now")
+                                        onClicked: Updater.check()
+                                    }
+                                    TaskButton {
+                                        visible: settingsWindow.updateOffered
+                                        iconName: "download"
+                                        label: Updater.state === "ready" ? qsTr("Install")
+                                                                         : qsTr("Download and install")
+                                        onClicked: Updater.install()
+                                    }
+                                    TaskButton {
+                                        visible: Updater.state === "downloading"
+                                        iconName: "x"
+                                        label: qsTr("Cancel")
+                                        onClicked: Updater.cancel()
+                                    }
+                                    TaskButton {
+                                        visible: Updater.state === "installed"
+                                        iconName: "log-out"
+                                        label: qsTr("Log out")
+                                        onClicked: Shell.logout()
+                                    }
+                                }
+                            }
+                            // Its own row: three buttons side by side do not fit
+                            // a narrow settings window.
+                            SettingsRow {
+                                width: parent.width
+                                visible: settingsWindow.updateOffered && !Updater.skipped
+                                         && Updater.installedCommit.length > 0
+                                title: qsTr("Not this one")
+                                subtitle: qsTr("No more reminders about this build; the next one is announced again.")
+                                TaskButton {
+                                    iconName: "bell-off"
+                                    label: qsTr("Skip this build")
+                                    onClicked: Updater.skip()
+                                }
+                            }
+                            Item {
+                                width: parent.width
+                                height: 6
+                                visible: Updater.state === "downloading"
+
+                                Rectangle {
+                                    anchors.fill: parent
+                                    radius: 3
+                                    color: Qt.rgba(Theme.foreground.r, Theme.foreground.g, Theme.foreground.b, 0.12)
+                                }
+                                Rectangle {
+                                    width: Math.round(parent.width * Updater.progress)
+                                    height: parent.height
+                                    radius: 3
+                                    color: Theme.accent
+                                }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: qsTr("What is new")
+                            visible: settingsWindow.updateOffered && Updater.changes.length > 0
+
+                            Repeater {
+                                model: Updater.changes
+
+                                delegate: SettingsRow {
+                                    required property var modelData
+                                    width: parent.width
+                                    title: modelData.title
+                                    subtitle: modelData.commit + (modelData.date.length > 0 ? " · " + modelData.date : "")
+                                    TaskButton {
+                                        iconName: "globe"
+                                        tooltipText: qsTr("Read this change on GitHub")
+                                        onClicked: Shell.openUrl(modelData.url)
+                                    }
+                                }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: qsTr("Previous build")
+                            visible: Updater.canRollback
+
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Go back to the build before the last update")
+                                subtitle: qsTr("The replaced build is kept on this computer. Going back asks for the administrator password and stops the reminders about the build you leave.")
+                                TaskButton {
+                                    visible: !Updater.busy
+                                    iconName: "rotate-ccw"
+                                    label: qsTr("Go back")
+                                    onClicked: Updater.rollback()
+                                }
+                            }
+                        }
+
+                        SettingsSection {
+                            title: qsTr("Automatic checks")
+
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Check for updates automatically")
+                                subtitle: qsTr("Shortly after login and twice a day; a notification offers the new build. Nothing is installed without you.")
+                                settingKey: "updates.autoCheck"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Download updates in the background")
+                                subtitle: qsTr("A newer build is fetched and verified as soon as it is found; installing it then only asks for the administrator password.")
+                                settingKey: "updates.autoDownload"
+                                SettingsSwitch {}
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Show available updates on the panel")
+                                subtitle: qsTr("An arrow next to the bell while a newer build is on offer; a click opens this page.")
+                                settingKey: "updates.panelIndicator"
+                                SettingsSwitch {}
+                            }
+                        }
+                    }
+                }
+            }
+
             // ---- About ------------------------------------------------------
             Item {
                 Flickable {
@@ -3627,6 +3867,8 @@ Window {
                                 title: qsTr("Version")
                                 Text {
                                     text: "NewTeller " + Shell.version
+                                          + (Updater.installedCommit.length > 0
+                                             ? " · " + Updater.installedCommit.substring(0, 10) : "")
                                     color: Theme.foreground
                                     font.family: Theme.fontFamily
                                     font.pointSize: Theme.fontSize
@@ -3637,7 +3879,7 @@ Window {
                                 width: parent.width
                                 title: qsTr("Computer")
                                 Text {
-                                    text: Shell.hostname + " · " + Shell.distro + " · kernel " + Shell.kernelVersion
+                                    text: qsTr("%1 · %2 · kernel %3").arg(Shell.hostname).arg(Shell.distro).arg(Shell.kernelVersion)
                                     color: Theme.foreground
                                     font.family: Theme.fontFamily
                                     font.pointSize: Theme.fontSize
@@ -3661,7 +3903,7 @@ Window {
                                 Text {
                                     text: Windows.backend === "x11" ? "EWMH (X11)"
                                           : Windows.backend === "wayland" ? "wlr-foreign-toplevel (Wayland)"
-                                          : "unavailable — the dock uses the process list"
+                                          : qsTr("unavailable — the dock uses the process list")
                                     color: Theme.foreground
                                     font.family: Theme.fontFamily
                                     font.pointSize: Theme.fontSize
@@ -3672,7 +3914,7 @@ Window {
                                 width: parent.width
                                 title: qsTr("Applications")
                                 Text {
-                                    text: Apps.count + " in the catalogue"
+                                    text: qsTr("%1 in the catalogue").arg(Apps.count)
                                     color: Theme.foreground
                                     font.family: Theme.fontFamily
                                     font.pointSize: Theme.fontSize
@@ -3683,7 +3925,7 @@ Window {
                                 width: parent.width
                                 title: qsTr("Memory and uptime")
                                 Text {
-                                    text: System.memoryText + " · up " + System.uptimeText
+                                    text: qsTr("%1 · up %2").arg(System.memoryText).arg(System.uptimeText)
                                     color: Theme.foreground
                                     font.family: Theme.fontFamily
                                     font.pointSize: Theme.fontSize
@@ -3809,8 +4051,33 @@ Window {
     // The folder the file-manager dialog should start in. Always a real
     // directory: the wallpaper may be a URL, a path in a folder that was
     // deleted since, or empty (solid colour).
+    // With "Per-monitor wallpapers" the pickers of this window choose the
+    // picture of the screen the window is on; otherwise the one of every
+    // screen.
+    readonly property bool perMonitorWallpaper: Settings.values["desktop.perMonitorWallpaper"] === true
+    readonly property string wallpaperScreen: perMonitorWallpaper && settingsWindow.screen
+                                              ? settingsWindow.screen.name : ""
+    readonly property string currentWallpaper: {
+        const own = wallpaperScreen.length > 0
+                  ? (Settings.values["multiMonitor.wallpapers"] || ({}))[wallpaperScreen] : "";
+        return own || Settings.values["desktop.wallpaper"] || "";
+    }
+
+    function setWallpaper(path) {
+        if (wallpaperScreen.length === 0) {
+            Settings.setValue("desktop.wallpaper", path);
+            return;
+        }
+        const saved = Settings.values["multiMonitor.wallpapers"] || ({});
+        const copy = {};
+        for (const name in saved)
+            copy[name] = saved[name];
+        copy[wallpaperScreen] = path;
+        Settings.setValue("multiMonitor.wallpapers", copy);
+    }
+
     function wallpaperFolder() {
-        const wp = Settings.value("desktop.wallpaper", "") || "";
+        const wp = settingsWindow.currentWallpaper;
         let dir = "";
         if (typeof wp === "string" && wp.length > 0) {
             let path = wp;
@@ -3835,7 +4102,7 @@ Window {
             return false;                 // dismissed: keep the current one
         if (!Shell.isImageFile(file))
             return false;
-        Settings.setValue("desktop.wallpaper", file);
+        setWallpaper(file);
         return true;
     }
 
@@ -3899,7 +4166,7 @@ Window {
             const model = wallpaperFolderIndex === 0 ? picturesModel : backgroundsModel;
             if (model.count > 0) {
                 const next = Math.floor(Math.random() * model.count);
-                Settings.setValue("desktop.wallpaper", model.get(next, "filePath"));
+                settingsWindow.setWallpaper(model.get(next, "filePath"));
             } else {
                 Shell.openPath(wallpaperFolders[wallpaperFolderIndex]);
             }
@@ -3976,7 +4243,7 @@ Window {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
                             onClicked: {
-                                Settings.setValue("desktop.wallpaper", filePath);
+                                settingsWindow.setWallpaper(filePath);
                                 wallpaperOverlay.visible = false;
                             }
                         }

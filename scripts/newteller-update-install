@@ -1,0 +1,133 @@
+#!/usr/bin/env bash
+# The root half of the updater (Settings, Updates): installs a release
+# archive the shell has downloaded.
+#
+#   pkexec newteller-update-install ARCHIVE.zip SHA256
+#   sudo newteller-update-install --rollback
+#
+# The shell runs as the user and cannot write to /usr; this script runs as
+# root and trusts nothing it is handed: it takes its own copy of the archive,
+# checks that copy against the SHA-256 from the update data, unpacks it in a
+# directory only root can touch and runs the archive's own install.sh (which
+# refuses an archive built for another distribution).
+#
+# The archive of every installed update is kept in /var/lib/newteller
+# (current.zip, and the one before it as previous.zip). --rollback installs
+# previous.zip again: the way back from a build that does not start, usable
+# from a text console (Ctrl+Alt+F3).
+set -euo pipefail
+
+store=${NEWTELLER_UPDATE_STORE:-/var/lib/newteller}
+rollback=0
+if [[ $# -eq 1 && $1 == --rollback ]]; then
+    rollback=1
+elif [[ $# -ne 2 ]]; then
+    echo 'usage: newteller-update-install ARCHIVE.zip SHA256' >&2
+    echo '       newteller-update-install --rollback' >&2
+    exit 2
+fi
+if [[ $EUID -ne 0 ]]; then
+    echo 'newteller-update-install must run as root (pkexec newteller-update-install ...).' >&2
+    exit 1
+fi
+if (( rollback )); then
+    # Both files were checked when they were installed and only root can
+    # write here, so the stored checksum is the one to hold them to.
+    if [[ ! -f $store/previous.zip || ! -f $store/previous.sha256 ]]; then
+        echo 'There is no earlier build to go back to (none was replaced by an update yet).' >&2
+        exit 1
+    fi
+    archive=$store/previous.zip
+    expected=$(cat "$store/previous.sha256")
+else
+    archive=$1
+    expected=$2
+fi
+if [[ ! $expected =~ ^[0-9a-f]{64}$ ]]; then
+    echo 'The checksum is not a SHA-256.' >&2
+    exit 2
+fi
+if [[ ! -f $archive || -L $archive ]]; then
+    echo "No such archive: $archive" >&2
+    exit 1
+fi
+
+# One installation at a time: the settings page and a terminal could both
+# start one, and two installers writing /usr together leave a mix.
+if command -v flock > /dev/null 2>&1; then
+    exec 9> /run/newteller-update.lock
+    if ! flock -n 9; then
+        echo 'Another NewTeller update is being installed right now.' >&2
+        exit 1
+    fi
+fi
+
+work=$(mktemp -d /tmp/newteller-update.XXXXXX)
+trap 'rm -rf -- "$work"' EXIT
+# Copy first, then check the copy: the original lies in the user's cache and
+# could change between the check and the installation.
+cp -- "$archive" "$work/update.zip"
+actual=$(sha256sum "$work/update.zip" | cut -d' ' -f1)
+if [[ $actual != "$expected" ]]; then
+    echo 'The archive does not match its checksum; nothing was installed.' >&2
+    exit 1
+fi
+
+mkdir "$work/tree"
+if command -v unzip > /dev/null 2>&1; then
+    unzip -q "$work/update.zip" -d "$work/tree"
+elif command -v bsdtar > /dev/null 2>&1; then
+    bsdtar -xf "$work/update.zip" -C "$work/tree"
+elif command -v python3 > /dev/null 2>&1; then
+    python3 -m zipfile -e "$work/update.zip" "$work/tree"
+else
+    echo 'Install unzip to unpack the update.' >&2
+    exit 1
+fi
+
+# newteller-commit-<sha>-<target>/install.sh
+installer=$(find "$work/tree" -mindepth 2 -maxdepth 2 -type f -name install.sh | head -n 1)
+if [[ -z $installer ]]; then
+    echo 'The archive is not a NewTeller release (no install.sh).' >&2
+    exit 1
+fi
+# No terminal here: package managers must not stop to ask.
+export DEBIAN_FRONTEND=noninteractive
+bash "$installer"
+
+# Remember what is installed now and what it replaced. After a rollback the
+# two simply change places, so a second --rollback returns to the newer one.
+keep() {
+    install -d -m 755 "$store"
+    if (( rollback )); then
+        if [[ -f $store/current.zip && -f $store/current.sha256 ]]; then
+            mv -f "$store/current.zip" "$store/swap.zip"
+            mv -f "$store/current.sha256" "$store/swap.sha256"
+        else
+            rm -f "$store/swap.zip" "$store/swap.sha256"
+        fi
+        mv -f "$store/previous.zip" "$store/current.zip"
+        mv -f "$store/previous.sha256" "$store/current.sha256"
+        if [[ -f $store/swap.zip ]]; then
+            mv -f "$store/swap.zip" "$store/previous.zip"
+            mv -f "$store/swap.sha256" "$store/previous.sha256"
+        fi
+        return
+    fi
+    # Installing the same build again must not push the real previous one out.
+    if [[ -f $store/current.sha256 && $(cat "$store/current.sha256") == "$expected" ]]; then
+        return
+    fi
+    if [[ -f $store/current.zip && -f $store/current.sha256 ]]; then
+        mv -f "$store/current.zip" "$store/previous.zip"
+        mv -f "$store/current.sha256" "$store/previous.sha256"
+    fi
+    install -m 644 "$work/update.zip" "$store/current.zip"
+    printf '%s\n' "$expected" > "$store/current.sha256"
+}
+# The build is installed either way; a full disk here must not turn that
+# into a failed update.
+keep || echo 'The update is installed, but its archive could not be kept for a rollback.' >&2
+if (( rollback )); then
+    echo 'The previous build is installed again. Log out and back in to start it.'
+fi

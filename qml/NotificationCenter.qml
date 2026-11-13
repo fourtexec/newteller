@@ -13,10 +13,14 @@ DropdownWindow {
 
     // Newest first, grouped by application: the application with the newest
     // notification comes first, each group carries groupStart/groupCount
-    // for its header.
+    // for its header. Without notifications.groupByApp it is one plain list
+    // by time, every entry under its own application name.
+    readonly property bool groupByApp: Settings.values["notifications.groupByApp"] !== false
     readonly property var entries: {
         const list = (Notifications.history || []).slice();
         list.reverse(); // newest first
+        if (!groupByApp)
+            return list.map(entry => Object.assign({}, entry, { groupStart: true, groupCount: 1 }));
         const order = [];
         const byApp = {};
         for (const entry of list) {

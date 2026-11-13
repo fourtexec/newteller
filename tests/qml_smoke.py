@@ -202,6 +202,9 @@ class Settings(QObject):
             "startmenu.width": 440,
             "startmenu.height": 580,
             "desktop.wallpaper": "",
+            # Off here so the search tests count applications only; the web
+            # search row has its own check.
+            "startmenu.webSearch": False,
             "run.history": ["cmatrix", "htop"],
             "run.historyLimit": 25,
             # Surfaces: the same defaults as src/settings.cpp, so the material
@@ -226,6 +229,11 @@ class Settings(QObject):
             "notifications.material": "theme",
             "notifications.opacityPercent": 0,
             "notifications.cornerRadius": -1,
+            # Updates: the defaults of src/settings.cpp.
+            "updates.autoCheck": True,
+            "updates.autoDownload": False,
+            "updates.panelIndicator": True,
+            "updates.skippedBuild": "",
         }
 
     @Property("QVariantMap", notify=valuesChanged)
@@ -431,6 +439,7 @@ class Shell(QObject):
     notificationsToggleRequested = Signal()
     quickSettingsToggleRequested = Signal()
     clipboardToggleRequested = Signal()
+    emojiToggleRequested = Signal()
     taskViewToggleRequested = Signal()
     forceQuitRequested = Signal()
     runDialogRequested = Signal()
@@ -442,6 +451,7 @@ class Shell(QObject):
         self._desktop = QUrl.fromLocalFile(desktop_dir).toString()
         self._home = home_dir
         self.calls = []
+        self.typed = []
         self._now = QDateTime.currentDateTime()
         self._ticker = QTimer(self)
         self._ticker.timeout.connect(self._tick)
@@ -540,6 +550,15 @@ class Shell(QObject):
     def copyToClipboard(self, text):
         self.calls.append(("copyToClipboard", text))
 
+    @Slot(result=bool)
+    def canTypeText(self):
+        return False
+
+    @Slot(str, result=bool)
+    def typeText(self, text):
+        self.typed.append(text)
+        return False
+
     @Slot(str, str, result=bool)
     def saveTextFile(self, path, text):
         self.calls.append(("saveTextFile", path))
@@ -615,6 +634,14 @@ class Shell(QObject):
     @Slot()
     def suspend(self):
         self.calls.append(("suspend",))
+
+    @Slot()
+    def hibernate(self):
+        self.calls.append(("hibernate",))
+
+    canHibernateChanged = Signal()
+    canHibernate = Property(bool, lambda self: getattr(self, "_canHibernate", False),
+                            notify=canHibernateChanged)
 
     @Slot()
     def reboot(self):
@@ -705,6 +732,10 @@ class Plugins(QObject):
     @Slot()
     def rescan(self):
         self.pluginsChanged.emit()
+
+    @Slot(result=str)
+    def userFolder(self):
+        return os.path.join(os.environ.get("HOME", "/tmp"), ".config", "newteller", "plugins")
 
 
 class Windows(QObject):
@@ -891,6 +922,16 @@ class Session(QObject):
     keyboardChanged = Signal()
     lockedChanged = Signal()
     nightLightChanged = Signal()
+    keepAwakeChanged = Signal()
+
+    def _keep_awake(self):
+        return getattr(self, "_keepAwake", False)
+
+    def _set_keep_awake(self, on):
+        self._keepAwake = bool(on)
+        self.keepAwakeChanged.emit()
+
+    keepAwake = Property(bool, _keep_awake, _set_keep_awake, notify=keepAwakeChanged)
 
     compositorConnected = Property(bool, lambda self: True, notify=compositorChanged)
     # Two layouts, so the panel shows its layout indicator.
@@ -1327,6 +1368,82 @@ class RecorderStub(QObject):
             self.start(False, "")
 
 
+class UpdaterStub(QObject):
+    """Stand-in for the Updater context property (src/updater.h)."""
+
+    changed = Signal()
+    progressChanged = Signal()
+    checked = Signal()
+
+    def __init__(self):
+        super().__init__()
+        self.calls = []
+        self._state = "idle"
+        self._skipped = False
+        self._rolled_back = False
+
+    state = Property(str, lambda self: self._state, notify=changed)
+    error = Property(str, lambda self: "", notify=changed)
+    busy = Property(bool, lambda self: self._state in ("checking", "downloading", "installing"),
+                    notify=changed)
+    source = Property(str, lambda self: "fourtexec.site", constant=True)
+    installedCommit = Property(str, lambda self: "1" * 40, constant=True)
+    installedDate = Property(str, lambda self: "01.10.2026", constant=True)
+    target = Property(str, lambda self: "debian13-x86_64", constant=True)
+    latestCommit = Property(str, lambda self: "" if self._state == "idle" else "2" * 40,
+                            notify=changed)
+    latestDate = Property(str, lambda self: "" if self._state == "idle" else "09.11.2026",
+                          notify=changed)
+    notes = Property(str, lambda self: "" if self._state == "idle" else "A newer build",
+                     notify=changed)
+    lastChecked = Property(str, lambda self: "" if self._state == "idle" else "10.11.2026 07:00",
+                           notify=changed)
+    progress = Property(float, lambda self: 0.4 if self._state == "downloading" else 0.0,
+                        notify=progressChanged)
+    changes = Property("QVariantList", lambda self: [] if self._state == "idle" else [
+        {"title": "Faster dock", "commit": "2222222222", "date": "09.11.2026",
+         "url": "https://github.com/fourtexec/newteller/commit/" + "2" * 40},
+        {"title": "Fix the clock", "commit": "3333333333", "date": "",
+         "url": "https://github.com/fourtexec/newteller/commit/" + "3" * 40}], notify=changed)
+    skipped = Property(bool, lambda self: self._skipped, notify=changed)
+    latestSize = Property(str, lambda self: "" if self._state == "idle" else "9.4 MB", notify=changed)
+    canRollback = Property(bool, lambda self: True, notify=changed)
+    rolledBack = Property(bool, lambda self: self._rolled_back, notify=changed)
+
+    def _set(self, state):
+        self._state = state
+        self.changed.emit()
+        self.progressChanged.emit()
+
+    @Slot()
+    def check(self):
+        self.calls.append(("check",))
+        self._set("available")
+        self.checked.emit()
+
+    @Slot()
+    def install(self):
+        self.calls.append(("install",))
+        self._set("downloading")
+
+    @Slot()
+    def cancel(self):
+        self.calls.append(("cancel",))
+        self._set("available")
+
+    @Slot()
+    def rollback(self):
+        self.calls.append(("rollback",))
+        self._rolled_back = True
+        self._set("installed")
+
+    @Slot()
+    def skip(self):
+        self.calls.append(("skip",))
+        self._skipped = True
+        self.changed.emit()
+
+
 class Quick(QObject):
     """Stand-in for the QuickSettings context property (src/quicksettings.h)."""
 
@@ -1485,6 +1602,7 @@ def main():
     tray, quick, session = Tray(), Quick(), Session()
     clipboard = ClipboardStub()
     recorder = RecorderStub()
+    updater = UpdaterStub()
     audio = AudioStub()
     bluetooth = BluetoothStub()
     polkit = PolkitStub()
@@ -1494,7 +1612,7 @@ def main():
                       ("Notifications", notifications), ("FilePortal", file_portal),
                       ("Tray", tray), ("Quick", quick), ("Session", session),
                       ("Clipboard", clipboard), ("Bluetooth", bluetooth), ("Polkit", polkit),
-                      ("Recorder", recorder), ("Audio", audio)):
+                      ("Recorder", recorder), ("Audio", audio), ("Updater", updater)):
         engine.rootContext().setContextProperty(name, obj)
 
     failures = []
@@ -1592,6 +1710,29 @@ def main():
                         if match.group(1) not in untranslated:
                             bare.append(f"{os.path.basename(path)}:{number} {match.group(1)!r}")
     check(not bare, f"interface text in QML goes through qsTr() (bare: {bare})")
+
+    # Every setting does something: a key with a default in src/settings.cpp
+    # is read somewhere (QML, a plugin or the C++ services). A switch in the
+    # Settings application alone does not count - three of them once changed
+    # a key nothing looked at.
+    with open(os.path.join(ROOT, "src", "settings.cpp"), encoding="utf-8") as handle:
+        settings_source = handle.read()
+    default_keys = set(re.findall(r'm_defaults\.insert\(QStringLiteral\("([^"]+)"\)', settings_source))
+    readers = [re.sub(r'm_defaults\.insert\([^\n]*\n', '', settings_source)]
+    for pattern in (("qml", "*.qml"), ("qml", "*.js"), ("plugins", "*", "*.qml"),
+                    ("src", "*.cpp"), ("src", "*.h")):
+        for path in glob.glob(os.path.join(ROOT, *pattern)):
+            if os.path.basename(path) == "settings.cpp":
+                continue
+            with open(path, encoding="utf-8") as handle:
+                text = handle.read()
+            if os.path.basename(path) == "SettingsApp.qml":
+                # Its controls name the key they edit; only real reads count.
+                text = re.sub(r'settingKey:\s*"[^"]*"', "", text)
+            readers.append(text)
+    unread = sorted(k for k in default_keys if not any(f'"{k}"' in text for text in readers))
+    check(len(default_keys) > 150 and not unread,
+          f"every setting with a default is read somewhere (unread: {unread})")
 
     # Translations (i18n/<language>.json, read by src/translator.cpp): every
     # entry translates a real qsTr() text, keeps its %1 placeholders, and the
@@ -1849,6 +1990,42 @@ def main():
             if hasattr(results, "toVariant"):
                 results = results.toVariant()
             check(len(results or []) == 0, f"no stale results for a bad query ({results})")
+            # With the web search on, the typed words are the last result
+            # and open the browser, encoded.
+            settings.setValue("startmenu.webSearch", True)
+            search.setProperty("text", "how to & why")
+            QTest.qWait(20)
+            results = menu.property("results")
+            if hasattr(results, "toVariant"):
+                results = results.toVariant()
+            check(bool(results) and results[-1].get("webSearch") == "how to & why",
+                  f"the web search is the last result ({results})")
+            QMetaObject.invokeMethod(menu, "launch", Q_ARG("QVariant", results[-1]))
+            QTest.qWait(20)
+            check(shell.calls and shell.calls[-1]
+                  == ("openUrl", "https://duckduckgo.com/?q=how%20to%20%26%20why"),
+                  f"the web search opens the browser ({shell.calls[-1] if shell.calls else None})")
+            search.setProperty("text", "2+2")
+            QTest.qWait(20)
+            results = menu.property("results")
+            if hasattr(results, "toVariant"):
+                results = results.toVariant()
+            check(not any("webSearch" in r for r in (results or [])),
+                  "a calculation is not offered as a web search")
+            settings.setValue("startmenu.webSearch", False)
+            QMetaObject.invokeMethod(menu, "show")
+            QTest.qWait(50)
+            # Hibernate is offered only where logind says the machine can.
+            hibernate = menu.findChild(QObject, "hibernateButton")
+            check(hibernate is not None and not hibernate.property("visible"),
+                  "no hibernate button on a machine that cannot hibernate")
+            shell._canHibernate = True
+            shell.canHibernateChanged.emit()
+            QTest.qWait(20)
+            check(hibernate is not None and hibernate.property("visible") is True,
+                  "the hibernate button shows when the machine can hibernate")
+            shell._canHibernate = False
+            shell.canHibernateChanged.emit()
             search.setProperty("text", "")
             QTest.qWait(20)
 
@@ -2247,6 +2424,16 @@ def main():
         check([(e.get("app"), bool(e.get("groupStart"))) for e in (grouped or [])]
               == [("Mail", True), ("Mail", False), ("Chat", True)],
               f"the notification centre groups by application ({grouped})")
+        # Without the grouping it is one list by time.
+        settings.setValue("notifications.groupByApp", False)
+        QTest.qWait(100)
+        flat = center.property("entries")
+        flat = flat.toVariant() if hasattr(flat, "toVariant") else flat
+        check([(e.get("app"), bool(e.get("groupStart"))) for e in (flat or [])]
+              == [("Mail", True), ("Chat", True), ("Mail", True)],
+              f"notifications.groupByApp off lists by time ({flat})")
+        settings.setValue("notifications.groupByApp", True)
+        QTest.qWait(50)
         notifications._history.pop()
         notifications.historyChanged.emit()
         QTest.qWait(50)
@@ -2565,6 +2752,21 @@ def main():
                 settings.setValue("notifications.doNotDisturb", bool(was))
                 settings.setValue("notifications.dndUntil", 0)
 
+        # Keep the screen awake: the switch sets the session's state and
+        # follows it when it changes elsewhere.
+        if dnd_cards:
+            awake = dnd_cards[0].findChild(QObject, "keepAwakeSwitch")
+            check(awake is not None and awake.property("checked") is False,
+                  "quick settings has a keep-awake switch, off at first")
+            if awake is not None:
+                QMetaObject.invokeMethod(awake, "set", Q_ARG("QVariant", True))
+                QTest.qWait(20)
+                check(session.property("keepAwake") is True, "the switch keeps the screen awake")
+                session.setProperty("keepAwake", False)
+                QTest.qWait(20)
+                check(awake.property("checked") is False,
+                      "the switch follows the session's state")
+
         # The sound card: outputs to pick from, one row per playing application.
         sound_cards = windows_of_kind("SoundPopup")
         quick_cards = windows_of_kind("QuickSettingsPopup")
@@ -2619,6 +2821,28 @@ def main():
                 check(pill is None or not pill.property("visible"),
                       "the recording pill goes away when the recording stops")
 
+        # A newer build on offer puts an arrow on the panel; skipping the
+        # build takes it away again.
+        arrow = panel.findChild(QObject, "updateButton")
+        check(arrow is not None and not arrow.property("visible"),
+              "no update arrow on the panel before a check")
+        updater.check()
+        QTest.qWait(50)
+        check(arrow is not None and arrow.property("visible"),
+              "the panel shows an arrow while an update is on offer")
+        updater.skip()
+        QTest.qWait(50)
+        check(arrow is None or not arrow.property("visible"),
+              "a skipped build takes the arrow away")
+        updater._skipped = False
+        updater._set("ready")
+        QTest.qWait(50)
+        check(arrow is not None and arrow.property("visible"),
+              "a build downloaded in the background keeps the arrow")
+        updater._set("available")
+        updater._skipped = False
+        updater.changed.emit()
+
         # Panel shortcuts that never open a card: the middle click mutes, the
         # bell's right click flips do-not-disturb.
         if quicks and centres:
@@ -2655,6 +2879,33 @@ def main():
             QTest.qWait(50)
             check(bool(osds) and osds[0].property("text") == "Caps Lock on",
                   f"Caps Lock shows on screen ({osds[0].property('text') if osds else None})")
+
+            # Super+. opens the emoji picker; a word finds an emoji (English
+            # or Russian), picking copies it and remembers it.
+            shell.emojiToggleRequested.emit()
+            QTest.qWait(300)
+            pickers = windows_of_kind("EmojiPopup")
+            check(bool(pickers) and pickers[0].isVisible(), "Super+. opens the emoji picker")
+            if pickers:
+                emoji_grid = pickers[0].findChild(QObject, "emojiGrid")
+                check(emoji_grid is not None and emoji_grid.property("count") > 300,
+                      "the emoji picker lists its emoji")
+                for word in ("rocket", "ракета"):
+                    pickers[0].setProperty("filter", word)
+                    QTest.qWait(50)
+                    found = pickers[0].property("entries")
+                    found = found.toVariant() if hasattr(found, "toVariant") else found
+                    check(list(found or []) == ["\U0001F680"], f"'{word}' finds the rocket ({found})")
+                QMetaObject.invokeMethod(pickers[0], "pick", Q_ARG("QVariant", "\U0001F680"))
+                QTest.qWait(300)
+                check(shell.calls and shell.calls[-1] == ("copyToClipboard", "\U0001F680"),
+                      "picking an emoji copies it")
+                check(shell.typed == ["\U0001F680"], f"picking an emoji types it ({shell.typed})")
+                check(list(settings._values.get("emoji.recent") or []) == ["\U0001F680"],
+                      f"the picked emoji is remembered ({settings._values.get('emoji.recent')!r})")
+                check(not pickers[0].isVisible(), "the emoji picker closes after a pick")
+                settings._values["emoji.recent"] = []
+                settings.valuesChanged.emit()
 
             # Super+V reaches the shell over D-Bus and opens the history.
             shell.clipboardToggleRequested.emit()
@@ -3162,6 +3413,63 @@ def main():
         QTest.qWait(400)
         check(not picker.isVisible(), "hide() closes the picker")
 
+        settings._values["desktop.wallpaper"] = ""
+        settings.valuesChanged.emit()
+        QTest.qWait(20)
+
+        # Wallpaper slideshow: the next picture of the current one's folder.
+        slides = os.path.join(work, "Slides")
+        os.makedirs(slides, exist_ok=True)
+        slide_files = [os.path.join(slides, name) for name in ("a.png", "b.png", "c.png")]
+        for path in slide_files:
+            check(image.save(path), f"slideshow picture {os.path.basename(path)}")
+        left = next(d for d in desktops if d.screen() is screens[0])
+        right = next(d for d in desktops if d.screen() is screens[1])
+        settings.setValue("desktop.wallpaper", slide_files[0])
+        settings.setValue("desktop.wallpaperSlideshow", True)
+        QTest.qWait(600)  # the folder model reads asynchronously
+        check(left.property("slideshowDriver") is True
+              and right.property("slideshowDriver") is False,
+              "one desktop drives the slideshow of a shared wallpaper")
+        QMetaObject.invokeMethod(left, "nextWallpaper")
+        QTest.qWait(50)
+        check(settings._values.get("desktop.wallpaper") == slide_files[1],
+              f"the slideshow shows the next picture ({settings._values.get('desktop.wallpaper')!r})")
+        settings.setValue("desktop.wallpaper", slide_files[2])
+        QTest.qWait(50)
+        QMetaObject.invokeMethod(left, "nextWallpaper")
+        QTest.qWait(50)
+        check(settings._values.get("desktop.wallpaper") == slide_files[0],
+              f"the slideshow wraps around ({settings._values.get('desktop.wallpaper')!r})")
+        settings.setValue("desktop.wallpaperSlideshow", False)
+
+        # Per-monitor wallpapers: a screen keeps its own picture, the others
+        # the shared one.
+        settings.setValue("desktop.perMonitorWallpaper", True)
+        QTest.qWait(50)
+        check(right.property("slideshowDriver") is False, "no slideshow while it is switched off")
+        QMetaObject.invokeMethod(right, "setWallpaper", Q_ARG("QVariant", slide_files[2]))
+        QTest.qWait(50)
+        check(settings._values.get("multiMonitor.wallpapers") == {"Right": slide_files[2]},
+              f"a screen's wallpaper is saved under its name ({settings._values.get('multiMonitor.wallpapers')!r})")
+        check(right.property("wallpaper") == slide_files[2]
+              and left.property("wallpaper") == slide_files[0],
+              f"each screen shows its own wallpaper ({left.property('wallpaper')!r}, {right.property('wallpaper')!r})")
+        check(settings._values.get("desktop.wallpaper") == slide_files[0],
+              "a per-monitor choice leaves the shared wallpaper alone")
+        # The settings window chooses for the screen it is on.
+        target = settings_app.screen().name()
+        check(settings_app.property("wallpaperScreen") == target,
+              f"the settings name their screen ({settings_app.property('wallpaperScreen')!r})")
+        call(settings_app, "applyWallpaper", slide_files[1])
+        QTest.qWait(50)
+        check((settings._values.get("multiMonitor.wallpapers") or {}).get(target) == slide_files[1],
+              f"the settings picker sets its screen's wallpaper ({settings._values.get('multiMonitor.wallpapers')!r})")
+        settings.setValue("desktop.perMonitorWallpaper", False)
+        QTest.qWait(50)
+        check(right.property("wallpaper") == slide_files[0],
+              "without per-monitor wallpapers every screen shows the shared one")
+        settings._values["multiMonitor.wallpapers"] = {}
         settings._values["desktop.wallpaper"] = ""
         settings.valuesChanged.emit()
         QTest.qWait(20)

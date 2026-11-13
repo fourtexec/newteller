@@ -92,6 +92,15 @@ build_newteller() {
         command -v newteller > /dev/null
         command -v newteller-compositor > /dev/null
     '
+    # Which commit the image carries, so the updater on the installed system
+    # can compare it with what fourtexec.site offers.
+    local commit commit_date
+    commit=$(git -C "$REPO" rev-parse HEAD 2>/dev/null || true)
+    commit_date=$(git -C "$REPO" show -s --format=%ct HEAD 2>/dev/null || true)
+    if [[ -n $commit ]]; then
+        mkdir -p "$ROOTFS/usr/share/newteller"
+        printf 'commit=%s\ndate=%s\n' "$commit" "$commit_date" > "$ROOTFS/usr/share/newteller/BUILDINFO"
+    fi
     distro_remove_build_deps
     rm -rf "$ROOTFS/usr/src/newteller" "$ROOTFS/root/.cargo" "$ROOTFS/root/.rustup"
 }

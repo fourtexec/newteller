@@ -7,7 +7,7 @@ set(CMAKE_AUTOMOC ON)
 
 include(GNUInstallDirs)
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Qml Quick Svg DBus)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Qml Quick Svg DBus Network)
 
 # The compositor is what turns NewTeller from a panel that runs inside somebody
 # else's desktop into a real Wayland session. It only needs C libraries, not Qt.
@@ -101,6 +101,7 @@ qt_add_executable(newteller
     src/sessionservices.cpp
     src/clipboardhistory.cpp
     src/screenrecorder.cpp
+    src/updater.cpp
     src/audiodevices.cpp
     src/bluetooth.cpp
     src/polkitagent.cpp
@@ -119,6 +120,7 @@ target_link_libraries(newteller PRIVATE
     Qt6::Quick
     Qt6::Svg
     Qt6::DBus
+    Qt6::Network
     LayerShellQt::Interface
     ${WAYLAND_CLIENT_LIBRARY}
     ${XCB_LIBRARY}
@@ -154,6 +156,24 @@ set(NEWTELLER_POINTER_CONSTRAINTS_HEADER ${CMAKE_BINARY_DIR}/pointer-constraints
 set(NEWTELLER_CURSOR_SHAPE_HEADER ${CMAKE_BINARY_DIR}/cursor-shape-v1-protocol.h)
 # Likewise wlr_output_power_management_v1.h.
 set(NEWTELLER_OUTPUT_POWER_HEADER ${CMAKE_BINARY_DIR}/wlr-output-power-management-unstable-v1-protocol.h)
+# Likewise wlr_tablet_v2.h (wlroots 0.18 and 0.19).
+set(NEWTELLER_TABLET_HEADER ${CMAKE_BINARY_DIR}/tablet-v2-protocol.h)
+# Likewise wlr_ext_image_copy_capture_v1.h (wlroots 0.19).
+set(NEWTELLER_IMAGE_COPY_HEADER ${CMAKE_BINARY_DIR}/ext-image-copy-capture-v1-protocol.h)
+add_custom_command(
+    OUTPUT ${NEWTELLER_IMAGE_COPY_HEADER}
+    COMMAND ${WAYLAND_SCANNER_EXECUTABLE} server-header
+            ${CMAKE_SOURCE_DIR}/protocols/ext-image-copy-capture-v1.xml
+            ${NEWTELLER_IMAGE_COPY_HEADER}
+    DEPENDS ${CMAKE_SOURCE_DIR}/protocols/ext-image-copy-capture-v1.xml
+    COMMENT "Generating ext-image-copy-capture protocol header")
+add_custom_command(
+    OUTPUT ${NEWTELLER_TABLET_HEADER}
+    COMMAND ${WAYLAND_SCANNER_EXECUTABLE} server-header
+            ${CMAKE_SOURCE_DIR}/protocols/tablet-v2.xml
+            ${NEWTELLER_TABLET_HEADER}
+    DEPENDS ${CMAKE_SOURCE_DIR}/protocols/tablet-v2.xml
+    COMMENT "Generating tablet-v2 protocol header")
 add_custom_command(
     OUTPUT ${NEWTELLER_LAYER_SHELL_HEADER}
     COMMAND ${WAYLAND_SCANNER_EXECUTABLE} server-header
@@ -198,6 +218,8 @@ add_executable(newteller-compositor
     ${NEWTELLER_POINTER_CONSTRAINTS_HEADER}
     ${NEWTELLER_CURSOR_SHAPE_HEADER}
     ${NEWTELLER_OUTPUT_POWER_HEADER}
+    ${NEWTELLER_TABLET_HEADER}
+    ${NEWTELLER_IMAGE_COPY_HEADER}
 )
 target_compile_definitions(newteller-compositor PRIVATE
     WLR_USE_UNSTABLE
@@ -225,10 +247,14 @@ target_link_libraries(newteller-compositor PRIVATE
 
 install(TARGETS newteller newteller-compositor RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(PROGRAMS scripts/newteller-session scripts/newteller-screenshot scripts/newteller-lock
-                 scripts/newteller-run-as-root scripts/newteller-terminal DESTINATION ${CMAKE_INSTALL_BINDIR})
+                 scripts/newteller-run-as-root scripts/newteller-terminal
+                 scripts/newteller-update-install DESTINATION ${CMAKE_INSTALL_BINDIR})
 install(DIRECTORY plugins/ DESTINATION ${CMAKE_INSTALL_DATADIR}/newteller/plugins)
 install(FILES data/org.newteller.Shell.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
 install(FILES data/newteller-session.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/wayland-sessions RENAME newteller.desktop)
 install(FILES data/newteller-autostart.desktop DESTINATION ${CMAKE_INSTALL_DATADIR}/newteller)
 install(FILES data/newteller-portals.conf DESTINATION ${CMAKE_INSTALL_DATADIR}/xdg-desktop-portal)
+# The text of the administrator prompt for newteller-update-install. polkit
+# reads actions from /usr/share only, wherever the rest is installed.
+install(FILES data/org.newteller.update.policy DESTINATION ${CMAKE_INSTALL_DATADIR}/polkit-1/actions)
 install(FILES data/wallpapers/default.jpg DESTINATION ${CMAKE_INSTALL_DATADIR}/backgrounds/newteller)

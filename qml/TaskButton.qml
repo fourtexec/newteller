@@ -30,6 +30,7 @@ Rectangle {
     // Label for dock buttons
     property string dockLabel: ""
     property bool showDockLabels: false
+    property string dockLabelPosition: "bottom" // or "top"
     property string dockIconColorMode: "theme"
     property string dockCustomIconColor: ""
     property color foregroundColor: Theme.foreground
@@ -182,8 +183,7 @@ Rectangle {
         font.pointSize: Theme.fontSize - 2
         elide: Text.ElideRight
         horizontalAlignment: Text.AlignHCenter
-        anchors.bottom: parent.bottom
-        anchors.bottomMargin: 2
+        y: btn.dockLabelPosition === "top" ? 2 : parent.height - height - 2
         anchors.horizontalCenter: parent.horizontalCenter
     }
 

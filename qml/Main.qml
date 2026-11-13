@@ -23,6 +23,11 @@ QtObject {
         screen: Qt.application.screens[0]
     }
 
+    // Super+. (period).
+    readonly property EmojiPopup emoji: EmojiPopup {
+        screen: Qt.application.screens[0]
+    }
+
     // Volume / brightness / media level pill for the hardware keys.
     readonly property OsdPopup osd: OsdPopup {
         screen: Qt.application.screens[0]
@@ -381,6 +386,10 @@ QtObject {
         function onClipboardToggleRequested() {
             root.startMenu.hide();
             root.toggleOnActiveScreen(root.clipboard, "");
+        }
+        function onEmojiToggleRequested() {
+            root.startMenu.hide();
+            root.toggleOnActiveScreen(root.emoji, "");
         }
         function onQuickSettingsToggleRequested() {
             root.startMenu.hide();

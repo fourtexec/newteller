@@ -71,7 +71,7 @@ inside VirtualBox. The implemented pieces are:
   and the application's own actions ("New Private Window", ...),
   and pinned buttons can be dragged to reorder them.
 - Start menu: highlighted fuzzy search, category chips, recently used row,
-  Lock / Log out / Sleep / Restart / Shut down, Settings; right-click an
+  Lock / Log out / Sleep / Hibernate (where the machine can) / Restart / Shut down, Settings; right-click an
   application to pin or unpin it on the dock
 - Desktop icons and widgets share one invisible grid: an icon takes a cell,
   a widget the cells its size needs, nothing overlaps, and dragging snaps to
@@ -117,6 +117,19 @@ inside VirtualBox. The implemented pieces are:
   and loop devices stay quiet. Needs udisks2.
 - **Calculator in the start menu search**: `2+2*3`, `(15,5-3)/4`, `2^10`
   show the result first; Enter copies it.
+- **Emoji picker** on `Super+.` (or `Super+;`): type a word in English or
+  Russian ("rocket", "ракета"), click an emoji or press Enter for the first
+  one and it is typed into the window you were in (with `wtype`) and put
+  on the clipboard; the ones picked last come first (`emoji.recent`).
+  Needs a colour emoji font (the installer adds Noto Color Emoji).
+- **Web search from the start menu**: the last search result opens the
+  browser with the typed words (`startmenu.webSearch`,
+  `startmenu.webSearchUrl` with `%1` for the words; DuckDuckGo by default).
+  Nothing is sent before that row is chosen.
+- **Shortcuts in any keyboard layout**: `Super+V`, `Super+L` and the other
+  letter shortcuts (your own included) work while a Russian, Greek or other
+  non-Latin layout is active; the key is looked up by its place on a US
+  keyboard.
 - **Recent files in the start menu search**: documents opened in other
   applications (`recently-used.xbel`) show up when part of their name is
   typed (`startmenu.recentFiles`).
@@ -156,6 +169,11 @@ inside VirtualBox. The implemented pieces are:
   describe themselves in a small layer surface above the hovered button; buttons
   inside the menus (start menu session actions, quick settings, notification
   centre) use an in-window bubble.
+- **Wallpapers**: one picture for every screen or one per screen
+  (`desktop.perMonitorWallpaper`; the wallpaper pickers choose for the screen
+  they are on), and a slideshow through the folder of the current picture
+  (`desktop.wallpaperSlideshow`; "Next wallpaper" in the desktop menu
+  skips ahead).
 - Desktop: wallpaper, icons from `~/Desktop` (double-click to open), desktop
   plugins, right-click menu (change wallpaper, paste to a file, new folder, open
   a terminal, settings); right-clicking an icon opens its own menu: Open,
@@ -198,8 +216,12 @@ inside VirtualBox. The implemented pieces are:
   polkit refuses the built-in agent (no login session, no polkit daemon) no
   external one is started either - it would fail the same way and only show
   an "Error" window. The Security settings page shows the reason.
-- **Graphics tablets**: the pen moves the pointer and touching the
-  tablet clicks (no pressure yet).
+- **Graphics tablets** (tablet-v2): drawing programs (Krita, GIMP,
+  Inkscape, Xournal++) get the pen with pressure, tilt, rotation and its
+  side buttons, and the buttons, rings and strips on the tablet itself go
+  to the focused window. Everywhere else the pen is a mouse: it moves the pointer,
+  the tip is a left click, the lower side button a right click and the
+  upper one a middle click.
 - **Touchscreens**: a touch goes to the surface under the finger and
   focuses its window like a click; shell cards close on a touch outside.
 - **Virtual machines and remote desktops** can take every key
@@ -308,8 +330,14 @@ inside VirtualBox. The implemented pieces are:
 - **Power profiles** (power-profiles-daemon) in quick settings and low-battery
   notifications at 10% and 5%; at 20% on battery the power saver profile
   switches on until the machine is plugged in (`power.batterySaver`).
+- **Keep the screen awake** in quick settings: no blanking and no idle
+  lock for a presentation or a long download, until it is switched off or
+  the session ends.
 - **Night light** (wlsunset) on a schedule or always, from quick settings or
   Settings → Displays.
+- **Screen capture protocols**: wlr-screencopy everywhere, and with
+  wlroots 0.19+ also its standard successor ext-image-copy-capture (whole
+  outputs), which newer portals and recorders ask for first.
 - **Desktop services.** Screen sharing and screenshots through
   xdg-desktop-portal-wlr, a polkit agent for administrator prompts, and
   `Ctrl+Alt+F1…F12` to switch virtual terminals.
@@ -449,7 +477,7 @@ these shortcuts globally, even when an application has focus:
 `Super+Up`/`Super+Down` (maximise/restore), `Super+Shift+Left`/`Super+Shift+Right`
 (move to another output), `Super+D` (show desktop), `Super+M` (maximise),
 `Super+F` (fullscreen), `Super+L` (lock), `Super+Space` (next keyboard layout),
-`Super+V` (clipboard history), `Super+Alt+R` (start/stop screen recording), `` Alt+` `` (the next window of the same application), `Super+1…9` (the Nth dock application: start
+`Super+V` (clipboard history), `Super+.` (emoji), `Super+Alt+R` (start/stop screen recording), `` Alt+` `` (the next window of the same application), `Super+1…9` (the Nth dock application: start
 it, bring it up, or cycle its windows), `Alt+Space` (window menu), `Super+N` (notifications), `Super+A` (quick settings), `Super+R` (run), `Super+E` (home
 folder), `Super+I` (settings), `Super+Shift+S` (area screenshot),
 `Ctrl+Super+Left/Right` (switch desktop, with `Shift` to move the window),
@@ -468,6 +496,74 @@ and the other session methods with `gdbus call`.
 Arch Linux or Fedora with NewTeller and a graphical installer that starts on
 its own and installs the system with NewTeller as the only desktop:
 `sudo iso/build-iso.sh debian|ubuntu|arch|fedora`. See [iso/README.md](iso/README.md).
+
+## Updates
+
+NewTeller updates itself from **Settings → Updates** (`newteller --check-update`
+does the check from a terminal).
+
+- **Update data** is one small file, <https://fourtexec.site/newteller/update.json>
+  (kept in the `fourtexec/fourtexec.github.io` repository and regenerated there
+  from the commit releases). It contains no builds, only where they are: per
+  target the commit, its date, the **link** to the release archive and the
+  archive's SHA-256.
+
+  ```json
+  { "schema": 1,
+    "targets": {
+      "debian13-x86_64": {
+        "commit": "<40 hex>", "date": 1762750000, "notes": "first line of the commit",
+        "url": "https://github.com/fourtexec/newteller/releases/download/commit-<sha>/newteller-commit-<sha>-debian13-x86_64.zip",
+        "sha256": "<64 hex>", "size": 12345678 } } }
+  ```
+- **The update itself** is downloaded from that link (https only), compared
+  with the SHA-256 and handed to `pkexec newteller-update-install ARCHIVE SHA256`,
+  which checks its own copy again as root and runs the archive's `install.sh`.
+  The new version starts at the next login. `install.sh` also brings the
+  runtime packages up to what the build needs, exactly as a first
+  installation does (`apt-get install` on Debian and Ubuntu, `dnf install`
+  on Fedora, `pacman -Syu` on Arch, where a partial upgrade is not
+  supported — so an update there upgrades the system's packages too).
+- The installed build is described by `/usr/share/newteller/BUILDINFO`
+  (`commit`, `target`, `date`). A newer build is offered when the commit
+  differs and the offer is not older than what is installed.
+- `updates.autoCheck` (default `true`): a check two minutes after login and
+  every twelve hours, with a notification that has an **Install** button.
+  Nothing is ever installed without the administrator password.
+- `updates.autoDownload` (default `false`): a newer build found by an
+  automatic check is downloaded and verified in the background; the
+  notification and the page then offer **Install**, which only asks for
+  the password.
+- **What is new**: the update data also lists the project's newest commits
+  (`"changes": [{ "commit", "date", "title" }]`); the page shows the ones
+  between the installed build and the offered one.
+- **Skip this build** (on the page and in the notification) stops the
+  reminders about one build (`updates.skippedBuild`); the next build is
+  announced again, and a skipped one can still be installed from the page.
+- While a newer build is on offer the panel shows an arrow next to the bell
+  (`updates.panelIndicator`); a click opens the Updates page.
+- `newteller --install-update` does the same from a terminal or over ssh.
+- **Going back.** The archive of every installed update is kept in
+  `/var/lib/newteller` (the current one and the one before it).
+  `sudo newteller-update-install --rollback` installs the earlier build
+  again, also from a text console (`Ctrl+Alt+F3`) when the new build does
+  not start; running it twice returns to the newer one. The Updates page
+  has the same as **Go back**, which also stops the reminders about the
+  build you leave (from a console, use **Skip this build** afterwards).
+- The administrator prompt names its purpose (the polkit action
+  `org.newteller.update.install`, English and Russian), and every entry of
+  **What is new** links to its commit.
+- Before a download the free disk space is checked, and the page shows the
+  size of the build.
+- The answer of the last check is kept in `~/.cache/newteller/update.json`:
+  a waiting update is known right after login, and the site is not asked
+  again within six hours. An automatic check that finds no network tries
+  again after a quarter of an hour, three times.
+- `newteller --version`, `--diagnostics` and `newteller-ctl doctor` name the
+  installed build, and the first login after an update says which build is
+  running now.
+- `NEWTELLER_UPDATE_URL` points the updater at other update data (a mirror,
+  or a `file://` URL in tests).
 
 ## Automated builds and commit releases
 
@@ -551,8 +647,6 @@ All keys, with their defaults:
 | `panel.height` | `48` | panel thickness in pixels |
 | `panel.position` | `"bottom"` | `bottom`, `top`, `left` or `right` |
 | `panel.margin` | `0` | gap between the panel and the screen edge |
-| `panel.centered` | `false` | reserved |
-| `panel.width` | `0` | reserved (0 = full edge) |
 | `panel.autoHide` | `false` | collapse the panel to a hover strip at the edge |
 | `panel.autoHideDelay` | `400` | delay in ms before an auto-hidden panel slides away |
 | `panel.clockFormat` | `"HH:mm"` | `Qt.formatDateTime` time format |
@@ -570,10 +664,12 @@ All keys, with their defaults:
 | `dock.multiRow` / `dock.rows` | `false` / `1` | wrap the dock into up to three rows (horizontal panels) |
 | `dock.scrollable` | `true` | let the dock scroll when its buttons do not fit |
 | `dock.iconSpacing` | `4` | gap between dock buttons in pixels |
+| `dock.showLabels` / `dock.labelPosition` | `false` / `"bottom"` | application names on the dock buttons, at the `bottom` or the `top` of the button |
 | `dock.position` / `panel.centerDock` | `"left"` / `false` | align the dock at the start, centre or end of the bar |
 | `panel.spacing` / `panel.leftSpacing` / `panel.rightSpacing` / `panel.zoneSpacing` | `8` | bar padding and gaps between the panel zones |
 | `windows.material` | `"theme"` | surface for shell popups: `theme`, `opaque`, `translucent`, `frosted` or `liquid` |
 | `panel.indicators` | `true` | bell (notification centre) and quick settings button at the end of the bar |
+| `notifications.groupByApp` | `true` | group the notification centre by application (off: one list, newest first) |
 | `notifications.material` | `"theme"` | notification popup and centre surface material |
 | `notifications.opacityPercent` | `0` | notification surface opacity; `0` uses the material preset |
 | `notifications.cornerRadius` | `-1` | notification card radius; `-1` follows the window radius |
@@ -587,6 +683,8 @@ All keys, with their defaults:
 | `theme.name` | `"default"` | theme file name |
 | `theme.autoReload` | `true` | re-apply when the theme file changes |
 | `desktop.wallpaper` | `""` | image path (empty = solid colour) |
+| `desktop.perMonitorWallpaper` / `multiMonitor.wallpapers` | `false` / `{}` | every screen keeps its own picture (screen name -> image path); a screen without one shows `desktop.wallpaper` |
+| `desktop.wallpaperSlideshow` / `desktop.wallpaperSlideshowInterval` | `false` / `60` | walk through the pictures in the folder of the current wallpaper, every so many seconds |
 | `desktop.showIcons` | `true` | show `~/Desktop` icons |
 | `desktop.iconSize` | `48` | icon size in pixels |
 | `desktop.cellWidth` / `desktop.cellHeight` | `96` / `110` | icon grid cell |
@@ -757,8 +855,11 @@ Groups: `paths`, `schema`, `list`, `get`, `set`, `unset`, `validate`, `init`,
 `doctor`. `--json` gives machine-readable output everywhere; `newteller-ctl
 --help` documents every flag. The `newteller` shell itself also accepts
 `--help`, `--version`, `--print-config`, `--diagnostics`, `--theme <name>`,
-`--settings` (opens the built-in settings window on startup) and
-`--reset`.
+`--settings` (opens the built-in settings window on startup),
+`--check-update` (asks fourtexec.site for a newer build and exits: 0 = up to
+date, 10 = an update is available, 1 = the check failed), `--install-update`
+(downloads and installs the newer build from a terminal; asks for the
+administrator password, or run it with `sudo`) and `--reset`.
 
 ## Themes
 
@@ -864,13 +965,21 @@ test the C++ code; the C++ and QML together are built by CI on every push.
 ## Layout
 
 ```
-src/            C++ core (settings, theme, appmodel, shellcontroller, plugins, systemmonitor,
-                windowlist, rustbridge, windowsystem, shellwindow, main)
-src/session/    newteller-compositor: wlroots session, outputs, layer-shell, xdg-shell,
-                XWayland, input, and screencopy
-protocols/      wlr-layer-shell and xdg-shell XML used to generate compositor headers
-qml/            Main.qml, Panel.qml, DockMenu.qml, StartMenu.qml, Desktop.qml, TaskButton.qml,
-                RunDialog.qml, SettingsApp.qml and the Settings* row controls
+src/            the shell's C++ services: settings, theme, application catalogue, session
+                services (compositor control socket, Wi-Fi, idle, autostart), notifications,
+                tray, quick settings, Bluetooth, clipboard history, polkit agent, window
+                list, system monitor, plugins, the Rust bridge, main
+src/session/    newteller-compositor: the wlroots session (windows, layer-shell, XWayland,
+                input, workspaces, lock, outputs, decorations, effects renderer, control
+                socket) and its configuration parser
+protocols/      Wayland protocol XML used to generate the compositor's headers
+qml/            the interface: Main.qml (root), Panel, StartMenu, Desktop, the popup cards
+                (quick settings, Wi-Fi, Bluetooth, sound, clipboard, notifications, ...),
+                TaskView, SettingsApp and the Settings* row controls
+i18n/           translations (English text -> translation, JSON)
+icons/          bundled icons (compiled into the binary)
+scripts/        dependency installers, release build, session/lock/screenshot helpers
+iso/            installation image builder and the installer
 rust/           Rust workspace: newteller-core (static lib + C ABI) and newteller-ctl
 tests/          QML, shell and headless compositor smoke tests
 themes/         built-in theme JSON files (compiled into the binary)
