@@ -1595,6 +1595,10 @@ static void focusView(struct View *view, struct wlr_surface *surface)
         wlr_seat_keyboard_notify_enter(server->seat, target,
                                        keyboard->keycodes, keyboard->num_keycodes,
                                        &keyboard->modifiers);
+    } else {
+        // No keyboard yet (it is plugged in later, or only a virtual one
+        // will come): the window still has the focus when one arrives.
+        wlr_seat_keyboard_notify_enter(server->seat, target, NULL, 0, NULL);
     }
     if (view->handle)
         wlr_foreign_toplevel_handle_v1_set_activated(view->handle, true);
@@ -1623,6 +1627,8 @@ static void focusLayer(struct Layer *layer)
         wlr_seat_keyboard_notify_enter(server->seat, layer->layer->surface,
                                        keyboard->keycodes, keyboard->num_keycodes,
                                        &keyboard->modifiers);
+    } else {
+        wlr_seat_keyboard_notify_enter(server->seat, layer->layer->surface, NULL, 0, NULL);
     }
 }
 
