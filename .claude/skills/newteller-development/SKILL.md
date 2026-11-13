@@ -16,6 +16,9 @@ and the checks that will fail if one is broken.
 - **Do not build locally.** The environment usually lacks the Debian/Ubuntu
   packages (Qt 6.8+, wlroots 0.18/0.19, LayerShellQt). Write code that is
   correct by inspection and verify it on GitHub Actions (see "Verifying").
+  What does run locally, and catches most mistakes before a 6 minute CI
+  round (see "Local checks"): the QML smoke test, `tests/config_test.sh`,
+  `cargo test`, and a `-fsyntax-only` pass over the C and C++ sources.
 - Support **wlroots 0.18 (Debian 13), 0.19 (Ubuntu 26.04, Fedora) and 0.20
   (Arch)**. Their APIs differ (see "wlroots pitfalls"); guard with
   `#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR >= 19` (0.20 takes the
@@ -207,6 +210,28 @@ line").
   new scene tree must be added there too.
 - The shell: NetworkManager calls go through async `QDBusPendingCallWatcher`
   chains (join, list, disconnect); keep new ones asynchronous.
+- Control-socket replies whose length depends on the number of windows
+  or monitors are built with `struct Text` / `textAppend()` (a fixed buffer
+  once cut the Alt+Tab list and closed the overlay). `windows` entries end
+  with `<pid>\x1e<x>,<y>,<width>,<height>`; append new fields at the end.
+- Shortcuts are matched by symbol; `latinShortcutSym()` retries a symbol
+  from another alphabet as the key's Latin one, so `Super+L` works on a
+  Russian layout. New letter shortcuts need nothing extra.
+- Window state requests are **not toggles**: follow
+  `xdg->requested.maximized/fullscreen` (X11: `x11->fullscreen`,
+  `maximized_vert && maximized_horz`), and apply what was requested before
+  the first configure when the window maps. Client-started moves and
+  resizes go through `interactiveGrabAllowed()`.
+- A window's screen is `viewNearestOutput()` (centre, else nearest), never
+  "the output under its corner".
+- `updateFullscreenLayers()` is the only place that shows or hides the top
+  layer: per layer surface, only on the screen the fullscreen window fills.
+  Call it after anything that changes which window is fullscreen, where it
+  is, or which layer surfaces exist; never toggle `topTree` directly.
+- `refitViews()` (from `arrangeOutput`) re-fits maximized, snapped and
+  fullscreen windows when a screen's box or usable area changes; a layout
+  change schedules `layoutIdleCallback` (arrange every screen, rescue
+  windows, lock surfaces). New "fills the screen" states belong in both.
 - Pointers stored on `Server` that refer to a `View` (`focusedView`,
   `previousView`, `grabbedView`, `switchTarget`, `hoverView`,
   `lastTitleView`) must be cleared in `destroyView()`.
@@ -276,6 +301,28 @@ Session smoke test: runs `newteller-compositor --headless=1280x800` with the
 shell, a PySide test window, `grim` screenshots, `wlr-randr`, `swaylock`,
 and the `msg` helper for the control socket. Add a check there for every
 compositor behaviour you add.
+
+## Local checks
+
+- `bash tests/config_test.sh` builds and runs the unit test of
+  `src/session/config.c` (plain C; `CONFIG_TEST_CFLAGS=-fsanitize=address,undefined`
+  adds the sanitizers). Add a case there for every new `compositor.conf` key.
+- QML smoke: `python3 -m venv V && V/bin/pip install PySide6-Essentials &&
+  V/bin/python tests/qml_smoke.py` (needs `libegl1`, `libgl1`,
+  `libxkbcommon0`, `libfontconfig1` from apt).
+- Compositor syntax check against both wlroots versions: download
+  `libwlroots-0.18-dev_*.deb` and `libwlroots-0.19-dev_*.deb` from
+  `deb.debian.org/debian/pool/main/w/wlroots/`, unpack with `dpkg-deb -x`,
+  generate the five protocol headers with `wayland-scanner server-header
+  protocols/<name>.xml <name>-protocol.h`, install the -dev packages of
+  wayland, pixman, xkbcommon, libinput, cairo, pango, libdrm, xcb-icccm,
+  then `gcc -std=c11 -fsyntax-only -Wall -Wextra -Wno-unused-parameter
+  -DWLR_USE_UNSTABLE -DNEWTELLER_VERSION='"x"' -I<generated> -Isrc/session
+  -I<unpacked>/usr/include/wlroots-0.1N $(pkg-config --cflags wayland-server
+  pixman-1 xkbcommon libinput cairo pangocairo libdrm) src/session/main.c`.
+  It finds missing forward declarations, typos and 0.18/0.19 API slips.
+- Shell syntax check: `qt6-base-dev qt6-declarative-dev` (any Qt 6) and
+  `g++ -std=c++20 -fsyntax-only -fPIC -I/usr/include/x86_64-linux-gnu/qt6{,/QtCore,/QtGui,/QtQml,/QtQuick,/QtDBus,/QtSvg} -Isrc src/<file>.cpp`.
 
 ## Before you finish
 
