@@ -5,6 +5,8 @@
 #include <QDir>
 #include <QDirIterator>
 #include <QElapsedTimer>
+#include <QFile>
+#include <QFileInfo>
 #include <QLocale>
 #include <QProcess>
 #include <QSet>
@@ -697,6 +699,37 @@ void AppModel::refreshRunning()
     emit runningChanged();
 }
 
+// Where a launcher's program starts: the entry's Path= (games, Wine and
+// AppImage launchers look for their data relative to it), else the home
+// folder, so "Open" and "Save" dialogs and terminals do not begin in
+// whatever directory the session itself was started from.
+static QString launchDirectory(const QString &desktopFile)
+{
+    QFile file(desktopFile);
+    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        bool inEntry = false;
+        while (!file.atEnd()) {
+            const QString line = QString::fromUtf8(file.readLine()).trimmed();
+            if (line.startsWith(QLatin1Char('['))) {
+                if (inEntry)
+                    break; // the main group is over
+                inEntry = line == QLatin1String("[Desktop Entry]");
+                continue;
+            }
+            if (!inEntry || !line.startsWith(QLatin1String("Path")))
+                continue;
+            const int equals = line.indexOf(QLatin1Char('='));
+            if (equals < 0 || line.left(equals).trimmed() != QLatin1String("Path"))
+                continue;
+            const QString path = line.mid(equals + 1).trimmed();
+            if (!path.isEmpty() && QFileInfo(path).isDir())
+                return path;
+            break;
+        }
+    }
+    return QDir::homePath();
+}
+
 QVariantList AppModel::launchArgs(const QString &id, const QStringList &files) const
 {
     const int row = indexOf(id);
@@ -757,7 +790,10 @@ bool AppModel::launch(const QString &id, const QStringList &files)
         return false;
     }
 
-    const bool ok = QProcess::startDetached(program, argv);
+    const int row = indexOf(id);
+    const QString directory = launchDirectory(row >= 0 && row < m_apps.size()
+                                                  ? m_apps.at(row).path : QString());
+    const bool ok = QProcess::startDetached(program, argv, directory);
     if (!ok) {
         emit launchFailed(id, tr("%1 was not found. The application may have been removed.").arg(program));
         return false;
@@ -835,10 +871,13 @@ bool AppModel::launchAction(const QString &id, const QString &actionId)
             return false;
 
         const QString program = argv.takeFirst();
-        const bool ok = QProcess::startDetached(program, argv);
+        const bool ok = QProcess::startDetached(program, argv, launchDirectory(app.path));
         if (ok) {
             rememberRecent(id);
             rememberUsage(id);
+        } else {
+            // Never silent: a jump-list entry that does nothing looks broken.
+            emit launchFailed(id, tr("%1 was not found. The application may have been removed.").arg(program));
         }
         return ok;
     }
