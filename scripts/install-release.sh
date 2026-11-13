@@ -26,6 +26,7 @@ test -f "$root/usr/bin/newteller-screenshot"
 test -f "$root/usr/bin/newteller-lock"
 test -f "$root/usr/bin/newteller-run-as-root"
 test -f "$root/usr/bin/newteller-terminal"
+test -f "$root/usr/bin/newteller-update-install"
 test -f "$root/usr/share/backgrounds/newteller/default.jpg"
 test -f "$root/usr/share/xdg-desktop-portal/newteller-portals.conf"
 test -d "$root/usr/share/newteller/plugins"
@@ -36,13 +37,19 @@ install -m 755 "$root/usr/bin/newteller" "$root/usr/bin/newteller-compositor" \
     "$root/usr/bin/newteller-ctl" /usr/bin/
 install -m 755 "$root/usr/bin/newteller-session" "$root/usr/bin/newteller-screenshot" \
     "$root/usr/bin/newteller-lock" "$root/usr/bin/newteller-run-as-root" \
-    "$root/usr/bin/newteller-terminal" /usr/bin/
+    "$root/usr/bin/newteller-terminal" "$root/usr/bin/newteller-update-install" /usr/bin/
 install -d /usr/share/newteller/plugins /usr/share/applications /usr/share/wayland-sessions \
     /usr/share/xdg-desktop-portal /usr/share/backgrounds/newteller
 install -m 644 "$root/usr/share/backgrounds/newteller/default.jpg" \
     /usr/share/backgrounds/newteller/default.jpg
 install -m 644 "$root/usr/share/xdg-desktop-portal/newteller-portals.conf" \
     /usr/share/xdg-desktop-portal/newteller-portals.conf
+# Optional in the archive: builds older than the updater do not carry it.
+if [[ -f "$root/usr/share/polkit-1/actions/org.newteller.update.policy" ]]; then
+    install -d /usr/share/polkit-1/actions
+    install -m 644 "$root/usr/share/polkit-1/actions/org.newteller.update.policy" \
+        /usr/share/polkit-1/actions/org.newteller.update.policy
+fi
 cp -a "$root/usr/share/newteller/." /usr/share/newteller/
 install -m 644 "$root/usr/share/applications/org.newteller.Shell.desktop" \
     /usr/share/applications/org.newteller.Shell.desktop

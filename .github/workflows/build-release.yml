@@ -172,6 +172,7 @@ jobs:
           The archive contains newteller-compositor and newteller-session; choose NewTeller at the login screen after installing.
           QML and built-in themes are embedded in the executable; example plugins and desktop entries are included.
           The archive is not a statically linked or cross-distribution portable build.
+          Systems that already run NewTeller get this build from Settings → Updates (or \`newteller --install-update\`); the list of builds is https://fourtexec.site/newteller/.
           EOF_NOTES
           if ! gh release view "$tag" > /dev/null 2>&1; then
             gh release create "$tag" --target "$COMMIT_SHA" \

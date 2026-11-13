@@ -480,6 +480,74 @@ Arch Linux or Fedora with NewTeller and a graphical installer that starts on
 its own and installs the system with NewTeller as the only desktop:
 `sudo iso/build-iso.sh debian|ubuntu|arch|fedora`. See [iso/README.md](iso/README.md).
 
+## Updates
+
+NewTeller updates itself from **Settings → Updates** (`newteller --check-update`
+does the check from a terminal).
+
+- **Update data** is one small file, <https://fourtexec.site/newteller/update.json>
+  (kept in the `fourtexec/fourtexec.github.io` repository and regenerated there
+  from the commit releases). It contains no builds, only where they are: per
+  target the commit, its date, the **link** to the release archive and the
+  archive's SHA-256.
+
+  ```json
+  { "schema": 1,
+    "targets": {
+      "debian13-x86_64": {
+        "commit": "<40 hex>", "date": 1762750000, "notes": "first line of the commit",
+        "url": "https://github.com/fourtexec/newteller/releases/download/commit-<sha>/newteller-commit-<sha>-debian13-x86_64.zip",
+        "sha256": "<64 hex>", "size": 12345678 } } }
+  ```
+- **The update itself** is downloaded from that link (https only), compared
+  with the SHA-256 and handed to `pkexec newteller-update-install ARCHIVE SHA256`,
+  which checks its own copy again as root and runs the archive's `install.sh`.
+  The new version starts at the next login. `install.sh` also brings the
+  runtime packages up to what the build needs, exactly as a first
+  installation does (`apt-get install` on Debian and Ubuntu, `dnf install`
+  on Fedora, `pacman -Syu` on Arch, where a partial upgrade is not
+  supported — so an update there upgrades the system's packages too).
+- The installed build is described by `/usr/share/newteller/BUILDINFO`
+  (`commit`, `target`, `date`). A newer build is offered when the commit
+  differs and the offer is not older than what is installed.
+- `updates.autoCheck` (default `true`): a check two minutes after login and
+  every twelve hours, with a notification that has an **Install** button.
+  Nothing is ever installed without the administrator password.
+- `updates.autoDownload` (default `false`): a newer build found by an
+  automatic check is downloaded and verified in the background; the
+  notification and the page then offer **Install**, which only asks for
+  the password.
+- **What is new**: the update data also lists the project's newest commits
+  (`"changes": [{ "commit", "date", "title" }]`); the page shows the ones
+  between the installed build and the offered one.
+- **Skip this build** (on the page and in the notification) stops the
+  reminders about one build (`updates.skippedBuild`); the next build is
+  announced again, and a skipped one can still be installed from the page.
+- While a newer build is on offer the panel shows an arrow next to the bell
+  (`updates.panelIndicator`); a click opens the Updates page.
+- `newteller --install-update` does the same from a terminal or over ssh.
+- **Going back.** The archive of every installed update is kept in
+  `/var/lib/newteller` (the current one and the one before it).
+  `sudo newteller-update-install --rollback` installs the earlier build
+  again, also from a text console (`Ctrl+Alt+F3`) when the new build does
+  not start; running it twice returns to the newer one. The Updates page
+  has the same as **Go back**, which also stops the reminders about the
+  build you leave (from a console, use **Skip this build** afterwards).
+- The administrator prompt names its purpose (the polkit action
+  `org.newteller.update.install`, English and Russian), and every entry of
+  **What is new** links to its commit.
+- Before a download the free disk space is checked, and the page shows the
+  size of the build.
+- The answer of the last check is kept in `~/.cache/newteller/update.json`:
+  a waiting update is known right after login, and the site is not asked
+  again within six hours. An automatic check that finds no network tries
+  again after a quarter of an hour, three times.
+- `newteller --version`, `--diagnostics` and `newteller-ctl doctor` name the
+  installed build, and the first login after an update says which build is
+  running now.
+- `NEWTELLER_UPDATE_URL` points the updater at other update data (a mirror,
+  or a `file://` URL in tests).
+
 ## Automated builds and commit releases
 
 `.github/workflows/build-release.yml` builds separate native x86_64 archives on
@@ -770,8 +838,11 @@ Groups: `paths`, `schema`, `list`, `get`, `set`, `unset`, `validate`, `init`,
 `doctor`. `--json` gives machine-readable output everywhere; `newteller-ctl
 --help` documents every flag. The `newteller` shell itself also accepts
 `--help`, `--version`, `--print-config`, `--diagnostics`, `--theme <name>`,
-`--settings` (opens the built-in settings window on startup) and
-`--reset`.
+`--settings` (opens the built-in settings window on startup),
+`--check-update` (asks fourtexec.site for a newer build and exits: 0 = up to
+date, 10 = an update is available, 1 = the check failed), `--install-update`
+(downloads and installs the newer build from a terminal; asks for the
+administrator password, or run it with `sudo`) and `--reset`.
 
 ## Themes
 
