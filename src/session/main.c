@@ -221,6 +221,7 @@ static void shellAction(const char *method);
 static void checkHotCorner(struct Server *server);
 static void arrangeLockSurfaces(struct Server *server);
 static void updateFullscreenLayers(struct Server *server);
+static struct wlr_output *viewNearestOutput(struct View *view);
 static void broadcastFullscreen(struct Server *server, bool force);
 static struct wlr_box viewOuterBox(struct View *view);
 static uint32_t dragSnapEdges(struct Server *server, struct View *view);
@@ -1305,9 +1306,9 @@ static void renderDecorationTitle(struct View *view, int width, bool focused,
 
 static float viewOutputScale(struct View *view)
 {
-    struct wlr_output *output = wlr_output_layout_output_at(
-        view->server->outputLayout, view->x + view->width / 2.0,
-        view->y + view->height / 2.0);
+    // The nearest screen when the centre is past an edge: at scale 1 the
+    // title of a half-hidden window on a HiDPI screen was drawn blurred.
+    struct wlr_output *output = viewNearestOutput(view);
     return output ? output->scale : 1.0f;
 }
 
