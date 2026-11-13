@@ -7158,6 +7158,8 @@ static void handleX11RequestActivate(struct wl_listener *listener, void *data)
 {
     (void)data;
     struct View *view = wl_container_of(listener, view, x11RequestActivate);
+    if (view->mapped && view->minimized && !view->server->locked)
+        viewSetMinimized(view, false);
     focusView(view, NULL);
 }
 
@@ -8800,6 +8802,11 @@ static void handleActivationRequest(struct wl_listener *listener, void *data)
         if (view->xdg->base->surface == event->surface
             || wlr_surface_get_root_surface(view->xdg->base->surface)
                    == event->surface) {
+            // "Open" in a notification, a link handed to a running browser:
+            // a minimized window comes back first (it cannot take the focus
+            // while hidden, so the request used to do nothing).
+            if (view->minimized && !server->locked)
+                viewSetMinimized(view, false);
             focusView(view, event->surface);
             return;
         }
