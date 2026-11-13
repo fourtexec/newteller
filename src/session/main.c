@@ -464,6 +464,10 @@ struct Output {
     struct wlr_output *output;
     struct wlr_scene_output *sceneOutput;
     struct wlr_box usable;
+    // The screen and its usable area as maximized, snapped and fullscreen
+    // windows were last fitted to (refitViews).
+    struct wlr_box fitFull;
+    struct wlr_box fitUsable;
     // Turned off by the user (output management), as opposed to blanked.
     bool disabled;
     // Blanked by `dpms off` (screen saver); comes back with `dpms on`.
@@ -1736,6 +1740,50 @@ static void viewRestoreSnap(struct View *view)
     view->snapEdges = 0;
 }
 
+// The half or quarter of `area` a side (and a row) stands for.
+static struct wlr_box snapBox(struct wlr_box area, uint32_t edge)
+{
+    const uint32_t side = edge & (WLR_EDGE_LEFT | WLR_EDGE_RIGHT);
+    const uint32_t vertical = edge & (WLR_EDGE_TOP | WLR_EDGE_BOTTOM);
+    const int half = area.width / 2;
+    const int height = vertical ? area.height / 2 : area.height;
+    return (struct wlr_box){side == WLR_EDGE_LEFT ? area.x : area.x + area.width - half,
+                            vertical == WLR_EDGE_BOTTOM ? area.y + area.height - height : area.y,
+                            half, height};
+}
+
+// The usable area of a screen changed (the panel grew, moved to another
+// edge or went away; a new resolution or scale): windows that fill it, or
+// a half or quarter of it, are fitted again. They used to keep the old
+// rectangle, under the panel or with a gap beside it.
+static void refitViews(struct Server *server, struct Output *output, struct wlr_box full,
+                       struct wlr_box usable)
+{
+    const struct wlr_box oldFull = output->fitFull;
+    const bool changed = !wlr_box_equal(&oldFull, &full)
+                         || !wlr_box_equal(&output->fitUsable, &usable);
+    output->fitFull = full;
+    output->fitUsable = usable;
+    if (!changed || wlr_box_empty(&oldFull) || wlr_box_empty(&usable))
+        return;
+    struct View *view;
+    wl_list_for_each(view, &server->views, link) {
+        if (!view->mapped || view->overrideRedirect
+            || (!view->fullscreen && !view->maximized && view->snapEdges == 0))
+            continue;
+        // Windows of this screen: by where they were fitted before.
+        if (!wlr_box_contains_point(&oldFull, view->x + view->width / 2.0,
+                                    view->y + view->height / 2.0))
+            continue;
+        struct wlr_box box = full;
+        if (!view->fullscreen)
+            box = frameContentBox(view, view->maximized ? usable
+                                                         : snapBox(usable, view->snapEdges));
+        viewSetPosition(view, box.x, box.y);
+        viewSetSize(view, box.width, box.height);
+    }
+}
+
 // Snap the focused window to one half of the output's usable area. The
 // direction is a wlr edge: WLR_EDGE_LEFT/RIGHT for the two halves, one of
 // them with TOP or BOTTOM for a quarter, WLR_EDGE_TOP alone for maximise.
@@ -1779,12 +1827,7 @@ static void viewSnap(struct View *view, uint32_t edge)
     }
 
     const struct wlr_box area = usableBoxForView(view);
-    const int half = area.width / 2;
-    const int height = vertical ? area.height / 2 : area.height;
-    struct wlr_box outer = {side == WLR_EDGE_LEFT ? area.x : area.x + area.width - half,
-                            vertical == WLR_EDGE_BOTTOM ? area.y + area.height - height : area.y,
-                            half, height};
-    struct wlr_box content = frameContentBox(view, outer);
+    struct wlr_box content = frameContentBox(view, snapBox(area, edge));
     viewSetPosition(view, content.x, content.y);
     viewSetSize(view, content.width, content.height);
     view->snapEdges = edge;
@@ -2416,6 +2459,7 @@ static void arrangeOutput(struct Server *server, struct Output *output)
         }
     }
     output->usable = usable;
+    refitViews(server, output, full, usable);
 }
 
 static void arrangeIdleCallback(void *data)
@@ -8063,8 +8107,10 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
             setLayout(server, atoi(argument));
         ipcSend(client, "ok");
     } else if (strcmp(command, "windows") == 0) {
-        // ok <id>\x1e<desktop>\x1e<app id>\x1e<title>\x1e<flags>\x1f...
-        // flags: see viewFlags() ("-" for none). Most recent first.
+        // ok <id>\x1e<desktop>\x1e<app id>\x1e<title>\x1e<flags>\x1e<pid>
+        //    \x1e<x>,<y>,<width>,<height>\x1f...
+        // flags: see viewFlags() ("-" for none). Most recent first. The
+        // geometry is the window's content, in layout coordinates.
         struct Text reply = {0};
         textAppend(&reply, "ok ");
         bool first = true;
@@ -8078,8 +8124,9 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
             ipcField(appId, sizeof(appId), viewAppId(view), true);
             char flags[10];
             viewFlags(view, flags, sizeof(flags));
-            textAppend(&reply, "%s%u\x1e%d\x1e%s\x1e%s\x1e%s\x1e%d", first ? "" : "\x1f",
-                       view->id, view->workspace, appId, title, flags, (int)viewPid(view));
+            textAppend(&reply, "%s%u\x1e%d\x1e%s\x1e%s\x1e%s\x1e%d\x1e%d,%d,%d,%d",
+                       first ? "" : "\x1f", view->id, view->workspace, appId, title, flags,
+                       (int)viewPid(view), view->x, view->y, view->width, view->height);
             first = false;
         }
         ipcSend(client, reply.data);

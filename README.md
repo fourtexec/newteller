@@ -434,7 +434,8 @@ window menu; watchers get `event window-menu ID X Y DESKTOP FLAGS TITLE`).
 `windows` flags: `f` focused, `m` minimized, `x` maximized, `F` full screen,
 `t` always on top, `s` on every desktop, `h` not responding (`-` for none).
 `windows` marks frozen windows with the `h` flag and reports each window's
-process id; `kill ID` force-quits one (never the compositor or the shell).
+process id and its geometry (`x,y,width,height` of the content, in layout
+coordinates); `kill ID` force-quits one (never the compositor or the shell).
 `idle-inhibit on|off` keeps the screen awake while the connection that sent
 it stays open (the shell uses it for `org.freedesktop.ScreenSaver`); without
 an argument it reports whether anything inhibits idle (`ok 1` / `ok 0`).

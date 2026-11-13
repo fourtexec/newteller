@@ -294,7 +294,25 @@ msg dpms on >/dev/null
 
 # wlr-output-management: a display tool changes the scale, the compositor
 # applies it and reports it back.
+# A maximized window follows the screen: at scale 2 the screen is 640 wide,
+# and the window must not keep its 1280.
+window_width() {
+    msg windows | sed 's/^ok //' | tr '\037' '\n' \
+        | awk -F $'\x1e' -v id="$window_id" '$1 == id { split($7, g, ","); print g[3] }'
+}
+wait_window_width() {
+    local width=''
+    for _ in $(seq 1 40); do
+        width=$(window_width)
+        [[ $width == "$1" ]] && return 0
+        sleep 0.1
+    done
+    echo "the maximized window is ${width:-?} wide, expected $1 ($2)" >&2
+    return 1
+}
 if command -v wlr-randr >/dev/null 2>&1; then
+    msg maximize "$window_id" on >/dev/null
+    wait_window_width 1280 'maximized'
     XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" \
         wlr-randr --output HEADLESS-1 --scale 2
     reply=$(msg outputs || true)
@@ -302,8 +320,12 @@ if command -v wlr-randr >/dev/null 2>&1; then
         echo "wlr-randr could not change the output scale ($reply)" >&2
         exit 1
     fi
+    wait_window_width 640 'after the scale went to 2'
     XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" \
         wlr-randr --output HEADLESS-1 --scale 1
+    wait_window_width 1280 'after the scale went back to 1'
+    msg maximize "$window_id" off >/dev/null
+    echo "session smoke: a maximized window is refitted when the screen changes"
 fi
 sleep 1
 

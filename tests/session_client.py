@@ -45,5 +45,6 @@ source = source.replace(b"TITLE", b"NewTeller maximized test" if maximized
 engine.loadData(source)
 if not engine.rootObjects():
     sys.exit(1)
-QTimer.singleShot(15000, app.quit)
+# The test ends it; this only keeps a forgotten window from staying forever.
+QTimer.singleShot(60000, app.quit)
 sys.exit(app.exec())
