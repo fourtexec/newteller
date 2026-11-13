@@ -70,9 +70,29 @@ def check_locked(path):
     print(f"session smoke: locked frame is dark ({bright}/{samples} bright samples)")
 
 
+def check_lock_covers(path):
+    """After the screen moved in the layout, the locker's surface (pure
+    black) still covers it: where it stayed behind, the frame shows the
+    compositor's backdrop, which is not quite black."""
+    image = load(path)
+    if image is None:
+        print("session smoke: moved locked frame captured (no image module to inspect it)")
+        return
+    width, height = dimensions(image)
+    for x, y in ((6, 6), (width - 6, 6), (6, height - 6), (width - 6, height - 6)):
+        colour = rgb_at(image, x, y)[:3]
+        if max(colour) > 4:
+            raise SystemExit(
+                f"the lock surface did not follow its screen: {colour} at {x},{y}")
+    print("session smoke: the lock surface follows its screen")
+
+
 def main():
     if len(sys.argv) == 3 and sys.argv[1] == "--locked":
         check_locked(sys.argv[2])
+        return
+    if len(sys.argv) == 3 and sys.argv[1] == "--lock-covers":
+        check_lock_covers(sys.argv[2])
         return
     if len(sys.argv) != 3:
         raise SystemExit("usage: session_check.py BEFORE.png AFTER.png")

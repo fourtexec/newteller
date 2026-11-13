@@ -219,6 +219,7 @@ static void raisePinnedViews(struct Server *server);
 static void toggleShowDesktop(struct Server *server);
 static void shellAction(const char *method);
 static void checkHotCorner(struct Server *server);
+static void arrangeLockSurfaces(struct Server *server);
 static void broadcastFullscreen(struct Server *server, bool force);
 static struct wlr_box viewOuterBox(struct View *view);
 static uint32_t dragSnapEdges(struct Server *server, struct View *view);
@@ -5715,6 +5716,7 @@ static void handleLayoutChange(struct wl_listener *listener, void *data)
     (void)data;
     struct Server *server = wl_container_of(listener, server, layoutChange);
     updateOutputManager(server);
+    arrangeLockSurfaces(server);
 }
 
 // `dpms off|on`: blank the monitors without forgetting their configuration.
@@ -7054,6 +7056,29 @@ static void lockSurfaceDestroy(struct wl_listener *listener, void *data)
                 lockFocusSurface(server, other->lockSurface->surface);
                 break;
             }
+        }
+    }
+}
+
+// The screens changed under a locked session (a monitor unplugged from a
+// docked laptop, a new resolution): every lock surface follows its screen.
+// Left where it was, the password prompt stayed at the old position, off
+// the screen that remained, with only the backdrop to look at.
+static void arrangeLockSurfaces(struct Server *server)
+{
+    struct LockSurface *lock;
+    wl_list_for_each(lock, &server->lockSurfaces, link) {
+        struct wlr_session_lock_surface_v1 *surface = lock->lockSurface;
+        struct wlr_box box = {0};
+        wlr_output_layout_get_box(server->outputLayout, surface->output, &box);
+        if (wlr_box_empty(&box))
+            continue;
+        if (lock->tree)
+            wlr_scene_node_set_position(&lock->tree->node, box.x, box.y);
+        if (surface->current.width != (uint32_t)box.width
+            || surface->current.height != (uint32_t)box.height) {
+            wlr_session_lock_surface_v1_configure(surface, (uint32_t)box.width,
+                                                  (uint32_t)box.height);
         }
     }
 }

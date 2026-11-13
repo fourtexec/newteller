@@ -525,6 +525,24 @@ if command -v swaylock >/dev/null 2>&1 && command -v pkill >/dev/null 2>&1; then
     XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" grim -o HEADLESS-1 "$runtime/locked.png"
     "$python" "$root/tests/session_check.py" --locked "$runtime/locked.png"
 
+    # A screen that moves in the layout while locked (a monitor unplugged
+    # from a docked laptop) takes its lock surface along.
+    if command -v wlr-randr >/dev/null 2>&1; then
+        XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" \
+            wlr-randr --output HEADLESS-1 --pos 300,200
+        reply=$(msg outputs || true)
+        if [[ $reply != *':300,200:'* ]]; then
+            echo "wlr-randr could not move the output ($reply)" >&2
+            exit 1
+        fi
+        sleep 1
+        XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" grim -o HEADLESS-1 "$runtime/locked-moved.png"
+        "$python" "$root/tests/session_check.py" --lock-covers "$runtime/locked-moved.png"
+        XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" \
+            wlr-randr --output HEADLESS-1 --pos 0,0
+        sleep 0.5
+    fi
+
     pkill -KILL -x swaylock || true
     wait "$lock_starter" 2>/dev/null || true
     sleep 1
