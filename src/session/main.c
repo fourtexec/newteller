@@ -4565,6 +4565,47 @@ static void keyboardModifiers(struct wl_listener *listener, void *data)
                                        &keyboard->keyboard->modifiers);
 }
 
+// Shortcuts are named by Latin keys (Super+L, Super+E). On a Russian, Greek
+// or Hebrew layout the same key gives another symbol and none of them
+// matched: Super+L did nothing until the layout was switched back. For a
+// symbol from another alphabet this returns what the key gives in the first
+// layout that has a Latin symbol on it, or in a plain "us" layout when the
+// user has no such layout at all. Other symbols are returned unchanged.
+static xkb_keysym_t latinShortcutSym(struct Keyboard *keyboard, uint32_t keycode,
+                                     xkb_keysym_t sym)
+{
+    // Legacy keysyms of other alphabets, and the Unicode keysyms. Function,
+    // keypad and XF86 keys are outside both ranges.
+    bool foreign = (sym >= 0x100 && sym < 0xfd00) || (sym >= 0x01000100 && sym <= 0x0110ffff);
+    if (!foreign)
+        return sym;
+    struct xkb_keymap *keymap = keyboard->keyboard->keymap;
+    const xkb_keysym_t *syms = NULL;
+    if (keymap) {
+        xkb_layout_index_t count = xkb_keymap_num_layouts_for_key(keymap, keycode);
+        for (xkb_layout_index_t layout = 0; layout < count; ++layout) {
+            if (xkb_keymap_key_get_syms_by_level(keymap, keycode, layout, 0, &syms) > 0
+                && syms[0] >= 0x20 && syms[0] <= 0x7e)
+                return syms[0];
+        }
+    }
+    static struct xkb_keymap *us;
+    static bool usTried;
+    if (!usTried) {
+        usTried = true;
+        struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+        if (context) {
+            const struct xkb_rule_names names = {.layout = "us"};
+            us = xkb_keymap_new_from_names(context, &names, XKB_KEYMAP_COMPILE_NO_FLAGS);
+            xkb_context_unref(context);
+        }
+    }
+    if (us && xkb_keymap_key_get_syms_by_level(us, keycode, 0, 0, &syms) > 0
+        && syms[0] >= 0x20 && syms[0] <= 0x7e)
+        return syms[0];
+    return sym;
+}
+
 static void keyboardKey(struct wl_listener *listener, void *data)
 {
     struct Keyboard *keyboard = wl_container_of(listener, keyboard, key);
@@ -4615,6 +4656,13 @@ static void keyboardKey(struct wl_listener *listener, void *data)
         }
         if (keyHandled(server, sym, modifiers, baseSym))
             return;
+        // The same key by its Latin name, for the other layouts. Only with
+        // Super, Ctrl or Alt held: plain typing is never a shortcut.
+        if (modifiers & (WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT)) {
+            xkb_keysym_t latin = latinShortcutSym(keyboard, event->keycode + 8, sym);
+            if (latin != sym && keyHandled(server, latin, modifiers, baseSym))
+                return;
+        }
     } else if (isLogo && server->logoTap) {
         server->logoTap = false;
         if (!server->switching && !server->locked)

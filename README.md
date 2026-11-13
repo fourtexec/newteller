@@ -457,7 +457,9 @@ folder), `Super+I` (settings), `Super+Shift+S` (area screenshot),
 `Ctrl+Alt+F1…F12` (virtual terminals), `Print` (screenshot), a tap of `Super` on its own (open or close
 the start menu), and `Alt+Tab` (switch windows: keep Alt held and press Tab again to walk
 through every window, most recently used first, with the candidate raised as a preview;
-`Shift+Tab` steps back, `Escape` cancels and releasing Alt switches). The running shell
+`Shift+Tab` steps back, `Escape` cancels and releasing Alt switches). The letter
+shortcuts follow the key, not the layout: `Super+L` locks on a Russian or Greek layout
+too, and so do the shortcuts from Settings → Shortcuts. The running shell
 exports `org.newteller.Shell` on the session bus;
 scripts can call `showStartMenu`, `toggleStartMenu`, `showRunDialog`, `openSettings`, `lock`, `logout`
 and the other session methods with `gdbus call`.
