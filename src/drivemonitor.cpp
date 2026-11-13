@@ -118,7 +118,7 @@ void DriveMonitor::interfacesRemoved(const QDBusMessage &message)
     for (uint id : ids) {
         if (m_notes.value(id).block == path) {
             m_notes.remove(id);
-            m_notifications->dismiss(id, 3);
+            m_notifications->CloseNotification(id);
         }
     }
 }

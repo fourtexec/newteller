@@ -144,7 +144,7 @@ void BluetoothAgent::closeCode()
         m_codeDevice.clear();
     }
     if (m_codeNotification) {
-        m_notifications->dismiss(m_codeNotification, 3);
+        m_notifications->CloseNotification(m_codeNotification);
         m_codeNotification = 0;
     }
 }
@@ -193,7 +193,7 @@ void BluetoothAgent::Cancel()
     for (uint id : ids) {
         const QDBusMessage call = m_pending.take(id);
         m_bus.send(call.createErrorReply(kCanceled, tr("Pairing was cancelled.")));
-        m_notifications->dismiss(id, 3);
+        m_notifications->CloseNotification(id);
     }
     closeCode();
 }
