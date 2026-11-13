@@ -222,6 +222,33 @@ if [[ $(window_flags) == *[mxtFs]* ]]; then
 fi
 echo "session smoke: window menu commands (on top, maximize, minimize, full screen, every desktop) work"
 
+# A window that asks to be maximized before it is shown (a browser that was
+# closed maximized) opens maximized: the request arrives before the first
+# configure and must not be lost.
+if [[ -n ${client_pid:-} ]] && "$python" -c 'import PySide6' >/dev/null 2>&1; then
+    XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" \
+    QT_QPA_PLATFORM=wayland "$python" "$root/tests/session_client.py" --maximized &
+    maximized_pid=$!
+    maximized_flags=''
+    for _ in $(seq 1 80); do
+        maximized_flags=$(msg windows | sed 's/^ok //' | tr '\037' '\n' \
+            | awk -F $'\x1e' '$4 == "NewTeller maximized test" { print $5 }')
+        [[ $maximized_flags == *x* ]] && break
+        sleep 0.1
+    done
+    if [[ $maximized_flags != *x* ]]; then
+        echo "a window that asked to start maximized is not maximized (flags '$maximized_flags')" >&2
+        exit 1
+    fi
+    kill "$maximized_pid" 2>/dev/null || true
+    wait "$maximized_pid" 2>/dev/null || true
+    for _ in $(seq 1 50); do
+        [[ $(msg windows || true) == *'NewTeller maximized test'* ]] || break
+        sleep 0.1
+    done
+    echo "session smoke: a window that asks for it opens maximized"
+fi
+
 # Settings -> Displays goes through output-set.
 reply=$(msg outputs-detail || true)
 if [[ $reply != ok\ HEADLESS-1* ]]; then

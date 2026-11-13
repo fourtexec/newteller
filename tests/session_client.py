@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Open a visible native Wayland window for tests/session_smoke.sh."""
+"""Open a visible native Wayland window for tests/session_smoke.sh.
+
+With --maximized the window asks to be maximized before it is shown, as an
+application that was closed maximized does.
+"""
 import sys
 
 from PySide6.QtCore import QTimer
@@ -8,16 +12,17 @@ from PySide6.QtQml import QQmlApplicationEngine
 
 app = QGuiApplication(sys.argv)
 engine = QQmlApplicationEngine()
-engine.loadData(b"""
+maximized = "--maximized" in sys.argv
+source = b"""
 import QtQuick
 import QtQuick.Window
 
 Window {
     width: 420
     height: 260
-    visible: true
+    visibility: VISIBILITY
     color: "#1f6feb"
-    title: "NewTeller session test"
+    title: "TITLE"
 
     Rectangle {
         anchors.centerIn: parent
@@ -33,7 +38,11 @@ Window {
         }
     }
 }
-""")
+"""
+source = source.replace(b"VISIBILITY", b"Window.Maximized" if maximized else b"Window.Windowed")
+source = source.replace(b"TITLE", b"NewTeller maximized test" if maximized
+                        else b"NewTeller session test")
+engine.loadData(source)
 if not engine.rootObjects():
     sys.exit(1)
 QTimer.singleShot(15000, app.quit)

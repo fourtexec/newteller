@@ -1997,8 +1997,17 @@ static void viewSetMaximized(struct View *view, bool maximized)
     }
 
     view->maximized = maximized;
-    if (view->xdg)
+    if (view->xdg) {
         wlr_xdg_toplevel_set_maximized(view->xdg, maximized);
+    } else if (view->x11) {
+        // The X11 application learns its state too (_NET_WM_STATE): it
+        // draws its own maximize button and decides by it what to ask next.
+#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR >= 19
+        wlr_xwayland_surface_set_maximized(view->x11, maximized, maximized);
+#else
+        wlr_xwayland_surface_set_maximized(view->x11, maximized);
+#endif
+    }
     updateForeignToplevel(view);
 }
 
@@ -2058,6 +2067,8 @@ static void viewSetFullscreen(struct View *view, bool fullscreen)
     }
     if (view->xdg)
         wlr_xdg_toplevel_set_fullscreen(view->xdg, fullscreen);
+    else if (view->x11)
+        wlr_xwayland_surface_set_fullscreen(view->x11, fullscreen);
     updateForeignToplevel(view);
     broadcastFullscreen(view->server, false);
 }
@@ -5099,6 +5110,13 @@ static void handleXdgMap(struct wl_listener *listener, void *data)
     // an open menu layer, which closes itself when it loses focus.
     focusView(view, NULL);
     applyWindowRules(view);
+    // Asked for before the window existed (mpv --fs, a browser that was
+    // closed maximized): those requests arrive before the first configure,
+    // when nothing can be resized yet, and used to be lost.
+    if (view->xdg->requested.fullscreen && !view->fullscreen)
+        viewSetFullscreen(view, true);
+    else if (view->xdg->requested.maximized && !view->maximized && !view->fullscreen)
+        viewSetMaximized(view, true);
     updateForeignToplevel(view);
 }
 
@@ -5146,10 +5164,41 @@ static void handleXdgDestroy(struct wl_listener *listener, void *data)
     destroyView(view);
 }
 
+// A window may start moving or resizing itself only in answer to a press:
+// with a button (or a finger) down, on a session that is not locked, and
+// not while it fills the screen. Without this any client could take the
+// pointer whenever it liked and drag itself around until the next click.
+static bool interactiveGrabAllowed(struct View *view)
+{
+    struct Server *server = view->server;
+    if (server->locked || !view->mapped || view->fullscreen
+        || server->cursorMode != CURSOR_PASSTHROUGH)
+        return false;
+    return server->seat->pointer_state.button_count > 0
+        || wlr_seat_touch_num_points(server->seat) > 0;
+}
+
+// Dragging a maximized window by its own header bar restores it under the
+// pointer, as dragging a title bar drawn by the compositor does.
+static void restoreForDrag(struct View *view)
+{
+    struct Server *server = view->server;
+    if (!view->maximized)
+        return;
+    double ratio = view->width > 0 ? (server->cursor->x - view->x) / view->width : 0.5;
+    int offsetY = (int)server->cursor->y - view->y;
+    viewSetMaximized(view, false);
+    viewSetPosition(view, (int)(server->cursor->x - ratio * view->width),
+                    (int)server->cursor->y - offsetY);
+}
+
 static void handleXdgRequestMove(struct wl_listener *listener, void *data)
 {
     (void)data;
     struct View *view = wl_container_of(listener, view, requestMove);
+    if (!interactiveGrabAllowed(view))
+        return;
+    restoreForDrag(view);
     viewClearSnap(view);
     view->server->grabbedView = view;
     view->server->cursorMode = CURSOR_MOVE;
@@ -5160,6 +5209,8 @@ static void handleXdgRequestMove(struct wl_listener *listener, void *data)
 static void handleXdgRequestResize(struct wl_listener *listener, void *data)
 {
     struct View *view = wl_container_of(listener, view, requestResize);
+    if (!interactiveGrabAllowed(view) || view->maximized)
+        return;
     viewClearSnap(view);
     struct wlr_xdg_toplevel_resize_event *event = data;
     view->server->grabbedView = view;
@@ -5175,21 +5226,34 @@ static void handleXdgRequestMaximize(struct wl_listener *listener, void *data)
 {
     (void)data;
     struct View *view = wl_container_of(listener, view, requestMaximize);
-    viewSetMaximized(view, !view->maximized);
+    // What the client asked for, not a toggle: unset_maximized on a window
+    // that is not maximized used to maximize it. Before the first configure
+    // the request is kept by wlroots and applied when the window maps.
+    if (!view->xdg->base->initialized)
+        return;
+    if (view->xdg->requested.maximized != view->maximized)
+        viewSetMaximized(view, view->xdg->requested.maximized);
+    // xdg-shell wants an answer even when nothing changes.
+    wlr_xdg_surface_schedule_configure(view->xdg->base);
 }
 
 static void handleXdgRequestFullscreen(struct wl_listener *listener, void *data)
 {
     (void)data;
     struct View *view = wl_container_of(listener, view, requestFullscreen);
-    viewSetFullscreen(view, !view->fullscreen);
+    if (!view->xdg->base->initialized)
+        return;
+    if (view->xdg->requested.fullscreen != view->fullscreen)
+        viewSetFullscreen(view, view->xdg->requested.fullscreen);
+    wlr_xdg_surface_schedule_configure(view->xdg->base);
 }
 
 static void handleXdgRequestMinimize(struct wl_listener *listener, void *data)
 {
     (void)data;
     struct View *view = wl_container_of(listener, view, requestMinimize);
-    viewSetMinimized(view, true);
+    if (view->mapped && view->xdg->requested.minimized)
+        viewSetMinimized(view, true);
 }
 
 // GTK header bars and other client-side title bars ask for the window menu
@@ -6729,6 +6793,12 @@ static void handleX11Map(struct wl_listener *listener, void *data)
         viewRaise(view);
         focusView(view, NULL);
         applyWindowRules(view);
+        // _NET_WM_STATE set before the window was shown (games, Wine).
+        if (view->x11->fullscreen && !view->fullscreen)
+            viewSetFullscreen(view, true);
+        else if (view->x11->maximized_vert && view->x11->maximized_horz
+                 && !view->maximized && !view->fullscreen)
+            viewSetMaximized(view, true);
     }
     updateForeignToplevel(view);
 }
@@ -6808,6 +6878,9 @@ static void handleX11RequestMove(struct wl_listener *listener, void *data)
 {
     (void)data;
     struct View *view = wl_container_of(listener, view, requestMove);
+    if (!interactiveGrabAllowed(view))
+        return;
+    restoreForDrag(view);
     viewClearSnap(view);
     view->server->grabbedView = view;
     view->server->cursorMode = CURSOR_MOVE;
@@ -6818,6 +6891,8 @@ static void handleX11RequestMove(struct wl_listener *listener, void *data)
 static void handleX11RequestResize(struct wl_listener *listener, void *data)
 {
     struct View *view = wl_container_of(listener, view, requestResize);
+    if (!interactiveGrabAllowed(view) || view->maximized)
+        return;
     viewClearSnap(view);
     struct wlr_xwayland_resize_event *event = data;
     view->server->grabbedView = view;
@@ -6840,14 +6915,15 @@ static void handleX11RequestMaximize(struct wl_listener *listener, void *data)
 {
     (void)data;
     struct View *view = wl_container_of(listener, view, requestMaximize);
-    viewSetMaximized(view, !view->maximized);
+    // The state the window asked for (_NET_WM_STATE), not a toggle.
+    viewSetMaximized(view, view->x11->maximized_vert && view->x11->maximized_horz);
 }
 
 static void handleX11RequestFullscreen(struct wl_listener *listener, void *data)
 {
     (void)data;
     struct View *view = wl_container_of(listener, view, requestFullscreen);
-    viewSetFullscreen(view, !view->fullscreen);
+    viewSetFullscreen(view, view->x11->fullscreen);
 }
 
 static void handleX11RequestClose(struct wl_listener *listener, void *data)
