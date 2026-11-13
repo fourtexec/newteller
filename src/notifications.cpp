@@ -230,12 +230,31 @@ uint NotificationDaemon::Notify(const QString &appName, uint replacesId, const Q
 
 void NotificationDaemon::CloseNotification(uint id)
 {
-    for (const QVariant &entry : m_active) {
+    // The application takes its notification back (the message was read on
+    // the phone, the download was cancelled): it leaves the screen and the
+    // history. Only the popup used to go, so a notification that had timed
+    // out, or arrived under do-not-disturb, stayed in the notification
+    // centre for good.
+    bool wasActive = false;
+    for (const QVariant &entry : std::as_const(m_active)) {
         if (entry.toMap().value(QStringLiteral("id")).toUInt() == id) {
-            dismiss(id, kReasonClosed);
-            return;
+            wasActive = true;
+            break;
         }
     }
+    bool wasKept = false;
+    for (int i = m_history.size() - 1; i >= 0; --i) {
+        if (m_history.at(i).toMap().value(QStringLiteral("id")).toUInt() == id) {
+            m_history.removeAt(i);
+            wasKept = true;
+        }
+    }
+    if (wasKept)
+        emit historyChanged();
+    if (wasActive)
+        dismiss(id, kReasonClosed); // emits NotificationClosed
+    else if (wasKept)
+        emit NotificationClosed(id, kReasonClosed);
 }
 
 QStringList NotificationDaemon::GetCapabilities() const
