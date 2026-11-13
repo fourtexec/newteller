@@ -5002,6 +5002,18 @@ static void handleTouchDown(struct wl_listener *listener, void *data)
         snprintf(line, sizeof(line), "event click %d %d", (int)lx, (int)ly);
         ipcBroadcast(server, line);
     }
+    // A finger whose release never arrived (the screen was unplugged, the
+    // touch was cancelled) must not hold the role for ever.
+    if (server->touchPointerId >= 0
+        && (event->touch_id == server->touchPointerId
+            || (!server->touchEmulated && wlr_seat_touch_num_points(server->seat) == 0))) {
+        const bool emulated = server->touchEmulated;
+        server->touchPointerId = -1;
+        server->touchEmulated = false;
+        server->touchDragging = false;
+        if (emulated)
+            touchPointerButton(server, event->time_msec, false);
+    }
     struct Hit hit = hitTest(server, lx, ly);
     const bool free = server->touchPointerId < 0 && server->cursorMode == CURSOR_PASSTHROUGH;
     if (!server->locked && !hit.surface && hit.view && hit.frame != FRAME_NONE && free) {
