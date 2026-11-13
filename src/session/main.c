@@ -784,6 +784,14 @@ struct Server {
     struct wl_listener newShortcutsInhibitor;
     // Touchscreens: touch points go to the surface under them.
     struct wl_list touchDevices; // struct TouchDevice
+    // The finger that acts as the pointer: on a title bar or frame drawn by
+    // the compositor (touchEmulated: its press was turned into a click), or
+    // while it drags a window that asked to be moved. -1 for none.
+    int32_t touchPointerId;
+    bool touchEmulated;
+    bool touchDragging;
+    double touchX;
+    double touchY;
     struct wl_listener touchDown;
     struct wl_listener touchUp;
     struct wl_listener touchMotion;
@@ -4941,6 +4949,17 @@ static void touchDeviceDestroy(struct wl_listener *listener, void *data)
 
 // A finger touches down: the surface under it gets the touch point, and its
 // window the focus, as a click would. Shell cards close on a touch outside.
+// A press or release of the left button on behalf of a finger.
+static void touchPointerButton(struct Server *server, uint32_t time, bool pressed)
+{
+    struct wlr_pointer_button_event click = {0};
+    click.time_msec = time;
+    click.button = BTN_LEFT;
+    click.state = pressed ? WL_POINTER_BUTTON_STATE_PRESSED : WL_POINTER_BUTTON_STATE_RELEASED;
+    cursorButton(&server->cursorButton, &click);
+    wlr_seat_pointer_notify_frame(server->seat);
+}
+
 static void handleTouchDown(struct wl_listener *listener, void *data)
 {
     struct Server *server = wl_container_of(listener, server, touchDown);
@@ -4956,11 +4975,34 @@ static void handleTouchDown(struct wl_listener *listener, void *data)
         ipcBroadcast(server, line);
     }
     struct Hit hit = hitTest(server, lx, ly);
+    const bool free = server->touchPointerId < 0 && server->cursorMode == CURSOR_PASSTHROUGH;
+    if (!server->locked && !hit.surface && hit.view && hit.frame != FRAME_NONE && free) {
+        // A title bar or frame drawn by the compositor has no surface to
+        // send the touch to: the finger clicks and drags it as the mouse
+        // would (close, maximize, move, resize). It used to do nothing.
+        server->touchPointerId = event->touch_id;
+        server->touchEmulated = true;
+        server->touchDragging = false;
+        wlr_cursor_warp_closest(server->cursor, NULL, lx, ly);
+        processCursorMotion(server, event->time_msec);
+        touchPointerButton(server, event->time_msec, true);
+        return;
+    }
     if (!server->locked && hit.view && !hit.view->overrideRedirect)
         focusView(hit.view, NULL);
-    if (hit.surface)
+    if (hit.surface) {
+        if (free && !server->locked) {
+            // Remembered in case the window starts a move from this touch
+            // (a finger on a header bar the application draws itself).
+            server->touchPointerId = event->touch_id;
+            server->touchEmulated = false;
+            server->touchDragging = false;
+            server->touchX = lx;
+            server->touchY = ly;
+        }
         wlr_seat_touch_notify_down(server->seat, hit.surface, event->time_msec, event->touch_id,
                                    hit.sx, hit.sy);
+    }
 }
 
 static void handleTouchMotion(struct wl_listener *listener, void *data)
@@ -4968,13 +5010,33 @@ static void handleTouchMotion(struct wl_listener *listener, void *data)
     struct Server *server = wl_container_of(listener, server, touchMotion);
     struct wlr_touch_motion_event *event = data;
     notifyActivity(server);
-    struct wlr_touch_point *point = wlr_seat_touch_get_point(server->seat, event->touch_id);
-    if (!point || !point->surface)
-        return;
     double lx = 0;
     double ly = 0;
     wlr_cursor_absolute_to_layout_coords(server->cursor, &event->touch->base, event->x, event->y,
                                          &lx, &ly);
+    if (event->touch_id == server->touchPointerId) {
+        const bool grabbing = server->cursorMode != CURSOR_PASSTHROUGH && server->grabbedView;
+        if (!server->touchEmulated && grabbing && !server->touchDragging) {
+            // The window asked to be moved or resized from this touch. The
+            // grab was measured from the mouse pointer, which is somewhere
+            // else: measure it from the finger instead.
+            server->touchDragging = true;
+            if (server->cursorMode == CURSOR_MOVE) {
+                server->grabX = server->touchX - server->grabbedView->x;
+                server->grabY = server->touchY - server->grabbedView->y;
+            }
+        }
+        if (server->touchEmulated || server->touchDragging) {
+            wlr_cursor_warp_closest(server->cursor, NULL, lx, ly);
+            processCursorMotion(server, event->time_msec);
+            return;
+        }
+        server->touchX = lx;
+        server->touchY = ly;
+    }
+    struct wlr_touch_point *point = wlr_seat_touch_get_point(server->seat, event->touch_id);
+    if (!point || !point->surface)
+        return;
     // Coordinates stay relative to the surface the finger went down on.
     int originX = 0;
     int originY = 0;
@@ -4989,6 +5051,23 @@ static void handleTouchUp(struct wl_listener *listener, void *data)
     struct Server *server = wl_container_of(listener, server, touchUp);
     struct wlr_touch_up_event *event = data;
     notifyActivity(server);
+    if (event->touch_id == server->touchPointerId) {
+        const bool emulated = server->touchEmulated;
+        const bool dragging = server->touchDragging;
+        server->touchPointerId = -1;
+        server->touchEmulated = false;
+        server->touchDragging = false;
+        if (emulated) {
+            touchPointerButton(server, event->time_msec, false);
+            return;
+        }
+        if (dragging) {
+            // Ends the move (with edge snapping); the application never saw
+            // a button press, so it gets no release either.
+            server->superGrab = true;
+            touchPointerButton(server, event->time_msec, false);
+        }
+    }
     if (wlr_seat_touch_get_point(server->seat, event->touch_id))
         wlr_seat_touch_notify_up(server->seat, event->time_msec, event->touch_id);
 }
@@ -9147,6 +9226,7 @@ static int run(struct Server *server)
     wl_list_init(&server->keyboards);
     wl_list_init(&server->pointers);
     wl_list_init(&server->touchDevices);
+    server->touchPointerId = -1;
     wl_list_init(&server->lockSurfaces);
     wl_list_init(&server->ipcClients);
     wl_list_init(&server->ghosts);
