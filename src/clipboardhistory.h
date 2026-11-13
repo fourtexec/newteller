@@ -59,6 +59,10 @@ private:
     Settings *m_settings;
     bool m_available = false;
     QProcess m_watcher;
+    // The watcher ended on its own (not stop()): how often in a row, and
+    // whether stop() is what ended it.
+    int m_watcherRestarts = 0;
+    bool m_stopping = false;
     QByteArray m_buffer;
     QStringList m_items;
     QStringList m_pinned;

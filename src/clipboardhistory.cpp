@@ -9,6 +9,7 @@
 #include <QJsonDocument>
 #include <QSaveFile>
 #include <QStandardPaths>
+#include <QTimer>
 
 #include <csignal>
 #include <sys/prctl.h>
@@ -32,6 +33,19 @@ ClipboardHistory::ClipboardHistory(Settings *settings, QObject *parent)
 
     m_watcher.setChildProcessModifier([] { ::prctl(PR_SET_PDEATHSIG, SIGTERM); });
     connect(&m_watcher, &QProcess::readyReadStandardOutput, this, &ClipboardHistory::readWatcher);
+    // wl-paste --watch runs for the whole session. When it ended (it
+    // crashed, or was started a moment before the compositor offered the
+    // clipboard) nothing started it again and the history stayed empty
+    // without a word. It comes back, a few times at most.
+    connect(&m_watcher, &QProcess::finished, this, [this] {
+        if (m_stopping || !enabled() || m_watcherRestarts >= 5)
+            return;
+        ++m_watcherRestarts;
+        QTimer::singleShot(2000 * m_watcherRestarts, this, [this] {
+            if (enabled())
+                start();
+        });
+    });
 
     connect(m_settings, &Settings::changed, this, [this](const QString &key) {
         if (!key.isEmpty() && !key.startsWith(QLatin1String("clipboard.")))
@@ -115,6 +129,10 @@ void ClipboardHistory::copyText(const QString &text)
     m_ownCopy = text;
     auto *process = new QProcess(this);
     connect(process, &QProcess::finished, process, &QObject::deleteLater);
+    connect(process, &QProcess::errorOccurred, process, [process](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart)
+            process->deleteLater();
+    });
     process->start(QStringLiteral("wl-copy"), {});
     process->write(text.toUtf8());
     process->closeWriteChannel();
@@ -160,9 +178,11 @@ void ClipboardHistory::stop()
 {
     if (m_watcher.state() == QProcess::NotRunning)
         return;
+    m_stopping = true;
     m_watcher.terminate();
     if (!m_watcher.waitForFinished(500))
         m_watcher.kill();
+    m_stopping = false;
 }
 
 void ClipboardHistory::readWatcher()
@@ -172,6 +192,7 @@ void ClipboardHistory::readWatcher()
     while ((separator = m_buffer.indexOf(kSeparator)) >= 0) {
         const QString text = QString::fromUtf8(m_buffer.left(separator));
         m_buffer.remove(0, separator + 1);
+        m_watcherRestarts = 0; // it works
         add(text);
     }
     if (m_buffer.size() > kMaxEntryLength * 4)
@@ -217,6 +238,10 @@ void ClipboardHistory::copy(int index)
     m_ownCopy = text;
     auto *process = new QProcess(this);
     connect(process, &QProcess::finished, process, &QObject::deleteLater);
+    connect(process, &QProcess::errorOccurred, process, [process](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart)
+            process->deleteLater();
+    });
     process->start(QStringLiteral("wl-copy"), {});
     process->write(text.toUtf8());
     process->closeWriteChannel();
