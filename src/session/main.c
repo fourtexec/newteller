@@ -223,6 +223,7 @@ static void checkHotCorner(struct Server *server);
 static void arrangeLockSurfaces(struct Server *server);
 static void updateFullscreenLayers(struct Server *server);
 static struct wlr_output *viewNearestOutput(struct View *view);
+static void resizeOffsetsFrom(struct Server *server, double x, double y);
 static void broadcastFullscreen(struct Server *server, bool force);
 static struct wlr_box viewOuterBox(struct View *view);
 static uint32_t dragSnapEdges(struct Server *server, struct View *view);
@@ -5081,6 +5082,8 @@ static void handleTouchMotion(struct wl_listener *listener, void *data)
             if (server->cursorMode == CURSOR_MOVE) {
                 server->grabX = server->touchX - server->grabbedView->x;
                 server->grabY = server->touchY - server->grabbedView->y;
+            } else {
+                resizeOffsetsFrom(server, server->touchX, server->touchY);
             }
         }
         if (server->touchEmulated || server->touchDragging) {
@@ -5385,6 +5388,21 @@ static void handleXdgDestroy(struct wl_listener *listener, void *data)
     destroyView(view);
 }
 
+// The distance between a point (the pointer, a finger) and the edges being
+// resized. A window resized by its own border is grabbed a few pixels
+// outside its geometry (the invisible margin around it); without this the
+// edge jumped to the pointer on the first motion.
+static void resizeOffsetsFrom(struct Server *server, double x, double y)
+{
+    const uint32_t edges = server->resizeEdges;
+    server->resizeOffsetX = (edges & WLR_EDGE_LEFT) ? x - server->grabX
+                          : (edges & WLR_EDGE_RIGHT) ? x - (server->grabX + server->grabWidth)
+                          : 0;
+    server->resizeOffsetY = (edges & WLR_EDGE_TOP) ? y - server->grabY
+                          : (edges & WLR_EDGE_BOTTOM) ? y - (server->grabY + server->grabHeight)
+                          : 0;
+}
+
 // A window may start moving or resizing itself only in answer to a press:
 // with a button (or a finger) down, on a session that is not locked, and
 // not while it fills the screen. Without this any client could take the
@@ -5437,10 +5455,18 @@ static void handleXdgRequestResize(struct wl_listener *listener, void *data)
     view->server->grabbedView = view;
     view->server->cursorMode = CURSOR_RESIZE;
     view->server->resizeEdges = event->edges;
+    // The size the window really has: it may have resized itself since the
+    // compositor last asked for one.
+    struct wlr_box geometry = viewGeometry(view);
+    if (geometry.width > 0 && geometry.height > 0) {
+        view->width = geometry.width;
+        view->height = geometry.height;
+    }
     view->server->grabWidth = view->width;
     view->server->grabHeight = view->height;
     view->server->grabX = view->x;
     view->server->grabY = view->y;
+    resizeOffsetsFrom(view->server, view->server->cursor->x, view->server->cursor->y);
 }
 
 static void handleXdgRequestMaximize(struct wl_listener *listener, void *data)
@@ -7181,6 +7207,7 @@ static void handleX11RequestResize(struct wl_listener *listener, void *data)
     view->server->grabHeight = view->height;
     view->server->grabX = view->x;
     view->server->grabY = view->y;
+    resizeOffsetsFrom(view->server, view->server->cursor->x, view->server->cursor->y);
 }
 
 static void handleX11RequestMinimize(struct wl_listener *listener, void *data)
