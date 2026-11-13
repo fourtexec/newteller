@@ -616,6 +616,8 @@ struct Server {
     time_t shellRestartWindow;
     struct wl_event_source *shellTimer;
     struct wl_event_source *arrangeIdle;
+    // A pass over every screen after the layout changed (handleLayoutChange).
+    struct wl_event_source *layoutIdle;
     struct wl_event_source *sigchld;
 
     struct wl_list outputs;
@@ -5760,7 +5762,12 @@ static void arrangeAllOutputs(struct Server *server)
     wl_list_for_each(output, &server->outputs, link) {
         if (output->disabled)
             continue;
-        wlr_output_layout_get_box(server->outputLayout, output->output, &output->usable);
+        struct wlr_box box = {0};
+        wlr_output_layout_get_box(server->outputLayout, output->output, &box);
+        // Not in the layout (on its way out): nothing to arrange on it.
+        if (wlr_box_empty(&box))
+            continue;
+        output->usable = box;
         arrangeOutput(server, output);
     }
 }
@@ -5778,9 +5785,23 @@ static void rescueViews(struct Server *server)
             continue;
         struct Output *output;
         wl_list_for_each(output, &server->outputs, link) {
-            if (output->disabled)
+            if (output->disabled || wlr_box_empty(&output->usable))
                 continue;
-            viewSetPosition(view, output->usable.x + 40, output->usable.y + 40);
+            // A window that filled its old screen fills the new one.
+            if (view->fullscreen) {
+                struct wlr_box full = output->usable;
+                wlr_output_layout_get_box(server->outputLayout, output->output, &full);
+                viewSetPosition(view, full.x, full.y);
+                viewSetSize(view, full.width, full.height);
+            } else if (view->maximized || view->snapEdges) {
+                struct wlr_box box = frameContentBox(
+                    view, view->maximized ? output->usable
+                                          : snapBox(output->usable, view->snapEdges));
+                viewSetPosition(view, box.x, box.y);
+                viewSetSize(view, box.width, box.height);
+            } else {
+                viewSetPosition(view, output->usable.x + 40, output->usable.y + 40);
+            }
             break;
         }
     }
@@ -5857,6 +5878,23 @@ static void handleOutputManagerTest(struct wl_listener *listener, void *data)
     wlr_output_configuration_v1_destroy(config);
 }
 
+// After the screens changed: panels go to where their screen is now,
+// windows that fill a screen are fitted again and windows left outside
+// every screen come back. Done from the event loop, not from inside the
+// change itself (an output may be half-way through being destroyed).
+static void layoutIdleCallback(void *data)
+{
+    struct Server *server = data;
+    server->layoutIdle = NULL;
+    arrangeAllOutputs(server);
+    rescueViews(server);
+    arrangeLockSurfaces(server);
+    updateFullscreenLayers(server);
+    scheduleAllFrames(server);
+}
+
+// A monitor that is unplugged can move the others (they are placed side by
+// side): their panels used to stay at the old coordinates, off the screen.
 static void handleLayoutChange(struct wl_listener *listener, void *data)
 {
     (void)data;
@@ -5864,6 +5902,10 @@ static void handleLayoutChange(struct wl_listener *listener, void *data)
     updateOutputManager(server);
     arrangeLockSurfaces(server);
     updateFullscreenLayers(server);
+    if (!server->layoutIdle && server->running) {
+        server->layoutIdle = wl_event_loop_add_idle(server->eventLoop, layoutIdleCallback,
+                                                    server);
+    }
 }
 
 // `dpms off|on`: blank the monitors without forgetting their configuration.
@@ -6733,10 +6775,17 @@ static void outputDestroy(struct wl_listener *listener, void *data)
     struct Server *server = output->server;
     if (server->pointerOutput == output->output)
         server->pointerOutput = NULL;
+    // Panels and wallpapers of this screen are told to close (as every
+    // wlroots desktop does); the shell opens new ones where it wants them.
+    // Left alone they stayed in the scene at the old coordinates.
     struct Layer *layer;
-    wl_list_for_each(layer, &server->layers, link) {
-        if (layer->output == output)
-            layer->output = NULL;
+    struct Layer *nextLayer;
+    wl_list_for_each_safe(layer, nextLayer, &server->layers, link) {
+        if (layer->output != output)
+            continue;
+        layer->output = NULL;
+        if (layer->layer)
+            wlr_layer_surface_v1_destroy(layer->layer);
     }
     if (output->sceneOutput) {
         wl_list_remove(&output->sceneDestroy.link);
@@ -6948,6 +6997,14 @@ static void handleX11RequestConfigure(struct wl_listener *listener, void *data)
     struct wlr_xwayland_surface_configure_event *event = data;
     if (view->overrideRedirect || !view->x11)
         return;
+    // A window that fills the screen stays as it is: X11 applications (old
+    // games, Wine) ask for their startup size again while maximized or
+    // fullscreen and used to shrink back inside the frame of that state.
+    if (view->mapped && (view->maximized || view->fullscreen)) {
+        wlr_xwayland_surface_configure(view->x11, (int16_t)view->x, (int16_t)view->y,
+                                       (uint16_t)view->width, (uint16_t)view->height);
+        return;
+    }
     view->x = event->x;
     view->y = event->y;
     if (event->width > 0)
