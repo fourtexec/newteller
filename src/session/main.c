@@ -108,6 +108,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/uio.h>
 #include <sys/un.h>
 #include <sys/wait.h>
 #include <time.h>
@@ -239,6 +240,50 @@ static void *xcalloc(size_t count, size_t size)
         exit(1);
     }
     return pointer;
+}
+
+// A line that grows: replies and events whose length depends on how many
+// windows or monitors there are. A fixed buffer used to cut the list (and
+// with it the selected window of Alt+Tab) once enough windows were open.
+struct Text {
+    char *data;
+    size_t length;
+    size_t capacity;
+};
+
+__attribute__((format(printf, 2, 3)))
+static void textAppend(struct Text *text, const char *format, ...)
+{
+    for (;;) {
+        va_list arguments;
+        va_start(arguments, format);
+        int written = vsnprintf(text->data ? text->data + text->length : NULL,
+                                text->capacity - text->length, format, arguments);
+        va_end(arguments);
+        if (written < 0)
+            return;
+        if ((size_t)written < text->capacity - text->length) {
+            text->length += (size_t)written;
+            return;
+        }
+        size_t capacity = text->capacity ? text->capacity * 2 : 1024;
+        while (capacity <= text->length + (size_t)written)
+            capacity *= 2;
+        char *data = realloc(text->data, capacity);
+        if (!data) {
+            fprintf(stderr, "newteller-compositor: out of memory\n");
+            exit(1);
+        }
+        text->data = data;
+        text->capacity = capacity;
+        text->data[text->length] = '\0';
+    }
+}
+
+static void textFree(struct Text *text)
+{
+    free(text->data);
+    *text = (struct Text){0};
 }
 
 
@@ -4054,11 +4099,9 @@ static void broadcastSwitcher(struct Server *server)
         ipcBroadcast(server, "event switcher -1");
         return;
     }
-    char line[1800];
     int selected = -1;
     int index = 0;
-    char entries[1700] = "";
-    size_t used = 0;
+    struct Text entries = {0};
     struct View *view;
     wl_list_for_each(view, &server->views, link) {
         if (!switcherCandidate(view))
@@ -4069,15 +4112,15 @@ static void broadcastSwitcher(struct Server *server)
         ipcField(title, sizeof(title), viewTitle(view), false);
         char appId[96];
         ipcField(appId, sizeof(appId), viewAppId(view), true);
-        int written = snprintf(entries + used, sizeof(entries) - used, "%s%u\x1e%s\x1e%s",
-                               index > 0 ? "\x1f" : "", view->id, appId, title);
-        if (written < 0 || used + (size_t)written >= sizeof(entries))
-            break;
-        used += (size_t)written;
+        textAppend(&entries, "%s%u\x1e%s\x1e%s", index > 0 ? "\x1f" : "", view->id,
+                   appId, title);
         ++index;
     }
-    snprintf(line, sizeof(line), "event switcher %d %s", selected, entries);
-    ipcBroadcast(server, line);
+    struct Text line = {0};
+    textAppend(&line, "event switcher %d %s", selected, entries.data ? entries.data : "");
+    ipcBroadcast(server, line.data);
+    textFree(&line);
+    textFree(&entries);
 }
 
 struct ShortcutsInhibitor {
@@ -7582,15 +7625,16 @@ static void ipcClientDestroy(struct IpcClient *client)
 
 static void ipcSend(struct IpcClient *client, const char *line)
 {
-    char buffer[8192];
-    int length = snprintf(buffer, sizeof(buffer), "%s\n", line);
-    if (length <= 0)
-        return;
-    if ((size_t)length >= sizeof(buffer))
-        length = (int)sizeof(buffer) - 1;
+    // The line and its newline go out in one call, whatever the length.
+    char newline = '\n';
+    struct iovec parts[2] = {
+        {.iov_base = (void *)line, .iov_len = strlen(line)},
+        {.iov_base = &newline, .iov_len = 1},
+    };
+    struct msghdr message = {.msg_iov = parts, .msg_iovlen = 2};
     // Non-blocking: a client that stops reading loses events, it never
     // blocks the compositor.
-    ssize_t written = send(client->fd, buffer, (size_t)length, MSG_NOSIGNAL);
+    ssize_t written = sendmsg(client->fd, &message, MSG_NOSIGNAL);
     (void)written;
 }
 
@@ -7617,21 +7661,16 @@ static void ipcBroadcast(struct Server *server, const char *line)
     }
 }
 
-static void ipcDescribeOutputs(struct Server *server, char *out, size_t size)
+static void ipcDescribeOutputs(struct Server *server, struct Text *out)
 {
-    int used = snprintf(out, size, "ok");
+    textAppend(out, "ok");
     struct Output *output;
     wl_list_for_each(output, &server->outputs, link) {
         struct wlr_output *o = output->output;
         struct wlr_box box = {0};
         wlr_output_layout_get_box(server->outputLayout, o, &box);
-        int written = snprintf(out + used, size - (size_t)used,
-                               " %s:%dx%d@%d:%d,%d:%.2f:%s", o->name, o->width,
-                               o->height, o->refresh, box.x, box.y, o->scale,
-                               output->disabled ? "off" : "on");
-        if (written < 0 || (size_t)(used + written) >= size)
-            break;
-        used += written;
+        textAppend(out, " %s:%dx%d@%d:%d,%d:%.2f:%s", o->name, o->width, o->height,
+                   o->refresh, box.x, box.y, o->scale, output->disabled ? "off" : "on");
     }
 }
 
@@ -7639,8 +7678,8 @@ static void ipcDescribeOutputs(struct Server *server, char *out, size_t size)
 //    \x1e<transform>\x1e<mode>,<mode>,...  joined by \x1f
 static void ipcDescribeOutputsDetail(struct Server *server, struct IpcClient *client)
 {
-    char reply[2000] = "ok ";
-    size_t used = 3;
+    struct Text reply = {0};
+    textAppend(&reply, "ok ");
     bool first = true;
     struct Output *output;
     wl_list_for_each(output, &server->outputs, link) {
@@ -7655,14 +7694,10 @@ static void ipcDescribeOutputsDetail(struct Server *server, struct IpcClient *cl
         int width = o->current_mode ? o->current_mode->width : o->width;
         int height = o->current_mode ? o->current_mode->height : o->height;
         int refresh = o->current_mode ? o->current_mode->refresh : o->refresh;
-        int written = snprintf(reply + used, sizeof(reply) - used,
-                               "%s%s\x1e%s\x1e%s\x1e%dx%d@%d\x1e%d,%d\x1e%.2f\x1e%d\x1e",
-                               first ? "" : "\x1f", o->name, description,
-                               output->disabled ? "off" : "on", width, height, refresh,
-                               box.x, box.y, o->scale, (int)o->transform);
-        if (written < 0 || used + (size_t)written >= sizeof(reply))
-            break;
-        used += (size_t)written;
+        textAppend(&reply, "%s%s\x1e%s\x1e%s\x1e%dx%d@%d\x1e%d,%d\x1e%.2f\x1e%d\x1e",
+                   first ? "" : "\x1f", o->name, description,
+                   output->disabled ? "off" : "on", width, height, refresh, box.x, box.y,
+                   o->scale, (int)o->transform);
         // The modes, without repeating one (some monitors list duplicates).
         struct wlr_output_mode *mode;
         int listed = 0;
@@ -7674,17 +7709,15 @@ static void ipcDescribeOutputsDetail(struct Server *server, struct IpcClient *cl
             lastWidth = mode->width;
             lastHeight = mode->height;
             lastRefresh = mode->refresh;
-            written = snprintf(reply + used, sizeof(reply) - used, "%s%dx%d@%d",
-                               listed ? "," : "", mode->width, mode->height, mode->refresh);
-            if (written < 0 || used + (size_t)written >= sizeof(reply) - 2)
-                break;
-            used += (size_t)written;
+            textAppend(&reply, "%s%dx%d@%d", listed ? "," : "", mode->width, mode->height,
+                       mode->refresh);
             if (++listed >= 40)
                 break;
         }
         first = false;
     }
-    ipcSend(client, reply);
+    ipcSend(client, reply.data);
+    textFree(&reply);
 }
 
 // output-set <name> <on|off> <WxH@mHz|-> <x> <y> <scale> <transform>
@@ -7795,8 +7828,8 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
     } else if (strcmp(command, "windows") == 0) {
         // ok <id>\x1e<desktop>\x1e<app id>\x1e<title>\x1e<flags>\x1f...
         // flags: see viewFlags() ("-" for none). Most recent first.
-        char reply[3800] = "ok ";
-        size_t used = 3;
+        struct Text reply = {0};
+        textAppend(&reply, "ok ");
         bool first = true;
         struct View *view;
         wl_list_for_each(view, &server->views, link) {
@@ -7808,16 +7841,12 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
             ipcField(appId, sizeof(appId), viewAppId(view), true);
             char flags[10];
             viewFlags(view, flags, sizeof(flags));
-            int written = snprintf(reply + used, sizeof(reply) - used,
-                                   "%s%u\x1e%d\x1e%s\x1e%s\x1e%s\x1e%d", first ? "" : "\x1f",
-                                   view->id, view->workspace, appId, title, flags,
-                                   (int)viewPid(view));
-            if (written < 0 || used + (size_t)written >= sizeof(reply))
-                break;
-            used += (size_t)written;
+            textAppend(&reply, "%s%u\x1e%d\x1e%s\x1e%s\x1e%s\x1e%d", first ? "" : "\x1f",
+                       view->id, view->workspace, appId, title, flags, (int)viewPid(view));
             first = false;
         }
-        ipcSend(client, reply);
+        ipcSend(client, reply.data);
+        textFree(&reply);
     } else if (strcmp(command, "window-menu") == 0 && !argument) {
         // The focused window's menu, at its corner (as Alt+Space).
         struct View *view = server->focusedView;
@@ -8000,9 +8029,10 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
     } else if (strcmp(command, "locked") == 0) {
         ipcSend(client, server->locked ? "ok 1" : "ok 0");
     } else if (strcmp(command, "outputs") == 0) {
-        char reply[1536];
-        ipcDescribeOutputs(server, reply, sizeof(reply));
-        ipcSend(client, reply);
+        struct Text reply = {0};
+        ipcDescribeOutputs(server, &reply);
+        ipcSend(client, reply.data);
+        textFree(&reply);
     } else if (strcmp(command, "exit") == 0) {
         ipcSend(client, "ok");
         wlr_log(WLR_INFO, "session exit requested over the control socket");
@@ -8152,20 +8182,23 @@ static int sendCommand(const char *command)
         close(fd);
         return 1;
     }
-    char reply[2048];
-    size_t used = 0;
-    while (used < sizeof(reply) - 1) {
-        ssize_t n = read(fd, reply + used, sizeof(reply) - 1 - used);
+    // One reply line of any length (`windows` with many windows is long).
+    char reply[4096];
+    char start[3] = "";
+    size_t seen = 0;
+    for (;;) {
+        ssize_t n = read(fd, reply, sizeof(reply));
         if (n <= 0)
             break;
-        used += (size_t)n;
-        if (memchr(reply, '\n', used))
+        for (ssize_t i = 0; i < n && seen < 2; ++i)
+            start[seen++] = reply[i];
+        char *end = memchr(reply, '\n', (size_t)n);
+        fwrite(reply, 1, end ? (size_t)(end - reply) + 1 : (size_t)n, stdout);
+        if (end)
             break;
     }
     close(fd);
-    reply[used] = '\0';
-    fputs(reply, stdout);
-    return strncmp(reply, "ok", 2) == 0 ? 0 : 1;
+    return strcmp(start, "ok") == 0 ? 0 : 1;
 }
 
 // ---------------------------------------------------------------------------
