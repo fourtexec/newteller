@@ -71,7 +71,7 @@ inside VirtualBox. The implemented pieces are:
   and the application's own actions ("New Private Window", ...),
   and pinned buttons can be dragged to reorder them.
 - Start menu: highlighted fuzzy search, category chips, recently used row,
-  Lock / Log out / Sleep / Restart / Shut down, Settings; right-click an
+  Lock / Log out / Sleep / Hibernate (where the machine can) / Restart / Shut down, Settings; right-click an
   application to pin or unpin it on the dock
 - Desktop icons and widgets share one invisible grid: an icon takes a cell,
   a widget the cells its size needs, nothing overlaps, and dragging snaps to

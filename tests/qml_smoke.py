@@ -636,6 +636,14 @@ class Shell(QObject):
         self.calls.append(("suspend",))
 
     @Slot()
+    def hibernate(self):
+        self.calls.append(("hibernate",))
+
+    canHibernateChanged = Signal()
+    canHibernate = Property(bool, lambda self: getattr(self, "_canHibernate", False),
+                            notify=canHibernateChanged)
+
+    @Slot()
     def reboot(self):
         self.calls.append(("reboot",))
 
@@ -2007,6 +2015,17 @@ def main():
             settings.setValue("startmenu.webSearch", False)
             QMetaObject.invokeMethod(menu, "show")
             QTest.qWait(50)
+            # Hibernate is offered only where logind says the machine can.
+            hibernate = menu.findChild(QObject, "hibernateButton")
+            check(hibernate is not None and not hibernate.property("visible"),
+                  "no hibernate button on a machine that cannot hibernate")
+            shell._canHibernate = True
+            shell.canHibernateChanged.emit()
+            QTest.qWait(20)
+            check(hibernate is not None and hibernate.property("visible") is True,
+                  "the hibernate button shows when the machine can hibernate")
+            shell._canHibernate = False
+            shell.canHibernateChanged.emit()
             search.setProperty("text", "")
             QTest.qWait(20)
 

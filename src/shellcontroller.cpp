@@ -7,6 +7,8 @@
 #include <QCoreApplication>
 #include <QDBusConnection>
 #include <QDBusError>
+#include <QDBusMessage>
+#include <QDBusPendingCallWatcher>
 #include <QDesktopServices>
 #include <QDir>
 #include <QFile>
@@ -110,6 +112,24 @@ ShellController::ShellController(Settings *settings, NotificationDaemon *notific
                      qUtf8Printable(bus.lastError().message()));
         }
     }
+
+    // Can this machine hibernate? Asked once, without blocking: logind may
+    // be slow or absent (then the answer stays "no").
+    QDBusMessage ask = QDBusMessage::createMethodCall(
+        QStringLiteral("org.freedesktop.login1"), QStringLiteral("/org/freedesktop/login1"),
+        QStringLiteral("org.freedesktop.login1.Manager"), QStringLiteral("CanHibernate"));
+    auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(ask, 5000), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher *call) {
+        const QDBusMessage reply = call->reply();
+        call->deleteLater();
+        if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
+            return;
+        const bool can = reply.arguments().constFirst().toString() == QLatin1String("yes");
+        if (can != m_canHibernate) {
+            m_canHibernate = can;
+            emit canHibernateChanged();
+        }
+    });
 
     // The icon cache follows the icon settings.
     connect(settings, &Settings::changed, this, [this](const QString &key) {
@@ -869,6 +889,11 @@ void ShellController::logout() const
         return;
     }
     QProcess::startDetached(QStringLiteral("loginctl"), {QStringLiteral("terminate-user"), userName()});
+}
+
+void ShellController::hibernate() const
+{
+    QProcess::startDetached(QStringLiteral("systemctl"), {QStringLiteral("hibernate")});
 }
 
 void ShellController::suspend() const

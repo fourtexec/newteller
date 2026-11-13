@@ -693,6 +693,13 @@ DropdownWindow {
                 onClicked: { Shell.suspend(); menu.hide(); }
             }
             TaskButton {
+                objectName: "hibernateButton"
+                visible: Shell.canHibernate
+                iconName: "save"
+                tooltipText: qsTr("Hibernate")
+                onClicked: { Shell.hibernate(); menu.hide(); }
+            }
+            TaskButton {
                 iconName: "rotate-cw"
                 tooltipText: qsTr("Restart")
                 onClicked: menu.askPower("reboot")
