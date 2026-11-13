@@ -220,6 +220,7 @@ static void toggleShowDesktop(struct Server *server);
 static void shellAction(const char *method);
 static void checkHotCorner(struct Server *server);
 static void arrangeLockSurfaces(struct Server *server);
+static void updateFullscreenLayers(struct Server *server);
 static void broadcastFullscreen(struct Server *server, bool force);
 static struct wlr_box viewOuterBox(struct View *view);
 static uint32_t dragSnapEdges(struct Server *server, struct View *view);
@@ -1882,6 +1883,13 @@ static void moveViewToOutput(struct View *view, int direction)
     struct wlr_box area = {0, 0, 1280, 800};
     wlr_output_layout_get_box(view->server->outputLayout, target, &area);
     viewClearSnap(view);
+    if (view->fullscreen) {
+        // A fullscreen window fills the screen it moves to.
+        viewSetPosition(view, area.x, area.y);
+        viewSetSize(view, area.width, area.height);
+        updateFullscreenLayers(view->server);
+        return;
+    }
     area = frameContentBox(view, area);
     int width = view->width > area.width ? area.width : view->width;
     int height = view->height > area.height ? area.height : view->height;
@@ -1919,17 +1927,31 @@ static void toggleShowDesktop(struct Server *server)
 // ---------------------------------------------------------------------------
 
 // The panel and menus (the top layer) hide behind a fullscreen window only
-// while that window is on the desktop being shown. The overlay layer stays:
-// it holds what must reach the user over a game or a video (the
-// administrator prompt, Ctrl+Shift+Esc, Alt+Tab, the volume display).
+// while that window is on the desktop being shown, and only on the screen
+// it fills: a film on the second monitor used to take the panel away from
+// the first one as well. The overlay layer stays: it holds what must reach
+// the user over a game or a video (the administrator prompt,
+// Ctrl+Shift+Esc, Alt+Tab, the volume display).
 static void updateFullscreenLayers(struct Server *server)
 {
     if (server->locked)
         return;
     bool covered = server->fullscreenView && server->fullscreenView->mapped
                    && viewOnWorkspace(server->fullscreenView);
-    wlr_scene_node_set_enabled(&server->topTree->node, !covered);
+    struct wlr_output *filled = covered ? viewNearestOutput(server->fullscreenView) : NULL;
+    wlr_scene_node_set_enabled(&server->topTree->node, true);
     wlr_scene_node_set_enabled(&server->overlayTree->node, true);
+    // wlroots shows a layer surface's node while the surface is mapped;
+    // on the filled screen the top layer is hidden on top of that.
+    struct Layer *layer;
+    wl_list_for_each(layer, &server->layers, link) {
+        if (!layer->scene || !layer->layer || !layer->layer->surface)
+            continue;
+        bool hidden = filled && layer->output && layer->output->output == filled
+                      && layer->layer->current.layer == ZWLR_LAYER_SHELL_V1_LAYER_TOP;
+        wlr_scene_node_set_enabled(&layer->scene->tree->node,
+                                   layer->layer->surface->mapped && !hidden);
+    }
     broadcastFullscreen(server, false);
 }
 
@@ -2098,16 +2120,14 @@ static void viewSetFullscreen(struct View *view, bool fullscreen)
             viewSetFullscreen(view->server->fullscreenView, false);
         }
         view->server->fullscreenView = view;
-        // The panel and menus are layer-shell surfaces above normal windows.
-        // Hide the top layer while a client is fullscreen, as a desktop
-        // session normally does; Super+F (or F11) brings it back. Overlay
-        // surfaces (prompts, Alt+Tab, Ctrl+Shift+Esc) still show.
-        wlr_scene_node_set_enabled(&view->server->topTree->node, false);
     } else if (view->server->fullscreenView == view) {
         view->server->fullscreenView = NULL;
-        wlr_scene_node_set_enabled(&view->server->topTree->node, true);
-        wlr_scene_node_set_enabled(&view->server->overlayTree->node, true);
     }
+    // The panel and menus are layer-shell surfaces above normal windows:
+    // they hide on the screen a fullscreen window fills, as a desktop
+    // session normally does; Super+F (or F11) brings them back. Overlay
+    // surfaces (prompts, Alt+Tab, Ctrl+Shift+Esc) still show.
+    updateFullscreenLayers(view->server);
     if (view->xdg)
         wlr_xdg_toplevel_set_fullscreen(view->xdg, fullscreen);
     else if (view->x11)
@@ -2359,8 +2379,7 @@ static void destroyView(struct View *view)
         server->previousView = NULL;
     if (server->fullscreenView == view) {
         server->fullscreenView = NULL;
-        wlr_scene_node_set_enabled(&server->topTree->node, true);
-        wlr_scene_node_set_enabled(&server->overlayTree->node, true);
+        updateFullscreenLayers(server);
         broadcastFullscreen(server, false);
     }
     if (server->grabbedView == view) {
@@ -2518,6 +2537,7 @@ static void layerHandleCommit(struct wl_listener *listener, void *data)
         wlr_scene_node_reparent(&layer->scene->tree->node, wanted);
         layer->arrangePending = true;
         scheduleArrange(layer->server);
+        updateFullscreenLayers(layer->server);
     }
     if (!layer->hasLastState
         || layerStateChanged(&layer->lastState, &layer->layer->current)) {
@@ -2532,6 +2552,9 @@ static void layerHandleMap(struct wl_listener *listener, void *data)
     struct Layer *layer = wl_container_of(listener, layer, map);
     layer->arrangePending = true;
     scheduleArrange(layer->server);
+    // A panel or menu that appears on a screen filled by a fullscreen
+    // window stays behind it.
+    updateFullscreenLayers(layer->server);
     wlr_log(WLR_DEBUG, "layer map %s keyboard=%d",
             layer->layer->namespace ? layer->layer->namespace : "(none)",
             (int)layer->layer->current.keyboard_interactive);
@@ -5183,6 +5206,8 @@ static void handleXdgUnmap(struct wl_listener *listener, void *data)
     }
     broadcastWorkspaces(view->server);
     destroyForeignToplevel(view);
+    // A hidden fullscreen window gives the panel back.
+    updateFullscreenLayers(view->server);
     broadcastFullscreen(view->server, false);
 }
 
@@ -5825,6 +5850,7 @@ static void handleLayoutChange(struct wl_listener *listener, void *data)
     struct Server *server = wl_container_of(listener, server, layoutChange);
     updateOutputManager(server);
     arrangeLockSurfaces(server);
+    updateFullscreenLayers(server);
 }
 
 // `dpms off|on`: blank the monitors without forgetting their configuration.
@@ -6866,6 +6892,8 @@ static void handleX11Unmap(struct wl_listener *listener, void *data)
     }
     broadcastWorkspaces(view->server);
     destroyForeignToplevel(view);
+    // A hidden fullscreen window gives the panel back.
+    updateFullscreenLayers(view->server);
     broadcastFullscreen(view->server, false);
 }
 
@@ -7230,7 +7258,7 @@ static void setDesktopVisible(struct Server *server, bool visible)
     wlr_scene_node_set_enabled(&server->backgroundTree->node, visible);
     wlr_scene_node_set_enabled(&server->bottomTree->node, visible);
     wlr_scene_node_set_enabled(&server->toplevelTree->node, visible);
-    wlr_scene_node_set_enabled(&server->topTree->node, visible && !server->fullscreenView);
+    wlr_scene_node_set_enabled(&server->topTree->node, visible);
     wlr_scene_node_set_enabled(&server->overlayTree->node, visible);
 }
 
@@ -7269,6 +7297,7 @@ static void handleLockUnlock(struct wl_listener *listener, void *data)
     server->lockRespawns = 0;
     wlr_scene_node_set_enabled(&server->lockTree->node, false);
     setDesktopVisible(server, true);
+    updateFullscreenLayers(server);
     wlr_seat_keyboard_notify_clear_focus(server->seat);
     restoreFocus(server);
     struct Hit hit = hitTest(server, server->cursor->x, server->cursor->y);
