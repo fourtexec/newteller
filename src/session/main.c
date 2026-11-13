@@ -1925,10 +1925,26 @@ static void moveViewToOutput(struct View *view, int direction)
 
 static void toggleShowDesktop(struct Server *server)
 {
+    // Minimizing and restoring change the focus, and the focus moves windows
+    // within server->views: walk a copy. Least recently used first, so the
+    // windows keep their order and the one that had the focus gets it back
+    // (walking the live list restored them in reverse, with the focus on
+    // the window used longest ago).
+    int count = wl_list_length(&server->views);
+    if (count == 0) {
+        server->showDesktop = false;
+        return;
+    }
+    struct View **views = xcalloc((size_t)count, sizeof(*views));
+    int filled = 0;
+    struct View *view;
+    wl_list_for_each_reverse(view, &server->views, link)
+        views[filled++] = view;
+
     if (!server->showDesktop) {
         server->showDesktop = true;
-        struct View *view;
-        wl_list_for_each(view, &server->views, link) {
+        for (int i = 0; i < filled; ++i) {
+            view = views[i];
             if (view->mapped && !view->minimized && !view->overrideRedirect
                 && viewOnWorkspace(view)) {
                 view->hiddenByShowDesktop = true;
@@ -1937,14 +1953,15 @@ static void toggleShowDesktop(struct Server *server)
         }
     } else {
         server->showDesktop = false;
-        struct View *view;
-        wl_list_for_each(view, &server->views, link) {
+        for (int i = 0; i < filled; ++i) {
+            view = views[i];
             if (view->hiddenByShowDesktop) {
                 view->hiddenByShowDesktop = false;
                 viewSetMinimized(view, false);
             }
         }
     }
+    free(views);
 }
 
 // ---------------------------------------------------------------------------
