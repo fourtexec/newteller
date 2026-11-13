@@ -3636,8 +3636,15 @@ static void loadConfig(struct Server *server)
     ntConfigLoadFile(&config, path);
     // No layout of our own: use the system keyboard configuration (what the
     // installer or `dpkg-reconfigure keyboard-configuration` wrote).
+    // Only Debian and Ubuntu have /etc/default/keyboard; Arch and Fedora keep
+    // the layout where localectl puts it. A file is only read while there is
+    // still no layout, so the variant never comes from a different file.
     if (config.keyboardLayout[0] == '\0')
         ntConfigLoadSystemKeyboard(&config, "/etc/default/keyboard");
+    if (config.keyboardLayout[0] == '\0')
+        ntConfigLoadSystemKeyboard(&config, "/etc/vconsole.conf");
+    if (config.keyboardLayout[0] == '\0')
+        ntConfigLoadXorgKeyboard(&config, "/etc/X11/xorg.conf.d/00-keyboard.conf");
     server->config = config;
     compileBindings(server);
 }

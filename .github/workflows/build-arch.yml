@@ -35,6 +35,8 @@ jobs:
         run: |
           cd rust
           cargo test --workspace
+      - name: Compositor settings parser test
+        run: bash tests/config_test.sh
       # PySide6 from PyPI, as on Debian/Ubuntu: its Qt has its own QML import
       # path, so the test's stand-in for org.kde.layershell does not collide
       # with the real module this system has installed.

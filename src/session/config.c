@@ -49,6 +49,25 @@ static bool parseBool(const char *value, bool fallback)
     return fallback;
 }
 
+// Reads one line. A line that does not fit is dropped whole (the rest of it
+// would otherwise be read as a line of its own, and "x = 1" inside a long
+// command would become a setting). Returns false at the end of the file.
+static bool readLine(FILE *file, char *line, size_t size)
+{
+    for (;;) {
+        if (!fgets(line, (int)size, file))
+            return false;
+        size_t length = strlen(line);
+        if (length == 0 || line[length - 1] == '\n' || feof(file))
+            return true;
+        int c = fgetc(file);
+        if (c == EOF)
+            return true; // the last line filled the buffer exactly
+        while (c != EOF && c != '\n')
+            c = fgetc(file);
+    }
+}
+
 static int parseInt(const char *value, int fallback, int min, int max)
 {
     char *end = NULL;
@@ -68,7 +87,8 @@ static double parseDouble(const char *value, double fallback, double min, double
     char *end = NULL;
     errno = 0;
     double number = strtod(value, &end);
-    if (errno != 0 || end == value)
+    // "nan" parses, compares false with both limits and would get through.
+    if (errno != 0 || end == value || number != number)
         return fallback;
     if (number < min)
         number = min;
@@ -133,6 +153,12 @@ bool ntConfigParseColor(const char *text, float out[4])
     if (!text || text[0] != '#')
         return false;
     size_t length = strlen(text + 1);
+    // strtoul would stop at the first other character and still return a
+    // number: "#12345g" must not become a colour.
+    for (size_t i = 1; i <= length; ++i) {
+        if (!isxdigit((unsigned char)text[i]))
+            return false;
+    }
     unsigned long value = strtoul(text + 1, NULL, 16);
     if (length == 6) {
         out[0] = ((value >> 16) & 0xff) / 255.0f;
@@ -157,7 +183,7 @@ void ntConfigLoadSystemKeyboard(struct CompositorConfig *config, const char *pat
     if (!file)
         return;
     char line[512];
-    while (fgets(line, sizeof(line), file)) {
+    while (readLine(file, line, sizeof(line))) {
         char *text = trim(line);
         if (text[0] == '#' || text[0] == '\0')
             continue;
@@ -179,13 +205,63 @@ void ntConfigLoadSystemKeyboard(struct CompositorConfig *config, const char *pat
     fclose(file);
 }
 
+// The text between the n-th pair of double quotes of `line` (0 based).
+static bool quotedField(const char *line, int index, char *out, size_t size)
+{
+    const char *p = line;
+    for (int i = 0;; ++i) {
+        const char *open = strchr(p, '"');
+        if (!open)
+            return false;
+        const char *close = strchr(open + 1, '"');
+        if (!close)
+            return false;
+        if (i == index) {
+            size_t length = (size_t)(close - open - 1);
+            if (length >= size)
+                length = size - 1;
+            memcpy(out, open + 1, length);
+            out[length] = '\0';
+            return true;
+        }
+        p = close + 1;
+    }
+}
+
+void ntConfigLoadXorgKeyboard(struct CompositorConfig *config, const char *path)
+{
+    FILE *file = fopen(path, "r");
+    if (!file)
+        return;
+    char line[512];
+    while (readLine(file, line, sizeof(line))) {
+        char *text = trim(line);
+        if (strncasecmp(text, "Option", 6) != 0 || !isspace((unsigned char)text[6]))
+            continue;
+        char name[32];
+        char value[NT_CONFIG_TEXT];
+        if (!quotedField(text, 0, name, sizeof(name))
+            || !quotedField(text, 1, value, sizeof(value)))
+            continue;
+        if (strcasecmp(name, "XkbLayout") == 0 && config->keyboardLayout[0] == '\0')
+            copyText(config->keyboardLayout, sizeof(config->keyboardLayout), value);
+        else if (strcasecmp(name, "XkbVariant") == 0 && config->keyboardVariant[0] == '\0')
+            copyText(config->keyboardVariant, sizeof(config->keyboardVariant), value);
+        else if (strcasecmp(name, "XkbOptions") == 0 && config->keyboardOptions[0] == '\0')
+            copyText(config->keyboardOptions, sizeof(config->keyboardOptions), value);
+        else if (strcasecmp(name, "XkbModel") == 0 && config->keyboardModel[0] == '\0')
+            copyText(config->keyboardModel, sizeof(config->keyboardModel), value);
+    }
+    fclose(file);
+}
+
 bool ntConfigLoadFile(struct CompositorConfig *config, const char *path)
 {
     FILE *file = fopen(path, "r");
     if (!file)
         return false;
     char line[1024];
-    while (fgets(line, sizeof(line), file)) {
+    while (readLine(file, line, sizeof(line))) {
         char *text = trim(line);
         if (text[0] == '#' || text[0] == '\0')
             continue;
@@ -353,7 +429,7 @@ int ntOutputsLoad(const char *path, struct SavedOutput *outputs, int max)
         return 0;
     int count = 0;
     char line[1024];
-    while (count < max && fgets(line, sizeof(line), file)) {
+    while (count < max && readLine(file, line, sizeof(line))) {
         char *fields[6] = {0};
         int n = 0;
         char *cursor = line;
@@ -375,6 +451,11 @@ int ntOutputsLoad(const char *path, struct SavedOutput *outputs, int max)
             continue;
         if (sscanf(fields[3], "%d,%d", &out->x, &out->y) != 2)
             continue;
+        // A damaged line must not turn into a mode nobody can show.
+        if (out->width <= 0 || out->height <= 0)
+            continue;
+        if (out->refresh < 0)
+            out->refresh = 0;
         out->scale = parseDouble(trim(fields[4]), 1.0, 0.25, 4.0);
         out->transform = parseInt(trim(fields[5]), 0, 0, 7);
         ++count;

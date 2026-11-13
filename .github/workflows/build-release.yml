@@ -45,6 +45,8 @@ jobs:
         run: |
           cd rust
           cargo test --workspace
+      - name: Compositor settings parser test
+        run: bash tests/config_test.sh
       # The shell must parse on every Qt version the artifacts run on. The
       # newest PySide6 passes syntax that older parsers reject (Qt 6.8 still
       # reserves the ES3 words), so the smoke test also runs on 6.8 — the Qt

@@ -89,7 +89,12 @@ void ntConfigDefaults(struct CompositorConfig *config);
 
 // Fills the keyboard fields that are still empty from a Debian style
 // /etc/default/keyboard (XKBLAYOUT=, XKBVARIANT=, XKBOPTIONS=, XKBMODEL=).
+// systemd's /etc/vconsole.conf uses the same keys (Arch, Fedora).
 void ntConfigLoadSystemKeyboard(struct CompositorConfig *config, const char *path);
+
+// The same from what `localectl set-x11-keymap` writes,
+// /etc/X11/xorg.conf.d/00-keyboard.conf: `Option "XkbLayout" "us,ru"`.
+void ntConfigLoadXorgKeyboard(struct CompositorConfig *config, const char *path);
 
 // Reads `key = value` lines over the current values. Returns false when the
 // file does not exist or cannot be read; unknown keys are ignored.
