@@ -201,6 +201,7 @@ static void viewUpdateDecoration(struct View *view);
 static void applyDecorationMode(struct View *view);
 static void compileBindings(struct Server *server);
 static bool captureThumbnail(struct View *view, int maxSize);
+static void thumbnailPath(struct View *view, char *path, size_t size);
 static bool x11WantsFrame(struct View *view);
 static void createGhost(struct View *view, int kind);
 static void viewAnimate(struct View *view, float fromScale, float fromAlpha, int baseMs);
@@ -370,6 +371,13 @@ struct View {
     int fullSavedHeight;
     // The client did not answer an xdg ping in time.
     bool hung;
+    // The thumbnail on disk: the surface commit it shows and its size, so
+    // a window that did not draw since is not read back and encoded again.
+    bool thumbValid;
+    uint32_t thumbSeq;
+    int thumbSize;
+    // Counts the commits of the window's main surface (xdg windows).
+    uint32_t commits;
     struct wl_listener pingTimeout;
 
     // Open/restore animation (effects renderer).
@@ -2413,6 +2421,12 @@ static void destroyView(struct View *view)
         server->gestureView = NULL;
         server->gestureKind = 0;
     }
+    if (view->thumbValid) {
+        // Its preview goes with it (they used to pile up until logout).
+        char path[PATH_MAX];
+        thumbnailPath(view, path, sizeof(path));
+        unlink(path);
+    }
     if (view->hung) {
         // The force-quit dialog stops listing it.
         char line[48];
@@ -4140,6 +4154,12 @@ static bool captureThumbnail(struct View *view, int maxSize)
     struct wlr_texture *texture = wlr_surface_get_texture(surface);
     if (!texture)
         return false;
+    // Alt+Tab asks for every window at once, on the compositor's only
+    // thread; reading back and encoding a dozen 4K windows stalled the
+    // first Tab. Unchanged windows keep the file they have.
+    if (view->xdg && view->thumbValid && view->thumbSeq == view->commits
+        && view->thumbSize == maxSize)
+        return true;
     int width = (int)texture->width;
     int height = (int)texture->height;
     if (width <= 0 || height <= 0 || width > 16384 || height > 16384)
@@ -4210,6 +4230,9 @@ static bool captureThumbnail(struct View *view, int maxSize)
             mkdir(directory, 0700);
         }
         ok = cairo_surface_write_to_png(out, path) == CAIRO_STATUS_SUCCESS;
+        view->thumbValid = ok;
+        view->thumbSeq = view->commits;
+        view->thumbSize = maxSize;
     }
     cairo_surface_destroy(out);
     cairo_surface_destroy(source);
@@ -5229,6 +5252,7 @@ static void handleXdgCommit(struct wl_listener *listener, void *data)
 {
     (void)data;
     struct View *view = wl_container_of(listener, view, commit);
+    ++view->commits;
     wlr_log(WLR_DEBUG, "xdg commit %s initial=%d initialized=%d",
             viewTitle(view), view->xdg->base->initial_commit,
             view->xdg->base->initialized);
