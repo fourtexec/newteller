@@ -33,6 +33,13 @@ ScreenRecorder::ScreenRecorder(Settings *settings, NotificationDaemon *notificat
     m_process.setStandardOutputFile(QProcess::nullDevice());
     m_process.setProcessChannelMode(QProcess::SeparateChannels);
     connect(&m_process, &QProcess::finished, this, &ScreenRecorder::recorderFinished);
+    // Read as it comes, keeping only the end: left in the pipe, an hour of
+    // encoder warnings filled it and the recorder stopped writing frames.
+    connect(&m_process, &QProcess::readyReadStandardError, this, [this] {
+        m_errors += m_process.readAllStandardError();
+        if (m_errors.size() > 8192)
+            m_errors = m_errors.right(4096);
+    });
     connect(&m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         if (error != QProcess::FailedToStart)
             return;
@@ -134,6 +141,7 @@ void ScreenRecorder::begin(const QString &geometry, const QString &screen)
     if (m_settings->value(QStringLiteral("recorder.audio"), false).toBool())
         arguments << QStringLiteral("--audio");
     m_stopping = false;
+    m_errors.clear();
     m_process.start(m_recorder, arguments);
     m_process.closeWriteChannel();
     m_recording = true;
@@ -184,7 +192,8 @@ void ScreenRecorder::recorderFinished(int exitCode, QProcess::ExitStatus status)
     if (!saved || (!asked && (status != QProcess::NormalExit || exitCode != 0))) {
         // The last line wf-recorder printed says why (no screencopy, an
         // encoder or audio device missing).
-        QString reason = QString::fromUtf8(m_process.readAllStandardError()).trimmed();
+        m_errors += m_process.readAllStandardError();
+        QString reason = QString::fromUtf8(m_errors).trimmed();
         reason = reason.section(QLatin1Char('\n'), -1).trimmed();
         if (reason.isEmpty())
             reason = tr("wf-recorder stopped unexpectedly.");

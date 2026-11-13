@@ -60,6 +60,8 @@ private:
     QString m_recorder;
     QString m_slurp;
     QProcess m_process;
+    // The end of what the recorder wrote to stderr (the reason it failed).
+    QByteArray m_errors;
     QProcess m_picker;
     QTimer m_ticker;
     QElapsedTimer m_clock;
