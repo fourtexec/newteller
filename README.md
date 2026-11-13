@@ -202,6 +202,16 @@ inside VirtualBox. The implemented pieces are:
   tablet clicks (no pressure yet).
 - **Touchscreens**: a touch goes to the surface under the finger and
   focuses its window like a click; shell cards close on a touch outside.
+  Title bars drawn by the compositor work with a finger too (buttons,
+  dragging, resizing by the edges, snapping), and a window dragged by its
+  own header bar follows the finger.
+- **Several monitors**: a fullscreen window hides the panel only on the
+  screen it fills; maximized, snapped and fullscreen windows are fitted
+  again when a screen's resolution, scale or panel changes; when a monitor
+  is unplugged the panels and windows of the others follow them, and the
+  lock screen stays on its screen.
+- **Windows that ask to start maximized or fullscreen** (a browser closed
+  maximized, `mpv --fs`, X11 games) open that way.
 - **Virtual machines and remote desktops** can take every key
   (keyboard-shortcuts-inhibit) while they have the focus, Super and
   Alt+Tab included; `Super+Escape` gives the desktop its shortcuts back,
