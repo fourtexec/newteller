@@ -96,6 +96,11 @@ public:
     // Starts `command` in the configured terminal emulator.
     Q_INVOKABLE void terminal(const QString &command) const;
     Q_INVOKABLE void copyToClipboard(const QString &text) const;
+    // Types `text` into the focused window through a virtual keyboard
+    // (wtype), a moment later so a closing shell card has given the
+    // keyboard back. False when that is not possible here.
+    Q_INVOKABLE bool canTypeText() const;
+    Q_INVOKABLE bool typeText(const QString &text);
     // Desktop notification through org.freedesktop.Notifications (notify-send).
     Q_INVOKABLE void notify(const QString &title, const QString &body) const;
     // Gets through do-not-disturb and stays until closed (critical battery).

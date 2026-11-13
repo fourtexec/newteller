@@ -451,6 +451,7 @@ class Shell(QObject):
         self._desktop = QUrl.fromLocalFile(desktop_dir).toString()
         self._home = home_dir
         self.calls = []
+        self.typed = []
         self._now = QDateTime.currentDateTime()
         self._ticker = QTimer(self)
         self._ticker.timeout.connect(self._tick)
@@ -548,6 +549,15 @@ class Shell(QObject):
     @Slot(str)
     def copyToClipboard(self, text):
         self.calls.append(("copyToClipboard", text))
+
+    @Slot(result=bool)
+    def canTypeText(self):
+        return False
+
+    @Slot(str, result=bool)
+    def typeText(self, text):
+        self.typed.append(text)
+        return False
 
     @Slot(str, str, result=bool)
     def saveTextFile(self, path, text):
@@ -904,6 +914,16 @@ class Session(QObject):
     keyboardChanged = Signal()
     lockedChanged = Signal()
     nightLightChanged = Signal()
+    keepAwakeChanged = Signal()
+
+    def _keep_awake(self):
+        return getattr(self, "_keepAwake", False)
+
+    def _set_keep_awake(self, on):
+        self._keepAwake = bool(on)
+        self.keepAwakeChanged.emit()
+
+    keepAwake = Property(bool, _keep_awake, _set_keep_awake, notify=keepAwakeChanged)
 
     compositorConnected = Property(bool, lambda self: True, notify=compositorChanged)
     # Two layouts, so the panel shows its layout indicator.
@@ -2713,6 +2733,21 @@ def main():
                 settings.setValue("notifications.doNotDisturb", bool(was))
                 settings.setValue("notifications.dndUntil", 0)
 
+        # Keep the screen awake: the switch sets the session's state and
+        # follows it when it changes elsewhere.
+        if dnd_cards:
+            awake = dnd_cards[0].findChild(QObject, "keepAwakeSwitch")
+            check(awake is not None and awake.property("checked") is False,
+                  "quick settings has a keep-awake switch, off at first")
+            if awake is not None:
+                QMetaObject.invokeMethod(awake, "set", Q_ARG("QVariant", True))
+                QTest.qWait(20)
+                check(session.property("keepAwake") is True, "the switch keeps the screen awake")
+                session.setProperty("keepAwake", False)
+                QTest.qWait(20)
+                check(awake.property("checked") is False,
+                      "the switch follows the session's state")
+
         # The sound card: outputs to pick from, one row per playing application.
         sound_cards = windows_of_kind("SoundPopup")
         quick_cards = windows_of_kind("QuickSettingsPopup")
@@ -2846,6 +2881,7 @@ def main():
                 QTest.qWait(300)
                 check(shell.calls and shell.calls[-1] == ("copyToClipboard", "\U0001F680"),
                       "picking an emoji copies it")
+                check(shell.typed == ["\U0001F680"], f"picking an emoji types it ({shell.typed})")
                 check(list(settings._values.get("emoji.recent") or []) == ["\U0001F680"],
                       f"the picked emoji is remembered ({settings._values.get('emoji.recent')!r})")
                 check(not pickers[0].isVisible(), "the emoji picker closes after a pick")

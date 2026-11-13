@@ -15,6 +15,7 @@
 #include <QImageReader>
 #include <QProcess>
 #include <QThread>
+#include <QTimer>
 #include <QPointer>
 #include <QMimeData>
 #include <QStandardPaths>
@@ -671,6 +672,22 @@ void ShellController::copyToClipboard(const QString &text) const
         return;
     if (QClipboard *clipboard = QGuiApplication::clipboard())
         clipboard->setText(text);
+}
+
+bool ShellController::canTypeText() const
+{
+    return !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")
+           && !QStandardPaths::findExecutable(QStringLiteral("wtype")).isEmpty();
+}
+
+bool ShellController::typeText(const QString &text)
+{
+    if (text.isEmpty() || !canTypeText())
+        return false;
+    QTimer::singleShot(350, this, [text]() {
+        QProcess::startDetached(QStringLiteral("wtype"), {QStringLiteral("--"), text});
+    });
+    return true;
 }
 
 void ShellController::notifyUrgent(const QString &title, const QString &body, const QString &icon) const

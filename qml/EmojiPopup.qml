@@ -4,8 +4,8 @@ import QtQuick.Layouts
 import "EmojiData.js" as EmojiData
 
 // Emoji picker (Super+.): type a word in English or Russian, click an emoji
-// (or press Enter for the first one) and it is on the clipboard, ready to
-// paste. The ones picked last come first.
+// (or press Enter for the first one) and it is typed into the window that
+// had the keyboard and put on the clipboard. The ones picked last come first.
 DropdownWindow {
     id: popup
 
@@ -45,8 +45,13 @@ DropdownWindow {
         searchField.focusInput();
     }
 
+    // The emoji goes to the clipboard and, where a virtual keyboard can
+    // type it (wtype), straight into the window that had the keyboard.
+    readonly property bool types: Shell.canTypeText()
+
     function pick(emoji) {
         Shell.copyToClipboard(emoji);
+        Shell.typeText(emoji);
         const next = [emoji];
         for (let i = 0; i < popup.recent.length && next.length < 24; ++i) {
             if (popup.recent[i] !== emoji)
@@ -135,7 +140,8 @@ DropdownWindow {
 
         Text {
             Layout.fillWidth: true
-            text: qsTr("A click copies the emoji; paste it with Ctrl+V.")
+            text: popup.types ? qsTr("A click types the emoji into the window and copies it.")
+                              : qsTr("A click copies the emoji; paste it with Ctrl+V.")
             color: Theme.muted
             font.family: Theme.fontFamily
             font.pointSize: Theme.fontSize - 2

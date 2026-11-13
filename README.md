@@ -119,9 +119,9 @@ inside VirtualBox. The implemented pieces are:
   show the result first; Enter copies it.
 - **Emoji picker** on `Super+.` (or `Super+;`): type a word in English or
   Russian ("rocket", "ракета"), click an emoji or press Enter for the first
-  one and it is on the clipboard; the ones picked last come first
-  (`emoji.recent`). Needs a colour emoji font (the installer adds Noto
-  Color Emoji).
+  one and it is typed into the window you were in (with `wtype`) and put
+  on the clipboard; the ones picked last come first (`emoji.recent`).
+  Needs a colour emoji font (the installer adds Noto Color Emoji).
 - **Web search from the start menu**: the last search result opens the
   browser with the typed words (`startmenu.webSearch`,
   `startmenu.webSearchUrl` with `%1` for the words; DuckDuckGo by default).
@@ -330,6 +330,9 @@ inside VirtualBox. The implemented pieces are:
 - **Power profiles** (power-profiles-daemon) in quick settings and low-battery
   notifications at 10% and 5%; at 20% on battery the power saver profile
   switches on until the machine is plugged in (`power.batterySaver`).
+- **Keep the screen awake** in quick settings: no blanking and no idle
+  lock for a presentation or a long download, until it is switched off or
+  the session ends.
 - **Night light** (wlsunset) on a schedule or always, from quick settings or
   Settings → Displays.
 - **Screen capture protocols**: wlr-screencopy everywhere, and with

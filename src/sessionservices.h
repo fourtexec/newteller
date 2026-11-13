@@ -39,6 +39,9 @@ class SessionServices : public QObject
     Q_PROPERTY(bool idleAvailable READ idleAvailable CONSTANT)
     Q_PROPERTY(bool nightLightAvailable READ nightLightAvailable CONSTANT)
     Q_PROPERTY(bool nightLightRunning READ nightLightRunning NOTIFY nightLightChanged)
+    // "Keep the screen awake" in quick settings: no blanking, no idle lock
+    // until it is switched off or the session ends.
+    Q_PROPERTY(bool keepAwake READ keepAwake WRITE setKeepAwake NOTIFY keepAwakeChanged)
     Q_PROPERTY(QString polkitAgent READ polkitAgent CONSTANT)
     Q_PROPERTY(QString displaySettingsTool READ displaySettingsTool CONSTANT)
     // The sound mixer for output/input devices (pavucontrol), if installed.
@@ -165,6 +168,8 @@ public:
     // compositor drops it with the connection, so it is sent again after a
     // reconnect.
     void setIdleInhibited(bool inhibited);
+    bool keepAwake() const { return m_keepAwake; }
+    void setKeepAwake(bool on);
     Q_INVOKABLE void openDisplaySettings();
     // Ends the session through the compositor (falls back to loginctl).
     Q_INVOKABLE void logout();
@@ -183,6 +188,7 @@ signals:
     void keyboardChanged();
     void lockedChanged();
     void nightLightChanged();
+    void keepAwakeChanged();
     void workspacesChanged();
     void switcherChanged();
     // A volume/brightness/media key the compositor handed to the shell:
@@ -266,5 +272,8 @@ private:
     // send them again after the compositor connection comes back.
     QHash<QString, QString> m_blurOwners;
     QHash<QString, QString> m_blurCommands;
-    bool m_idleInhibited = false;
+    bool m_idleInhibited = false; // what the compositor was told
+    bool m_appsInhibit = false;   // a player asked (org.freedesktop.ScreenSaver)
+    bool m_keepAwake = false;     // the user asked
+    void updateIdleInhibit();
 };
