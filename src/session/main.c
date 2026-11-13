@@ -3940,12 +3940,13 @@ static void reloadConfig(struct Server *server)
         if (view->workspace > last)
             view->workspace = last;
     }
-    if (server->workspace > last) {
+    if (server->workspace > last)
         server->workspace = last;
-        wl_list_for_each(view, &server->views, link)
-            viewSyncVisible(view);
-        updateFullscreenLayers(server);
-    }
+    // Also when the desktop shown stays: windows of a removed desktop may
+    // have just arrived on it.
+    wl_list_for_each(view, &server->views, link)
+        viewSyncVisible(view);
+    updateFullscreenLayers(server);
     broadcastWorkspaces(server);
     scheduleAllFrames(server);
     if (server->serverDecoration) {
@@ -3984,9 +3985,11 @@ static int reloadSignalHandler(int signal, void *data)
 // Window switcher (Alt+Tab)
 // ---------------------------------------------------------------------------
 
+// Minimized windows take part, as on Windows and GNOME: Alt+Tab is how one
+// gets back to them without reaching for the dock.
 static bool switcherCandidate(struct View *view)
 {
-    return view && view->mapped && !view->minimized && !view->overrideRedirect
+    return view && view->mapped && !view->overrideRedirect
         && (view->server->config.switcherAllWorkspaces || viewOnWorkspace(view))
         && viewSurface(view);
 }
@@ -4061,8 +4064,12 @@ static void switcherCommit(struct Server *server)
     server->switchTarget = NULL;
     switcherRestoreStacking(server);
     broadcastSwitcher(server);
-    if (switcherCandidate(target))
-        focusView(target, NULL);
+    if (switcherCandidate(target)) {
+        if (target->minimized)
+            viewSetMinimized(target, false); // comes back and takes the focus
+        else
+            focusView(target, NULL);
+    }
 }
 
 static void switcherCancel(struct Server *server)
