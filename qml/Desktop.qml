@@ -837,6 +837,17 @@ Window {
             TaskButton {
                 width: parent.width
                 fillWidth: true
+                visible: desk.wallpaperSlideshow
+                iconName: "skip-forward"
+                label: qsTr("Next wallpaper")
+                onClicked: {
+                    contextMenu.visible = false;
+                    desk.nextWallpaper();
+                }
+            }
+            TaskButton {
+                width: parent.width
+                fillWidth: true
                 iconName: "clipboard"
                 label: qsTr("Paste")
                 onClicked: {

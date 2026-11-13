@@ -1640,6 +1640,21 @@ Window {
                             }
                             SettingsRow {
                                 width: parent.width
+                                title: qsTr("Search the web")
+                                subtitle: qsTr("The last result opens the browser with the typed words. Nothing is sent before you choose it.")
+                                settingKey: "startmenu.webSearch"
+                                SettingsSwitch { settingKey: "startmenu.webSearch" }
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Web search address")
+                                subtitle: qsTr("%1 stands for the typed words.")
+                                visible: Settings.values["startmenu.webSearch"] !== false
+                                settingKey: "startmenu.webSearchUrl"
+                                SettingsTextField { width: 260; settingKey: "startmenu.webSearchUrl" }
+                            }
+                            SettingsRow {
+                                width: parent.width
                                 title: qsTr("Recent list length")
                                 settingKey: "apps.recentLimit"
                                 SettingsStepper { from: 0; to: 30 }
@@ -2319,6 +2334,11 @@ Window {
                                 width: parent.width
                                 title: qsTr("Clipboard history")
                                 subtitle: "Super+V"
+                            }
+                            SettingsRow {
+                                width: parent.width
+                                title: qsTr("Emoji")
+                                subtitle: "Super+."
                             }
                             SettingsRow {
                                 width: parent.width

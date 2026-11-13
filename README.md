@@ -117,6 +117,19 @@ inside VirtualBox. The implemented pieces are:
   and loop devices stay quiet. Needs udisks2.
 - **Calculator in the start menu search**: `2+2*3`, `(15,5-3)/4`, `2^10`
   show the result first; Enter copies it.
+- **Emoji picker** on `Super+.` (or `Super+;`): type a word in English or
+  Russian ("rocket", "ракета"), click an emoji or press Enter for the first
+  one and it is on the clipboard; the ones picked last come first
+  (`emoji.recent`). Needs a colour emoji font (the installer adds Noto
+  Color Emoji).
+- **Web search from the start menu**: the last search result opens the
+  browser with the typed words (`startmenu.webSearch`,
+  `startmenu.webSearchUrl` with `%1` for the words; DuckDuckGo by default).
+  Nothing is sent before that row is chosen.
+- **Shortcuts in any keyboard layout**: `Super+V`, `Super+L` and the other
+  letter shortcuts (your own included) work while a Russian, Greek or other
+  non-Latin layout is active; the key is looked up by its place on a US
+  keyboard.
 - **Recent files in the start menu search**: documents opened in other
   applications (`recently-used.xbel`) show up when part of their name is
   typed (`startmenu.recentFiles`).
@@ -159,7 +172,8 @@ inside VirtualBox. The implemented pieces are:
 - **Wallpapers**: one picture for every screen or one per screen
   (`desktop.perMonitorWallpaper`; the wallpaper pickers choose for the screen
   they are on), and a slideshow through the folder of the current picture
-  (`desktop.wallpaperSlideshow`).
+  (`desktop.wallpaperSlideshow`; "Next wallpaper" in the desktop menu
+  skips ahead).
 - Desktop: wallpaper, icons from `~/Desktop` (double-click to open), desktop
   plugins, right-click menu (change wallpaper, paste to a file, new folder, open
   a terminal, settings); right-clicking an icon opens its own menu: Open,
@@ -460,7 +474,7 @@ these shortcuts globally, even when an application has focus:
 `Super+Up`/`Super+Down` (maximise/restore), `Super+Shift+Left`/`Super+Shift+Right`
 (move to another output), `Super+D` (show desktop), `Super+M` (maximise),
 `Super+F` (fullscreen), `Super+L` (lock), `Super+Space` (next keyboard layout),
-`Super+V` (clipboard history), `Super+Alt+R` (start/stop screen recording), `` Alt+` `` (the next window of the same application), `Super+1…9` (the Nth dock application: start
+`Super+V` (clipboard history), `Super+.` (emoji), `Super+Alt+R` (start/stop screen recording), `` Alt+` `` (the next window of the same application), `Super+1…9` (the Nth dock application: start
 it, bring it up, or cycle its windows), `Alt+Space` (window menu), `Super+N` (notifications), `Super+A` (quick settings), `Super+R` (run), `Super+E` (home
 folder), `Super+I` (settings), `Super+Shift+S` (area screenshot),
 `Ctrl+Super+Left/Right` (switch desktop, with `Shift` to move the window),

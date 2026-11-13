@@ -79,6 +79,8 @@ public:
     Q_INVOKABLE void toggleQuickSettings();
     // Super+V: the clipboard history.
     Q_INVOKABLE void toggleClipboard();
+    // Super+. : the emoji picker.
+    Q_INVOKABLE void toggleEmoji();
     // Super+Tab: the window overview.
     Q_INVOKABLE void toggleTaskView();
     // Ctrl+Shift+Esc / Ctrl+Alt+Esc: the force-quit dialog.
@@ -158,6 +160,7 @@ signals:
     void notificationsToggleRequested();
     void quickSettingsToggleRequested();
     void clipboardToggleRequested();
+    void emojiToggleRequested();
     void taskViewToggleRequested();
     void forceQuitRequested();
     void dockItemRequested(int index);

@@ -202,6 +202,9 @@ class Settings(QObject):
             "startmenu.width": 440,
             "startmenu.height": 580,
             "desktop.wallpaper": "",
+            # Off here so the search tests count applications only; the web
+            # search row has its own check.
+            "startmenu.webSearch": False,
             "run.history": ["cmatrix", "htop"],
             "run.historyLimit": 25,
             # Surfaces: the same defaults as src/settings.cpp, so the material
@@ -436,6 +439,7 @@ class Shell(QObject):
     notificationsToggleRequested = Signal()
     quickSettingsToggleRequested = Signal()
     clipboardToggleRequested = Signal()
+    emojiToggleRequested = Signal()
     taskViewToggleRequested = Signal()
     forceQuitRequested = Signal()
     runDialogRequested = Signal()
@@ -1958,6 +1962,31 @@ def main():
             if hasattr(results, "toVariant"):
                 results = results.toVariant()
             check(len(results or []) == 0, f"no stale results for a bad query ({results})")
+            # With the web search on, the typed words are the last result
+            # and open the browser, encoded.
+            settings.setValue("startmenu.webSearch", True)
+            search.setProperty("text", "how to & why")
+            QTest.qWait(20)
+            results = menu.property("results")
+            if hasattr(results, "toVariant"):
+                results = results.toVariant()
+            check(bool(results) and results[-1].get("webSearch") == "how to & why",
+                  f"the web search is the last result ({results})")
+            QMetaObject.invokeMethod(menu, "launch", Q_ARG("QVariant", results[-1]))
+            QTest.qWait(20)
+            check(shell.calls and shell.calls[-1]
+                  == ("openUrl", "https://duckduckgo.com/?q=how%20to%20%26%20why"),
+                  f"the web search opens the browser ({shell.calls[-1] if shell.calls else None})")
+            search.setProperty("text", "2+2")
+            QTest.qWait(20)
+            results = menu.property("results")
+            if hasattr(results, "toVariant"):
+                results = results.toVariant()
+            check(not any("webSearch" in r for r in (results or [])),
+                  "a calculation is not offered as a web search")
+            settings.setValue("startmenu.webSearch", False)
+            QMetaObject.invokeMethod(menu, "show")
+            QTest.qWait(50)
             search.setProperty("text", "")
             QTest.qWait(20)
 
@@ -2796,6 +2825,32 @@ def main():
             QTest.qWait(50)
             check(bool(osds) and osds[0].property("text") == "Caps Lock on",
                   f"Caps Lock shows on screen ({osds[0].property('text') if osds else None})")
+
+            # Super+. opens the emoji picker; a word finds an emoji (English
+            # or Russian), picking copies it and remembers it.
+            shell.emojiToggleRequested.emit()
+            QTest.qWait(300)
+            pickers = windows_of_kind("EmojiPopup")
+            check(bool(pickers) and pickers[0].isVisible(), "Super+. opens the emoji picker")
+            if pickers:
+                emoji_grid = pickers[0].findChild(QObject, "emojiGrid")
+                check(emoji_grid is not None and emoji_grid.property("count") > 300,
+                      "the emoji picker lists its emoji")
+                for word in ("rocket", "ракета"):
+                    pickers[0].setProperty("filter", word)
+                    QTest.qWait(50)
+                    found = pickers[0].property("entries")
+                    found = found.toVariant() if hasattr(found, "toVariant") else found
+                    check(list(found or []) == ["\U0001F680"], f"'{word}' finds the rocket ({found})")
+                QMetaObject.invokeMethod(pickers[0], "pick", Q_ARG("QVariant", "\U0001F680"))
+                QTest.qWait(300)
+                check(shell.calls and shell.calls[-1] == ("copyToClipboard", "\U0001F680"),
+                      "picking an emoji copies it")
+                check(list(settings._values.get("emoji.recent") or []) == ["\U0001F680"],
+                      f"the picked emoji is remembered ({settings._values.get('emoji.recent')!r})")
+                check(not pickers[0].isVisible(), "the emoji picker closes after a pick")
+                settings._values["emoji.recent"] = []
+                settings.valuesChanged.emit()
 
             # Super+V reaches the shell over D-Bus and opens the history.
             shell.clipboardToggleRequested.emit()

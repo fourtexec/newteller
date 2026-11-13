@@ -742,6 +742,9 @@ struct Server {
     // Graphics tablets: applications that draw (tablet-v2) get the pen
     // itself, with pressure and tilt; everything else sees a mouse.
     struct wlr_tablet_manager_v2 *tabletManager;
+    // A US keymap, for shortcuts pressed in a non-Latin layout.
+    struct xkb_keymap *latinKeymap;
+    bool latinKeymapFailed;
     struct wl_list tablets; // struct Tablet
     struct wl_listener tabletAxis;
     struct wl_listener tabletTip;
@@ -4341,6 +4344,11 @@ static bool keyHandled(struct Server *server, xkb_keysym_t sym,
         shellAction("toggleClipboard");
         return true;
     }
+    // Super+. (or Super+;): the emoji picker, as on Windows.
+    if (logo && (sym == XKB_KEY_period || sym == XKB_KEY_semicolon)) {
+        shellAction("toggleEmoji");
+        return true;
+    }
     if (logo && (sym == XKB_KEY_r || sym == XKB_KEY_R)) {
         shellAction("showRunDialog");
         return true;
@@ -4525,6 +4533,36 @@ static void keyboardModifiers(struct wl_listener *listener, void *data)
                                        &keyboard->keyboard->modifiers);
 }
 
+// Shortcuts are named after Latin keys (Super+V, Ctrl+Alt+T). With a
+// Russian, Greek or any other non-Latin layout active the same key produces
+// another symbol and no shortcut matched; the key is then looked up in a US
+// layout, so shortcuts stay where they are whatever the layout.
+static xkb_keysym_t shortcutSym(struct Server *server, uint32_t keycode, xkb_keysym_t sym,
+                                bool shift)
+{
+    // Latin-1 and the function/editing/media keys mean the same everywhere.
+    if (sym < 0x100 || (sym >= 0xfd00 && sym <= 0xffff) || (sym & 0xff000000) == 0x10000000)
+        return sym;
+    if (!server->latinKeymap && !server->latinKeymapFailed) {
+        struct xkb_context *context = xkb_context_new(XKB_CONTEXT_NO_FLAGS);
+        if (context) {
+            struct xkb_rule_names names = {.layout = "us"};
+            server->latinKeymap = xkb_keymap_new_from_names(context, &names,
+                                                            XKB_KEYMAP_COMPILE_NO_FLAGS);
+            xkb_context_unref(context);
+        }
+        server->latinKeymapFailed = server->latinKeymap == NULL;
+    }
+    if (!server->latinKeymap)
+        return sym;
+    const xkb_keysym_t *syms = NULL;
+    if (shift && xkb_keymap_key_get_syms_by_level(server->latinKeymap, keycode + 8, 0, 1, &syms) > 0)
+        return syms[0];
+    if (xkb_keymap_key_get_syms_by_level(server->latinKeymap, keycode + 8, 0, 0, &syms) > 0)
+        return syms[0];
+    return sym;
+}
+
 static void keyboardKey(struct wl_listener *listener, void *data)
 {
     struct Keyboard *keyboard = wl_container_of(listener, keyboard, key);
@@ -4573,7 +4611,10 @@ static void keyboardKey(struct wl_listener *listener, void *data)
                                                     layout, 0, &syms) > 0)
                 baseSym = syms[0];
         }
-        if (keyHandled(server, sym, modifiers, baseSym))
+        xkb_keysym_t chord = sym;
+        if (modifiers & (WLR_MODIFIER_LOGO | WLR_MODIFIER_CTRL | WLR_MODIFIER_ALT))
+            chord = shortcutSym(server, event->keycode, sym, (modifiers & WLR_MODIFIER_SHIFT) != 0);
+        if (keyHandled(server, chord, modifiers, baseSym))
             return;
     } else if (isLogo && server->logoTap) {
         server->logoTap = false;
@@ -9356,6 +9397,7 @@ static int run(struct Server *server)
     wl_list_remove(&server->tabletTip.link);
     wl_list_remove(&server->tabletProximity.link);
     wl_list_remove(&server->tabletButton.link);
+    xkb_keymap_unref(server->latinKeymap); // NULL is fine
     wl_list_remove(&server->swipeBegin.link);
     wl_list_remove(&server->swipeUpdate.link);
     wl_list_remove(&server->swipeEnd.link);

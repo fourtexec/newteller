@@ -127,6 +127,8 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("system.thermal"), true);
     m_defaults.insert(QStringLiteral("system.disks"), true);
     m_defaults.insert(QStringLiteral("watch.debounce"), 250);
+    // The emoji picked last (Super+.), newest first.
+    m_defaults.insert(QStringLiteral("emoji.recent"), QStringList());
     m_defaults.insert(QStringLiteral("run.history"), QStringList());
     m_defaults.insert(QStringLiteral("run.historyLimit"), 25);
 
@@ -213,6 +215,11 @@ Settings::Settings(QObject *parent)
     m_defaults.insert(QStringLiteral("windowRules.maximized"), QStringList());
     // The start menu search also lists recently used files.
     m_defaults.insert(QStringLiteral("startmenu.recentFiles"), true);
+    // The last search result opens the browser with the typed words; %1 in
+    // the address is replaced by them.
+    m_defaults.insert(QStringLiteral("startmenu.webSearch"), true);
+    m_defaults.insert(QStringLiteral("startmenu.webSearchUrl"),
+                      QStringLiteral("https://duckduckgo.com/?q=%1"));
     // Hot corners: none | overview | desktop | startMenu | notifications | lock.
     m_defaults.insert(QStringLiteral("hotCorners.topLeft"), QStringLiteral("none"));
     m_defaults.insert(QStringLiteral("hotCorners.topRight"), QStringLiteral("none"));

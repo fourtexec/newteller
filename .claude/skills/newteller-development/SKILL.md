@@ -128,6 +128,10 @@ VT switching first, then media keys, then the lock check (nothing else works
 while locked), user shortcuts (`bind.N`), then the built-ins. Check modifier
 combinations that already exist (e.g. Super+S vs Super+Shift+S).
 
+Shortcuts compare Latin keysyms; `keyboardKey` passes `shortcutSym()` (the
+key looked up in a US keymap when the active layout is not Latin) to
+`keyHandled()`, so never match a layout-specific symbol for a letter key.
+
 **New control-socket command**: a branch in `ipcHandleCommand()`; reply with
 exactly one line; document it in the CLI usage text and README; add a check
 to `tests/session_smoke.sh` via its `msg` helper.

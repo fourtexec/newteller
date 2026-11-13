@@ -499,6 +499,11 @@ void ShellController::toggleClipboard()
     emit clipboardToggleRequested();
 }
 
+void ShellController::toggleEmoji()
+{
+    emit emojiToggleRequested();
+}
+
 void ShellController::toggleTaskView()
 {
     emit taskViewToggleRequested();

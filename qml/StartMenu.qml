@@ -209,6 +209,13 @@ DropdownWindow {
             hits = [{ id: "", calculation: shown, icon: "type",
                       name: qsTr("= %1 (Enter copies it)").arg(shown) }].concat(hits);
         }
+        // Last: hand the words to the browser. Nothing leaves the computer
+        // until this row is chosen.
+        if (q.length >= 2 && categoryFilter.length === 0 && isNaN(value)
+            && Settings.values["startmenu.webSearch"] !== false) {
+            hits = hits.concat([{ id: "", webSearch: q, icon: "globe",
+                                  name: qsTr("Search the web for \"%1\"").arg(q) }]);
+        }
         results = hits;
         selectedIndex = hits.length > 0 ? 0 : -1;
     }
@@ -226,6 +233,13 @@ DropdownWindow {
         }
         if (app.settingsPage) {
             Shell.openSettingsPage(app.settingsPage);
+            hide();
+            return;
+        }
+        if (app.webSearch !== undefined) {
+            const address = String(Settings.values["startmenu.webSearchUrl"]
+                                   || "https://duckduckgo.com/?q=%1");
+            Shell.openUrl(address.replace("%1", encodeURIComponent(app.webSearch)));
             hide();
             return;
         }
