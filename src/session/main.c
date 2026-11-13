@@ -5318,7 +5318,13 @@ static void handleXdgMap(struct wl_listener *listener, void *data)
     viewAnimate(view, 0.94f, 0.0f, 200);
     broadcastWorkspaces(view->server);
     wlr_log(WLR_DEBUG, "xdg window mapped: %s", viewTitle(view));
-    centerView(view);
+    // A window that went fullscreen or maximized between its first
+    // configure and now already is where it belongs; centring it in the
+    // usable area pushed a fullscreen one down by the height of the panel.
+    if (view->fullscreen || view->maximized)
+        view->positioned = true;
+    else
+        centerView(view);
     wlr_log(WLR_DEBUG, "xdg window at %d,%d %dx%d", view->x, view->y,
             view->width, view->height);
     ensureForeignToplevel(view);
