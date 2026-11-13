@@ -629,6 +629,9 @@ struct Server {
     // A Super+drag move/resize: the client never saw the press, so it does
     // not get the release either.
     bool superGrab;
+    // A button pressed while a window was being moved or resized: nobody
+    // saw the press, so its release is dropped too (0 = none).
+    uint32_t swallowedButton;
     // Distance between the pointer and the edges being resized when the
     // resize started (0 when a client starts it from its border).
     double resizeOffsetX;
@@ -2896,6 +2899,42 @@ static void refreshPointerFocus(struct Server *server)
 // Pointer interaction
 // ---------------------------------------------------------------------------
 
+// The smallest and largest size the application accepts (0 = no maximum).
+static void viewSizeLimits(struct View *view, int *minWidth, int *minHeight,
+                           int *maxWidth, int *maxHeight)
+{
+    *minWidth = 64;
+    *minHeight = 64;
+    *maxWidth = 0;
+    *maxHeight = 0;
+    int wantMinWidth = 0, wantMinHeight = 0;
+    if (view->xdg) {
+        wantMinWidth = view->xdg->current.min_width;
+        wantMinHeight = view->xdg->current.min_height;
+        *maxWidth = view->xdg->current.max_width;
+        *maxHeight = view->xdg->current.max_height;
+    } else if (view->x11 && view->x11->size_hints) {
+        const xcb_size_hints_t *hints = view->x11->size_hints;
+        if (hints->flags & XCB_ICCCM_SIZE_HINT_P_MIN_SIZE) {
+            wantMinWidth = hints->min_width;
+            wantMinHeight = hints->min_height;
+        }
+        if (hints->flags & XCB_ICCCM_SIZE_HINT_P_MAX_SIZE) {
+            *maxWidth = hints->max_width;
+            *maxHeight = hints->max_height;
+        }
+    }
+    if (wantMinWidth > *minWidth)
+        *minWidth = wantMinWidth;
+    if (wantMinHeight > *minHeight)
+        *minHeight = wantMinHeight;
+    // A maximum below the minimum is a client mistake: the minimum wins.
+    if (*maxWidth < *minWidth)
+        *maxWidth = *maxWidth > 0 ? *minWidth : 0;
+    if (*maxHeight < *minHeight)
+        *maxHeight = *maxHeight > 0 ? *minHeight : 0;
+}
+
 static void processCursorMotion(struct Server *server, uint32_t time)
 {
     // A dragged icon follows the pointer.
@@ -2930,11 +2969,28 @@ static void processCursorMotion(struct Server *server, uint32_t time)
         if (server->resizeEdges & WLR_EDGE_BOTTOM)
             bottom = pointerY;
 
-        if (right - left < 64 || bottom - top < 64)
-            return;
+        // Stop at the sizes the application accepts. Asking for less than
+        // its minimum from the left or the top made the whole window slide:
+        // the position followed the pointer while the size stayed.
+        int minWidth, minHeight, maxWidth, maxHeight;
+        viewSizeLimits(view, &minWidth, &minHeight, &maxWidth, &maxHeight);
+        int width = right - left;
+        int height = bottom - top;
+        if (width < minWidth)
+            width = minWidth;
+        if (maxWidth > 0 && width > maxWidth)
+            width = maxWidth;
+        if (height < minHeight)
+            height = minHeight;
+        if (maxHeight > 0 && height > maxHeight)
+            height = maxHeight;
+        if (server->resizeEdges & WLR_EDGE_LEFT)
+            left = right - width;
+        if (server->resizeEdges & WLR_EDGE_TOP)
+            top = bottom - height;
 
         viewSetPosition(view, left, top);
-        viewSetSize(view, right - left, bottom - top);
+        viewSetSize(view, width, height);
         return;
     }
 
@@ -3117,7 +3173,7 @@ static void checkHotCorner(struct Server *server)
     const char *action = server->config.hotCorners[corner];
     if (strcmp(action, "none") == 0 || action[0] == '\0' || server->locked
         || server->seat->drag || server->cursorMode != CURSOR_PASSTHROUGH
-        || server->fullscreenView || server->activeConstraint || shortcutsInhibited(server))
+        || server->fullscreenShown || server->activeConstraint || shortcutsInhibited(server))
         return;
     if (strcmp(action, "overview") == 0)
         shellAction("toggleTaskView");
@@ -3214,6 +3270,10 @@ static void cursorButton(struct wl_listener *listener, void *data)
     }
 
     if (event->state == WL_POINTER_BUTTON_STATE_RELEASED) {
+        if (server->swallowedButton && event->button == server->swallowedButton) {
+            server->swallowedButton = 0;
+            return;
+        }
         if (server->cursorMode == CURSOR_MOVE && server->grabbedView
             && server->config.snapping) {
             uint32_t edges = dragSnapEdges(server, server->grabbedView);
@@ -3225,13 +3285,26 @@ static void cursorButton(struct wl_listener *listener, void *data)
             wlr_seat_pointer_notify_button(server->seat, event->time_msec,
                                            event->button, event->state);
         }
+        const bool grabbed = server->cursorMode != CURSOR_PASSTHROUGH;
         server->superGrab = false;
         server->resizeOffsetX = 0;
         server->resizeOffsetY = 0;
         server->cursorMode = CURSOR_PASSTHROUGH;
         server->grabbedView = NULL;
+        // The window stopped under a pointer that did not move: whatever is
+        // there now gets the pointer without waiting for the next motion.
+        if (grabbed)
+            refreshPointerFocus(server);
         return;
     }
+
+    // A second button during a move or resize belongs to nobody: it used to
+    // go through to the window below (or open a title bar menu) mid-drag.
+    if (server->cursorMode != CURSOR_PASSTHROUGH && server->grabbedView) {
+        server->swallowedButton = event->button;
+        return;
+    }
+    server->swallowedButton = 0;
 
     // Super + left drag moves a window from anywhere inside it, Super +
     // right drag resizes it from the nearest corner (as on GNOME and KDE).
