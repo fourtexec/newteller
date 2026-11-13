@@ -852,6 +852,7 @@ The bundled `plugins/desktop-clock` is a complete example.
 bash tests/platform.sh            # distribution detection used by the scripts
 cd rust && cargo test --workspace # the Rust core and CLI
 pip install PySide6-Essentials
+bash tests/config_test.sh        # unit test of the compositor's settings parser (plain C)
 python3 tests/qml_smoke.py        # loads the QML offscreen, no compositor needed
 bash tests/session_smoke.sh       # starts a real headless compositor and captures a frame
 ```
