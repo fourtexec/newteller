@@ -277,10 +277,15 @@ void QuickSettings::detectBacklight()
             if (typeFile.open(QIODevice::ReadOnly)
                 && typeFile.readAll().trimmed() == type.toLatin1()) {
                 QFile maxFile(root.filePath(device + QStringLiteral("/max_brightness")));
-                if (!maxFile.open(QIODevice::ReadOnly) || maxFile.readAll().trimmed().toInt() <= 0)
+                // Read once: a second readAll() is at the end of the file
+                // and gave 0, so the level always showed 0% and a write
+                // would have set the screen to black.
+                const int max = maxFile.open(QIODevice::ReadOnly)
+                                    ? maxFile.readAll().trimmed().toInt() : 0;
+                if (max <= 0)
                     continue;
                 m_backlightDevice = device;
-                m_backlightMax = maxFile.readAll().trimmed().toInt();
+                m_backlightMax = max;
                 return;
             }
         }
@@ -325,7 +330,11 @@ void QuickSettings::setBrightness(int percent)
 
 void QuickSettings::writeBrightness(int percent)
 {
-    const int value = m_backlightMax > 0 ? qRound(percent * m_backlightMax / 100.0) : 0;
+    if (m_backlightMax <= 0)
+        return;
+    // Never 0: on many panels that switches the backlight off altogether,
+    // with no way to see the slider that would bring it back.
+    const int value = qMax(1, qRound(percent * m_backlightMax / 100.0));
     // GNOME's settings daemon applies the change for us (and handles PWM
     // quirks); when it is not there, try the raw sysfs write, which works
     // whenever the udev rules allow the user to write.
@@ -341,11 +350,26 @@ void QuickSettings::writeBrightness(int percent)
         w->deleteLater();
         if (!w->isError())
             return;
-        QFile file(QStringLiteral("/sys/class/backlight/%1/brightness").arg(device));
-        if (file.open(QIODevice::WriteOnly))
-            file.write(QByteArray::number(value));
-        else
-            m_brightnessWriteTried = true;
+        // systemd-logind sets the backlight for the active session without
+        // root or udev rules (what brightnessctl uses).
+        QDBusMessage logind = QDBusMessage::createMethodCall(
+            QStringLiteral("org.freedesktop.login1"),
+            QStringLiteral("/org/freedesktop/login1/session/auto"),
+            QStringLiteral("org.freedesktop.login1.Session"), QStringLiteral("SetBrightness"));
+        logind << QStringLiteral("backlight") << device << uint(value);
+        auto *second = new QDBusPendingCallWatcher(
+            QDBusConnection::systemBus().asyncCall(logind, 1000), this);
+        connect(second, &QDBusPendingCallWatcher::finished, this,
+                [this, device, value](QDBusPendingCallWatcher *answer) {
+            answer->deleteLater();
+            if (!answer->isError())
+                return;
+            QFile file(QStringLiteral("/sys/class/backlight/%1/brightness").arg(device));
+            if (file.open(QIODevice::WriteOnly))
+                file.write(QByteArray::number(value));
+            else
+                m_brightnessWriteTried = true;
+        });
     });
 }
 
