@@ -364,6 +364,8 @@ struct View {
     struct wl_listener xdgDecorationMode;
     struct wl_listener xdgDecorationDestroy;
     struct wl_listener x11SetDecorations;
+    struct wl_listener x11SetGeometry;
+    struct wl_listener x11SetOverrideRedirect;
 
     // Geometry before fullscreen (kept apart from the maximize one).
     int fullSavedX;
@@ -7154,6 +7156,8 @@ static void handleX11Destroy(struct wl_listener *listener, void *data)
     wl_list_remove(&view->setTitle.link);
     wl_list_remove(&view->setAppId.link);
     wl_list_remove(&view->x11SetDecorations.link);
+    wl_list_remove(&view->x11SetGeometry.link);
+    wl_list_remove(&view->x11SetOverrideRedirect.link);
     view->tree = NULL;
     view->decoTree = NULL;
     view->decoTitle = NULL;
@@ -7284,6 +7288,36 @@ static void handleX11SetDecorations(struct wl_listener *listener, void *data)
     viewUpdateDecoration(view);
 }
 
+// X11 menus, tooltips and the popups of Wine or Steam (override-redirect)
+// place themselves, and keep moving while they are shown: a tooltip
+// following the pointer, a menu that grows upwards, a game window. Only
+// their position at map time was used, so they stayed where they first
+// appeared, detached from what they belonged to.
+static void handleX11SetGeometry(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct View *view = wl_container_of(listener, view, x11SetGeometry);
+    if (!view->overrideRedirect || !view->x11)
+        return;
+    view->x = view->x11->x;
+    view->y = view->x11->y;
+    view->width = view->x11->width;
+    view->height = view->x11->height;
+    if (view->tree)
+        wlr_scene_node_set_position(&view->tree->node, view->x, view->y);
+    scheduleAllFrames(view->server);
+}
+
+// A window may change its mind before it is shown (some toolkits create
+// the window first and set override-redirect afterwards).
+static void handleX11SetOverrideRedirect(struct wl_listener *listener, void *data)
+{
+    (void)data;
+    struct View *view = wl_container_of(listener, view, x11SetOverrideRedirect);
+    if (view->x11 && !view->mapped)
+        view->overrideRedirect = view->x11->override_redirect;
+}
+
 static void handleX11Associate(struct wl_listener *listener, void *data)
 {
     (void)data;
@@ -7366,6 +7400,10 @@ static void handleNewXWaylandSurface(struct wl_listener *listener, void *data)
     wl_signal_add(&xsurface->events.set_class, &view->setAppId);
     view->x11SetDecorations.notify = handleX11SetDecorations;
     wl_signal_add(&xsurface->events.set_decorations, &view->x11SetDecorations);
+    view->x11SetGeometry.notify = handleX11SetGeometry;
+    wl_signal_add(&xsurface->events.set_geometry, &view->x11SetGeometry);
+    view->x11SetOverrideRedirect.notify = handleX11SetOverrideRedirect;
+    wl_signal_add(&xsurface->events.set_override_redirect, &view->x11SetOverrideRedirect);
     view->id = ++server->nextViewId;
 
     if (xsurface->surface)
