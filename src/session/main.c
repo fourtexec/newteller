@@ -6835,16 +6835,48 @@ static struct wlr_texture *renderBlurredBackdrop(struct Server *server, struct O
     return wlr_texture_from_buffer(server->renderer, large);
 }
 
+// Finished animations end here too, not only when they are drawn: a window
+// that closed or opened while it could not be drawn (behind the lock
+// screen, on another desktop) kept its animation "running", and the
+// renderer kept drawing frames for it until it became visible.
 static bool animationsRunning(struct Server *server)
 {
-    if (server->wsAnimating || !wl_list_empty(&server->ghosts))
-        return true;
+    const uint64_t now = nowMs();
+    bool running = false;
+    // Something that ended here still needs one last frame without it.
+    bool ended = false;
+    if (server->wsAnimating) {
+        if (now - server->wsStart >= (uint64_t)server->wsDuration) {
+            server->wsAnimating = false;
+            ended = true;
+        } else
+            running = true;
+    }
+    struct Ghost *ghost;
+    struct Ghost *nextGhost;
+    wl_list_for_each_safe(ghost, nextGhost, &server->ghosts, link) {
+        if (now - ghost->start >= (uint64_t)ghost->duration) {
+            destroyGhost(ghost);
+            ended = true;
+        } else
+            running = true;
+    }
     struct View *view;
     wl_list_for_each(view, &server->views, link) {
-        if (view->animating)
-            return true;
+        if (!view->animating)
+            continue;
+        if (now - view->animStart >= (uint64_t)view->animDuration) {
+            view->animating = false;
+            ended = true;
+        } else {
+            running = true;
+        }
     }
-    return false;
+    // Every screen, not only the one drawing now: the last step may be
+    // showing on another.
+    if (ended)
+        scheduleAllFrames(server);
+    return running || ended;
 }
 
 // Draws and commits one frame with effects. False: let the scene do it.
