@@ -1761,9 +1761,23 @@ static struct wlr_box usableBoxForView(struct View *view)
 static void viewSetMaximized(struct View *view, bool maximized);
 static void viewSetFullscreen(struct View *view, bool fullscreen);
 
+// xdg-shell's tiled states: a window snapped to a half or a quarter is told
+// so, and GTK and Qt then drop the shadows and rounded corners they draw
+// around it, which left gaps at the screen edges and between two halves.
+static void viewSetTiled(struct View *view, uint32_t edges)
+{
+    struct wlr_xdg_toplevel *toplevel = view->xdg;
+    if (!toplevel || !toplevel->base->initialized || !toplevel->resource
+        || wl_resource_get_version(toplevel->resource) < XDG_TOPLEVEL_STATE_TILED_LEFT_SINCE_VERSION
+        || toplevel->scheduled.tiled == edges)
+        return;
+    wlr_xdg_toplevel_set_tiled(toplevel, edges);
+}
+
 static void viewClearSnap(struct View *view)
 {
     view->snapEdges = 0;
+    viewSetTiled(view, 0);
 }
 
 static void viewRestoreSnap(struct View *view)
@@ -1773,6 +1787,7 @@ static void viewRestoreSnap(struct View *view)
     viewSetPosition(view, view->snapSavedX, view->snapSavedY);
     viewSetSize(view, view->snapSavedWidth, view->snapSavedHeight);
     view->snapEdges = 0;
+    viewSetTiled(view, 0);
 }
 
 // The half or quarter of `area` a side (and a row) stands for.
@@ -1866,6 +1881,7 @@ static void viewSnap(struct View *view, uint32_t edge)
     viewSetPosition(view, content.x, content.y);
     viewSetSize(view, content.width, content.height);
     view->snapEdges = edge;
+    viewSetTiled(view, WLR_EDGE_TOP | WLR_EDGE_BOTTOM | WLR_EDGE_LEFT | WLR_EDGE_RIGHT);
     wlr_log(WLR_DEBUG, "snapped to %d,%d %dx%d (area %d,%d %dx%d)",
             view->x, view->y, view->width, view->height,
             area.x, area.y, area.width, area.height);
