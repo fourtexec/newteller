@@ -443,6 +443,19 @@ writes from its settings, and listens on a control socket (`$NEWTELLER_IPC`):
 `newteller-compositor --msg reload|lock|locked|dpms on|dpms off|layout next|workspace N|outputs|windows|kill ID|exit`.
 A desktop or layout number that is not a whole number in range is answered
 with `error ...` (it used to mean the first desktop).
+More commands, one per line, each answered with one `ok ...` or `error ...`
+line: `ping` (`ok pong`); `watch` (the connection then also receives the
+`event ...` lines, starting with the current layout, desktop, output,
+full-screen and lock state); `layout [N|next|prev]` (without an argument
+`ok INDEX COUNT`); `workspace N|next|prev`; `move-to-workspace N` (the focused
+window); `activate ID`, `close ID`, `move-window ID N`; `thumbnail ID [SIZE]`
+(`ok PATH` of a PNG preview, SIZE 32-1024 pixels, 320 by default);
+`outputs` (`ok NAME:WxH@mHz:X,Y:SCALE:on|off ...`), `outputs-detail` and
+`output-set NAME on|off WxH@mHz X Y SCALE TRANSFORM` (what Settings → Displays
+uses); `blur NAMESPACE OUTPUT X Y W H RADIUS` / `blur-clear NAMESPACE OUTPUT`
+(blur behind a shell surface); `effects` (`ok on|off FRAMES FALLBACKS`: frames
+drawn by the effects renderer and by the plain one). A client that stops
+reading its events is disconnected rather than sent half a line.
 Window commands take the id from `windows`: `minimize ID [on|off]`,
 `maximize ID [on|off|toggle]`, `fullscreen ID [on|off|toggle]`,
 `always-on-top ID [on|off|toggle]`, `sticky ID [on|off|toggle]` (every
