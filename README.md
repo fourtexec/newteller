@@ -167,7 +167,9 @@ inside VirtualBox. The implemented pieces are:
 - **Desktop effects** (Settings → Animations → Desktop effects): rounded window
   corners, backdrop blur, and window animations (open, close, minimize, restore,
   sliding desktop switches), drawn by the compositor's own renderer; off falls
-  back to the plain wlroots scene renderer.
+  back to the plain wlroots scene renderer. Like the scene renderer it only
+  draws when something on screen changed, so an idle desktop costs no
+  GPU time.
 - Themes (JSON, including `nord`, `ocean` and `highcontrast`) and a settings file
   with live reload
 - Plugin system (manifest + QML) with enable/disable and auto-rescan
