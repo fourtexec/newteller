@@ -227,6 +227,19 @@ SessionServices::SessionServices(Settings *settings, QObject *parent)
             m_reconnect.start();
     });
     connect(&m_nightLight, &QProcess::stateChanged, this, [this] { emit nightLightChanged(); });
+    // The same for the night light: a crashed wlsunset left the screen at
+    // daylight colours while the setting still said on.
+    connect(&m_nightLight, &QProcess::finished, this, [this] {
+        if (m_nightStopping || !inSession()
+            || !m_settings->value(QStringLiteral("nightLight.enabled")).toBool())
+            return;
+        if (QDateTime::currentMSecsSinceEpoch() - m_nightStarted > 60000)
+            m_nightRestarts = 0;
+        if (m_nightRestarts >= 5)
+            return;
+        ++m_nightRestarts;
+        QTimer::singleShot(1000 * m_nightRestarts, this, &SessionServices::restartNightLight);
+    });
     // swayidle locks the screen after the idle time and before the machine
     // sleeps. If it crashed, nothing started it again: the session silently
     // stopped locking, also when the lid was closed. It comes back, a few
@@ -282,6 +295,7 @@ void SessionServices::setTheme(QObject *theme)
 SessionServices::~SessionServices()
 {
     m_idleStopping = true;
+    m_nightStopping = true;
     for (QProcess *process : {&m_idle, &m_nightLight, &m_polkit}) {
         if (process->state() != QProcess::NotRunning) {
             process->terminate();
@@ -889,9 +903,11 @@ void SessionServices::restartIdle()
 void SessionServices::restartNightLight()
 {
     if (m_nightLight.state() != QProcess::NotRunning) {
+        m_nightStopping = true;
         m_nightLight.terminate();
         if (!m_nightLight.waitForFinished(1000))
             m_nightLight.kill();
+        m_nightStopping = false;
     }
     if (!m_settings->value(QStringLiteral("nightLight.enabled")).toBool())
         return;
@@ -913,6 +929,7 @@ void SessionServices::restartNightLight()
              << validTime(m_settings->value(QStringLiteral("nightLight.to")).toString(),
                           QStringLiteral("07:00"));
     }
+    m_nightStarted = QDateTime::currentMSecsSinceEpoch();
     m_nightLight.start(wlsunset, args);
 }
 
