@@ -28,6 +28,7 @@
 #include <QTime>
 #include <QUrl>
 #include <QDateTime>
+#include <QDebug>
 #include <QPointer>
 #include <QThread>
 
@@ -226,6 +227,22 @@ SessionServices::SessionServices(Settings *settings, QObject *parent)
             m_reconnect.start();
     });
     connect(&m_nightLight, &QProcess::stateChanged, this, [this] { emit nightLightChanged(); });
+    // swayidle locks the screen after the idle time and before the machine
+    // sleeps. If it crashed, nothing started it again: the session silently
+    // stopped locking, also when the lid was closed. It comes back, a few
+    // times in a row at most.
+    connect(&m_idle, &QProcess::finished, this, [this] {
+        if (m_idleStopping || !inSession())
+            return;
+        if (QDateTime::currentMSecsSinceEpoch() - m_idleStarted > 60000)
+            m_idleRestarts = 0;
+        if (m_idleRestarts >= 5) {
+            qWarning() << "newteller: swayidle keeps exiting; idle locking is off";
+            return;
+        }
+        ++m_idleRestarts;
+        QTimer::singleShot(1000 * m_idleRestarts, this, &SessionServices::restartIdle);
+    });
 
     // The helpers die with the shell: when a crashed shell is restarted by
     // the compositor, the new one starts its own, without duplicates.
@@ -264,6 +281,7 @@ void SessionServices::setTheme(QObject *theme)
 
 SessionServices::~SessionServices()
 {
+    m_idleStopping = true;
     for (QProcess *process : {&m_idle, &m_nightLight, &m_polkit}) {
         if (process->state() != QProcess::NotRunning) {
             process->terminate();
@@ -833,9 +851,11 @@ void SessionServices::writeLockConfig()
 void SessionServices::restartIdle()
 {
     if (m_idle.state() != QProcess::NotRunning) {
+        m_idleStopping = true;
         m_idle.terminate();
         if (!m_idle.waitForFinished(1000))
             m_idle.kill();
+        m_idleStopping = false;
     }
     const QString swayidle = findProgram(QStringLiteral("swayidle"));
     if (swayidle.isEmpty())
@@ -862,6 +882,7 @@ void SessionServices::restartIdle()
     // `loginctl lock-session` (and unlock-session) from anywhere.
     args << QStringLiteral("lock") << QStringLiteral("newteller-lock")
          << QStringLiteral("unlock") << QStringLiteral("pkill -USR1 -x swaylock");
+    m_idleStarted = QDateTime::currentMSecsSinceEpoch();
     m_idle.start(swayidle, args);
 }
 

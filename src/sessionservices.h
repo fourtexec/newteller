@@ -272,6 +272,10 @@ private:
     QString m_wifiStatus;
     QSet<int> m_hung;
     QProcess m_idle;
+    // swayidle ended on its own: it is started again (see restartIdle).
+    bool m_idleStopping = false;
+    int m_idleRestarts = 0;
+    qint64 m_idleStarted = 0;
     QProcess m_nightLight;
     QProcess m_polkit;
     QString m_polkitAgent;
