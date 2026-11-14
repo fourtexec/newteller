@@ -5,6 +5,7 @@
 #include <QClipboard>
 #include <QColor>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDBusConnection>
 #include <QDBusError>
 #include <QDesktopServices>
@@ -716,6 +717,111 @@ QString ShellController::clipboardText() const
     return clipboard != nullptr ? clipboard->text() : QString();
 }
 
+
+// wl-paste with the arguments; empty when it fails or takes too long. Only
+// for worker threads: it waits.
+static QByteArray wlPasteBlocking(const QStringList &arguments, int timeoutMs)
+{
+    QProcess paste;
+    paste.start(QStringLiteral("wl-paste"), arguments);
+    if (paste.waitForFinished(timeoutMs) && paste.exitStatus() == QProcess::NormalExit
+        && paste.exitCode() == 0)
+        return paste.readAllStandardOutput();
+    paste.kill();
+    paste.waitForFinished(100);
+    return {};
+}
+
+void ShellController::pasteInto(const QString &folder)
+{
+    const QString target = expandHome(folder.trimmed());
+    const QString stamp = QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMdd-hhmmss"));
+    const QString imageName = tr("Pasted image %1.png").arg(stamp);
+    const QString textName = tr("Pasted text %1.txt").arg(stamp);
+    const bool viaWlPaste = !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")
+                            && !QStandardPaths::findExecutable(QStringLiteral("wl-paste")).isEmpty();
+    // Without wl-paste, Qt's own clipboard: it lives on this thread, so it
+    // is read here (it does not wait for anybody).
+    QStringList localSources;
+    QString localText;
+    if (!viaWlPaste) {
+        if (const QClipboard *clipboard = QGuiApplication::clipboard()) {
+            if (const QMimeData *data = clipboard->mimeData()) {
+                for (const QUrl &url : data->urls()) {
+                    if (url.isLocalFile())
+                        localSources << url.toLocalFile();
+                }
+                localText = data->text();
+            }
+        }
+    }
+
+    QPointer<ShellController> self(this);
+    QThread *worker = QThread::create([self, target, imageName, textName, viaWlPaste,
+                                       localSources, localText] {
+        QStringList sources = localSources;
+        QString text = localText;
+        QByteArray png;
+        if (viaWlPaste) {
+            const QStringList offered = QString::fromUtf8(
+                wlPasteBlocking({QStringLiteral("--list-types")}, 2000)).split(QLatin1Char('\n'));
+            if (offered.contains(QStringLiteral("text/uri-list"))) {
+                const QStringList lines = QString::fromUtf8(wlPasteBlocking(
+                    {QStringLiteral("--no-newline"), QStringLiteral("--type"),
+                     QStringLiteral("text/uri-list")}, 2000)).split(QLatin1Char('\n'));
+                for (QString line : lines) {
+                    line = line.trimmed();
+                    if (line.startsWith(QLatin1String("file:")))
+                        sources << QUrl(line).toLocalFile();
+                }
+            } else if (offered.contains(QStringLiteral("image/png"))) {
+                // A picture (a screenshot, an image copied in a browser).
+                png = wlPasteBlocking({QStringLiteral("--type"), QStringLiteral("image/png")}, 5000);
+            } else if (!offered.isEmpty()) {
+                text = QString::fromUtf8(wlPasteBlocking(
+                    {QStringLiteral("--no-newline"), QStringLiteral("--type"), QStringLiteral("text")},
+                    2000));
+            }
+        }
+        sources.removeAll(QString());
+
+        const QDir dir(target);
+        QStringList failed;
+        bool imageFailed = false;
+        if (!sources.isEmpty()) {
+            for (const QString &source : std::as_const(sources)) {
+                const QFileInfo from(source);
+                const QString name = freeName(dir, from.fileName(), from.isDir());
+                if (name.isEmpty() || !from.exists() || !copyTree(source, dir.absoluteFilePath(name)))
+                    failed << from.fileName();
+            }
+        } else if (!png.isEmpty()) {
+            const QString name = freeName(dir, imageName, false);
+            QFile file(dir.absoluteFilePath(name));
+            imageFailed = name.isEmpty() || !file.open(QIODevice::WriteOnly)
+                          || file.write(png) != png.size();
+        } else if (!text.isEmpty()) {
+            const QString name = freeName(dir, textName, false);
+            QFile file(dir.absoluteFilePath(name));
+            if (name.isEmpty() || !file.open(QIODevice::WriteOnly)
+                || file.write(text.toUtf8()) < 0)
+                failed << textName;
+        }
+        if ((failed.isEmpty() && !imageFailed) || !self)
+            return;
+        // Told on the shell's thread, which owns the notifications.
+        QMetaObject::invokeMethod(self.data(), [self, failed, imageFailed] {
+            if (!self)
+                return;
+            const QString title = imageFailed
+                ? tr("Could not paste the image")
+                : tr("Could not paste %1").arg(failed.join(QStringLiteral(", ")));
+            self->notify(title, tr("You may not be allowed to change this folder, or the disk is full."));
+        }, Qt::QueuedConnection);
+    });
+    connect(worker, &QThread::finished, worker, &QObject::deleteLater);
+    worker->start();
+}
 
 int ShellController::pasteFiles(const QString &folder) const
 {

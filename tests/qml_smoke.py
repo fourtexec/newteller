@@ -499,6 +499,10 @@ class Shell(QObject):
         self.calls.append(("pasteFiles", folder))
         return 0
 
+    @Slot(str)
+    def pasteInto(self, folder):
+        self.calls.append(("pasteInto", folder))
+
     @Slot(result=str)
     def clipboardText(self):
         return "pasted text"

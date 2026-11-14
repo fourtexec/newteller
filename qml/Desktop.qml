@@ -760,17 +760,12 @@ Window {
                 label: qsTr("Paste")
                 onClicked: {
                     contextMenu.visible = false;
-                    // Files copied in a file manager are copied here; any
-                    // other clipboard text becomes a text file.
-                    if (Shell.pasteFiles(Shell.desktopUrl) > 0)
-                        return;
-                    const text = Shell.clipboardText();
-                    if (text.length > 0) {
-                        const stamp = Qt.formatDateTime(Shell.now, "yyyyMMdd-hhmmss");
-                        // The URL as is: the shell decodes it (spaces, Cyrillic,
-                        // '#' in the folder name), cutting "file://" off did not.
-                        Shell.saveTextFile(Shell.desktopUrl + "/" + qsTr("Pasted text %1.txt").arg(stamp), text);
-                    }
+                    // Files copied in a file manager are copied here, a
+                    // picture becomes a PNG and other text a text file - in
+                    // the background, so a slow clipboard owner cannot
+                    // freeze the desktop. The URL goes as is: the shell
+                    // decodes it (spaces, Cyrillic, '#' in the folder name).
+                    Shell.pasteInto(Shell.desktopUrl);
                 }
             }
             TaskButton {

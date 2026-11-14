@@ -106,6 +106,12 @@ public:
     // copied picture is saved there as a PNG; returns how many items are
     // pasted, 0 when the clipboard holds neither.
     Q_INVOKABLE int pasteFiles(const QString &folder) const;
+    // The desktop's Paste: files copied in a file manager are copied into
+    // the folder, a copied picture becomes a PNG and any other text a text
+    // file. Everything, reading the clipboard included, happens in the
+    // background: wl-paste waits for the application that owns the
+    // clipboard, and a slow or hung one used to freeze the shell for seconds.
+    Q_INVOKABLE void pasteInto(const QString &folder);
     // Writes a text file (used by the desktop "Paste" action).
     Q_INVOKABLE bool saveTextFile(const QString &path, const QString &text) const;
     // Moves a file or folder (path or file:// URL) to the trash, where it can
