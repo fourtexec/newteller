@@ -227,6 +227,16 @@ static struct wlr_output *viewNearestOutput(struct View *view);
 static void resizeOffsetsFrom(struct Server *server, double x, double y);
 struct IpcClient;
 static void ipcSend(struct IpcClient *client, const char *line);
+
+// xdg-shell versions of two features, defined here when the protocol header
+// in use does not (Arch's wlroots 0.20 build picked up one without the
+// configure_bounds macro). They are protocol facts and cannot change.
+#ifndef XDG_TOPLEVEL_CONFIGURE_BOUNDS_SINCE_VERSION
+#define XDG_TOPLEVEL_CONFIGURE_BOUNDS_SINCE_VERSION 4
+#endif
+#ifndef XDG_TOPLEVEL_STATE_TILED_LEFT_SINCE_VERSION
+#define XDG_TOPLEVEL_STATE_TILED_LEFT_SINCE_VERSION 2
+#endif
 static void broadcastFullscreen(struct Server *server, bool force);
 static struct wlr_box viewOuterBox(struct View *view);
 static uint32_t dragSnapEdges(struct Server *server, struct View *view);
