@@ -115,7 +115,8 @@ QtObject {
     readonly property Timer dndTimer: Timer {
         interval: 20000
         repeat: true
-        running: true
+        // Only while an end time is set, so the shell does not wake for nothing.
+        running: (Number(Settings.values["notifications.dndUntil"]) || 0) > 0
         triggeredOnStart: true
         onTriggered: {
             const until = Number(Settings.values["notifications.dndUntil"]) || 0;
