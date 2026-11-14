@@ -3198,18 +3198,34 @@ static void processCursorMotion(struct Server *server, uint32_t time)
 static uint32_t dragSnapEdges(struct Server *server, struct View *view)
 {
     const struct wlr_box area = usableBoxForView(view);
+    // Only edges with no other screen beyond them snap: dragging a window
+    // to the next monitor crosses the edge they share, and dropping it just
+    // past that edge used to tile it instead of moving it.
+    struct wlr_output_layout *layout = server->outputLayout;
+    const double cx = server->cursor->x;
+    const double cy = server->cursor->y;
+    struct wlr_output *output = wlr_output_layout_output_at(layout, cx, cy);
+    // The window's screen decides where it snaps (viewSnap): while the
+    // pointer is already on another screen, nothing does.
+    if (!output || output != viewNearestOutput(view))
+        return 0;
+    struct wlr_box screen = area;
+    wlr_output_layout_get_box(layout, output, &screen);
+    const bool openLeft = !wlr_output_layout_output_at(layout, screen.x - 1.0, cy);
+    const bool openRight = !wlr_output_layout_output_at(layout, screen.x + screen.width + 1.0, cy);
+    const bool openTop = !wlr_output_layout_output_at(layout, cx, screen.y - 1.0);
     // Corners (the outer 10% of a side) give quarters.
     const int cornerReach = area.height / 10 > 24 ? area.height / 10 : 24;
     uint32_t row = 0;
-    if (server->cursor->y <= area.y + cornerReach)
+    if (cy <= area.y + cornerReach)
         row = WLR_EDGE_TOP;
-    else if (server->cursor->y >= area.y + area.height - cornerReach)
+    else if (cy >= area.y + area.height - cornerReach)
         row = WLR_EDGE_BOTTOM;
-    if (server->cursor->x <= area.x + 12)
+    if (openLeft && cx <= area.x + 12)
         return WLR_EDGE_LEFT | row;
-    if (server->cursor->x >= area.x + area.width - 12)
+    if (openRight && cx >= area.x + area.width - 12)
         return WLR_EDGE_RIGHT | row;
-    if (server->cursor->y <= area.y + 10)
+    if (openTop && cy <= area.y + 10)
         return WLR_EDGE_TOP;
     return 0;
 }
