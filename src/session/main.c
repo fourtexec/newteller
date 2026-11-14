@@ -3637,6 +3637,9 @@ static void cursorAxis(struct wl_listener *listener, void *data)
 {
     struct Server *server = wl_container_of(listener, server, cursorAxis);
     struct wlr_pointer_axis_event *event = data;
+    // Super+scroll is a chord too (zoom in many applications): releasing
+    // Super afterwards opened the start menu.
+    server->logoTap = false;
     notifyActivity(server);
     wlr_seat_pointer_notify_axis(server->seat, event->time_msec,
                                  event->orientation, event->delta,
@@ -8964,6 +8967,7 @@ static void handleSwipeBegin(struct wl_listener *listener, void *data)
 {
     struct Server *server = wl_container_of(listener, server, swipeBegin);
     struct wlr_pointer_swipe_begin_event *event = data;
+    server->logoTap = false; // a gesture with Super held is not a tap
     notifyActivity(server);
     server->gestureKind = 0;
     server->gestureDx = 0;
@@ -9034,6 +9038,7 @@ static void handlePinchBegin(struct wl_listener *listener, void *data)
 {
     struct Server *server = wl_container_of(listener, server, pinchBegin);
     struct wlr_pointer_pinch_begin_event *event = data;
+    server->logoTap = false;
     wlr_pointer_gestures_v1_send_pinch_begin(server->pointerGestures, server->seat,
                                              event->time_msec, event->fingers);
 }
