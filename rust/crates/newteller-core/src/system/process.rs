@@ -248,6 +248,55 @@ pub fn list_processes(limit: usize) -> Vec<ProcessInfo> {
     processes
 }
 
+/// What matching processes to applications needs: names, never figures.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ProgramProcess {
+    /// Process id.
+    pub pid: i32,
+    /// `comm`, truncated to 15 characters by the kernel.
+    pub name: String,
+    /// Arguments, as parsed from `cmdline`; never empty.
+    pub cmdline: Vec<String>,
+    /// Target of `/proc/<pid>/exe`, when readable.
+    pub exe: Option<String>,
+}
+
+/// The current user's programs (everybody's for root), sorted by process id.
+///
+/// The owner is checked first, so a process of another user or of the
+/// kernel costs one `stat` instead of four reads. Kernel threads and zombies
+/// (no command line) are left out: neither is an application one can switch
+/// to. Used every second or two for the dock's "running" marks, which must
+/// not light up for an application another logged-in user (or the display
+/// manager's greeter) has open.
+pub fn list_own_programs() -> Vec<ProgramProcess> {
+    let uid = current_uid();
+    let mut processes: Vec<ProgramProcess> = pids()
+        .par_iter()
+        .filter_map(|&pid| {
+            let dir = format!("/proc/{pid}");
+            if uid != 0 && owner_of(&dir) != uid {
+                return None;
+            }
+            let cmdline = read_cmdline(pid);
+            if cmdline.is_empty() {
+                return None;
+            }
+            let exe = std::fs::read_link(format!("{dir}/exe"))
+                .ok()
+                .map(|path| path.to_string_lossy().into_owned());
+            Some(ProgramProcess {
+                pid,
+                name: read_trimmed(&format!("{dir}/comm")),
+                cmdline,
+                exe,
+            })
+        })
+        .collect();
+    processes.sort_unstable_by_key(|process| process.pid);
+    processes
+}
+
 /// Reads the cheap subset for one process.
 pub fn read_light(pid: i32) -> Option<LightProcess> {
     let dir = format!("/proc/{pid}");
@@ -336,6 +385,23 @@ fn owner_of(_dir: &str) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn own_programs_include_this_process_and_nothing_foreign() {
+        let programs = list_own_programs();
+        let me = std::process::id() as i32;
+        assert!(programs.iter().any(|p| p.pid == me), "this test process is listed");
+        assert!(programs.iter().all(|p| !p.cmdline.is_empty()));
+        assert!(programs.windows(2).all(|w| w[0].pid < w[1].pid));
+        let uid = current_uid();
+        if uid != 0 {
+            for p in &programs {
+                let owner = owner_of(&format!("/proc/{}", p.pid));
+                // A process may have exited since; it then reads as 0.
+                assert!(owner == uid || owner == 0, "pid {} belongs to {owner}", p.pid);
+            }
+        }
+    }
 
     #[test]
     fn parses_stat_with_spaces_and_parentheses_in_comm() {

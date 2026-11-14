@@ -472,8 +472,9 @@ impl SearchIndex {
     ///
     /// The match uses the program name from `Exec` and `StartupWMClass`, which
     /// works on Wayland and on X11 without any windowing protocol binding.
+    /// Only the current user's processes count.
     pub fn running(&self) -> Vec<RunningApp> {
-        let processes = system::process::list_processes(0);
+        let processes = system::process::list_own_programs();
         let mut found: HashMap<usize, Vec<i32>> = HashMap::new();
         for process in &processes {
             let keys = program_keys(&process.name, &process.cmdline, process.exe.as_deref());
