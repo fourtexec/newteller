@@ -20,6 +20,7 @@
 #include <wlr/backend/wayland.h>
 #include <wlr/interfaces/wlr_buffer.h>
 #include <wlr/interfaces/wlr_keyboard.h>
+#include <wlr/interfaces/wlr_output.h>
 #include <wlr/render/allocator.h>
 #include <wlr/render/drm_format_set.h>
 #include <wlr/render/pass.h>
@@ -4035,9 +4036,12 @@ static void reloadConfig(struct Server *server)
         // changed: the whole screen, once.
         struct Output *output;
         wl_list_for_each(output, &server->outputs, link) {
-            if (output->sceneOutput)
+            if (output->sceneOutput) {
                 wlr_damage_ring_add_whole(&output->sceneOutput->damage_ring);
+                wlr_output_update_needs_frame(output->output);
+            }
         }
+        scheduleAllFrames(server);
     }
     applyKeyboardConfig(server);
     // Fewer desktops than before: their windows move to the last one.
@@ -7036,8 +7040,10 @@ static void outputFrame(struct wl_listener *listener, void *data)
         }
         ++server->fallbackFrames;
         // The scene's renderer draws only what it thinks changed; after our
-        // frames that is not what is on screen.
+        // frames that is not what is on screen. needs_frame makes it draw
+        // even though our commits cleared its record of pending changes.
         wlr_damage_ring_add_whole(damage);
+        wlr_output_update_needs_frame(output->output);
     }
     if (output->gammaPending) {
         // A night light (wlsunset) changed the gamma ramp: commit it with
