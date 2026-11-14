@@ -39,7 +39,10 @@ if [ -z "$pictures" ]; then
     dirs="${XDG_CONFIG_HOME:-$HOME/.config}/user-dirs.dirs"
     if [ -r "$dirs" ]; then
         pictures="$(sed -n 's/^XDG_PICTURES_DIR="\(.*\)"$/\1/p' "$dirs" | tail -n 1)"
-        pictures="$(printf '%s' "$pictures" | sed "s|^\$HOME|$HOME|")"
+        # Without sed: a home folder with "|" or "&" in its path broke it.
+        case $pictures in
+            '$HOME'*) pictures="$HOME${pictures#\$HOME}" ;;
+        esac
     fi
 fi
 [ -n "$pictures" ] || pictures="$HOME/Pictures"

@@ -31,13 +31,35 @@ if [ -n "$first" ] && [ "$first" != newteller-terminal ] && command -v "$first" 
     if [ $# -eq 0 ]; then
         exec "$first"
     fi
-    # The setting is a prefix such as "kitty -e" or "gnome-terminal --".
+    # The setting is a prefix such as "kitty -e" or "gnome-terminal --",
+    # split into words without glob expansion.
+    set -f
     # shellcheck disable=SC2086
     exec $configured "$@"
 fi
 
 if [ -n "${TERMINAL:-}" ] && command -v "${TERMINAL%% *}" >/dev/null 2>&1; then
-    launch "$TERMINAL" -e "$@"
+    # $TERMINAL may carry arguments ("kitty --single-instance"): split it
+    # into words (without glob expansion) instead of running the whole
+    # string as one program name, which failed.
+    set -f
+    # shellcheck disable=SC2086
+    set -- $TERMINAL -- "$@"
+    set +f
+    program=$1
+    shift
+    words=''
+    while [ "$1" != -- ]; do
+        words="$words $1"
+        shift
+    done
+    shift
+    if [ $# -eq 0 ]; then
+        # shellcheck disable=SC2086
+        exec "$program" $words
+    fi
+    # shellcheck disable=SC2086
+    exec "$program" $words -e "$@"
 fi
 
 for entry in "x-terminal-emulator:-e" "foot:" "kitty:" "alacritty:-e" "wezterm:start --" \
