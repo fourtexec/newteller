@@ -483,6 +483,9 @@ struct Output {
     // windows were last fitted to (refitViews).
     struct wlr_box fitFull;
     struct wlr_box fitUsable;
+    // The effects renderer was asked for a frame (scheduleAllFrames) for
+    // something the scene's damage does not show: blur, ghosts, settings.
+    bool renderPending;
     // Turned off by the user (output management), as opposed to blanked.
     bool disabled;
     // Blanked by `dpms off` (screen saver); comes back with `dpms on`.
@@ -4021,8 +4024,18 @@ static void reloadConfig(struct Server *server)
     char oldTheme[NT_CONFIG_TEXT];
     snprintf(oldTheme, sizeof(oldTheme), "%s", server->config.cursorTheme);
     int oldSize = server->config.cursorSize;
+    const bool hadEffects = server->config.effects;
 
     loadConfig(server);
+    if (hadEffects && !server->config.effects) {
+        // Back to the scene's renderer, which only redraws what it thinks
+        // changed: the whole screen, once.
+        struct Output *output;
+        wl_list_for_each(output, &server->outputs, link) {
+            if (output->sceneOutput)
+                wlr_damage_ring_add_whole(&output->sceneOutput->damage_ring);
+        }
+    }
     applyKeyboardConfig(server);
     // Fewer desktops than before: their windows move to the last one.
     int last = server->config.workspaceCount - 1;
@@ -6232,6 +6245,7 @@ static void scheduleAllFrames(struct Server *server)
 {
     struct Output *output;
     wl_list_for_each(output, &server->outputs, link) {
+        output->renderPending = true;
         if (!output->disabled && !output->poweredOff)
             wlr_output_schedule_frame(output->output);
     }
@@ -6962,11 +6976,33 @@ static void outputFrame(struct wl_listener *listener, void *data)
     if (!output->sceneOutput)
         return;
     if (output->server->config.effects) {
-        if (renderEffectsFrame(output)) {
-            ++output->server->effectFrames;
+        // Draw only when something changed. Every commit is followed by
+        // another frame event (the page flip), and drawing on each of them
+        // redrew the whole desktop at the full refresh rate for ever, idle
+        // or not: CPU, GPU and battery. The scene still records what
+        // changed in its damage ring, which only its own renderer clears;
+        // it is cleared here once the frame has been drawn.
+        struct Server *server = output->server;
+        struct wlr_damage_ring *damage = &output->sceneOutput->damage_ring;
+        const bool needed = output->renderPending || output->gammaPending
+                            || output->output->needs_frame || animationsRunning(server)
+                            || pixman_region32_not_empty(&damage->current);
+        if (!needed) {
+            struct timespec idle = {0};
+            clock_gettime(CLOCK_MONOTONIC, &idle);
+            wlr_scene_output_send_frame_done(output->sceneOutput, &idle);
             return;
         }
-        ++output->server->fallbackFrames;
+        output->renderPending = false;
+        pixman_region32_clear(&damage->current);
+        if (renderEffectsFrame(output)) {
+            ++server->effectFrames;
+            return;
+        }
+        ++server->fallbackFrames;
+        // The scene's renderer draws only what it thinks changed; after our
+        // frames that is not what is on screen.
+        wlr_damage_ring_add_whole(damage);
     }
     if (output->gammaPending) {
         // A night light (wlsunset) changed the gamma ramp: commit it with

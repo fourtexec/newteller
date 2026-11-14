@@ -287,6 +287,18 @@ if [[ $effects_state != on || ${effect_frames:-0} -lt 10 ]]; then
     exit 1
 fi
 echo "session smoke: effects renderer drew $effect_frames frames ($fallback_frames fallbacks)"
+# An idle desktop is not redrawn: the effects renderer used to draw a new
+# frame after every frame, at the full refresh rate, for ever.
+sleep 1
+read -r _ _ idle_start _ <<<"$(msg effects || true)"
+sleep 2
+read -r _ _ idle_end _ <<<"$(msg effects || true)"
+idle_frames=$(( ${idle_end:-0} - ${idle_start:-0} ))
+if (( idle_frames > 60 )); then
+    echo "the effects renderer keeps drawing on an idle desktop ($idle_frames frames in 2 s)" >&2
+    exit 1
+fi
+echo "session smoke: an idle desktop drew $idle_frames frames in 2 s"
 
 # Blank and wake the screen the way the idle manager does.
 msg dpms off >/dev/null
