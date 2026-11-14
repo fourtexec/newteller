@@ -277,6 +277,10 @@ private:
     int m_idleRestarts = 0;
     qint64 m_idleStarted = 0;
     QProcess m_nightLight;
+    // wlsunset ended on its own: it is started again (see restartNightLight).
+    bool m_nightStopping = false;
+    int m_nightRestarts = 0;
+    qint64 m_nightStarted = 0;
     QProcess m_polkit;
     QString m_polkitAgent;
     QString m_lastCompositorConfig;
