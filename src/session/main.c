@@ -3304,6 +3304,17 @@ static void checkHotCorner(struct Server *server)
     if (server->hotCornerFired == corner)
         return;
     server->hotCornerFired = corner;
+    // Only an outer corner of the whole layout is hot. Where screens meet,
+    // the pointer passes through a screen's corner on its way to the
+    // other screen, and used to open the overview (or lock the session)
+    // on the way.
+    {
+        const double outX = (corner == 1 || corner == 3) ? box.x + box.width + 1.0 : box.x - 1.0;
+        const double outY = (corner == 2 || corner == 3) ? box.y + box.height + 1.0 : box.y - 1.0;
+        if (wlr_output_layout_output_at(server->outputLayout, outX, server->cursor->y)
+            || wlr_output_layout_output_at(server->outputLayout, server->cursor->x, outY))
+            return;
+    }
     const char *action = server->config.hotCorners[corner];
     if (strcmp(action, "none") == 0 || action[0] == '\0' || server->locked
         || server->seat->drag || server->cursorMode != CURSOR_PASSTHROUGH

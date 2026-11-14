@@ -284,7 +284,8 @@ inside VirtualBox. The implemented pieces are:
 - **Hot corners** (Settings → Windows): push the pointer into a screen corner
   to open the overview, show the desktop, open the start menu or the
   notifications, or lock (`hotCorners.topLeft` … `bottomRight`; off by
-  default, never during a drag, a full-screen window or a game).
+  default, never during a drag, a full-screen window or a game). With several
+  monitors only the outer corners count, not those where two screens meet.
 - **Application bells** (xdg-system-bell, wlroots 0.19+): a terminal's or an
   application's bell plays the sound theme's bell (`sounds.bell`), not under
   do-not-disturb.
