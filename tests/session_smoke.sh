@@ -554,6 +554,22 @@ fi
 # Workspaces over the control socket (Ctrl+Super+Left/Right do the same).
 msg workspace 1 >/dev/null
 msg workspace 0 >/dev/null
+# A desktop that is not a number, or does not exist, is refused instead of
+# being read as desktop 0.
+msg workspace 1 >/dev/null
+for bad in two 1x 99 -1; do
+    reply=$(msg workspace "$bad" || true)
+    if [[ $reply != error* ]]; then
+        echo "workspace $bad was accepted ($reply)" >&2
+        exit 1
+    fi
+done
+if [[ $(msg workspace next || true) != ok ]]; then
+    echo 'workspace next stopped working' >&2
+    exit 1
+fi
+msg workspace 0 >/dev/null
+echo "session smoke: bad desktop numbers are refused"
 
 # The lock screen. swaylock takes the session through ext-session-lock-v1:
 # the screen shows nothing but the locker, and killing the locker must leave

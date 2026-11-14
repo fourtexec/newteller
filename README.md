@@ -437,6 +437,8 @@ distribution has them.
 The compositor reads `~/.config/newteller/compositor.conf`, which the shell
 writes from its settings, and listens on a control socket (`$NEWTELLER_IPC`):
 `newteller-compositor --msg reload|lock|locked|dpms on|dpms off|layout next|workspace N|outputs|windows|kill ID|exit`.
+A desktop or layout number that is not a whole number in range is answered
+with `error ...` (it used to mean the first desktop).
 Window commands take the id from `windows`: `minimize ID [on|off]`,
 `maximize ID [on|off|toggle]`, `fullscreen ID [on|off|toggle]`,
 `always-on-top ID [on|off|toggle]`, `sticky ID [on|off|toggle]` (every

@@ -224,6 +224,8 @@ static void arrangeLockSurfaces(struct Server *server);
 static void updateFullscreenLayers(struct Server *server);
 static struct wlr_output *viewNearestOutput(struct View *view);
 static void resizeOffsetsFrom(struct Server *server, double x, double y);
+struct IpcClient;
+static void ipcSend(struct IpcClient *client, const char *line);
 static void broadcastFullscreen(struct Server *server, bool force);
 static struct wlr_box viewOuterBox(struct View *view);
 static uint32_t dragSnapEdges(struct Server *server, struct View *view);
@@ -4346,6 +4348,35 @@ static void requestWindowMenu(struct View *view, int x, int y)
     ipcBroadcast(server, line);
 }
 
+// A whole decimal number, nothing else: atoi() read "two" or "1x" as a
+// desktop number and switched to the first desktop.
+static bool ipcInt(const char *text, int *out)
+{
+    if (!text || !*text)
+        return false;
+    char *end = NULL;
+    errno = 0;
+    long value = strtol(text, &end, 10);
+    if (errno != 0 || *end != '\0' || value < INT_MIN || value > INT_MAX)
+        return false;
+    *out = (int)value;
+    return true;
+}
+
+// A desktop number from a command, or a reply saying what is wrong.
+static bool ipcDesktop(struct IpcClient *client, const char *text, int *out)
+{
+    if (!ipcInt(text, out)) {
+        ipcSend(client, "error not a desktop number");
+        return false;
+    }
+    if (*out < 0 || *out >= client->server->config.workspaceCount) {
+        ipcSend(client, "error no such desktop");
+        return false;
+    }
+    return true;
+}
+
 // "on", "off" or "toggle" (the default) applied to the current state.
 static bool ipcToggle(const char *argument, bool current)
 {
@@ -8447,8 +8478,14 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
             setLayout(server, server->layoutIndex + 1);
         else if (strcmp(argument, "prev") == 0)
             setLayout(server, server->layoutIndex - 1);
-        else
-            setLayout(server, atoi(argument));
+        else {
+            int index = 0;
+            if (!ipcInt(argument, &index) || index < 0 || index >= server->layoutCount) {
+                ipcSend(client, "error no such layout");
+                return;
+            }
+            setLayout(server, index);
+        }
         ipcSend(client, "ok");
     } else if (strcmp(command, "windows") == 0) {
         // ok <id>\x1e<desktop>\x1e<app id>\x1e<title>\x1e<flags>\x1e<pid>
@@ -8596,9 +8633,13 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
             ipcSend(client, "ok");
         } else {
             char *desktop = strtok(NULL, " \t\r");
-            if (desktop)
-                moveViewToWorkspace(target, atoi(desktop), false);
-            ipcSend(client, desktop ? "ok" : "error which desktop");
+            int index = 0;
+            if (!desktop) {
+                ipcSend(client, "error which desktop");
+            } else if (ipcDesktop(client, desktop, &index)) {
+                moveViewToWorkspace(target, index, false);
+                ipcSend(client, "ok");
+            }
         }
     } else if (strcmp(command, "blur") == 0 && argument) {
         // blur <namespace> <output> <x> <y> <w> <h> <radius>
@@ -8634,12 +8675,19 @@ static void ipcHandleCommand(struct IpcClient *client, char *line)
             switchWorkspace(server, server->workspace + 1);
         else if (strcmp(argument, "prev") == 0)
             switchWorkspace(server, server->workspace - 1);
-        else
-            switchWorkspace(server, atoi(argument));
+        else {
+            int index = 0;
+            if (!ipcDesktop(client, argument, &index))
+                return;
+            switchWorkspace(server, index);
+        }
         ipcSend(client, "ok");
     } else if (strcmp(command, "move-to-workspace") == 0 && argument) {
+        int index = 0;
+        if (!ipcDesktop(client, argument, &index))
+            return;
         if (server->focusedView)
-            moveViewToWorkspace(server->focusedView, atoi(argument), false);
+            moveViewToWorkspace(server->focusedView, index, false);
         ipcSend(client, "ok");
     } else if (strcmp(command, "idle-inhibit") == 0) {
         if (argument)
