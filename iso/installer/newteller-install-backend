@@ -261,7 +261,6 @@ EOF
 ln -sf "../usr/share/zoneinfo/$TIMEZONE" "$TARGET/etc/localtime"
 [[ $NEWTELLER_DISTRO == debian || $NEWTELLER_DISTRO == ubuntu ]] && echo "$TIMEZONE" > "$TARGET/etc/timezone"
 
-language=${LOCALE%%.*}
 case $NEWTELLER_DISTRO in
     debian)
         if [[ -f $TARGET/etc/locale.gen ]]; then
