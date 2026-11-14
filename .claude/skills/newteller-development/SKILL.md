@@ -144,6 +144,12 @@ line").
 
 ## Shell pitfalls already paid for
 
+- Work that has to block (wl-paste, a chain of NetworkManager calls) runs
+  in a `QThread::create` worker that captures a `QPointer` to its owner and
+  hands the result back with `QMetaObject::invokeMethod(..., Qt::QueuedConnection)`;
+  see `ShellController::pasteInto` and `SessionServices::withWifiDevice`.
+  Long-running helpers (swayidle, wl-paste --watch) are restarted, with a
+  limit, when they exit on their own.
 - **No blocking D-Bus or process calls on the UI thread.** A slow or hung
   service (an app's tray menu, MPRIS player, NetworkManager, wpctl) froze
   the whole shell. Use `asyncCall` + `QDBusPendingCallWatcher` or an
@@ -232,6 +238,16 @@ line").
   fullscreen windows when a screen's box or usable area changes; a layout
   change schedules `layoutIdleCallback` (arrange every screen, rescue
   windows, lock surfaces). New "fills the screen" states belong in both.
+- With several monitors only **outer** edges and corners act: hot corners
+  and edge snapping check that no output lies beyond them, and snapping
+  needs the pointer on the window's own output. Follow the same rule for
+  any new edge or corner behaviour.
+- XWayland override-redirect windows move themselves: their position comes
+  from `set_geometry` (`handleX11SetGeometry`), not only from map time.
+- Control-socket numbers go through `ipcInt()` / `ipcDesktop()`; never
+  `atoi()` (a typo used to mean desktop 0). Answer `error ...` instead.
+- A drag (`CURSOR_MOVE`) survives a desktop switch: `switchWorkspace`
+  carries `grabbedView` along.
 - Pointers stored on `Server` that refer to a `View` (`focusedView`,
   `previousView`, `grabbedView`, `switchTarget`, `hoverView`,
   `lastTitleView`) must be cleared in `destroyView()`.
