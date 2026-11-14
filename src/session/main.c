@@ -9518,10 +9518,17 @@ static void printUsage(void)
         "  --no-xwayland              Do not start XWayland\n"
         "  --socket <name>            Use an explicit Wayland socket name\n"
         "  --msg <command>            Send a command to the running compositor\n"
-        "                             (reload, lock, dpms on|off, layout next,\n"
-        "                             idle-inhibit on|off, outputs, windows,\n"
-        "                             minimize|maximize|fullscreen|always-on-top ID,\n"
-        "                             window-menu, exit) and print the reply\n"
+        "                             and print the reply: ping, reload, lock,\n"
+        "                             locked, dpms on|off, layout [N|next|prev],\n"
+        "                             workspace N|next|prev, move-to-workspace N,\n"
+        "                             windows, activate|close|kill ID,\n"
+        "                             move-window ID N, thumbnail ID [SIZE],\n"
+        "                             minimize|maximize|fullscreen|sticky|\n"
+        "                             always-on-top ID [on|off|toggle],\n"
+        "                             move-to-output ID [next|prev],\n"
+        "                             window-menu [ID [X Y]], outputs,\n"
+        "                             outputs-detail, output-set ..., effects,\n"
+        "                             idle-inhibit [on|off], exit\n"
         "  --debug                    Verbose wlroots logging\n");
 }
 
