@@ -160,7 +160,7 @@ Plugins have access to the following global objects:
   - `Shell.openPath(path)` - Open file path
   - `Shell.runShell(cmd)` - Run shell command
   - `Shell.terminal(cmd)` - Open terminal with command
-  - `Shell.clipboardText()` - Get clipboard text
+  - `Shell.clipboardText()` - Get clipboard text (waits for `wl-paste`, up to a second; call it from a user action, not a binding that re-evaluates often)
   - And many more...
 
 - **System**: System metrics
