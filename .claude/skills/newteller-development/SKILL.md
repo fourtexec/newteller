@@ -259,6 +259,16 @@ line").
   when it cannot. New scene content must be drawable by `renderNode()`
   (trees, rects, buffers). Animations must call `scheduleAllFrames()` and
   stop on their own. The session test asserts the renderer drew frames.
+- The effects renderer draws a frame **only when something changed**:
+  scene damage (`sceneOutput->damage_ring.current`, cleared after each
+  effects frame), `output->renderPending` (set by `scheduleAllFrames()`),
+  `output->needs_frame` (software cursor, screencopy), gamma, or
+  `animationsRunning()`. Anything that changes the picture without
+  touching the scene (blur regions, ghosts, a new effect setting) must call
+  `scheduleAllFrames()`, or it will not show until something else moves.
+  Before the scene's own renderer draws again (fallback, effects off) the
+  whole damage ring is damaged. The session test fails if an idle desktop
+  keeps drawing.
 - Title bars (`viewUpdateDecoration`) are cheap to call often; they redraw
   only when size, focus, title, hover, scale or state changed.
 
