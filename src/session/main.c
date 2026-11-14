@@ -8416,8 +8416,16 @@ static void ipcSend(struct IpcClient *client, const char *line)
     struct msghdr message = {.msg_iov = parts, .msg_iovlen = 2};
     // Non-blocking: a client that stops reading loses events, it never
     // blocks the compositor.
+    const size_t total = parts[0].iov_len + 1;
     ssize_t written = sendmsg(client->fd, &message, MSG_NOSIGNAL);
-    (void)written;
+    if (written > 0 && (size_t)written < total) {
+        // Only part of the line fit: the next line would be glued to it
+        // and misread. The connection is closed instead (the event loop
+        // sees the hang-up and frees it); the shell reconnects and gets the
+        // current state with `watch`. A line dropped whole is harmless.
+        wlr_log(WLR_ERROR, "control socket client is not reading; disconnecting it");
+        shutdown(client->fd, SHUT_RDWR);
+    }
 }
 
 static bool ipcHasWatchers(struct Server *server)
