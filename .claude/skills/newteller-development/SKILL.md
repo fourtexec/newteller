@@ -351,6 +351,10 @@ compositor behaviour you add.
   -I<unpacked>/usr/include/wlroots-0.1N $(pkg-config --cflags wayland-server
   pixman-1 xkbcommon libinput cairo pangocairo libdrm) src/session/main.c`.
   It finds missing forward declarations, typos and 0.18/0.19 API slips.
+  It does not cover Arch's wlroots 0.20, whose protocol headers can lack
+  `*_SINCE_VERSION` macros: give every such macro an `#ifndef` fallback
+  (see the xdg-shell ones near the top of `main.c`) and run
+  `build-arch.yml` before calling a compositor change done.
 - Shell syntax check: `qt6-base-dev qt6-declarative-dev` (any Qt 6) and
   `g++ -std=c++20 -fsyntax-only -fPIC -I/usr/include/x86_64-linux-gnu/qt6{,/QtCore,/QtGui,/QtQml,/QtQuick,/QtDBus,/QtSvg} -Isrc src/<file>.cpp`.
 
