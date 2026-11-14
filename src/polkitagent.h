@@ -92,6 +92,10 @@ private:
     void startSession();
     void finish(bool authorized, bool userCancelled);
     void reset();
+    // Answers a request that never got the dialog, and frees it.
+    void drop(Request *request, bool cancelled, const char *reason);
+    // Shows the next waiting request, if any.
+    void startNext();
 
     Settings *m_settings;
     bool m_registered = false;
@@ -115,4 +119,6 @@ private:
     void *m_listener = nullptr;
     void *m_handle = nullptr;
     Request *m_request = nullptr;
+    // Requests that arrived while the dialog was open, oldest first.
+    QList<Request *> m_queue;
 };

@@ -180,6 +180,8 @@ PolkitAgent::PolkitAgent(Settings *settings, QObject *parent)
 PolkitAgent::~PolkitAgent()
 {
 #ifdef NEWTELLER_HAVE_POLKIT
+    while (!m_queue.isEmpty())
+        drop(m_queue.takeFirst(), true, "The authentication agent is going away");
     if (m_request)
         finish(false, true);
     if (m_handle)
@@ -244,19 +246,22 @@ void PolkitAgent::registerAgent()
 void PolkitAgent::begin(Request *request)
 {
 #ifdef NEWTELLER_HAVE_POLKIT
-    const QVariantMap details = request->details;
     if (m_request) {
-        // One dialog at a time; polkit tells the second caller.
-        g_task_return_new_error(request->task, POLKIT_ERROR, POLKIT_ERROR_FAILED,
-                                "Another authentication is in progress");
-        g_object_unref(request->task);
-        for (PolkitIdentity *identity : request->identities)
-            g_object_unref(identity);
-        if (request->cancellable)
-            g_object_unref(request->cancellable);
-        delete request;
+        // One dialog at a time; the others wait their turn. Two programs
+        // asking at once (an updater and a pkexec command) used to make
+        // the second one fail straight away.
+        if (m_queue.size() >= 8)
+            drop(request, false, "Too many authentication requests are waiting");
+        else
+            m_queue.append(request);
         return;
     }
+    // The caller gave up while it was waiting.
+    if (request->cancellable && g_cancellable_is_cancelled(request->cancellable)) {
+        drop(request, true, "The request was cancelled");
+        return;
+    }
+    const QVariantMap details = request->details;
     m_request = request;
     m_actionId = details.value(QStringLiteral("action")).toString();
     m_message = details.value(QStringLiteral("message")).toString();
@@ -292,6 +297,30 @@ void PolkitAgent::begin(Request *request)
 #else
     Q_UNUSED(request);
 #endif
+}
+
+void PolkitAgent::drop(Request *request, bool cancelled, const char *reason)
+{
+#ifdef NEWTELLER_HAVE_POLKIT
+    g_task_return_new_error(request->task, POLKIT_ERROR,
+                            cancelled ? POLKIT_ERROR_CANCELLED : POLKIT_ERROR_FAILED, "%s", reason);
+    g_object_unref(request->task);
+    for (PolkitIdentity *identity : request->identities)
+        g_object_unref(identity);
+    if (request->cancellable)
+        g_object_unref(request->cancellable);
+    delete request;
+#else
+    Q_UNUSED(request);
+    Q_UNUSED(cancelled);
+    Q_UNUSED(reason);
+#endif
+}
+
+void PolkitAgent::startNext()
+{
+    while (!m_request && !m_queue.isEmpty())
+        begin(m_queue.takeFirst());
 }
 
 void PolkitAgent::startSession()
@@ -425,6 +454,9 @@ void PolkitAgent::finish(bool authorized, bool userCancelled)
 #endif
     reset();
     emit finished(authorized);
+    // The next caller's dialog, once this one has closed.
+    if (!m_queue.isEmpty())
+        QTimer::singleShot(0, this, &PolkitAgent::startNext);
 }
 
 void PolkitAgent::reset()

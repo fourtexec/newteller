@@ -193,7 +193,8 @@ inside VirtualBox. The implemented pieces are:
   password field, "Allow" and "Cancel"; a wrong password is reported and
   asked again. `security.builtinAgent` turns it off (an external agent such
   as lxpolkit is used then, as when the build has no libpolkit-agent-1).
-  The session runs exactly one agent: polkit agents from the
+  Requests that arrive while the prompt is open wait their turn instead of
+  failing. The session runs exactly one agent: polkit agents from the
   distribution's autostart (`*polkit*`, `*policykit*`) are skipped, and when
   polkit refuses the built-in agent (no login session, no polkit daemon) no
   external one is started either - it would fail the same way and only show
