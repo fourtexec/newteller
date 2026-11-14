@@ -110,6 +110,7 @@ private:
 
     void detectVolumeTool();
     void readVolume();
+    void writeVolume();
     void detectBacklight();
     void readBrightness();
     void writeBrightness(int percent);
@@ -161,6 +162,10 @@ private:
     QHash<QString, PlayerState> m_playerStates;
     QString m_currentPlayer; // the player the popup shows and controls
     bool m_volumeReading = false; // one mixer read at a time
+    // One mixer write at a time; a value set meanwhile goes out next.
+    bool m_volumeWriting = false;
+    int m_volumeWanted = -1;
+    int m_volumeWritten = -1;
     QString m_mediaTitle;
     QString m_mediaArtist;
     QString m_mediaArtUrl;

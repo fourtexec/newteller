@@ -175,7 +175,9 @@ void QuickSettings::applyVolume(int percent, bool muted)
 // server never freezes the panel (it used to wait up to 2.3 s for wpctl).
 void QuickSettings::readVolume()
 {
-    if (m_volumeTool == VolumeTool::None || m_volumeReading)
+    // While the slider's values are still being written, an older reading
+    // would make the slider jump back.
+    if (m_volumeTool == VolumeTool::None || m_volumeReading || m_volumeWriting)
         return;
     m_volumeReading = true;
     if (m_volumeTool == VolumeTool::WpCtl) {
@@ -226,21 +228,37 @@ void QuickSettings::setVolume(int percent)
     if (m_volumeTool == VolumeTool::None)
         return;
     const int clamped = qBound(0, percent, 150);
-    if (m_volumeTool == VolumeTool::WpCtl) {
-        QProcess::startDetached(
-            QStringLiteral("wpctl"),
-            {QStringLiteral("set-volume"), QStringLiteral("@DEFAULT_AUDIO_SINK@"),
-             QString::number(clamped / 100.0, 'f', 3)});
-    } else {
-        QProcess::startDetached(
-            QStringLiteral("pactl"),
-            {QStringLiteral("set-sink-volume"), QStringLiteral("@DEFAULT_SINK@"),
-             QStringLiteral("%1%").arg(clamped)});
-    }
     m_volume = clamped;
     emit volumeChanged();
-    // The mixer answers asynchronously; the next tick settles the real value.
-    QTimer::singleShot(400, this, &QuickSettings::readVolume);
+    // Dragging the slider changes the value many times a second: one write
+    // runs at a time and the newest value follows it. A process per step
+    // (a hundred for one drag) could also land out of order and leave the
+    // volume at an older value.
+    m_volumeWanted = clamped;
+    if (!m_volumeWriting)
+        writeVolume();
+}
+
+void QuickSettings::writeVolume()
+{
+    if (m_volumeWanted < 0 || m_volumeWanted == m_volumeWritten) {
+        m_volumeWriting = false;
+        // Only within one burst: the same value set later (after another
+        // program changed the volume) must go out again.
+        m_volumeWritten = -1;
+        // The mixer has the last value; read back what it really applied.
+        QTimer::singleShot(400, this, &QuickSettings::readVolume);
+        return;
+    }
+    m_volumeWriting = true;
+    const int value = m_volumeWanted;
+    m_volumeWritten = value;
+    const QStringList arguments = m_volumeTool == VolumeTool::WpCtl
+        ? QStringList{QStringLiteral("wpctl"), QStringLiteral("set-volume"),
+                      QStringLiteral("@DEFAULT_AUDIO_SINK@"), QString::number(value / 100.0, 'f', 3)}
+        : QStringList{QStringLiteral("pactl"), QStringLiteral("set-sink-volume"),
+                      QStringLiteral("@DEFAULT_SINK@"), QStringLiteral("%1%").arg(value)};
+    runToolAsync(arguments, [this](bool, const QString &) { writeVolume(); });
 }
 
 void QuickSettings::toggleMuted()
