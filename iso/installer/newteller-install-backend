@@ -87,6 +87,11 @@ AUTOLOGIN=${cfg[AUTOLOGIN]:-no}
 [[ -e /usr/share/zoneinfo/$TIMEZONE ]] || TIMEZONE=UTC
 [[ $LOCALE =~ ^[A-Za-z_]+\.UTF-8$ ]] || LOCALE=en_US.UTF-8
 [[ $LAYOUT =~ ^[a-z,]+$ ]] || LAYOUT=us
+# The full name is the account's comment field: useradd refuses a ':' or a
+# line break there, which stopped the installation after the disk had been
+# erased. Control characters become spaces, ':' a similar-looking one.
+FULLNAME=$(printf '%s' "$FULLNAME" | tr '[:cntrl:]' ' ' | sed 's/:/\xef\xbc\x9a/g; s/^ *//; s/ *$//')
+FULLNAME=${FULLNAME:0:200}
 
 NEWTELLER_DISTRO=''
 # shellcheck source=/dev/null
