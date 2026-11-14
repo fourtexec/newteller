@@ -11,6 +11,8 @@
 #include <QSet>
 #include <QMetaType>
 
+#include <functional>
+
 // a{sa{sv}}: NetworkManager connection settings.
 typedef QMap<QString, QVariantMap> NMSettingsMap;
 Q_DECLARE_METATYPE(NMSettingsMap)
@@ -224,9 +226,23 @@ private:
     void applyAppearance();
     QString query(const QString &command) const;
     void readPowerProfile();
-    QString wifiDevice();
+    // What a Wi-Fi action needs from NetworkManager: the device (or why
+    // there is none) and, when asked for an SSID, its saved connection.
+    struct WifiLookup {
+        QString device;
+        QString status;
+        QString saved;
+        NMSettingsMap savedSettings;
+    };
+    // Blocking D-Bus calls: only from the worker thread withWifiDevice()
+    // starts. They used to run on the UI thread, and a slow or restarting
+    // NetworkManager froze the whole shell.
+    static WifiLookup lookupWifi(const QString &ssid);
+    // Looks the device up in the background; `then` runs on this thread
+    // afterwards, with m_wifiStatus already set.
+    void withWifiDevice(const QString &ssid, std::function<void(const WifiLookup &)> then);
     void readAccessPoints();
-    // The same for a device wifiDevice() already found (no second lookup).
+    // The same for a device already looked up (no second lookup).
     void readAccessPointsOf(const QString &device);
     static QString findProgram(const QString &name);
 

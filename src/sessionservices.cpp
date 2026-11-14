@@ -28,6 +28,8 @@
 #include <QTime>
 #include <QUrl>
 #include <QDateTime>
+#include <QPointer>
+#include <QThread>
 
 #include <csignal>
 #include <sys/prctl.h>
@@ -1138,14 +1140,16 @@ bool SessionServices::wifiAvailable() const
     return bus && bus->isServiceRegistered(kNm).value();
 }
 
-// The Wi-Fi device, or an explanation in m_wifiStatus when there is none.
-QString SessionServices::wifiDevice()
+// The Wi-Fi device, or an explanation in `status` when there is none; with
+// an SSID also its saved connection. Runs in a worker thread.
+SessionServices::WifiLookup SessionServices::lookupWifi(const QString &ssid)
 {
-    m_wifiStatus.clear();
-    if (!wifiAvailable()) {
-        m_wifiStatus = tr("NetworkManager is not running. Install and start it "
+    WifiLookup result;
+    QDBusConnectionInterface *bus = QDBusConnection::systemBus().interface();
+    if (!bus || !bus->isServiceRegistered(kNm).value()) {
+        result.status = tr("NetworkManager is not running. Install and start it "
                                       "(network-manager / NetworkManager) to use Wi-Fi.");
-        return QString();
+        return result;
     }
     const QList<QDBusObjectPath> devices = objectPaths(nmCall(kNmPath, kNm, QStringLiteral("GetDevices")));
     QString unmanaged;
@@ -1163,32 +1167,69 @@ QString SessionServices::wifiDevice()
             const bool enabled = nmProperty(kNmPath, kNm, QStringLiteral("WirelessEnabled")).toBool();
             const bool hardware = nmProperty(kNmPath, kNm, QStringLiteral("WirelessHardwareEnabled")).toBool();
             if (!hardware)
-                m_wifiStatus = tr("Wi-Fi is blocked by the hardware switch or the airplane-mode key.");
+                result.status = tr("Wi-Fi is blocked by the hardware switch or the airplane-mode key.");
             else if (!enabled)
-                m_wifiStatus = tr("Wi-Fi is turned off.");
+                result.status = tr("Wi-Fi is turned off.");
             else
-                m_wifiStatus = tr("The Wi-Fi adapter %1 (driver %2) is not ready - "
+                result.status = tr("The Wi-Fi adapter %1 (driver %2) is not ready - "
                                               "its firmware may be missing.").arg(iface, driver);
         }
-        return device.path();
+        result.device = device.path();
+        break;
+    }
+    if (!result.device.isEmpty()) {
+        if (!ssid.isEmpty() && result.status.isEmpty()) {
+            const QList<QDBusObjectPath> connections = objectPaths(
+                nmCall(QStringLiteral("/org/freedesktop/NetworkManager/Settings"), kNmSettings,
+                       QStringLiteral("ListConnections")));
+            for (const QDBusObjectPath &connection : connections) {
+                const NMSettingsMap settings = connectionSettings(connection.path());
+                if (settings.value(QStringLiteral("802-11-wireless"))
+                        .value(QStringLiteral("ssid")).toByteArray() == ssid.toUtf8()) {
+                    result.saved = connection.path();
+                    result.savedSettings = settings;
+                    break;
+                }
+            }
+        }
+        return result;
     }
     if (!unmanaged.isEmpty()) {
-        m_wifiStatus = tr("The Wi-Fi adapter %1 is not managed by NetworkManager "
+        result.status = tr("The Wi-Fi adapter %1 is not managed by NetworkManager "
                                       "(it is configured in /etc/network/interfaces). Remove it "
                                       "there and restart NetworkManager.").arg(unmanaged);
     } else if (sysfsHasWireless()) {
-        m_wifiStatus = tr("NetworkManager does not see the Wi-Fi adapter. "
+        result.status = tr("NetworkManager does not see the Wi-Fi adapter. "
                                       "Restart NetworkManager or check its configuration.");
     } else {
-        m_wifiStatus = tr("No Wi-Fi adapter was found: its driver or firmware is "
+        result.status = tr("No Wi-Fi adapter was found: its driver or firmware is "
                                       "missing (see 'dmesg | grep -i firmware').");
     }
-    return QString();
+    return result;
+}
+
+void SessionServices::withWifiDevice(const QString &ssid,
+                                     std::function<void(const WifiLookup &)> then)
+{
+    QPointer<SessionServices> self(this);
+    QThread *worker = QThread::create([self, ssid, then] {
+        const WifiLookup result = lookupWifi(ssid);
+        if (!self)
+            return;
+        QMetaObject::invokeMethod(self.data(), [self, result, then] {
+            if (!self)
+                return;
+            self->m_wifiStatus = result.status;
+            then(result);
+        }, Qt::QueuedConnection);
+    });
+    connect(worker, &QThread::finished, worker, &QObject::deleteLater);
+    worker->start();
 }
 
 void SessionServices::readAccessPoints()
 {
-    readAccessPointsOf(wifiDevice());
+    withWifiDevice(QString(), [this](const WifiLookup &wifi) { readAccessPointsOf(wifi.device); });
 }
 
 void SessionServices::readAccessPointsOf(const QString &device)
@@ -1299,143 +1340,140 @@ void SessionServices::readAccessPointsOf(const QString &device)
 
 void SessionServices::scanWifi()
 {
-    const QString device = wifiDevice();
-    readAccessPointsOf(device);
-    if (device.isEmpty() || !m_wifiStatus.isEmpty())
-        return;
-    // Ask for a fresh scan; the list is read again once it had time to run.
-    QDBusMessage message = QDBusMessage::createMethodCall(kNm, device, kNmWireless,
-                                                          QStringLiteral("RequestScan"));
-    message << QVariantMap();
-    QDBusConnection::systemBus().asyncCall(message);
-    m_wifiBusy = true;
-    emit wifiChanged();
-    QTimer::singleShot(3000, this, [this] {
-        m_wifiBusy = false;
-        readAccessPoints();
+    withWifiDevice(QString(), [this](const WifiLookup &wifi) {
+        const QString device = wifi.device;
+        readAccessPointsOf(device);
+        if (device.isEmpty() || !m_wifiStatus.isEmpty())
+            return;
+        // Ask for a fresh scan; the list is read again once it had time to run.
+        QDBusMessage message = QDBusMessage::createMethodCall(kNm, device, kNmWireless,
+                                                              QStringLiteral("RequestScan"));
+        message << QVariantMap();
+        QDBusConnection::systemBus().asyncCall(message);
+        m_wifiBusy = true;
+        emit wifiChanged();
+        QTimer::singleShot(3000, this, [this] {
+            m_wifiBusy = false;
+            readAccessPoints();
+        });
     });
 }
 
 void SessionServices::connectWifi(const QString &ssid, const QString &password)
 {
-    const QString device = wifiDevice();
-    if (device.isEmpty() || !m_wifiStatus.isEmpty()) {
-        emit wifiConnectFinished(false, ssid, m_wifiStatus);
-        return;
-    }
-    QVariantMap network;
-    for (const QVariant &item : std::as_const(m_wifiNetworks)) {
-        if (item.toMap().value(QStringLiteral("ssid")).toString() == ssid)
-            network = item.toMap();
-    }
-    if (network.value(QStringLiteral("enterprise")).toBool()) {
-        emit wifiConnectFinished(false, ssid,
-                                 tr("This is an enterprise (802.1X) network; set it up "
-                                                "with nm-connection-editor."));
-        return;
-    }
-    const QString accessPoint = network.value(QStringLiteral("path"), QStringLiteral("/")).toString();
-    // A name that is not in range is a hidden network: NetworkManager has to
-    // probe for it, secured when a password was given.
-    const bool hidden = network.isEmpty();
-    const bool secure = hidden ? !password.isEmpty() : network.value(QStringLiteral("secure")).toBool();
-
-    // A saved connection for this network?
-    QString saved;
-    const QList<QDBusObjectPath> connections = objectPaths(
-        nmCall(QStringLiteral("/org/freedesktop/NetworkManager/Settings"), kNmSettings,
-               QStringLiteral("ListConnections")));
-    NMSettingsMap savedSettings;
-    for (const QDBusObjectPath &connection : connections) {
-        const NMSettingsMap settings = connectionSettings(connection.path());
-        if (settings.value(QStringLiteral("802-11-wireless")).value(QStringLiteral("ssid")).toByteArray()
-            == ssid.toUtf8()) {
-            saved = connection.path();
-            savedSettings = settings;
-            break;
-        }
-    }
-
-    // The activation (and a password update before it) is asynchronous:
-    // NetworkManager may wait for polkit or the driver, and the shell must
-    // not freeze meanwhile.
-    QDBusMessage activate;
-    QDBusMessage update;
-    if (!saved.isEmpty()) {
-        if (!password.isEmpty()) {
-            // A new password for a saved network.
-            QVariantMap security = savedSettings.value(QStringLiteral("802-11-wireless-security"));
-            security.insert(QStringLiteral("psk"), password);
-            savedSettings.insert(QStringLiteral("802-11-wireless-security"), security);
-            update = QDBusMessage::createMethodCall(kNm, saved, kNmConnection, QStringLiteral("Update"));
-            update << QVariant::fromValue(savedSettings);
-        }
-        activate = QDBusMessage::createMethodCall(kNm, kNmPath, kNm, QStringLiteral("ActivateConnection"));
-        activate.setArguments({QVariant::fromValue(QDBusObjectPath(saved)),
-                               QVariant::fromValue(QDBusObjectPath(device)),
-                               QVariant::fromValue(QDBusObjectPath(accessPoint))});
-    } else {
-        if (secure && password.isEmpty()) {
-            emit wifiConnectFinished(false, ssid, tr("Enter the password for %1").arg(ssid));
-            return;
-        }
-        NMSettingsMap settings;
-        QVariantMap wireless;
-        wireless.insert(QStringLiteral("ssid"), ssid.toUtf8());
-        wireless.insert(QStringLiteral("mode"), QStringLiteral("infrastructure"));
-        if (hidden)
-            wireless.insert(QStringLiteral("hidden"), true);
-        settings.insert(QStringLiteral("802-11-wireless"), wireless);
-        QVariantMap connection;
-        connection.insert(QStringLiteral("id"), ssid);
-        connection.insert(QStringLiteral("type"), QStringLiteral("802-11-wireless"));
-        settings.insert(QStringLiteral("connection"), connection);
-        if (secure) {
-            QVariantMap security;
-            security.insert(QStringLiteral("key-mgmt"),
-                            network.value(QStringLiteral("sae")).toBool() ? QStringLiteral("sae")
-                                                                          : QStringLiteral("wpa-psk"));
-            security.insert(QStringLiteral("psk"), password);
-            settings.insert(QStringLiteral("802-11-wireless-security"), security);
-        }
-        activate = QDBusMessage::createMethodCall(kNm, kNmPath, kNm,
-                                                  QStringLiteral("AddAndActivateConnection"));
-        activate.setArguments({QVariant::fromValue(settings),
-                               QVariant::fromValue(QDBusObjectPath(device)),
-                               QVariant::fromValue(QDBusObjectPath(accessPoint))});
-    }
-
+    // The panel shows the attempt at once; the lookup runs in the background.
     m_wifiBusy = true;
     emit wifiChanged();
-    const auto sendActivation = [this, activate, device, ssid] {
-        auto *watcher = new QDBusPendingCallWatcher(
-            QDBusConnection::systemBus().asyncCall(activate, 15000), this);
-        connect(watcher, &QDBusPendingCallWatcher::finished, this,
-                [this, device, ssid](QDBusPendingCallWatcher *call) {
-                    call->deleteLater();
-                    const QDBusMessage reply = call->reply();
-                    if (reply.type() != QDBusMessage::ReplyMessage) {
-                        m_wifiBusy = false;
-                        emit wifiChanged();
-                        emit wifiConnectFinished(false, ssid, reply.errorMessage());
-                        return;
-                    }
-                    followWifiActivation(device, ssid);
-                });
-    };
-    if (update.type() == QDBusMessage::MethodCallMessage) {
-        // The new password is stored first; activation follows whatever
-        // the answer (a refused update shows as a failed connection).
-        auto *watcher = new QDBusPendingCallWatcher(
-            QDBusConnection::systemBus().asyncCall(update, 10000), this);
-        connect(watcher, &QDBusPendingCallWatcher::finished, this,
-                [sendActivation](QDBusPendingCallWatcher *call) {
-                    call->deleteLater();
-                    sendActivation();
-                });
-    } else {
-        sendActivation();
-    }
+    withWifiDevice(ssid, [this, ssid, password](const WifiLookup &wifi) {
+        m_wifiBusy = false;
+        emit wifiChanged();
+        const QString device = wifi.device;
+        if (device.isEmpty() || !m_wifiStatus.isEmpty()) {
+            emit wifiConnectFinished(false, ssid, m_wifiStatus);
+            return;
+        }
+        QVariantMap network;
+        for (const QVariant &item : std::as_const(m_wifiNetworks)) {
+            if (item.toMap().value(QStringLiteral("ssid")).toString() == ssid)
+                network = item.toMap();
+        }
+        if (network.value(QStringLiteral("enterprise")).toBool()) {
+            emit wifiConnectFinished(false, ssid,
+                                     tr("This is an enterprise (802.1X) network; set it up "
+                                                    "with nm-connection-editor."));
+            return;
+        }
+        const QString accessPoint = network.value(QStringLiteral("path"), QStringLiteral("/")).toString();
+        // A name that is not in range is a hidden network: NetworkManager has to
+        // probe for it, secured when a password was given.
+        const bool hidden = network.isEmpty();
+        const bool secure = hidden ? !password.isEmpty() : network.value(QStringLiteral("secure")).toBool();
+
+        // A saved connection for this network (found by the lookup)?
+        const QString saved = wifi.saved;
+        NMSettingsMap savedSettings = wifi.savedSettings;
+
+        // The activation (and a password update before it) is asynchronous:
+        // NetworkManager may wait for polkit or the driver, and the shell must
+        // not freeze meanwhile.
+        QDBusMessage activate;
+        QDBusMessage update;
+        if (!saved.isEmpty()) {
+            if (!password.isEmpty()) {
+                // A new password for a saved network.
+                QVariantMap security = savedSettings.value(QStringLiteral("802-11-wireless-security"));
+                security.insert(QStringLiteral("psk"), password);
+                savedSettings.insert(QStringLiteral("802-11-wireless-security"), security);
+                update = QDBusMessage::createMethodCall(kNm, saved, kNmConnection, QStringLiteral("Update"));
+                update << QVariant::fromValue(savedSettings);
+            }
+            activate = QDBusMessage::createMethodCall(kNm, kNmPath, kNm, QStringLiteral("ActivateConnection"));
+            activate.setArguments({QVariant::fromValue(QDBusObjectPath(saved)),
+                                   QVariant::fromValue(QDBusObjectPath(device)),
+                                   QVariant::fromValue(QDBusObjectPath(accessPoint))});
+        } else {
+            if (secure && password.isEmpty()) {
+                emit wifiConnectFinished(false, ssid, tr("Enter the password for %1").arg(ssid));
+                return;
+            }
+            NMSettingsMap settings;
+            QVariantMap wireless;
+            wireless.insert(QStringLiteral("ssid"), ssid.toUtf8());
+            wireless.insert(QStringLiteral("mode"), QStringLiteral("infrastructure"));
+            if (hidden)
+                wireless.insert(QStringLiteral("hidden"), true);
+            settings.insert(QStringLiteral("802-11-wireless"), wireless);
+            QVariantMap connection;
+            connection.insert(QStringLiteral("id"), ssid);
+            connection.insert(QStringLiteral("type"), QStringLiteral("802-11-wireless"));
+            settings.insert(QStringLiteral("connection"), connection);
+            if (secure) {
+                QVariantMap security;
+                security.insert(QStringLiteral("key-mgmt"),
+                                network.value(QStringLiteral("sae")).toBool() ? QStringLiteral("sae")
+                                                                              : QStringLiteral("wpa-psk"));
+                security.insert(QStringLiteral("psk"), password);
+                settings.insert(QStringLiteral("802-11-wireless-security"), security);
+            }
+            activate = QDBusMessage::createMethodCall(kNm, kNmPath, kNm,
+                                                      QStringLiteral("AddAndActivateConnection"));
+            activate.setArguments({QVariant::fromValue(settings),
+                                   QVariant::fromValue(QDBusObjectPath(device)),
+                                   QVariant::fromValue(QDBusObjectPath(accessPoint))});
+        }
+
+        m_wifiBusy = true;
+        emit wifiChanged();
+        const auto sendActivation = [this, activate, device, ssid] {
+            auto *watcher = new QDBusPendingCallWatcher(
+                QDBusConnection::systemBus().asyncCall(activate, 15000), this);
+            connect(watcher, &QDBusPendingCallWatcher::finished, this,
+                    [this, device, ssid](QDBusPendingCallWatcher *call) {
+                        call->deleteLater();
+                        const QDBusMessage reply = call->reply();
+                        if (reply.type() != QDBusMessage::ReplyMessage) {
+                            m_wifiBusy = false;
+                            emit wifiChanged();
+                            emit wifiConnectFinished(false, ssid, reply.errorMessage());
+                            return;
+                        }
+                        followWifiActivation(device, ssid);
+                    });
+        };
+        if (update.type() == QDBusMessage::MethodCallMessage) {
+            // The new password is stored first; activation follows whatever
+            // the answer (a refused update shows as a failed connection).
+            auto *watcher = new QDBusPendingCallWatcher(
+                QDBusConnection::systemBus().asyncCall(update, 10000), this);
+            connect(watcher, &QDBusPendingCallWatcher::finished, this,
+                    [sendActivation](QDBusPendingCallWatcher *call) {
+                        call->deleteLater();
+                        sendActivation();
+                    });
+        } else {
+            sendActivation();
+        }
+    });
 }
 
 // Follows the device until it is connected or gives up (about 30 s), reading
@@ -1494,13 +1532,15 @@ void SessionServices::followWifiActivation(const QString &device, const QString 
 
 void SessionServices::disconnectWifi()
 {
-    const QString device = wifiDevice();
-    if (!device.isEmpty()) {
-        // Not waited for: the list is read again a moment later.
-        QDBusConnection::systemBus().asyncCall(
-            QDBusMessage::createMethodCall(kNm, device, kNmDevice, QStringLiteral("Disconnect")));
-    }
-    QTimer::singleShot(800, this, &SessionServices::readAccessPoints);
+    withWifiDevice(QString(), [this](const WifiLookup &wifi) {
+        const QString device = wifi.device;
+        if (!device.isEmpty()) {
+            // Not waited for: the list is read again a moment later.
+            QDBusConnection::systemBus().asyncCall(
+                QDBusMessage::createMethodCall(kNm, device, kNmDevice, QStringLiteral("Disconnect")));
+        }
+        QTimer::singleShot(800, this, &SessionServices::readAccessPoints);
+    });
 }
 
 
