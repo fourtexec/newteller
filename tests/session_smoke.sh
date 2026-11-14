@@ -300,6 +300,34 @@ if (( idle_frames > 60 )); then
 fi
 echo "session smoke: an idle desktop drew $idle_frames frames in 2 s"
 
+# Effects switched off at run time: the scene renderer takes over and draws
+# the whole screen (it used to keep the effects picture until something
+# moved), and switched on again the effects renderer is back.
+conf="$XDG_CONFIG_HOME/newteller/compositor.conf"
+if [[ -f $conf ]]; then
+    cp "$conf" "$runtime/compositor.conf.saved"
+    sed -i '/^effects\.enabled/d' "$conf"
+    echo 'effects.enabled = false' >> "$conf"
+    msg reload >/dev/null
+    sleep 0.5
+    read -r _ effects_state _ _ <<<"$(msg effects || true)"
+    if [[ $effects_state != off ]]; then
+        echo "effects did not switch off ($effects_state)" >&2
+        exit 1
+    fi
+    XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" grim -o HEADLESS-1 "$runtime/no-effects.png"
+    "$python" "$root/tests/session_check.py" "$before" "$runtime/no-effects.png"
+    cp "$runtime/compositor.conf.saved" "$conf"
+    msg reload >/dev/null
+    sleep 0.5
+    read -r _ effects_state _ _ <<<"$(msg effects || true)"
+    if [[ $effects_state != on ]]; then
+        echo "effects did not come back on ($effects_state)" >&2
+        exit 1
+    fi
+    echo "session smoke: effects switch off and on at run time"
+fi
+
 # Blank and wake the screen the way the idle manager does.
 msg dpms off >/dev/null
 msg dpms on >/dev/null
