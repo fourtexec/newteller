@@ -228,6 +228,10 @@ line").
   `maximized_vert && maximized_horz`), and apply what was requested before
   the first configure when the window maps. Client-started moves and
   resizes go through `interactiveGrabAllowed()`.
+- Snapping tells xdg clients they are tiled (`viewSetTiled`, all four
+  edges) and `viewClearSnap` clears it; new windows get `configure_bounds`
+  (the usable area) in their first configure. Both are version-gated:
+  wlroots asserts on old clients, so check `wl_resource_get_version()`.
 - A window's screen is `viewNearestOutput()` (centre, else nearest), never
   "the output under its corner".
 - `updateFullscreenLayers()` is the only place that shows or hides the top
