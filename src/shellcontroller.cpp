@@ -319,16 +319,9 @@ QUrl ShellController::iconUrl(const QString &name) const
 
     QString resolved;
 
-    // 1. The core set compiled into the binary (IconKit's lucide icons): the
-    //    shell chrome always renders, even on a system without IconKit on
-    //    disk and without these names in the system icon theme.
-    const QString qrc = QStringLiteral("qrc:/icons/") + name + QStringLiteral(".svg");
-    if (QFile::exists(qrc))
-        resolved = qrc;
-
-    // 2. A user-managed IconKit checkout (settings: icons.path + icons.set)
+    // 1. A user-managed IconKit checkout (settings: icons.path + icons.set)
     //    overrides everything the binary and the installation carry.
-    if (resolved.isEmpty()) {
+    {
         const QString overridePath = expandHome(
             m_settings->value(QStringLiteral("icons.path")).toString());
         if (!overridePath.isEmpty()) {
@@ -341,7 +334,7 @@ QUrl ShellController::iconUrl(const QString &name) const
         }
     }
 
-    // 3. The IconKit bundled with the release (the install ships
+    // 2. The IconKit bundled with the release (the install ships
     //    github.com/fourtexec/iconkit under share/newteller/icons).
     if (resolved.isEmpty()) {
         const QString set = m_settings->value(QStringLiteral("icons.set"),
@@ -356,6 +349,17 @@ QUrl ShellController::iconUrl(const QString &name) const
                 break;
             }
         }
+    }
+
+    // 3. The core set compiled into the binary (resources.qrc): the shell
+    //    chrome renders even without IconKit on disk and without these
+    //    names in the system icon theme. QFile reads resources as ":/...";
+    //    asked with "qrc:/..." (a URL scheme) this never matched, and such
+    //    systems showed empty buttons.
+    if (resolved.isEmpty()) {
+        const QString resource = QStringLiteral(":/icons/") + name + QStringLiteral(".svg");
+        if (QFile::exists(resource))
+            resolved = QStringLiteral("qrc") + resource;
     }
 
     if (cache)
@@ -384,11 +388,11 @@ QUrl ShellController::tintedIcon(const QString &name, const QColor &color) const
     // be nearly invisible, so they are recoloured to the theme foreground.
     // Application icons from the system theme (colourful logos) are returned
     // unchanged - tintedIcon only rewrites SVGs it finds in the IconKit sets.
+    // The same order as iconUrl(): the user's set, the installed IconKit,
+    // then the copy compiled into the binary (":/icons/...", as QFile wants
+    // it: "qrc:/..." never matched).
     QString source;
-    const QString qrc = QStringLiteral("qrc:/icons/") + name + QStringLiteral(".svg");
-    if (QFile::exists(qrc)) {
-        source = qrc;
-    } else {
+    {
         const QString set = m_settings->value(QStringLiteral("icons.set"),
                                               QStringLiteral("lucide")).toString();
         const QString overridePath = expandHome(
@@ -411,12 +415,17 @@ QUrl ShellController::tintedIcon(const QString &name, const QColor &color) const
                 }
             }
         }
+        if (source.isEmpty()) {
+            const QString resource = QStringLiteral(":/icons/") + name + QStringLiteral(".svg");
+            if (QFile::exists(resource))
+                source = resource;
+        }
     }
     if (source.isEmpty())
         return iconUrl(name); // not an IconKit glyph: the system theme decides
 
-    const QUrl original = source.startsWith(QLatin1String("qrc:"))
-                          ? QUrl(source) : QUrl::fromLocalFile(source);
+    const QUrl original = source.startsWith(QLatin1Char(':'))
+                          ? QUrl(QStringLiteral("qrc") + source) : QUrl::fromLocalFile(source);
     const QString cacheKey = name + QLatin1Char('@') + color.name();
     if (m_tintCache.contains(cacheKey))
         return QUrl(m_tintCache.value(cacheKey));
