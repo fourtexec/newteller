@@ -2045,11 +2045,18 @@ static void switchWorkspace(struct Server *server, int index)
     if (index < 0 || index >= count || index == server->workspace)
         return;
     switcherCancel(server);
-    if (server->focusedView)
+    // A window being dragged comes along (as on GNOME and KDE): it used to
+    // vanish from under the pointer, left on the desktop being left.
+    struct View *carried = server->cursorMode == CURSOR_MOVE ? server->grabbedView : NULL;
+    if (carried && (!carried->mapped || carried->sticky || carried->overrideRedirect))
+        carried = NULL;
+    if (server->focusedView && server->focusedView != carried)
         clearKeyboardFocus(server);
-    server->previousView = NULL;
+    server->previousView = carried;
     startWorkspaceSlide(server, server->workspace, index, index > server->workspace ? 1 : -1);
     server->workspace = index;
+    if (carried)
+        carried->workspace = index;
     struct View *view;
     wl_list_for_each(view, &server->views, link)
         viewSyncVisible(view);
