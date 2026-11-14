@@ -258,6 +258,8 @@ int main(int argc, char *argv[])
     QObject::connect(&screenSaver, &ScreenSaverService::inhibitedChanged, &session,
                      &SessionServices::setIdleInhibited);
     QObject::connect(&screenSaver, &ScreenSaverService::lockRequested, &session, &SessionServices::lock);
+    QObject::connect(&session, &SessionServices::lockedChanged, &screenSaver,
+                     [&session, &screenSaver] { screenSaver.setLocked(session.locked()); });
     // Over a game or a video notifications wait in the history.
     QObject::connect(&session, &SessionServices::fullscreenChanged, &notifications,
                      [&session, &notifications] {

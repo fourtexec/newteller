@@ -22,6 +22,10 @@ public:
 
     bool registered() const { return m_registered; }
     bool inhibited() const { return !m_inhibitors.isEmpty(); }
+    // The session's lock state, which is what "active" means here: browsers
+    // and chat applications ask GetActive or listen to ActiveChanged to
+    // tell that the user is away.
+    void setLocked(bool locked);
 
 public slots:
     Q_SCRIPTABLE uint Inhibit(const QString &application, const QString &reason);
@@ -50,6 +54,8 @@ private:
 
     QHash<uint, Inhibitor> m_inhibitors;
     uint m_nextCookie = 1;
+    bool m_active = false;
+    qint64 m_activeSince = 0;
     QDBusServiceWatcher m_watcher;
     bool m_registered = false;
 };

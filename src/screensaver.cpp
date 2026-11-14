@@ -1,5 +1,7 @@
 #include "screensaver.h"
 
+#include <QDateTime>
+
 #include <QDBusConnection>
 #include <QDBusError>
 #include <QDBusMessage>
@@ -108,9 +110,19 @@ void ScreenSaverService::SimulateUserActivity()
     // swayidle restarts its timers on real input only; nothing to do.
 }
 
+void ScreenSaverService::setLocked(bool locked)
+{
+    if (m_active == locked)
+        return;
+    m_active = locked;
+    m_activeSince = locked ? QDateTime::currentMSecsSinceEpoch() : 0;
+    if (m_registered)
+        emit ActiveChanged(locked);
+}
+
 bool ScreenSaverService::GetActive()
 {
-    return false;
+    return m_active;
 }
 
 bool ScreenSaverService::SetActive(bool active)
@@ -121,7 +133,10 @@ bool ScreenSaverService::SetActive(bool active)
 
 uint ScreenSaverService::GetActiveTime()
 {
-    return 0;
+    // Seconds the screen has been locked, 0 when it is not.
+    if (!m_active)
+        return 0;
+    return uint((QDateTime::currentMSecsSinceEpoch() - m_activeSince) / 1000);
 }
 
 uint ScreenSaverService::GetSessionIdleTime()

@@ -643,6 +643,16 @@ if command -v swaylock >/dev/null 2>&1 && command -v pkill >/dev/null 2>&1; then
         exit 1
     fi
     sleep 1
+    # org.freedesktop.ScreenSaver reports the lock (chat applications and
+    # browsers ask it to tell that the user is away).
+    active=$(gdbus call --session --dest org.freedesktop.ScreenSaver \
+        --object-path /org/freedesktop/ScreenSaver \
+        --method org.freedesktop.ScreenSaver.GetActive 2>/dev/null || true)
+    if [[ $active != '(true,)' ]]; then
+        echo "org.freedesktop.ScreenSaver.GetActive does not report the lock ($active)" >&2
+        exit 1
+    fi
+    echo 'session smoke: org.freedesktop.ScreenSaver reports the lock'
     XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" grim -o HEADLESS-1 "$runtime/locked.png"
     "$python" "$root/tests/session_check.py" --locked "$runtime/locked.png"
 
