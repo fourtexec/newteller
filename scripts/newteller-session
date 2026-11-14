@@ -15,7 +15,7 @@ export DESKTOP_SESSION=newteller
 # from the display manager so wlroots does not silently become a nested X11 or
 # Wayland client. The development --nested mode keeps the parent display.
 case " $* " in
-    *" --nested"*|*" --nested="*) ;;
+    *" --nested"*) ;; # also --nested=WxH
     *) unset DISPLAY WAYLAND_DISPLAY ;;
 esac
 
