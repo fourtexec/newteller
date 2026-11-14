@@ -8,6 +8,7 @@
 #include <QDBusMessage>
 #include <QDBusObjectPath>
 #include <QDBusServiceWatcher>
+#include <algorithm>
 #include <QDBusVariant>
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
@@ -406,6 +407,11 @@ void TrayWatcher::addItem(const QString &service, const QString &path)
 
     m_items.append(item);
     m_registered.append(item.id);
+    // The watcher only reports the services it was given: without this the
+    // icon of an application that quit (or crashed) stayed in the panel for
+    // good, and clicking it did nothing.
+    if (m_serviceWatcher && !m_serviceWatcher->watchedServices().contains(service))
+        m_serviceWatcher->addWatchedService(service);
     requestRefresh(item.id);
 
     // The StatusNotifierItem change signals (most items use these rather
@@ -452,6 +458,10 @@ void TrayWatcher::removeItem(const QString &service, const QString &path)
             }
             m_items.removeAt(i);
             m_registered.removeAll(id);
+            const bool serviceInUse = std::any_of(m_items.cbegin(), m_items.cend(),
+                [&service](const TrayItemData &other) { return other.service == service; });
+            if (m_serviceWatcher && !serviceInUse)
+                m_serviceWatcher->removeWatchedService(service);
             emitItems();
             emit StatusNotifierItemUnregistered(id);
             return;

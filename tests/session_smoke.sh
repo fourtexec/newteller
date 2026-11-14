@@ -426,7 +426,7 @@ if has_shell_name; then
 
     # A tray application registers its StatusNotifierItem with the shell's
     # watcher through the org.kde.StatusNotifierWatcher interface.
-    if ! "$python" - <<'PY'
+    if ! tray_name=$("$python" - <<'PY'
 import os, sys
 from PySide6.QtCore import QCoreApplication, QObject, Property, ClassInfo
 from PySide6.QtDBus import QDBusConnection, QDBusInterface
@@ -454,12 +454,28 @@ registered = watcher.property("RegisteredStatusNotifierItems") or []
 if not any(name in entry for entry in registered):
     print("the watcher does not list the item:", registered, file=sys.stderr)
     sys.exit(1)
+print(name)
 PY
-    then
+    ); then
         echo 'a tray application could not register its icon' >&2
         exit 1
     fi
     echo 'session smoke: tray applications register with the StatusNotifierWatcher'
+    # The application has quit: its icon goes away with it.
+    tray_items=''
+    for _ in $(seq 1 50); do
+        tray_items=$(gdbus call --session --dest org.kde.StatusNotifierWatcher \
+            --object-path /StatusNotifierWatcher \
+            --method org.freedesktop.DBus.Properties.Get \
+            org.kde.StatusNotifierWatcher RegisteredStatusNotifierItems 2>/dev/null || true)
+        [[ $tray_items != *"$tray_name"* ]] && break
+        sleep 0.1
+    done
+    if [[ -z $tray_name || $tray_items == *"$tray_name"* ]]; then
+        echo "the icon of a tray application that quit is still listed ($tray_items)" >&2
+        exit 1
+    fi
+    echo 'session smoke: the icon of a tray application that quits goes away'
 
     # org.freedesktop.ScreenSaver.Inhibit (video players, XWayland apps)
     # keeps the screen awake while the caller stays on the bus, and is
