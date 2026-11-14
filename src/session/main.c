@@ -5396,6 +5396,32 @@ static void handleXdgCommit(struct wl_listener *listener, void *data)
         // xdg-shell requires the compositor to answer the first commit with a
         // configure event; otherwise the client never maps its window.
         applyDecorationMode(view);
+        // configure_bounds (xdg-shell v4): the room the window has on the
+        // screen it will open on (the one under the pointer, as in
+        // centerView), so GTK 4 and Qt choose a first size that fits next
+        // to the panel instead of one taller than the screen.
+        struct Server *server = view->server;
+        if (wl_resource_get_version(view->xdg->resource)
+            >= XDG_TOPLEVEL_CONFIGURE_BOUNDS_SINCE_VERSION) {
+            struct wlr_output *under = wlr_output_layout_output_at(
+                server->outputLayout, server->cursor->x, server->cursor->y);
+            struct wlr_box area = {0};
+            struct Output *candidate;
+            wl_list_for_each(candidate, &server->outputs, link) {
+                if (!candidate->disabled && (!under || candidate->output == under)) {
+                    area = candidate->usable;
+                    break;
+                }
+            }
+            int width = area.width;
+            int height = area.height;
+            if (view->ssd) {
+                width -= 2 * server->config.borderWidth;
+                height -= server->config.titleHeight + server->config.borderWidth;
+            }
+            if (width > 0 && height > 0)
+                wlr_xdg_toplevel_set_bounds(view->xdg, width, height);
+        }
         wlr_xdg_toplevel_set_size(view->xdg, 0, 0);
         wlr_log(WLR_DEBUG, "sent initial xdg configure for %s", viewTitle(view));
     }
