@@ -46,6 +46,58 @@ pub struct PluginDirInfo {
     pub plugins: usize,
 }
 
+/// Where a release archive (or an installation image) writes down which
+/// build it is. The updater compares this with what fourtexec.site offers.
+pub const BUILD_INFO_FILE: &str = "/usr/share/newteller/BUILDINFO";
+
+/// The installed build, from `BUILDINFO` (`key=value` lines).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BuildInfo {
+    /// Full commit hash; empty for a build from source.
+    pub commit: String,
+    /// Release target, e.g. `debian13-x86_64`; empty when not recorded.
+    pub target: String,
+    /// Commit time in seconds since the epoch; 0 when not recorded.
+    pub date: u64,
+}
+
+/// Parses the text of a `BUILDINFO` file. Unknown keys are ignored, and a
+/// commit that is not a full hexadecimal hash counts as "unknown" rather
+/// than being passed on.
+pub fn parse_build_info(text: &str) -> BuildInfo {
+    let mut info = BuildInfo::default();
+    for line in text.lines() {
+        let line = line.trim();
+        if line.starts_with('#') {
+            continue;
+        }
+        let Some((key, value)) = line.split_once('=') else {
+            continue;
+        };
+        let value = value.trim().trim_matches(|c| c == '"' || c == '\'');
+        match key.trim() {
+            "commit" => {
+                if value.len() == 40 && value.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
+                    info.commit = value.to_string();
+                }
+            }
+            "target" => info.target = value.to_string(),
+            "date" => info.date = value.parse().unwrap_or(0),
+            _ => {}
+        }
+    }
+    info
+}
+
+/// The installed build; `NEWTELLER_BUILDINFO` names another file (tests).
+pub fn read_build_info() -> BuildInfo {
+    let path = std::env::var("NEWTELLER_BUILDINFO").unwrap_or_else(|_| BUILD_INFO_FILE.to_string());
+    std::fs::read_to_string(path)
+        .map(|text| parse_build_info(&text))
+        .unwrap_or_default()
+}
+
 /// Everything `newteller-ctl doctor` prints.
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -54,6 +106,8 @@ pub struct Diagnostics {
     pub version: String,
     /// C ABI version.
     pub abi_version: u32,
+    /// The installed build (release archive), if it is recorded.
+    pub build: BuildInfo,
     /// Target triple the crate was compiled for.
     pub target: String,
     /// True for a debug build.
@@ -110,6 +164,7 @@ pub fn collect() -> Diagnostics {
     Diagnostics {
         version: crate::VERSION.to_string(),
         abi_version: crate::ABI_VERSION,
+        build: read_build_info(),
         target: env!("TARGET").to_string(),
         debug_build: cfg!(debug_assertions),
         cpu_count,
@@ -196,5 +251,33 @@ fn config_issues() -> Vec<config::Issue> {
                 .filter(|issue| issue.level != "info")
                 .collect()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_info_is_read_from_key_value_lines() {
+        let commit = "0123456789abcdef0123456789abcdef01234567";
+        let info = parse_build_info(&format!(
+            "# written by build-release.sh\ncommit={commit}\ntarget=debian13-x86_64\ndate=1793943937\nextra=1\n"
+        ));
+        assert_eq!(info.commit, commit);
+        assert_eq!(info.target, "debian13-x86_64");
+        assert_eq!(info.date, 1_793_943_937);
+    }
+
+    #[test]
+    fn build_info_without_a_real_commit_is_unknown() {
+        // An installation image built outside git writes no commit; a short
+        // or mistyped one must not be compared with real ones either.
+        for text in ["", "date=\ntarget=\n", "commit=abc123\n", "commit=XYZ\ndate=soon\n", "no equals sign"] {
+            let info = parse_build_info(text);
+            assert_eq!(info.commit, "", "{text:?}");
+            assert_eq!(info.date, 0, "{text:?}");
+        }
+        assert_eq!(parse_build_info("target = \"arch-x86_64\"").target, "arch-x86_64");
     }
 }

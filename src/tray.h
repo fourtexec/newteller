@@ -37,10 +37,10 @@ struct TrayItemData {
 // The shell acts as a StatusNotifierWatcher (org.kde.StatusNotifierWatcher):
 // applications that implement org.kde.StatusNotifierItem - Qt's
 // QSystemTrayIcon, Electron apps, GTK applets, KMix, Telegram, ... - register
-// with it and the panel renders their icons. The DBusMenu protocol behind the
-// items is not implemented: left click activates the item, middle click
-// triggers the secondary action and right click asks the item to open its own
-// context menu (every libappindicator/KStatusNotifierItem application does).
+// with it and the panel renders their icons. Left click activates the item,
+// middle click triggers the secondary action and right click shows the item's
+// com.canonical.dbusmenu menu in a shell card (items without a menu object
+// are asked to open their own context menu instead).
 //
 // Everything is best effort, exactly like the notification daemon: the name is
 // only claimed when no other watcher owns it (so the shell never fights the

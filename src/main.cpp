@@ -14,6 +14,7 @@
 #include "sessionservices.h"
 #include "screensaver.h"
 #include "translator.h"
+#include "updater.h"
 #include "clipboardhistory.h"
 #include "screenrecorder.h"
 #include "audiodevices.h"
@@ -107,6 +108,8 @@ struct CliOptions {
     bool diagnostics = false;
     bool reset = false;
     bool settings = false;
+    bool checkUpdate = false;
+    bool installUpdate = false;
     bool ok = true;
     QString theme;
     QStringList files;
@@ -125,6 +128,8 @@ void printUsage()
         "  --theme <name>       Select the theme (for example: default, light, nord)\n"
         "  --reset              Reset the configuration to defaults before starting\n"
         "  --settings           Open the built-in settings window after starting\n"
+        "  --check-update       Ask fourtexec.site for a newer build, print the answer and exit\n"
+        "  --install-update     Download and install the newer build, if there is one, and exit\n"
         "\n"
         "Files and URLs are opened with their default applications.\n");
 }
@@ -138,7 +143,12 @@ CliOptions scanArguments(int argc, char **argv)
             printUsage();
             options.ok = false;
         } else if (arg == "--version" || arg == "-v") {
-            std::printf("NewTeller %s\n", NEWTELLER_VERSION);
+            const Updater::Build build = Updater::installedBuild();
+            if (build.commit.isEmpty())
+                std::printf("NewTeller %s\n", NEWTELLER_VERSION);
+            else
+                std::printf("NewTeller %s (build %s, %s)\n", NEWTELLER_VERSION,
+                            qPrintable(build.commit.left(10)), qPrintable(build.target));
             options.ok = false;
         } else if (arg == "--print-config") {
             options.printConfig = true;
@@ -148,6 +158,10 @@ CliOptions scanArguments(int argc, char **argv)
             options.reset = true;
         } else if (arg == "--settings") {
             options.settings = true;
+        } else if (arg == "--check-update") {
+            options.checkUpdate = true;
+        } else if (arg == "--install-update") {
+            options.installUpdate = true;
         } else if (arg == "--theme") {
             if (i + 1 < argc)
                 options.theme = QString::fromLocal8Bit(argv[++i]);
@@ -173,6 +187,75 @@ QString printJson(const QVariant &value)
     return QString::fromUtf8(doc.toJson(QJsonDocument::Indented));
 }
 
+// newteller --check-update / --install-update: the updater of Settings,
+// Updates, without a session. Exit code 0 = up to date (or the update was
+// installed), 10 = an update is available (--check-update only), 1 = the
+// check or the installation failed.
+int runUpdater(int argc, char **argv, bool install)
+{
+    QCoreApplication app(argc, argv);
+    Updater updater;
+    int result = 1;
+    bool installing = false;
+    int shownPercent = -1;
+    QObject::connect(&updater, &Updater::checked, &app, [&] {
+        std::printf("installed: %s (%s)\n",
+                    updater.installedCommit().isEmpty() ? "unknown" : qPrintable(updater.installedCommit()),
+                    updater.target().isEmpty() ? "unknown system" : qPrintable(updater.target()));
+        if (!updater.latestCommit().isEmpty())
+            std::printf("latest: %s\n", qPrintable(updater.latestCommit()));
+        if (!updater.error().isEmpty()) {
+            std::printf("error: %s\n", qPrintable(updater.error()));
+            app.quit();
+            return;
+        }
+        const bool available = updater.state() == QLatin1String("available");
+        std::printf("update: %s\n", available ? "available" : "none");
+        const QVariantList changes = updater.changes();
+        for (const QVariant &change : changes) {
+            const QVariantMap entry = change.toMap();
+            std::printf("  %s %s\n", qPrintable(entry.value(QStringLiteral("commit")).toString()),
+                        qPrintable(entry.value(QStringLiteral("title")).toString()));
+        }
+        if (!available || !install) {
+            result = available ? 10 : 0;
+            app.quit();
+            return;
+        }
+        std::fflush(stdout);
+        installing = true;
+        updater.install();
+    }, Qt::QueuedConnection);
+    QObject::connect(&updater, &Updater::progressChanged, &app, [&] {
+        const int percent = int(updater.progress() * 100);
+        if (installing && percent / 10 != shownPercent / 10) {
+            shownPercent = percent;
+            std::printf("downloading: %d%%\n", percent);
+            std::fflush(stdout);
+        }
+    });
+    QObject::connect(&updater, &Updater::changed, &app, [&] {
+        if (!installing)
+            return;
+        if (updater.state() == QLatin1String("installing") && shownPercent != 1000) {
+            shownPercent = 1000;
+            std::printf("installing...\n");
+            std::fflush(stdout);
+        } else if (updater.state() == QLatin1String("installed")) {
+            std::printf("installed: log out and back in to start the new version\n");
+            result = 0;
+            app.quit();
+        } else if (updater.state() == QLatin1String("available")) {
+            // Back to "available": the download or the installer failed.
+            std::printf("error: %s\n", qPrintable(updater.error()));
+            app.quit();
+        }
+    }, Qt::QueuedConnection);
+    updater.check();
+    app.exec();
+    return result;
+}
+
 } // namespace
 
 int main(int argc, char *argv[])
@@ -180,6 +263,8 @@ int main(int argc, char *argv[])
     const CliOptions cli = scanArguments(argc, argv);
     if (!cli.ok)
         return cli.printConfig || cli.diagnostics ? 1 : 0;
+    if (cli.checkUpdate || cli.installUpdate)
+        return runUpdater(argc, argv, cli.installUpdate);
 
     // Must run before QGuiApplication is created: native Wayland when the
     // compositor supports wlr-layer-shell, XWayland when it does not.
@@ -265,6 +350,7 @@ int main(int argc, char *argv[])
                      });
     ClipboardHistory clipboard(&settings);
     ScreenRecorder recorder(&settings, &notifications);
+    Updater updater(&settings, &notifications);
     AudioDevices audio;
     Bluetooth bluetooth;
     // Pairing codes and confirmations (org.bluez.Agent1), only in the
@@ -286,12 +372,18 @@ int main(int argc, char *argv[])
     if (cli.diagnostics) {
         QVariantMap out = shell.diagnostics();
         out.insert(QStringLiteral("settingsPath"), settings.configPath());
+        const Updater::Build build = Updater::installedBuild();
+        out.insert(QStringLiteral("build"), QVariantMap{{QStringLiteral("commit"), build.commit},
+                                                        {QStringLiteral("target"), build.target},
+                                                        {QStringLiteral("date"), build.date}});
         out.insert(QStringLiteral("configProblems"), settings.validate());
         out.insert(QStringLiteral("apps"), apps.stats());
         out.insert(QStringLiteral("systemAvailable"), system.available());
         std::printf("%s", qUtf8Printable(printJson(out)));
         return 0;
     }
+    // Not in the read-only modes above: this writes to the settings.
+    updater.greetNewBuild();
 
     // import NewTeller 1.0 -> ShellWindow.role (X11 window types and struts).
     qmlRegisterUncreatableType<ShellWindow>("NewTeller", 1, 0, "ShellWindow",
@@ -341,6 +433,7 @@ int main(int argc, char *argv[])
     engine.rootContext()->setContextProperty(QStringLiteral("Session"), &session);
     engine.rootContext()->setContextProperty(QStringLiteral("Clipboard"), &clipboard);
     engine.rootContext()->setContextProperty(QStringLiteral("Recorder"), &recorder);
+    engine.rootContext()->setContextProperty(QStringLiteral("Updater"), &updater);
     engine.rootContext()->setContextProperty(QStringLiteral("Audio"), &audio);
     engine.rootContext()->setContextProperty(QStringLiteral("Bluetooth"), &bluetooth);
     engine.rootContext()->setContextProperty(QStringLiteral("Polkit"), &polkit);

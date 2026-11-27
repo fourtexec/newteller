@@ -445,6 +445,49 @@ DropdownWindow {
             }
         }
 
+        // --- keep the screen awake -----------------------------------------
+        // For a presentation, a long download or reading: no blanking and
+        // no idle lock until it is switched off or the session ends.
+        RowLayout {
+            objectName: "keepAwakeRow"
+            Layout.fillWidth: true
+            visible: Session.compositorConnected && Session.idleAvailable
+            spacing: 8
+
+            Item {
+                width: 34
+                height: 34
+                Image {
+                    anchors.centerIn: parent
+                    width: 18
+                    height: 18
+                    sourceSize.width: 36
+                    sourceSize.height: 36
+                    fillMode: Image.PreserveAspectFit
+                    source: Shell.tintedIcon("monitor", Theme.foreground)
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Keep the screen awake")
+                color: Theme.foreground
+                font.family: Theme.fontFamily
+                font.pointSize: Theme.fontSize
+            }
+            SettingsSwitch {
+                id: keepAwakeSwitch
+                objectName: "keepAwakeSwitch"
+                onChanged: (on) => Session.keepAwake = on
+                // A click assigns `checked`, which would end a binding;
+                // follow the session's state explicitly instead.
+                Component.onCompleted: checked = Session.keepAwake
+                Connections {
+                    target: Session
+                    function onKeepAwakeChanged() { keepAwakeSwitch.checked = Session.keepAwake }
+                }
+            }
+        }
+
         // --- screen recording (wf-recorder) -------------------------------
         RowLayout {
             objectName: "recorderRow"

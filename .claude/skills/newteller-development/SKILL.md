@@ -16,6 +16,11 @@ and the checks that will fail if one is broken.
 - **Do not build locally.** The environment usually lacks the Debian/Ubuntu
   packages (Qt 6.8+, wlroots 0.18/0.19, LayerShellQt). Write code that is
   correct by inspection and verify it on GitHub Actions (see "Verifying").
+  Two things do run locally and save CI rounds: the QML smoke test
+  (`pip install PySide6-Essentials` in a venv, plus `libegl1`) and
+  `cargo test --workspace` in `rust/`. For wlroots APIs, read the real
+  headers: the release tarballs of 0.18, 0.19 and 0.20 from
+  gitlab.freedesktop.org/wlroots/wlroots show what each version offers.
 - Support **wlroots 0.18 (Debian 13), 0.19 (Ubuntu 26.04, Fedora) and 0.20
   (Arch)**. Their APIs differ (see "wlroots pitfalls"); guard with
   `#if WLR_VERSION_MAJOR == 0 && WLR_VERSION_MINOR >= 19` (0.20 takes the
@@ -49,6 +54,7 @@ and the checks that will fail if one is broken.
 | `src/sessionservices.cpp/.h` | `Session`: talks to the compositor over the control socket, writes `compositor.conf` / `lock.conf`, runs swayidle, wlsunset, polkit agent, XDG autostart, Wi-Fi (NetworkManager over D-Bus, with `wifiStatus` diagnostics), overview/display queries, blur regions, hung windows / force quit, `pointerPressed` (clicks anywhere, closes cards). |
 | `src/shellcontroller.cpp/.h` | `Shell`: D-Bus object `org.newteller.Shell` (the compositor calls it with `gdbus` for Super shortcuts), icons, lock/logout. |
 | `src/quicksettings.*` `bluetooth.*` `clipboardhistory.*` `tray.*` `notifications.*` `windowlist.*` `systemmonitor.*` `theme.*` `appmodel.*` `plugins.*` | `Quick`, `Bluetooth`, `Clipboard`, `Tray`, `Notifications`, `Windows`, `System`, `Theme`, `Apps`, `Plugins`, `Polkit` (`polkitagent.*`: the built-in polkit agent; GLib/polkit headers must be included before any Qt header there). |
+| `src/updater.*`, `scripts/newteller-update-install` | `Updater`: reads `https://fourtexec.site/newteller/update.json` (generated in `fourtexec/fourtexec.github.io` from the commit releases), downloads the archive it links to, checks the SHA-256 and runs the root helper through pkexec. `/usr/share/newteller/BUILDINFO` says what is installed; `newteller --check-update` / `--install-update` and `NEWTELLER_UPDATE_URL=file://...` test it without a session (the session smoke test installs a stand-in archive that way; `NEWTELLER_BUILDINFO` and `NEWTELLER_UPDATE_STORE` keep it out of `/usr` and `/var/lib/newteller`). The helper keeps the replaced archive for `--rollback`. New `updates.*` keys also go into the `Settings` mock of `tests/qml_smoke.py`: it holds only the values listed there, so a `=== true` binding is false without one. |
 | `qml/Main.qml` | Root object: instantiates every window and wires D-Bus signals (`Connections { target: Shell }`). |
 | `qml/Panel.qml` | Bar, dock, tray, indicators, workspace dots, layout indicator. |
 | `qml/DropdownWindow.qml` + `ShellFrame.qml` | Base for every popup card (start menu, quick settings, Wi-Fi, Bluetooth, clipboard...). |
@@ -95,7 +101,9 @@ and the checks that will fail if one is broken.
 
 **New setting shown in the settings app**
 1. Default in `src/settings.cpp` (`m_defaults.insert`). The QML smoke test
-   fails if QML reads a key without a default.
+   fails if QML reads a key without a default, and if a key has a default
+   that nothing reads (a `settingKey:` in `SettingsApp.qml` does not count):
+   a setting ships together with the code that obeys it, or not at all.
 2. A `SettingsRow { settingKey: ...; SettingsSwitch/Slider/... { settingKey: ... } }`
    in the right page of `qml/SettingsApp.qml`.
 3. If the compositor needs it: the three places above.
@@ -119,6 +127,10 @@ and add a mock class with every property/slot/signal QML uses to
 VT switching first, then media keys, then the lock check (nothing else works
 while locked), user shortcuts (`bind.N`), then the built-ins. Check modifier
 combinations that already exist (e.g. Super+S vs Super+Shift+S).
+
+Shortcuts compare Latin keysyms; `keyboardKey` passes `shortcutSym()` (the
+key looked up in a US keymap when the active layout is not Latin) to
+`keyHandled()`, so never match a layout-specific symbol for a letter key.
 
 **New control-socket command**: a branch in `ipcHandleCommand()`; reply with
 exactly one line; document it in the CLI usage text and README; add a check
@@ -207,6 +219,12 @@ line").
   new scene tree must be added there too.
 - The shell: NetworkManager calls go through async `QDBusPendingCallWatcher`
   chains (join, list, disconnect); keep new ones asynchronous.
+- Graphics tablets: over a surface that accepts tablet-v2 the pen is sent as
+  a pen (`handleTabletAxis/Tip/Button/Proximity`, one `TabletTool` per
+  `wlr_tablet_tool`), everywhere else it goes through the pointer path
+  (`tabletEmulateButton` -> `cursorButton`). A press on a surface runs
+  `pressFocus()`, shared with mouse clicks. `wlr_surface_accepts_tablet_v2`
+  swapped its arguments in 0.19.
 - Pointers stored on `Server` that refer to a `View` (`focusedView`,
   `previousView`, `grabbedView`, `switchTarget`, `hoverView`,
   `lastTitleView`) must be cleared in `destroyView()`.
@@ -272,7 +290,9 @@ loops, window opacity changes); literal `iconName`/`icon:` values need an
 (no newer syntax). Avoid simulating hover in tests (tooltips fade a window's
 opacity).
 
-Session smoke test: runs `newteller-compositor --headless=1280x800` with the
+Session smoke test: `tests/wayland_globals.py` lists the advertised globals
+(add a new protocol's interface name to the list in `session_smoke.sh`).
+It runs `newteller-compositor --headless=1280x800` with the
 shell, a PySide test window, `grim` screenshots, `wlr-randr`, `swaylock`,
 and the `msg` helper for the control socket. Add a check there for every
 compositor behaviour you add.

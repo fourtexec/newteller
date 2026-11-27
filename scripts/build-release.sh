@@ -64,7 +64,12 @@ install -m 644 README.md "$stage/README.md"
 install -m 755 scripts/install-runtime-deps.sh "$stage/install-runtime-deps.sh"
 install -m 644 scripts/platform.sh "$stage/platform.sh"
 install -m 755 scripts/install-release.sh "$stage/install.sh"
-printf 'commit=%s\ntarget=%s\n' "$sha" "$NEWTELLER_TARGET" > "$stage/BUILDINFO"
+# BUILDINFO is how the archive (install.sh) and later the installed system
+# (the updater) know which build this is. The commit date lets the updater
+# tell an older offer from a newer one.
+commit_date=$(git show -s --format=%ct "$sha" 2>/dev/null || true)
+printf 'commit=%s\ntarget=%s\ndate=%s\n' "$sha" "$NEWTELLER_TARGET" "$commit_date" > "$stage/BUILDINFO"
+install -m 644 "$stage/BUILDINFO" "$stage/usr/share/newteller/BUILDINFO"
 
 # The icon kit (github.com/fourtexec/iconkit) ships with the release so every
 # icon resolves even without the system icon theme. CI pins it and passes the
@@ -86,6 +91,7 @@ test -x "$stage/usr/bin/newteller-screenshot"
 test -x "$stage/usr/bin/newteller-lock"
 test -x "$stage/usr/bin/newteller-run-as-root"
 test -x "$stage/usr/bin/newteller-terminal"
+test -x "$stage/usr/bin/newteller-update-install"
 test -f "$stage/usr/share/backgrounds/newteller/default.jpg"
 test -x "$stage/usr/bin/newteller-ctl"
 for plugin in desktop-clock desktop-sysinfo panel-system-monitor; do
@@ -96,6 +102,7 @@ test -f "$stage/usr/share/applications/org.newteller.Shell.desktop"
 test -f "$stage/usr/share/wayland-sessions/newteller.desktop"
 test -f "$stage/usr/share/newteller/newteller-autostart.desktop"
 test -f "$stage/usr/share/xdg-desktop-portal/newteller-portals.conf"
+test -f "$stage/usr/share/polkit-1/actions/org.newteller.update.policy"
 archive="$root/dist/$name.zip"
 rm -f -- "$archive"
 (cd "$(dirname "$stage")" && zip -qr "$archive" "$name")

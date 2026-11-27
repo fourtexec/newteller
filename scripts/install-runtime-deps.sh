@@ -95,6 +95,8 @@ install_debian() {
         libxkbcommon0 libseat1 libinput10 libdrm2 libgbm1 libegl1 libgles2
         libcairo2 libpangocairo-1.0-0
         grim
+        # The updater unpacks release archives and checks TLS certificates.
+        unzip ca-certificates
         # The administrator prompt (polkit agent) is linked into the shell.
         libpolkit-agent-1-0
     )
@@ -110,7 +112,7 @@ install_debian() {
         lxpolkit procps wdisplays
         network-manager wpasupplicant network-manager-gnome
         blueman pavucontrol slurp wl-clipboard sound-theme-freedesktop udisks2
-        wf-recorder pulseaudio-utils
+        wf-recorder pulseaudio-utils fonts-noto-color-emoji wtype
     )
     # Wi-Fi firmware for the common adapters (Debian: non-free-firmware;
     # Ubuntu: linux-firmware). Missing firmware is the usual reason an
@@ -152,7 +154,7 @@ install_arch() {
     pacman -Syu --noconfirm --needed \
         qt6-base qt6-declarative qt6-svg qt6-wayland qt6-imageformats layer-shell-qt \
         "$wlroots" xorg-xwayland dbus glib2 libxkbcommon seatd libinput libdrm mesa \
-        cairo pango grim polkit
+        cairo pango grim polkit unzip
 
     local optional=(
         gtklock swaylock swayidle wlsunset
@@ -160,7 +162,7 @@ install_arch() {
         polkit-gnome procps-ng wdisplays
         networkmanager wpa_supplicant network-manager-applet
         blueman pavucontrol slurp wl-clipboard sound-theme-freedesktop udisks2
-        wf-recorder libpulse
+        wf-recorder libpulse noto-fonts-emoji wtype
     )
     wants_firmware && optional+=(linux-firmware)
     power_manager_installed || optional+=(power-profiles-daemon)
@@ -191,7 +193,7 @@ install_fedora() {
         qt6-qtbase qt6-qtbase-gui qt6-qtdeclarative qt6-qtsvg qt6-qtwayland \
         qt6-qtimageformats layer-shell-qt \
         "$wlroots" xorg-x11-server-Xwayland dbus-daemon glib2 libxkbcommon libseat \
-        libinput libdrm mesa-libgbm mesa-libEGL mesa-libGLES cairo pango grim polkit polkit-libs
+        libinput libdrm mesa-libgbm mesa-libEGL mesa-libGLES cairo pango grim polkit polkit-libs unzip
 
     local optional=(
         gtklock swaylock swayidle wlsunset
@@ -199,7 +201,7 @@ install_fedora() {
         lxpolkit procps-ng wdisplays
         NetworkManager NetworkManager-wifi wpa_supplicant network-manager-applet
         blueman pavucontrol slurp wl-clipboard sound-theme-freedesktop udisks2
-        wf-recorder pulseaudio-utils
+        wf-recorder pulseaudio-utils google-noto-color-emoji-fonts wtype
     )
     wants_firmware && optional+=(linux-firmware)
     power_manager_installed || optional+=(power-profiles-daemon)

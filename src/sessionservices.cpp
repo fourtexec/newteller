@@ -533,6 +533,23 @@ void SessionServices::setKeyboardLayout(int index)
 
 void SessionServices::setIdleInhibited(bool inhibited)
 {
+    m_appsInhibit = inhibited;
+    updateIdleInhibit();
+}
+
+void SessionServices::setKeepAwake(bool on)
+{
+    if (m_keepAwake == on)
+        return;
+    m_keepAwake = on;
+    updateIdleInhibit();
+    emit keepAwakeChanged();
+}
+
+// The screen stays awake while a player or the user asks for it.
+void SessionServices::updateIdleInhibit()
+{
+    const bool inhibited = m_appsInhibit || m_keepAwake;
     if (m_idleInhibited == inhibited)
         return;
     m_idleInhibited = inhibited;

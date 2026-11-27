@@ -7,6 +7,8 @@
 #include <QCoreApplication>
 #include <QDBusConnection>
 #include <QDBusError>
+#include <QDBusMessage>
+#include <QDBusPendingCallWatcher>
 #include <QDesktopServices>
 #include <QDir>
 #include <QFile>
@@ -15,6 +17,7 @@
 #include <QImageReader>
 #include <QProcess>
 #include <QThread>
+#include <QTimer>
 #include <QPointer>
 #include <QMimeData>
 #include <QStandardPaths>
@@ -109,6 +112,24 @@ ShellController::ShellController(Settings *settings, NotificationDaemon *notific
                      qUtf8Printable(bus.lastError().message()));
         }
     }
+
+    // Can this machine hibernate? Asked once, without blocking: logind may
+    // be slow or absent (then the answer stays "no").
+    QDBusMessage ask = QDBusMessage::createMethodCall(
+        QStringLiteral("org.freedesktop.login1"), QStringLiteral("/org/freedesktop/login1"),
+        QStringLiteral("org.freedesktop.login1.Manager"), QStringLiteral("CanHibernate"));
+    auto *watcher = new QDBusPendingCallWatcher(QDBusConnection::systemBus().asyncCall(ask, 5000), this);
+    connect(watcher, &QDBusPendingCallWatcher::finished, this, [this](QDBusPendingCallWatcher *call) {
+        const QDBusMessage reply = call->reply();
+        call->deleteLater();
+        if (reply.type() != QDBusMessage::ReplyMessage || reply.arguments().isEmpty())
+            return;
+        const bool can = reply.arguments().constFirst().toString() == QLatin1String("yes");
+        if (can != m_canHibernate) {
+            m_canHibernate = can;
+            emit canHibernateChanged();
+        }
+    });
 
     // The icon cache follows the icon settings.
     connect(settings, &Settings::changed, this, [this](const QString &key) {
@@ -499,6 +520,11 @@ void ShellController::toggleClipboard()
     emit clipboardToggleRequested();
 }
 
+void ShellController::toggleEmoji()
+{
+    emit emojiToggleRequested();
+}
+
 void ShellController::toggleTaskView()
 {
     emit taskViewToggleRequested();
@@ -666,6 +692,22 @@ void ShellController::copyToClipboard(const QString &text) const
         return;
     if (QClipboard *clipboard = QGuiApplication::clipboard())
         clipboard->setText(text);
+}
+
+bool ShellController::canTypeText() const
+{
+    return !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")
+           && !QStandardPaths::findExecutable(QStringLiteral("wtype")).isEmpty();
+}
+
+bool ShellController::typeText(const QString &text)
+{
+    if (text.isEmpty() || !canTypeText())
+        return false;
+    QTimer::singleShot(350, this, [text]() {
+        QProcess::startDetached(QStringLiteral("wtype"), {QStringLiteral("--"), text});
+    });
+    return true;
 }
 
 void ShellController::notifyUrgent(const QString &title, const QString &body, const QString &icon) const
@@ -847,6 +889,11 @@ void ShellController::logout() const
         return;
     }
     QProcess::startDetached(QStringLiteral("loginctl"), {QStringLiteral("terminate-user"), userName()});
+}
+
+void ShellController::hibernate() const
+{
+    QProcess::startDetached(QStringLiteral("systemctl"), {QStringLiteral("hibernate")});
 }
 
 void ShellController::suspend() const

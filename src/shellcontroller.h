@@ -33,6 +33,9 @@ class ShellController : public QObject {
     Q_PROPERTY(bool isWayland READ isWayland CONSTANT)
     // One shared clock for the panel and every clock widget.
     Q_PROPERTY(QDateTime now READ now NOTIFY nowChanged)
+    // Whether this machine can hibernate (logind's CanHibernate: swap large
+    // enough, resume configured); the start menu offers it only then.
+    Q_PROPERTY(bool canHibernate READ canHibernate NOTIFY canHibernateChanged)
 
 public:
     explicit ShellController(Settings *settings, NotificationDaemon *notifications = nullptr,
@@ -79,6 +82,8 @@ public:
     Q_INVOKABLE void toggleQuickSettings();
     // Super+V: the clipboard history.
     Q_INVOKABLE void toggleClipboard();
+    // Super+. : the emoji picker.
+    Q_INVOKABLE void toggleEmoji();
     // Super+Tab: the window overview.
     Q_INVOKABLE void toggleTaskView();
     // Ctrl+Shift+Esc / Ctrl+Alt+Esc: the force-quit dialog.
@@ -94,6 +99,11 @@ public:
     // Starts `command` in the configured terminal emulator.
     Q_INVOKABLE void terminal(const QString &command) const;
     Q_INVOKABLE void copyToClipboard(const QString &text) const;
+    // Types `text` into the focused window through a virtual keyboard
+    // (wtype), a moment later so a closing shell card has given the
+    // keyboard back. False when that is not possible here.
+    Q_INVOKABLE bool canTypeText() const;
+    Q_INVOKABLE bool typeText(const QString &text);
     // Desktop notification through org.freedesktop.Notifications (notify-send).
     Q_INVOKABLE void notify(const QString &title, const QString &body) const;
     // Gets through do-not-disturb and stays until closed (critical battery).
@@ -144,11 +154,14 @@ public:
     Q_INVOKABLE void lock() const;
     Q_INVOKABLE void logout() const;
     Q_INVOKABLE void suspend() const;
+    Q_INVOKABLE void hibernate() const;
+    bool canHibernate() const { return m_canHibernate; }
     Q_INVOKABLE void reboot() const;
     Q_INVOKABLE void powerOff() const;
 
 signals:
     void nowChanged();
+    void canHibernateChanged();
     // Emitted by openSettings(); Main.qml shows the embedded settings window.
     void settingsRequested();
     void settingsPageRequested(const QString &page);
@@ -158,6 +171,7 @@ signals:
     void notificationsToggleRequested();
     void quickSettingsToggleRequested();
     void clipboardToggleRequested();
+    void emojiToggleRequested();
     void taskViewToggleRequested();
     void forceQuitRequested();
     void dockItemRequested(int index);
@@ -172,6 +186,7 @@ private:
     NotificationDaemon *m_notifications;
     QTimer m_clock;
     QDateTime m_now;
+    bool m_canHibernate = false;
     // icon name -> resolved file URL ("" = fall back to the theme), so the
     // bindings in TaskButton do not stat the same files every frame.
     mutable QHash<QString, QString> m_iconCache;

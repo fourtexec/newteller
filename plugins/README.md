@@ -281,9 +281,8 @@ When `plugins.autoRescan` is enabled (default: true), NewTeller will automatical
 ## Contributing Plugins
 
 If you create a useful plugin, consider:
-1. Sharing it on the NewTeller plugin marketplace (when available)
-2. Submitting it as a pull request to the main repository
-3. Sharing it on GitHub with the `newteller-plugin` topic
+1. Submitting it as a pull request to the main repository
+2. Sharing it on GitHub with the `newteller-plugin` topic
 
 ## License
 

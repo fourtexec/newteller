@@ -27,6 +27,9 @@ public:
     Q_INVOKABLE QVariantMap at(const QString &id) const;
     Q_INVOKABLE void setEnabled(const QString &id, bool enabled);
     Q_INVOKABLE void rescan();
+    // The folder for the user's own plugins (created when missing), for
+    // "Open the plugins folder" in the settings.
+    Q_INVOKABLE QString userFolder() const;
 
 signals:
     void pluginsChanged();

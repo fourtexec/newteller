@@ -41,6 +41,8 @@
     <file>qml/SwitcherOverlay.qml</file>
     <file>qml/OsdPopup.qml</file>
     <file>qml/ClipboardPopup.qml</file>
+    <file>qml/EmojiPopup.qml</file>
+    <file>qml/EmojiData.js</file>
     <file>qml/WifiPopup.qml</file>
     <file>qml/BluetoothPopup.qml</file>
     <file>qml/TaskView.qml</file>

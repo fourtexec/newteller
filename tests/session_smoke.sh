@@ -50,6 +50,101 @@ chmod 700 "$runtime"
 export XDG_CONFIG_HOME="$runtime/config"
 mkdir -p "$XDG_CONFIG_HOME/newteller"
 printf '{\n    "desktop.defaultWallpaper": false\n}\n' > "$XDG_CONFIG_HOME/newteller/shell.json"
+
+# The updater, with a local file standing in for fourtexec.site: a newer
+# build is offered, the installed one is not, a system without a build and
+# broken update data are reported as errors. Needs no display.
+mkdir -p "$runtime/update"
+old_build=$(printf '1%.0s' {1..40})
+new_build=$(printf '2%.0s' {1..40})
+write_update_data() {
+    printf '{"schema":1,"targets":{"%s":{"commit":"%s","date":%s,"url":"https://fourtexec.site/newteller.zip","sha256":"%s"}}}\n' \
+        "$1" "$2" "$3" "$(printf 'a%.0s' {1..64})" > "$runtime/update/update.json"
+}
+check_update() {
+    local status=0
+    update_reply=$(NEWTELLER_BUILDINFO="$runtime/update/BUILDINFO" \
+        NEWTELLER_UPDATE_URL="file://$runtime/update/update.json" "$shell" --check-update) || status=$?
+    if [[ $status -ne $1 || $update_reply != *"$2"* ]]; then
+        echo "newteller --check-update: expected exit $1 and '$2', got exit $status: $update_reply" >&2
+        exit 1
+    fi
+}
+printf 'commit=%s\ntarget=smoke-x86_64\ndate=1000\n' "$old_build" > "$runtime/update/BUILDINFO"
+write_update_data smoke-x86_64 "$new_build" 2000
+check_update 10 'update: available'
+# --version names the installed build.
+version_reply=$(NEWTELLER_BUILDINFO="$runtime/update/BUILDINFO" "$shell" --version)
+if [[ $version_reply != *"build ${old_build:0:10}, smoke-x86_64"* ]]; then
+    echo "newteller --version does not name the installed build: $version_reply" >&2
+    exit 1
+fi
+write_update_data smoke-x86_64 "$old_build" 1000
+check_update 0 'update: none'
+# The site lagging behind a newer local build is not an update.
+write_update_data smoke-x86_64 "$new_build" 500
+check_update 0 'update: none'
+write_update_data other-x86_64 "$new_build" 2000
+check_update 1 'error:'
+write_update_data smoke-x86_64 not-a-commit 2000
+check_update 1 'error:'
+echo 'session smoke: the updater reads update data and compares builds'
+
+# The whole way of an update: the data names a link, the archive behind the
+# link is downloaded, checked against its SHA-256 and handed to
+# newteller-update-install, which runs the archive's install.sh. The archive
+# here is a stand-in whose installer only leaves a mark. Root only (CI): a
+# user would be asked for the administrator password.
+if [[ $EUID -eq 0 ]] && command -v zip >/dev/null 2>&1; then
+    fake="$runtime/update/newteller-commit-$new_build-smoke-x86_64"
+    mkdir -p "$fake"
+    printf '#!/bin/bash\necho installed > "%s/update/installed-mark"\n' "$runtime" > "$fake/install.sh"
+    (cd "$runtime/update" && zip -qr fake.zip "$(basename "$fake")")
+    fake_sum=$(sha256sum "$runtime/update/fake.zip" | cut -d' ' -f1)
+    install_update() {
+        local status=0
+        update_reply=$(PATH="$root/scripts:$PATH" XDG_CACHE_HOME="$runtime/cache" \
+            NEWTELLER_UPDATE_STORE="$runtime/store" \
+            NEWTELLER_BUILDINFO="$runtime/update/BUILDINFO" \
+            NEWTELLER_UPDATE_URL="file://$runtime/update/update.json" "$shell" --install-update) || status=$?
+        if [[ $status -ne $1 || $update_reply != *"$2"* ]]; then
+            echo "newteller --install-update: expected exit $1 and '$2', got exit $status: $update_reply" >&2
+            exit 1
+        fi
+    }
+    write_fake_update() {
+        printf '{"schema":1,"targets":{"smoke-x86_64":{"commit":"%s","date":2000,"url":"file://%s/update/fake.zip","sha256":"%s"}},"changes":[{"commit":"%s","date":2000,"title":"A smoke test change"},{"commit":"%s","date":1000,"title":"Already installed"}]}\n' \
+            "$new_build" "$runtime" "$1" "$new_build" "$old_build" > "$runtime/update/update.json"
+    }
+    # A wrong checksum: nothing may run.
+    write_fake_update "$(printf 'b%.0s' {1..64})"
+    install_update 1 'error:'
+    if [[ -e "$runtime/update/installed-mark" ]]; then
+        echo 'an archive with a wrong checksum was installed' >&2
+        exit 1
+    fi
+    write_fake_update "$fake_sum"
+    install_update 0 'A smoke test change'
+    if [[ $update_reply == *'Already installed'* || ! -s "$runtime/update/installed-mark" ]]; then
+        echo "the update was not installed, or lists changes it does not bring: $update_reply" >&2
+        exit 1
+    fi
+    if compgen -G "$runtime/cache/newteller/updates/*" >/dev/null; then
+        echo 'the downloaded archive was left behind' >&2
+        exit 1
+    fi
+    # The installed archive is kept, and with nothing before it there is
+    # nothing to roll back to.
+    if [[ $(cat "$runtime/store/current.sha256") != "$fake_sum" ]] \
+        || NEWTELLER_UPDATE_STORE="$runtime/store" bash "$root/scripts/newteller-update-install" --rollback 2>/dev/null; then
+        echo 'the installed archive was not kept, or a rollback ran without an earlier build' >&2
+        exit 1
+    fi
+    echo 'session smoke: an update is downloaded, verified and installed; a wrong checksum is refused'
+else
+    echo 'session smoke: not root or no zip, skipping the update installation check' >&2
+fi
+
 socket=newteller-smoke
 log="$runtime/compositor.log"
 before="$runtime/before.png"
@@ -101,6 +196,31 @@ fi
 # the first frame (cold caches on a CI runner can take a moment).
 sleep 3
 XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" grim -o HEADLESS-1 "$before"
+
+# The protocols applications look for are advertised: without tablet-v2 a
+# drawing program gets no pen pressure, without the others clipboard tools,
+# screen sharing or games quietly lose features.
+globals_list=$(XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" \
+    python3 "$(dirname "$0")/wayland_globals.py")
+for interface in wl_compositor xdg_wm_base zwlr_layer_shell_v1 zwp_tablet_manager_v2 \
+    wp_alpha_modifier_v1 zwlr_data_control_manager_v1 zwlr_screencopy_manager_v1 \
+    wp_cursor_shape_manager_v1 zwp_pointer_constraints_v1 ext_session_lock_manager_v1 \
+    wp_fractional_scale_manager_v1 xdg_activation_v1 zwp_text_input_manager_v3; do
+    if ! printf '%s\n' "$globals_list" | grep -q "^$interface "; then
+        echo "the compositor does not advertise $interface" >&2
+        printf '%s\n' "$globals_list" >&2
+        exit 1
+    fi
+done
+echo "session smoke: $(printf '%s\n' "$globals_list" | wc -l) globals advertised, tablet-v2 among them"
+# wlroots 0.19+: the standard capture protocol comes with its output source.
+if printf '%s\n' "$globals_list" | grep -q '^ext_image_copy_capture_manager_v1 '; then
+    if ! printf '%s\n' "$globals_list" | grep -q '^ext_output_image_capture_source_manager_v1 '; then
+        echo 'ext-image-copy-capture is offered without an output capture source' >&2
+        exit 1
+    fi
+    echo 'session smoke: ext-image-copy-capture offered with output sources'
+fi
 
 # Exercise the virtual-pointer protocol. The click is a smoke test of the
 # protocol only (it lands on empty desktop); the menu is opened over D-Bus
@@ -463,6 +583,38 @@ PY
         exit 1
     fi
     echo 'session smoke: org.freedesktop.ScreenSaver inhibits idle and lets go'
+
+    # Settings, Updates in the real shell. The page binds to the C++ Updater,
+    # which the QML smoke test only knows as a stand-in: a property the real
+    # one lacks, or of another type, shows only here, as a QML error in the
+    # shell's output.
+    if XDG_RUNTIME_DIR="$runtime" WAYLAND_DISPLAY="$socket" \
+        gdbus call --session --dest org.newteller.Shell \
+            --object-path /org/newteller/Shell \
+            --method org.newteller.Shell.openSettingsPage updates >/dev/null 2>&1; then
+        settings_id=''
+        for _ in $(seq 1 30); do
+            settings_id=$( (msg windows || true) | sed 's/^ok //' | tr '\037' '\n' \
+                | awk -F $'\x1e' '$0 ~ /NewTeller Settings/ { print $1; exit }')
+            [[ -n $settings_id ]] && break
+            sleep 0.3
+        done
+        if [[ -z $settings_id ]]; then
+            echo "the settings window did not open on the Updates page ($(msg windows || true))" >&2
+            exit 1
+        fi
+        sleep 1
+        if grep -E 'SettingsApp\.qml:[0-9]+' "$log" | grep -E 'Error|undefined|Unable to assign'; then
+            echo 'the settings window reports QML errors' >&2
+            exit 1
+        fi
+        msg close "$settings_id" >/dev/null || true
+        sleep 1
+        echo 'session smoke: Settings opens on the Updates page without QML errors'
+    else
+        echo 'the shell did not open the settings over D-Bus' >&2
+        exit 1
+    fi
 else
     echo 'session smoke: no session bus or gdbus, skipping the start menu check' >&2
 fi

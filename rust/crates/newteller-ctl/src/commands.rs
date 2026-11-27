@@ -1028,6 +1028,15 @@ fn doctor(options: &Options) -> i32 {
         diagnostics.target,
         if diagnostics.debug_build { "debug build" } else { "release build" }
     );
+    if diagnostics.build.commit.is_empty() {
+        println!("installed build: not recorded (built from source)");
+    } else {
+        println!(
+            "installed build: {} {}",
+            &diagnostics.build.commit[..10],
+            diagnostics.build.target
+        );
+    }
     println!(
         "{} {} ({}), {} CPUs, {} memory ({:.0}% used)",
         diagnostics.uname.sysname,
